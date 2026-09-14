@@ -385,3 +385,9 @@ Draft saving coalesces repeat calls synchronously. Custody lookup, MIME building
 self-encryption and the POST all run on NetworkExecutor. A failed or unknown
 custody answer cannot reach a plaintext POST. Completion checks the captured
 pairing identity and cannot launch webmail while the app is locked.
+
+Signed-only reads use the same executor, generation and transient MIME result.
+GPGME verifies the detached signature over the exact decoded wire bytes before
+MIME parsing. A readable signed result is distinct from decryption; the controller
+rejects a successful result whose kind contradicts the selected row. No signature
+verdict or signed-body replacement is persisted with the inbox classification.

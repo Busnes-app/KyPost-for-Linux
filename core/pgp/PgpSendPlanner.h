@@ -93,10 +93,10 @@ struct PgpSendPlan
 // addresses because an address can match more than one key in a keyring, and
 // "whichever gpg picked" is not a decision this code may make silently.
 //
-// `senderFingerprint` is the sender's own key, used only for the Sent copy.
-// Empty means no copy is produced and sentCopyUnavailable is set. Signing uses
-// `message.from` instead, so a sender who can sign but has no encryption key
-// still sends -- they just lose the copy.
+// `senderFingerprint` selects both signing and the self-encrypted Sent copy.
+// Production supplies the current bootstrap fingerprint, so a retired key with
+// the same address cannot silently sign new mail. Empty is the low-level
+// sign-by-address/no-Sent-copy case, retained for callers without a self key.
 PgpSendPlan buildPgpSendPlan(const OutgoingMessage& message, const QStringList& bcc,
                              const QHash<QString, QString>& fingerprintsByAddress,
                              const QString& senderFingerprint,

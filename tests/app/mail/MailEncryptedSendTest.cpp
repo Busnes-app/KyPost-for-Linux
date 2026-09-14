@@ -1,6 +1,7 @@
 #include "MailPgpHarness.h"
 
 #include "pgp/OpenPgpDecryptor.h"
+#include "pgp/OpenPgpEncryptor.h"
 #include "pgp/OpenPgpKeyImporter.h"
 
 #include "../../core/pgp/GnupgFixture.h"
@@ -21,6 +22,7 @@ QByteArray bootstrapResponse(const QString& address)
 {
     const QJsonObject body{
         { QStringLiteral("hasIdentity"), true },
+        { QStringLiteral("fingerprint"), ownKeyFingerprint(address) },
         { QStringLiteral("protection"), QStringLiteral("client") },
         { QStringLiteral("suggestedUserIDs"), QJsonArray{ address } },
     };
@@ -34,7 +36,7 @@ QByteArray resolveResponse(const QString& address, const QByteArray& armoredKey,
         { QStringLiteral("address"), address },
         { QStringLiteral("publicKey"), QString::fromUtf8(armoredKey) },
         { QStringLiteral("fingerprint"), fingerprint },
-        { QStringLiteral("tier"), QStringLiteral("contact") },
+        { QStringLiteral("tier"), QStringLiteral("verified") },
         { QStringLiteral("usable"), usable },
     };
     const QJsonObject body{ { QStringLiteral("results"), QJsonArray{ entry } } };
@@ -68,6 +70,8 @@ private slots:
     void theRecipientCanOpenWhatTheRelayRelayed();
     void aRecipientWithNoUsableKeyStopsTheSendAndIsNamed();
     void aKeyTheRelaySaysIsUnusableIsNotUsedEvenThoughItLooksFine();
+    void unsafeDiscoveryTierNeverSends_data();
+    void unsafeDiscoveryTierNeverSends();
     void anAttachmentTravelsInsideTheCiphertext();
     void aSendForAReplacedAccountIsNotReportedAsSent();
 
@@ -203,6 +207,33 @@ void MailEncryptedSendTest::aRecipientWithNoUsableKeyStopsTheSendAndIsNamed()
 //
 // The sibling test above uses an absent key, which the importer rejects on its
 // own, so it cannot tell whether this flag is doing anything. This one can.
+void MailEncryptedSendTest::unsafeDiscoveryTierNeverSends_data()
+{
+    QTest::addColumn<QByteArray>("tier");
+    for (const auto* tier : {"expired", "revoked", "future-tier", "keyserver_confirm", "key_changed", "none", ""})
+        QTest::newRow(*tier ? tier : "missing") << QByteArray(tier);
+}
+void MailEncryptedSendTest::unsafeDiscoveryTierNeverSends()
+{
+    QFETCH(QByteArray, tier);
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true})"));
+    fake.setResponseForPath("/api/pgp/bootstrap", bootstrapResponse(QStringLiteral("me@example.com")));
+    auto response = resolveResponse(QStringLiteral("you@example.com"), m_recipientKey, m_recipientFingerprint);
+    // Build the replacement body before wrapping it, so Content-Length stays accurate.
+    auto json = QJsonDocument::fromJson(response.mid(response.indexOf("\r\n\r\n") + 4)).object();
+    auto entry = json.value(QStringLiteral("results")).toArray().first().toObject();
+    entry.insert(QStringLiteral("tier"), QString::fromLatin1(tier));
+    json.insert(QStringLiteral("results"), QJsonArray{entry});
+    fake.setResponseForPath("/api/pgp/recipients/resolve", httpResponse(200, "OK", QJsonDocument(json).toJson()));
+    DecryptHarness harness;
+    QVERIFY(harness.build(fake));
+    QSignalSpy completed(harness.controller.get(), &MailController::sendCompleted);
+    harness.controller->sendClientEncrypted(QStringLiteral("you@example.com"), {}, {}, {}, QString::fromUtf8(kSecret), {});
+    QTRY_COMPARE_WITH_TIMEOUT(completed.size(), 1, 10000);
+    QVERIFY(!completed.first().at(1).toBool());
+    QVERIFY(sendRequestBodyOf(fake.receivedRequests()).isEmpty());
+}
+
 void MailEncryptedSendTest::aKeyTheRelaySaysIsUnusableIsNotUsedEvenThoughItLooksFine()
 {
     FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true})"));

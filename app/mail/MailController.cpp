@@ -1612,6 +1612,11 @@ MailController::ClientEncryptedOutcome runClientEncryptedSend(
         return outcome;
     }
 
+    if (identity.fingerprint.isEmpty()) {
+        outcome.failure = Failure::NoSigningKey;
+        return outcome;
+    }
+
     QStringList everyone = toList;
     everyone.append(ccList);
     everyone.append(bccList);
@@ -1637,8 +1642,15 @@ MailController::ClientEncryptedOutcome runClientEncryptedSend(
     // relay, which is the thing this mode exists to prevent.
     QHash<QString, QString> fingerprints;
     for (const ResolvedRecipientKey& key : resolved.keys) {
-        if (!key.usable || key.publicKey.isEmpty()) {
-            outcome.namedRecipients.append(key.address);
+        if (!key.canEncryptWithoutConfirmation() || key.publicKey.isEmpty()) {
+            if (key.tier == QStringLiteral("expired"))
+                outcome.namedRecipients.append(i18n("%1 (expired key)", key.address));
+            else if (key.tier == QStringLiteral("revoked"))
+                outcome.namedRecipients.append(i18n("%1 (revoked key)", key.address));
+            else if (key.tier == QStringLiteral("keyserver_confirm") || key.tier == QStringLiteral("key_changed"))
+                outcome.namedRecipients.append(i18n("%1 (confirm the key in webmail)", key.address));
+            else
+                outcome.namedRecipients.append(key.address);
             continue;
         }
         // Into the user's own keyring, so gpg owns the record -- AGENTS.md 4b.
@@ -1680,7 +1692,7 @@ MailController::ClientEncryptedOutcome runClientEncryptedSend(
     message.attachments = attachments;
 
     const PgpSendPlan plan = buildPgpSendPlan(message, bccList, fingerprints,
-                                               ownKeyFingerprint(identity.primaryAddress));
+                                               identity.fingerprint);
     switch (plan.status) {
     case PgpSendPlanStatus::Built:
         break;

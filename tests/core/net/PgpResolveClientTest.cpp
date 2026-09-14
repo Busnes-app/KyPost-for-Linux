@@ -28,6 +28,7 @@ class PgpResolveClientTest : public QObject
     Q_OBJECT
 
 private slots:
+    void unknownTiersRemainValuesNotParseErrors();
     void resolvesEachRecipientsKey();
     void asksTheRightEndpointWithPairingAuth();
     void anUnusableKeyIsNotQuietlyUsable();
@@ -38,12 +39,24 @@ private slots:
     void anOutageStaysRetryable();
 };
 
+void PgpResolveClientTest::unknownTiersRemainValuesNotParseErrors()
+{
+    for (const auto* tier : {"verified", "wkd", "expired", "revoked", "future-tier", "", "keyserver_confirm", "key_changed"}) {
+        FakeRelayServer fake(httpResponse(200, "OK", QByteArray("{\"results\":[{\"tier\":\"") + tier + "\",\"usable\":true,\"future\":42}]}"));
+        const auto result = resolveAgainst(fake, {});
+        QCOMPARE(result.status, PgpResolveStatus::Resolved);
+        QCOMPARE(result.keys.size(), 1);
+        QCOMPARE(result.keys.first().tier, QString::fromLatin1(tier));
+        QCOMPARE(result.keys.first().canEncryptWithoutConfirmation(), QByteArray(tier) == "verified" || QByteArray(tier) == "wkd");
+    }
+}
+
 void PgpResolveClientTest::resolvesEachRecipientsKey()
 {
     FakeRelayServer fake(httpResponse(
         200, "OK",
         R"({"results":[)"
-        R"({"address":"a@example.com","publicKey":"-----BEGIN PGP PUBLIC KEY BLOCK-----\nx\n","fingerprint":"AAAA1111","tier":"contact","usable":true},)"
+        R"({"address":"a@example.com","publicKey":"-----BEGIN PGP PUBLIC KEY BLOCK-----\nx\n","fingerprint":"AAAA1111","tier":"verified","usable":true},)"
         R"({"address":"b@example.com","publicKey":"-----BEGIN PGP PUBLIC KEY BLOCK-----\ny\n","fingerprint":"BBBB2222","tier":"wkd","usable":true}]})"));
 
     const PgpResolveResult result =
@@ -53,7 +66,7 @@ void PgpResolveClientTest::resolvesEachRecipientsKey()
     QCOMPARE(result.keys.size(), 2);
     QCOMPARE(result.keys.at(0).address, QStringLiteral("a@example.com"));
     QCOMPARE(result.keys.at(0).fingerprint, QStringLiteral("AAAA1111"));
-    QCOMPARE(result.keys.at(0).tier, QStringLiteral("contact"));
+    QCOMPARE(result.keys.at(0).tier, QStringLiteral("verified"));
     QVERIFY(result.keys.at(0).usable);
     QVERIFY(result.keys.at(0).publicKey.startsWith(QStringLiteral("-----BEGIN PGP PUBLIC KEY BLOCK-----")));
     QCOMPARE(result.keys.at(1).tier, QStringLiteral("wkd"));

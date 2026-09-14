@@ -941,6 +941,17 @@ worse than no comment: the next reader stops looking.
   a key/encryption failure; Bcc is a protected draft header, never a delivery
   header. `MailDecryptionTest` checks the actual upload with a throwaway keyring.
 
+- **Signed-only content is verified over exact wire octets.** Never normalize or
+  rebuild MIME before GPGME verification. Keep signed readability separate from
+  decryption and signature validity. Persist only the relay's `pgpSigned`
+  classification (migration 008); the cursor namespace forces one full window
+  per folder to backfill old rows. Verification verdicts remain transient.
+- **New sends select the current fingerprint, not an arbitrary address match.**
+  Keep retired GnuPG keys for decryption. Only usable `verified` and `wkd`
+  recipient tiers authorize automatic use; unconfirmed keyserver, changed,
+  expired, revoked, absent and unknown tiers do not. Unknown tier strings are
+  still valid decoder input, never parse errors or implicit permission.
+
 ## 7. DOX framework
 
 ### Core Contract

@@ -346,3 +346,5 @@ core/pgp/OpenPgpDecryptor.cpp	    if (signedPart.size() > m_maxPlaintextBytes ||
 core/net/PgpPayloadClient.cpp	    if (!bytes || bytes.decoded.isEmpty() || bytes.decoded.toBase64() != base64	    if (false	PgpPayloadClientTest:malformedSignedOctets
 core/net/PgpPayloadClient.cpp	    if (encoded.size() > ((maxSignedBytes + 2) / 3) * 4 || out.signaturePayload.size() > 1024 * 1024) {	    if (false) {	PgpPayloadClientTest:detachedSignatureHasItsOwnSizeCeiling
 app/mail/MailController.cpp	            if ((result.status == PgpReadStatus::SignedOnly && !signedOnly)	            if (false	MailDecryptionTest:signedInboxRowCanBeReadAndVerified
+core/net/PgpResolveClient.cpp	    return usable && (tier == QStringLiteral("verified") || tier == QStringLiteral("wkd"));	    return usable;	MailEncryptedSendTest:unsafeDiscoveryTierNeverSends
+core/pgp/PgpSendPlanner.cpp	    const QString signer = senderFingerprint.trimmed().isEmpty() ? message.from : senderFingerprint.trimmed();	    const QString signer = message.from;	PgpSendPlannerTest:missingCurrentKeyNeverFallsBackToOldAddressKey

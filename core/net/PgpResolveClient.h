@@ -20,9 +20,10 @@ struct ResolvedRecipientKey
     // so the compose screen can say how well-known a recipient's key is
     // instead of presenting every source as equally settled.
     QString tier;
-    // The ONLY gate. A key can be present and unusable -- revoked, expired,
-    // wrong capability -- and the relay folds all of that in here.
+    // The relay's usability answer. Discovery tier independently determines
+    // whether this client may use a key without a confirmation ceremony.
     bool usable = false;
+    bool canEncryptWithoutConfirmation() const;
 
     bool operator==(const ResolvedRecipientKey&) const = default;
 };
