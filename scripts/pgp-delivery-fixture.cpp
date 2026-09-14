@@ -32,9 +32,9 @@ bool write(const QString& path, const QByteArray& bytes)
 
 int main(int argc, char** argv)
 {
-    if (argc != 4) {
+    if (argc != 6) {
         std::fprintf(stderr,
-                      "usage: pgp-delivery-fixture <delivery-out> <protected-out> <request-out>\n");
+                      "usage: pgp-delivery-fixture <delivery-out> <protected-out> <request-out> <draft-request-out> <draft-inner-out>\n");
         return 2;
     }
 
@@ -104,5 +104,14 @@ int main(int argc, char** argv)
                 QJsonDocument(request).toJson(QJsonDocument::Compact))) {
         return 1;
     }
+    const QByteArray draftInner = protectedDraftContent(message, QStringLiteral("bcc@example.com"), randomMimeBoundary());
+    message.cc.clear();
+    // Shape-only armor here; MailDecryptionTest separately proves an actual
+    // GnuPG self-encrypted controller upload decrypts to all draft fields.
+    const QJsonObject draft{{QStringLiteral("to"), message.to.join(QStringLiteral(", "))},
+        {QStringLiteral("pgpDraft"), QString::fromUtf8(pgpMimeDelivery(message, armor, randomMimeBoundary()))}};
+    if (!write(QString::fromLocal8Bit(argv[4]), QJsonDocument(draft).toJson(QJsonDocument::Compact))
+        || !write(QString::fromLocal8Bit(argv[5]), draftInner))
+        return 1;
     return 0;
 }

@@ -16,6 +16,7 @@ class RelayMailSourceTest : public QObject
     Q_OBJECT
 
 private slots:
+    void oversizedEncryptedDraftNeverPosts();
     void fetchInboxMapsTwoTabsWithAtUtcPassthroughAndOptionalFields();
     void fetchInboxSendsLimitMailboxSinceAsQueryParamsAndAuthAsHeaders();
     void fetchInboxOmitsLimitAndSinceWhenNotProvided();
@@ -39,6 +40,20 @@ private slots:
     void downloadAttachmentReturnsRawBytesAndParsesFilenameFromContentDisposition();
     void downloadAttachmentMapsNotFoundFrom404();
 };
+
+void RelayMailSourceTest::oversizedEncryptedDraftNeverPosts()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true})"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+    const QUrl base(QStringLiteral("http://127.0.0.1:%1").arg(fake.port()));
+    const auto result = source.saveDraft(base, {QStringLiteral("device"), QStringLiteral("secret")},
+        QStringLiteral("to@example.com"), {}, {}, {}, {}, {}, {}, QString(25 * 1024 * 1024, QLatin1Char('A')));
+    QVERIFY(!result.ok);
+    QCOMPARE(result.error, std::optional<NetworkError>(NetworkError::ResponseTooLarge));
+    QCOMPARE(fake.receivedRequests().size(), 0);
+}
 
 void RelayMailSourceTest::fetchInboxMapsTwoTabsWithAtUtcPassthroughAndOptionalFields()
 {

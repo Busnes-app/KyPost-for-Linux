@@ -929,6 +929,18 @@ worse than no comment: the next reader stops looking.
   structural limit is exceeded, rather than successful partial content. See
   `docs/THREADING.md` and `MailDecryptionTest` for the completion checks.
 
+- **Protected attachments share the message token and stay in C++ memory.**
+  Recheck token/account/lock on every save and CID lookup. HLP forbids permanent
+  exports. CID responses are bounded raster images, served only on off-the-record
+  profiles with HTTP caching disabled; remote content stays opt-in. The handler
+  and image sniffing belong in `app/`, never `core/`.
+- **Client-custody drafts are encrypted before the first POST.** Fetch fresh,
+  type-checked bootstrap custody; missing/unknown answers fail closed. Encrypt
+  draft To/Cc/Bcc, subject, body and files to the current account fingerprint.
+  Only outer To and `pgpDraft` go to the relay. Never fall back to plaintext after
+  a key/encryption failure; Bcc is a protected draft header, never a delivery
+  header. `MailDecryptionTest` checks the actual upload with a throwaway keyring.
+
 ## 7. DOX framework
 
 ### Core Contract

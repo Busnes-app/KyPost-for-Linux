@@ -328,13 +328,22 @@ SendMailResult RelayMailSource::sendMail(const QUrl& serverBaseUrl, const RelayA
 SaveDraftResult RelayMailSource::saveDraft(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& to,
                                             const QString& cc, const QString& bcc, const QString& subject,
                                             const QString& body, const QString& mode,
-                                            const QVector<MailAttachmentUpload>& attachments) const
+                                            const QVector<MailAttachmentUpload>& attachments,
+                                            const QString& pgpDraft) const
 {
-    const HttpClient::HttpResult result = m_httpClient.post(
-        joinUrlPath(serverBaseUrl, QStringLiteral("api/mail/draft")), {},
-        mailRequestBody(to, cc, bcc, subject, body, mode, attachments), auth.headerItems());
-
+    const QJsonObject request = pgpDraft.isEmpty()
+        ? mailRequestBody(to, cc, bcc, subject, body, mode, attachments)
+        : QJsonObject{{QStringLiteral("to"), to}, {QStringLiteral("pgpDraft"), pgpDraft}};
     SaveDraftResult out;
+    // backend/internal/api/server.go: maxMailRequestBytes. Count serialized
+    // JSON, including armor escaping, rather than the pre-encryption files.
+    if (QJsonDocument(request).toJson(QJsonDocument::Compact).size() > 25 * 1024 * 1024) {
+        out.error = NetworkError::ResponseTooLarge;
+        return out;
+    }
+    const HttpClient::HttpResult result = m_httpClient.post(
+        joinUrlPath(serverBaseUrl, QStringLiteral("api/mail/draft")), {}, request, auth.headerItems());
+
     if (result.error.has_value()) {
         out.error = result.error;
         // Unlike /api/mail/send, every failure here is http.Error -- a

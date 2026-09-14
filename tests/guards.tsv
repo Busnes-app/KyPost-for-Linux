@@ -336,3 +336,6 @@ app/qml/utils/format.js	        && !!folder && String(folder) === String(heldFol
 app/mail/MailController.cpp	    if (!decryptedStillOurs() || token != m_decryptedToken || index < 0 || index >= m_decryptedAttachments.size())	    if (false)	MailDecryptionTest:decryptedAttachmentsStayLocalAndRequireTheCurrentToken
 app/mail/MailController.cpp	    if (m_settingsStore.hostileLocationProtectionEnabled()) { // protected file export	    if (false) { // protected file export	MailDecryptionTest:decryptedAttachmentsStayLocalAndRequireTheCurrentToken
 app/mail/MailController.cpp	        || url.host() != m_decryptedToken || url.hasQuery() || url.hasFragment()	        || url.hasQuery() || url.hasFragment()	MailDecryptionTest:cidImagesAreBoundToTheCurrentUnlockedMessage
+app/mail/MailController.cpp	            if (!identity.ok || (!client && !plaintextAllowed)) {	            if (false) {	MailDecryptionTest:draftCustodyFailuresNeverPost
+app/mail/MailController.cpp	            if (client) {	            if (false) {	MailDecryptionTest:encryptedDraftNeverUploadsPlaintext
+core/net/RelayMailSource.cpp	    if (QJsonDocument(request).toJson(QJsonDocument::Compact).size() > 25 * 1024 * 1024) {	    if (false) {	RelayMailSourceTest:oversizedEncryptedDraftNeverPosts

@@ -652,34 +652,107 @@ quint64 MailController::saveDraftInternal(const QString& to, const QString& cc, 
                                             const QString& subject, const QString& body,
                                             const QStringList& attachmentFilePaths, const QUrl& thenOpenWebmail)
 {
+    if (m_appLocked || m_draftInFlight)
+        return 0;
     QUrl serverBaseUrl;
     RelayAuth auth;
     if (!requirePairing(serverBaseUrl, auth))
         return 0;
+    const auto pairing = m_pairingStore.load();
+    if (!pairing)
+        return 0;
+    const PairingIdentity requestedBy = identityOf(*pairing);
 
     QVector<MailAttachmentUpload> attachments;
     if (!readAttachments(attachmentFilePaths, attachments))
         return 0;
 
+    enum class Failure { None, CustodyUnknown, IdentityMissing, Encryption };
+    struct Outcome {
+        SaveDraftResult saved;
+        Failure failure = Failure::None;
+        PgpEncryptStatus encryption = PgpEncryptStatus::Encrypted;
+    };
     const quint64 token = m_nextPendingSendToken++;
-
+    const QString date = QDateTime::currentDateTime().toString(Qt::RFC2822Date);
+    m_draftInFlight = true;
     pushBusy();
     m_executor.run(
         this,
-        [serverBaseUrl, auth, to, cc, bcc, subject, body, attachments](HttpClient& http) {
-            RelayMailSource source(http);
-            return source.saveDraft(serverBaseUrl, auth, to, cc, bcc, subject, body, QStringLiteral("html"),
-                                     attachments);
+        [serverBaseUrl, auth, to, cc, bcc, subject, body, attachments, date](HttpClient& http) {
+            Outcome out;
+            const auto identity = PgpBootstrapClient(http).fetch(serverBaseUrl, auth);
+            const bool client = identity.protection == QStringLiteral("client");
+            const bool plaintextAllowed = identity.protection == QStringLiteral("server")
+                || (identity.protection.isEmpty() && !identity.hasIdentity);
+            if (!identity.ok || (!client && !plaintextAllowed)) {
+                out.failure = Failure::CustodyUnknown;
+                return out;
+            }
+            QString encryptedDraft;
+            if (client) {
+                if (!identity.hasIdentity || identity.fingerprint.isEmpty() || identity.primaryAddress.isEmpty()) {
+                    out.failure = Failure::IdentityMissing;
+                    return out;
+                }
+                OutgoingMessage message;
+                message.from = identity.primaryAddress;
+                // Preserve display names and commas inside quoted names; the
+                // relay parses the To list. The MIME writer sanitizes headers.
+                message.to = {to};
+                message.cc = {cc};
+                message.subject = subject;
+                message.body = body;
+                message.mode = QStringLiteral("html");
+                message.date = date;
+                message.attachments = attachments;
+                const QByteArray content = protectedDraftContent(message, bcc, randomMimeBoundary());
+                const auto encrypted = signAndEncrypt(content, identity.fingerprint, {identity.fingerprint});
+                if (encrypted.status != PgpEncryptStatus::Encrypted) {
+                    out.failure = Failure::Encryption;
+                    out.encryption = encrypted.status;
+                    return out;
+                }
+                // Cc and Bcc belong only inside the self-encrypted entity.
+                message.cc.clear();
+                encryptedDraft = QString::fromUtf8(pgpMimeDelivery(
+                    message, encrypted.armoredCiphertext, randomMimeBoundary()));
+            }
+            out.saved = RelayMailSource(http).saveDraft(serverBaseUrl, auth, to, cc, bcc, subject, body,
+                                                        QStringLiteral("html"), attachments, encryptedDraft);
+            return out;
         },
-        [this, token, thenOpenWebmail](const SaveDraftResult& result) {
+        [this, token, requestedBy, thenOpenWebmail](const Outcome& outcome) {
+            m_draftInFlight = false;
             popBusy();
-            if (result.error.has_value() || !result.ok) {
-                setLastError(result.detail.isEmpty() ? i18n("Could not save draft") : result.detail);
+            if (!m_pairingStore.stillCurrent(requestedBy)) {
+                emit draftSaveCompleted(token, false);
+                return;
+            }
+            const auto& result = outcome.saved;
+            if (outcome.failure != Failure::None || result.error.has_value() || !result.ok) {
+                if (outcome.failure == Failure::CustodyUnknown)
+                    setLastError(i18n("Could not check this account's draft protection. Nothing was uploaded. Try again."));
+                else if (outcome.failure == Failure::IdentityMissing)
+                    setLastError(i18n("This account has no usable OpenPGP identity. The draft was not uploaded."));
+                else if (outcome.failure == Failure::Encryption) {
+                    if (outcome.encryption == PgpEncryptStatus::EngineUnavailable)
+                        setLastError(i18n("GnuPG is unavailable. Install GnuPG to save an encrypted draft."));
+                    else if (outcome.encryption == PgpEncryptStatus::NoSigningKey)
+                        setLastError(i18n("Your OpenPGP key is unavailable. Enroll this device before saving the draft."));
+                    else if (outcome.encryption == PgpEncryptStatus::CancelledOrWrongPassphrase)
+                        setLastError(i18n("Key unlock was cancelled or failed. The draft was not uploaded."));
+                    else
+                        setLastError(i18n("Could not encrypt the draft. Nothing was uploaded."));
+                } else if (result.error == NetworkError::ResponseTooLarge)
+                    setLastError(i18n("The draft exceeds the server's 25 MiB request limit. Remove an attachment and try again."));
+                else
+                    setLastError(result.detail.isEmpty() ? i18n("Could not save draft") : result.detail);
                 emit draftSaveCompleted(token, false);
                 return;
             }
             setLastError(QString());
-            if (!thenOpenWebmail.isEmpty() && !QDesktopServices::openUrl(thenOpenWebmail)) {
+            if (!thenOpenWebmail.isEmpty() && (m_appLocked || !QDesktopServices::openUrl(thenOpenWebmail))) {
                 setLastError(i18n("Saved to Drafts, but KyPost could not open your browser."));
                 emit draftSaveCompleted(token, false);
                 return;

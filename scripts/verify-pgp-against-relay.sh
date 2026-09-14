@@ -61,6 +61,8 @@ if [ -n "$(git -C "$SERVER_REPO" status --porcelain)" ]; then
     exit 1
 fi
 
+SERVER_MODULE="$(cd "$SERVER_REPO/backend" && go list -m)"
+
 echo "building the fixture emitter"
 g++ -std=c++20 -fPIC -O1 -w \
     $(pkg-config --cflags Qt6Core) \
@@ -71,7 +73,7 @@ g++ -std=c++20 -fPIC -O1 -w \
     -o "$WORK/emit" \
     $(pkg-config --libs Qt6Core Qt6Network)
 
-"$WORK/emit" "$WORK/delivery.eml" "$WORK/protected.mime" "$WORK/request.json"
+"$WORK/emit" "$WORK/delivery.eml" "$WORK/protected.mime" "$WORK/request.json" "$WORK/draft.json" "$WORK/draft.mime"
 echo "emitted a delivery, a protected content part and a whole send request"
 
 PROBE="$SERVER_REPO/backend/internal/api/zz_kypost_linux_shape_probe_test.go"
@@ -84,11 +86,12 @@ package api
 import (
 	"encoding/json"
 	"os"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"kypost-server/backend/internal/mailmsg"
-	"kypost-server/backend/internal/pgpmail"
+	"$SERVER_MODULE/internal/mailmsg"
+	"$SERVER_MODULE/internal/pgpmail"
 )
 
 func TestKypostLinuxDeliveryShape(t *testing.T) {
@@ -166,6 +169,23 @@ func TestKypostLinuxProtectedSubject(t *testing.T) {
 		t.Fatalf("protected subject round-tripped wrong: %q", subject)
 	}
 }
+func TestKypostLinuxDraft(t *testing.T) {
+    raw, err := os.ReadFile("$WORK/draft.json")
+    if err != nil { t.Fatal(err) }
+    r := httptest.NewRequest("POST", "/api/mail/draft", strings.NewReader(string(raw)))
+    draft, detail, err := decodeMailRequest(r)
+    if err != nil { t.Fatalf("draft decode: %s: %v", detail, err) }
+    if err := validatePGPMimeDeliveryShape(draft.PGPDraft); err != nil { t.Fatal(err) }
+    if draft.Body != "" || draft.Subject != "" || len(draft.CC) != 0 || len(draft.BCC) != 0 || len(draft.Attachments) != 0 {
+        t.Fatal("confidential fields appeared outside ciphertext")
+    }
+    inner, err := os.ReadFile("$WORK/draft.mime")
+    if err != nil { t.Fatal(err) }
+    subject, ok := pgpmail.ExtractProtectedSubject(inner)
+    if !ok || subject != "Café — Redundancies confirmed" { t.Fatalf("draft subject: %q", subject) }
+    if !strings.Contains(string(inner), "Bcc: bcc@example.com") { t.Fatal("draft lost blind recipients") }
+}
+
 GOEOF
 
 echo "running the relay's own validators"

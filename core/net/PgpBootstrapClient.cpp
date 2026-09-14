@@ -35,6 +35,11 @@ PgpBootstrapResult PgpBootstrapClient::fetch(const QUrl& serverBaseUrl, const Re
     }
 
     const QJsonObject obj = *decoded;
+    if (!obj.value(QStringLiteral("hasIdentity")).isBool()
+        || !obj.value(QStringLiteral("protection")).isString()) {
+        out.error = NetworkError::Decoding;
+        return out;
+    }
     out.ok = true;
     out.hasIdentity = obj.value(QStringLiteral("hasIdentity")).toBool();
     out.protection = obj.value(QStringLiteral("protection")).toString();

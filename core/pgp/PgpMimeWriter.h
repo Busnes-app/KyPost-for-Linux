@@ -97,6 +97,11 @@ QString randomMimeBoundary(const QByteArray& mustNotOccurIn = {});
 // the server.
 QByteArray protectedContent(const OutgoingMessage& message, const QString& boundary);
 
+// Draft-only protected headers, including Bcc. Encrypt ONLY to the account
+// owner: these headers must never appear in a recipient delivery.
+QByteArray protectedDraftContent(const OutgoingMessage& message, const QString& bcc,
+                                  const QString& boundary);
+
 // The RFC 3156 multipart/encrypted delivery around an already-armored
 // ciphertext.
 //

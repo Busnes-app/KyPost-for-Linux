@@ -190,6 +190,15 @@ QByteArray protectedContent(const OutgoingMessage& message, const QString& bound
     return out;
 }
 
+QByteArray protectedDraftContent(const OutgoingMessage& message, const QString& bcc,
+                                  const QString& boundary)
+{
+    return "To: " + joinAddresses(message.to).toUtf8() + "\r\n"
+        + "Cc: " + joinAddresses(message.cc).toUtf8() + "\r\n"
+        + "Bcc: " + mimeHeaderValue(bcc).toUtf8() + "\r\n"
+        + protectedContent(message, boundary);
+}
+
 QByteArray pgpMimeDelivery(const OutgoingMessage& message, const QString& armoredCiphertext,
                             const QString& boundary)
 {

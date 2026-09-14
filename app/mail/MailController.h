@@ -680,6 +680,7 @@ private:
     // re-entrancy defences against the nested event loop; the requests are
     // off-thread now, so they only stop a second call piling up behind one
     // already out.
+    bool m_draftInFlight = false;
     bool m_preflightInFlight = false;
     bool m_pgpBootstrapInFlight = false;
 

@@ -366,10 +366,22 @@ affinity guard now catches.
 
 `MailController::decryptMessage` resolves the mailbox/UID against the account's
 cache, then fetches, decrypts and parses MIME on NetworkExecutor. Only the parsed
-body and subject cross back to the GUI; they remain transient. `forgetDecrypted`
+body, subject and attachment bytes cross back to the GUI; they remain transient. `forgetDecrypted`
 always advances a generation, even before a result exists. Completion checks that
 generation and the C++ app-lock state before applying anything, and checks pairing
 identity before exposing the result. A lock followed by unlock cannot revive an
 old pinentry or relay result. The UI compares both mailbox and UID, because UIDs
 can repeat between folders. `MailDecryptionTest` exercises these transitions with
 real GnuPG and a fake relay.
+
+Protected attachment metadata is exposed to QML without bytes. Explicit saves
+and the `ProtectedImageHandler` resolver run on the GUI thread and recheck the
+active message token/account/lock. The WebEngine profile disables HTTP caching;
+revoked CID URLs cannot recover bytes from a prior response. The interceptor's
+image opt-in and local-image base are mutex-protected because WebEngine invokes
+its request interception outside the GUI thread.
+
+Draft saving coalesces repeat calls synchronously. Custody lookup, MIME building,
+self-encryption and the POST all run on NetworkExecutor. A failed or unknown
+custody answer cannot reach a plaintext POST. Completion checks the captured
+pairing identity and cannot launch webmail while the app is locked.
