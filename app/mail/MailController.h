@@ -83,6 +83,9 @@ class MailController : public QObject
     Q_PROPERTY(QString decryptedMessageId READ decryptedMessageId NOTIFY decryptedChanged)
     Q_PROPERTY(QString decryptedHtml READ decryptedHtml NOTIFY decryptedChanged)
     Q_PROPERTY(QString decryptedPlain READ decryptedPlain NOTIFY decryptedChanged)
+    Q_PROPERTY(QVariantList decryptedAttachments READ decryptedAttachments NOTIFY decryptedChanged)
+    Q_PROPERTY(QString decryptedImageBase READ decryptedImageBase NOTIFY decryptedChanged)
+    Q_PROPERTY(QString decryptedToken READ decryptedToken NOTIFY decryptedChanged)
     Q_PROPERTY(QString decryptedSubject READ decryptedSubject NOTIFY decryptedChanged)
     Q_PROPERTY(QString decryptedFolder READ decryptedFolder NOTIFY decryptedChanged)
     // Localized sentence for the last failed decryption, or empty. Paired
@@ -130,6 +133,13 @@ public:
     QString decryptedSubject() const { return decryptedStillOurs() ? m_decryptedSubject : QString(); }
     QString decryptedFolder() const { return decryptedStillOurs() ? m_decryptedFolder : QString(); }
     void setAppLocked(bool locked);
+    QVariantList decryptedAttachments() const;
+    QString decryptedToken() const { return decryptedStillOurs() ? m_decryptedToken : QString(); }
+    QString decryptedImageBase() const { return decryptedStillOurs() ? QStringLiteral("kypost-cid://") + m_decryptedToken + QLatin1Char('/') : QString(); }
+    QPair<QByteArray, QByteArray> protectedImage(const QUrl& url) const;
+    Q_INVOKABLE bool saveDecryptedAttachment(const QString& token, int index, const QUrl& destination);
+    Q_INVOKABLE bool openDecryptedAttachmentTemporarily(const QString& token, int index);
+
     QString decryptFailure() const { return m_decryptFailure; }
     QString decryptedSignature() const { return decryptedStillOurs() ? m_decryptedSignature : QString(); }
     bool decryptedSignatureIsWarning() const { return m_decryptedSignatureIsWarning; }
@@ -696,6 +706,8 @@ private:
     QString m_decryptedMessageId;
     QString m_decryptedHtml;
     QString m_decryptedPlain;
+    QVector<MimeAttachment> m_decryptedAttachments;
+    QString m_decryptedToken;
     QString m_decryptedSubject;
     QString m_decryptedFolder;
     quint64 m_decryptGeneration = 0;

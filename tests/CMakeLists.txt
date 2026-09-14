@@ -253,6 +253,17 @@ kypost_add_app_test(RemoteContentInterceptorTest
   LIBS Qt6::WebEngineCore Qt6::WebEngineQuick
 )
 
+kypost_add_app_test(ProtectedImageHandlerTest
+  SOURCES
+    app/mail/ProtectedImageHandlerTest.cpp
+    ${CMAKE_SOURCE_DIR}/app/mail/ProtectedImageHandler.cpp
+    ${CMAKE_SOURCE_DIR}/app/mail/RemoteContentInterceptor.cpp
+  LIBS Qt6::WebEngineCore Qt6::WebEngineQuick Qt6::Qml Qt6::Gui
+)
+target_compile_definitions(ProtectedImageHandlerTest PRIVATE KYPOST_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+set_tests_properties(ProtectedImageHandlerTest PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu;QT_QUICK_BACKEND=software")
+
 # ContactListModel/ContactsController (Task 33) live in app/contacts/, not
 # kypostcore -- same app/ test pattern as EmailListModelTest/MailControllerTest
 # above.

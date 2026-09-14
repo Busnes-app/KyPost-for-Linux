@@ -30,6 +30,17 @@ TestCase {
         compare(Format.protectedSubjectFor("5", "5", "INBOX", "INBOX", "", "outer"), "outer")
     }
 
+    function test_cidImagesUseOnlyTheLocalMessageRoute() {
+        const base = "kypost-cid://abc-123/"
+        const html = Format.renderedEmailHtml('<img src="cid:logo"><img src="https://tracker/pixel">', false, "", false, base)
+        verify(html.indexOf('src="kypost-cid://abc-123/logo"') !== -1)
+        verify(html.indexOf("img-src data: kypost-cid:;") !== -1)
+        verify(html.indexOf("img-src http:") === -1)
+        const plain = Format.renderedEmailHtml('<img src="cid:logo">', false, "", true, base)
+        verify(plain.indexOf("&lt;img") !== -1)
+        verify(plain.indexOf("src=&quot;cid:logo") !== -1)
+    }
+
     // The empty-selection state must not match an empty held id and let a
     // body through on a view showing nothing.
     function test_noMessageSelectedShowsNothing() {

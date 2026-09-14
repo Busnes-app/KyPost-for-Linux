@@ -2,6 +2,16 @@
 
 #include <QByteArray>
 #include <QString>
+#include <QVector>
+
+struct MimeAttachment
+{
+    QString name;
+    QString mimeType;
+    QString contentId;
+    QByteArray data;
+    bool operator==(const MimeAttachment&) const = default;
+};
 
 // The readable text of a decrypted OpenPGP message.
 //
@@ -12,11 +22,12 @@ struct MimeBody
 {
     QString html;
     QString plain;
+    QVector<MimeAttachment> attachments;
     QString subject; // inner protected header only; transient, like the body
     enum class Status { Complete, Malformed, TooLarge };
     Status status = Status::Complete;
 
-    bool isEmpty() const { return html.isEmpty() && plain.isEmpty(); }
+    bool isEmpty() const { return html.isEmpty() && plain.isEmpty() && attachments.isEmpty(); }
     bool operator==(const MimeBody&) const = default;
 };
 
@@ -31,10 +42,9 @@ struct MimeBody
 // care about -- so this is a bounded parser rather than a general one, and it
 // does not try to be KMime.
 //
-// WHAT IT DELIBERATELY DOES NOT DO: RFC 2231 parameter continuations
-// (`boundary*0=`), message/rfc822 recursion, and any attachment handling. An
-// entity using an unsupported boundary cannot be split and is reported as
-// Malformed. Attachment parts are skipped; extraction is the next parity step.
+// RFC 2231 filenames and ordinary MIME transfer encodings are supported.
+// ponytail: message/rfc822 remains a downloadable attachment; recurse only if
+// an attached-message viewer is added, never to select the parent's body.
 //
 // INPUT IS ATTACKER-CONTROLLED -- it is whatever the sender encrypted, and
 // the relay never saw it, so nothing upstream has sanity-checked its shape.

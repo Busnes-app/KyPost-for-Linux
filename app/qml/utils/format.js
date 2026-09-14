@@ -86,10 +86,11 @@ function looksLikeHtmlDocument(body) {
 // No `sandbox` directive: it is specified to be ignored when CSP arrives via
 // <meta> rather than an HTTP header, and loadHtml() offers no way to set a
 // header. Listing it would look like a control and be none.
-function emailContentSecurityPolicy(imagesLoaded) {
+function emailContentSecurityPolicy(imagesLoaded, localImages) {
     return "default-src 'none'; "
         + "style-src 'unsafe-inline'; "
-        + (imagesLoaded ? "img-src http: https: data:; " : "img-src data:; ")
+        + "img-src " + (imagesLoaded ? "http: https: data:" : "data:")
+        + (localImages ? " kypost-cid:; " : "; ")
         + "frame-src 'none'; object-src 'none'; media-src 'none'; font-src 'none'; "
         + "connect-src 'none'; script-src 'none'; form-action 'none'; base-uri 'none'"
 }
@@ -137,19 +138,26 @@ function emailBodyIsHtml(bodyMode, body) {
 // happens to contain "<html>" would otherwise be rendered as markup by a
 // heuristic, when the sender's own headers said it was text. Existing
 // callers pass three arguments and are unaffected.
-function renderedEmailHtml(body, imagesLoaded, style, forcePlainText) {
+function renderedEmailHtml(body, imagesLoaded, style, forcePlainText, localImageBase) {
     var asHtml = (forcePlainText === undefined)
         ? looksLikeHtmlDocument(body)
         : !forcePlainText
     var inner = asHtml
         ? String(body === undefined || body === null ? "" : body)
         : ("<pre>" + escapeHtml(body) + "</pre>")
+    const localImages = /^kypost-cid:\/\/[a-f0-9-]+\/$/.test(localImageBase || "")
+    if (asHtml && localImages) {
+        // Only replace source attributes, never text or the message's HTML
+        // structure. The handler authorizes every request and only serves raster images.
+        inner = inner.replace(/(\bsrc\s*=\s*["'])cid:/gi, "$1" + localImageBase)
+                     .replace(/(\bsrc\s*=\s*)cid:([^\s>]+)/gi, "$1" + localImageBase + "$2")
+    }
     return "<html><head>"
         + "<meta charset=\"utf-8\">"
         // First, before anything that could trigger a fetch: a CSP meta tag
         // only governs what follows it in the document.
         + "<meta http-equiv=\"Content-Security-Policy\" content=\""
-        + emailContentSecurityPolicy(imagesLoaded) + "\">"
+        + emailContentSecurityPolicy(imagesLoaded, localImages) + "\">"
         + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />"
         + "<style>" + style + "</style>"
         + "</head><body>" + inner + "</body></html>"

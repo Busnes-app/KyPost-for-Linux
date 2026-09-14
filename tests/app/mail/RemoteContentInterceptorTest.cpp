@@ -23,6 +23,7 @@ private slots:
     void imagesAreAllowedOnceImagesLoaded();
     void nonImageResourcesStayBlockedOnceImagesLoaded();
     void subframesStayBlockedOnceImagesLoaded();
+    void localImagesRequireTheMatchingMessage();
 };
 
 void RemoteContentInterceptorTest::mainFrameNavigationIsNeverBlocked()
@@ -89,6 +90,17 @@ void RemoteContentInterceptorTest::subframesStayBlockedOnceImagesLoaded()
     // network on nothing but this decision.
     QVERIFY(shouldBlockRemoteContentRequest(QWebEngineUrlRequestInfo::ResourceTypeSubFrame, false));
     QVERIFY(shouldBlockRemoteContentRequest(QWebEngineUrlRequestInfo::ResourceTypeSubFrame, true));
+}
+
+void RemoteContentInterceptorTest::localImagesRequireTheMatchingMessage()
+{
+    const QUrl base(QStringLiteral("kypost-cid://token/"));
+    const QUrl url(QStringLiteral("kypost-cid://token/logo"));
+    QVERIFY(isProtectedImageRequest(url, base, QWebEngineUrlRequestInfo::ResourceTypeImage));
+    QVERIFY(!isProtectedImageRequest(url, QUrl(), QWebEngineUrlRequestInfo::ResourceTypeImage));
+    QVERIFY(!isProtectedImageRequest(url, QUrl(QStringLiteral("kypost-cid://other/")), QWebEngineUrlRequestInfo::ResourceTypeImage));
+    QVERIFY(!isProtectedImageRequest(url, base, QWebEngineUrlRequestInfo::ResourceTypeSubFrame));
+    QVERIFY(!isProtectedImageRequest(QUrl(QStringLiteral("https://token/logo")), base, QWebEngineUrlRequestInfo::ResourceTypeImage));
 }
 
 QTEST_GUILESS_MAIN(RemoteContentInterceptorTest)

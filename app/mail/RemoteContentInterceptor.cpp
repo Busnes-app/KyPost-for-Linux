@@ -30,14 +30,35 @@ RemoteContentInterceptor::RemoteContentInterceptor(QObject* parent)
 
 bool RemoteContentInterceptor::imagesLoaded() const
 {
+    QMutexLocker lock(&m_mutex);
     return m_imagesLoaded;
+}
+
+QUrl RemoteContentInterceptor::localImageBase() const
+{
+    QMutexLocker lock(&m_mutex);
+    return m_localImageBase;
+}
+
+void RemoteContentInterceptor::setLocalImageBase(const QUrl& base)
+{
+    {
+        QMutexLocker lock(&m_mutex);
+        if (m_localImageBase == base)
+            return;
+        m_localImageBase = base;
+    }
+    emit localImageBaseChanged();
 }
 
 void RemoteContentInterceptor::setImagesLoaded(bool loaded)
 {
-    if (m_imagesLoaded == loaded)
-        return;
-    m_imagesLoaded = loaded;
+    {
+        QMutexLocker lock(&m_mutex);
+        if (m_imagesLoaded == loaded)
+            return;
+        m_imagesLoaded = loaded;
+    }
     emit imagesLoadedChanged();
 }
 
@@ -72,6 +93,18 @@ void RemoteContentInterceptor::installOn(QQuickWebEngineProfile* profile)
 
 void RemoteContentInterceptor::interceptRequest(QWebEngineUrlRequestInfo& info)
 {
-    if (shouldBlockRemoteContentRequest(info.resourceType(), m_imagesLoaded))
+    QMutexLocker lock(&m_mutex);
+    if (isProtectedImageRequest(info.requestUrl(), m_localImageBase, info.resourceType()))
+        return;
+    if (info.requestUrl().scheme() == QStringLiteral("kypost-cid")
+        || shouldBlockRemoteContentRequest(info.resourceType(), m_imagesLoaded))
         info.block(true);
+}
+
+bool isProtectedImageRequest(const QUrl& url, const QUrl& base, QWebEngineUrlRequestInfo::ResourceType type)
+{
+    return type == QWebEngineUrlRequestInfo::ResourceTypeImage
+        && base.scheme() == QStringLiteral("kypost-cid") && !base.host().isEmpty()
+        && url.scheme() == base.scheme() && url.host() == base.host()
+        && url.userInfo().isEmpty() && url.port() == -1 && !url.hasQuery() && !url.hasFragment();
 }

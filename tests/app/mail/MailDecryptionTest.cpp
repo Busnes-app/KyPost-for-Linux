@@ -25,6 +25,10 @@
 #include "../ExecutorShutdownGuard.h"
 
 #include <QJsonDocument>
+#include <QImage>
+#include <QBuffer>
+#include "pgp/PgpMimeWriter.h"
+#include "pgp/MimeBodyReader.h"
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QSqlQuery>
@@ -111,6 +115,8 @@ private slots:
     void forgettingInvalidatesAnInFlightRead();
     void lockingInvalidatesAnInFlightRead();
     void protectedSubjectIsTransient();
+    void decryptedAttachmentsStayLocalAndRequireTheCurrentToken();
+    void cidImagesAreBoundToTheCurrentUnlockedMessage();
     void duplicateUidsUseTheSelectedFolder();
     void serverCustodyIsExplainedRatherThanRetried();
     void anOutageIsTheOneRetryableFailure();
@@ -448,6 +454,77 @@ void MailDecryptionTest::duplicateUidsUseTheSelectedFolder()
     QCOMPARE(h.controller->decryptedFolder(), QStringLiteral("Archive"));
     QCOMPARE(h.controller->decryptedSubject(), QStringLiteral("Archive subject"));
     QVERIFY(fake.receivedRequest().contains("mailbox=Archive"));
+}
+
+void MailDecryptionTest::decryptedAttachmentsStayLocalAndRequireTheCurrentToken()
+{
+    OutgoingMessage message;
+    message.mode = QStringLiteral("plain");
+    message.attachments = {{QStringLiteral("../secret.bin"), QStringLiteral("application/octet-stream"), QByteArray::fromHex("00ff010203")}};
+    const auto encrypted = m_fixture.encryptToTestKey(protectedContent(message, QStringLiteral("b")));
+    QVERIFY(!encrypted.isEmpty());
+    FakeRelayServer fake(httpResponse(200, "OK", inboxWithOneEncryptedMessage()));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    h.controller->refresh();
+    QTRY_VERIFY(!h.controller->isBusy());
+    fake.setResponse(payloadResponse(encrypted));
+    h.controller->decryptMessage(QStringLiteral("5"));
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller->decryptBusy(), 15000);
+    QVERIFY(h.controller->decryptFailure().isEmpty());
+    QCOMPARE(h.controller->decryptedAttachments().size(), 1);
+    QCOMPARE(h.controller->decryptedAttachments()[0].toMap().value(QStringLiteral("name")).toString(), QStringLiteral("secret.bin"));
+    const QString token = h.controller->decryptedToken();
+    QVERIFY(!token.isEmpty());
+    QTemporaryDir output;
+    QVERIFY(output.isValid());
+    const QUrl target = QUrl::fromLocalFile(output.filePath(QStringLiteral("saved.bin")));
+    QVERIFY(!h.controller->saveDecryptedAttachment(QStringLiteral("wrong"), 0, target));
+    QVERIFY(!QFile::exists(target.toLocalFile()));
+    QVERIFY(h.controller->saveDecryptedAttachment(token, 0, target));
+    QFile saved(target.toLocalFile());
+    QVERIFY(saved.open(QIODevice::ReadOnly));
+    QCOMPARE(saved.readAll(), message.attachments[0].data);
+    QVERIFY(!(saved.permissions() & (QFile::ReadGroup | QFile::ReadOther)));
+    QVERIFY(h.settingsStore->setHostileLocationProtectionEnabled(true));
+    QVERIFY(!h.controller->saveDecryptedAttachment(token, 0, target));
+    QVERIFY(h.settingsStore->setHostileLocationProtectionEnabled(false));
+    QVERIFY(!h.controller->saveDecryptedAttachment(token, 0, QUrl::fromLocalFile(output.path())));
+    h.controller->forgetDecrypted();
+    QVERIFY(h.controller->decryptedAttachments().isEmpty());
+    QVERIFY(!h.controller->saveDecryptedAttachment(token, 0, target));
+}
+
+void MailDecryptionTest::cidImagesAreBoundToTheCurrentUnlockedMessage()
+{
+    QByteArray png;
+    QBuffer buffer(&png);
+    QVERIFY(buffer.open(QIODevice::WriteOnly));
+    QImage image(2, 2, QImage::Format_ARGB32);
+    image.fill(Qt::red);
+    QVERIFY(image.save(&buffer, "PNG"));
+    const auto entity = QByteArray("Content-Type: multipart/related; boundary=b\r\n\r\n"
+        "--b\r\nContent-Type: text/html\r\n\r\n<img src=\"cid:logo@example\">\r\n"
+        "--b\r\nContent-Type: image/png\r\nContent-ID: <logo@example>\r\nContent-Transfer-Encoding: base64\r\n\r\n")
+        + png.toBase64() + "\r\n--b--\r\n";
+    const auto encrypted = m_fixture.encryptToTestKey(entity);
+    QVERIFY(!encrypted.isEmpty());
+    FakeRelayServer fake(httpResponse(200, "OK", inboxWithOneEncryptedMessage()));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    h.controller->refresh();
+    QTRY_VERIFY(!h.controller->isBusy());
+    fake.setResponse(payloadResponse(encrypted));
+    h.controller->decryptMessage(QStringLiteral("5"));
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller->decryptBusy(), 15000);
+    const QUrl url(h.controller->decryptedImageBase() + QStringLiteral("logo@example"));
+    QCOMPARE(h.controller->protectedImage(url).second, png);
+    QCOMPARE(h.controller->protectedImage(url).first, QByteArray("image/png"));
+    QVERIFY(h.controller->protectedImage(QUrl(QStringLiteral("kypost-cid://wrong/logo@example"))).second.isEmpty());
+    h.controller->setAppLocked(true);
+    QVERIFY(h.controller->protectedImage(url).second.isEmpty());
+    h.controller->setAppLocked(false);
+    QVERIFY(h.controller->protectedImage(url).second.isEmpty());
 }
 
 QTEST_GUILESS_MAIN(MailDecryptionTest)

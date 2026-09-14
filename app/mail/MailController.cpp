@@ -33,6 +33,10 @@
 
 #include <QDesktopServices>
 #include <QDir>
+#include <QBuffer>
+#include <QImageReader>
+#include <QSaveFile>
+#include <QUuid>
 #include <QFile>
 #include <QHash>
 #include <QDateTime>
@@ -47,6 +51,15 @@
 #include <algorithm>
 
 namespace {
+
+QString safeAttachmentName(QString name)
+{
+    name.removeIf([](QChar c) { return c.unicode() < 0x20 || c.unicode() == 0x7f; });
+    name.replace(QLatin1Char('\\'), QLatin1Char('/'));
+    name = QFileInfo(name).fileName();
+    return name.isEmpty() || name == QStringLiteral(".") || name == QStringLiteral("..")
+        ? QStringLiteral("attachment") : name;
+}
 
 // Probed once. engineAvailable() stats the gpg installation, and this is
 // read while building the map for every message the reader opens.
@@ -1751,6 +1764,86 @@ bool MailController::decryptedStillOurs() const
     return m_pairingStore.stillCurrent(m_decryptedIdentity);
 }
 
+QVariantList MailController::decryptedAttachments() const
+{
+    QVariantList result;
+    if (!decryptedStillOurs())
+        return result;
+    for (qsizetype i = 0; i < m_decryptedAttachments.size(); ++i) {
+        const auto& file = m_decryptedAttachments[i];
+        const QString name = safeAttachmentName(file.name);
+        result.append(QVariantMap{{QStringLiteral("index"), i}, {QStringLiteral("name"), name},
+            {QStringLiteral("mimeType"), file.mimeType}, {QStringLiteral("size"), file.data.size()},
+            {QStringLiteral("token"), m_decryptedToken}});
+    }
+    return result;
+}
+
+QPair<QByteArray, QByteArray> MailController::protectedImage(const QUrl& url) const
+{
+    if (!decryptedStillOurs() || url.scheme() != QStringLiteral("kypost-cid")
+        || url.host() != m_decryptedToken || url.hasQuery() || url.hasFragment()
+        || !url.userInfo().isEmpty() || url.port() != -1)
+        return {};
+    const QString cid = url.path(QUrl::FullyDecoded).mid(1);
+    const MimeAttachment* match = nullptr;
+    for (const auto& file : m_decryptedAttachments) {
+        if (!cid.isEmpty() && file.contentId == cid) {
+            if (match)
+                return {}; // ambiguous Content-ID never picks a sibling arbitrarily
+            match = &file;
+        }
+    }
+    if (!match)
+        return {};
+    QBuffer buffer;
+    buffer.setData(match->data);
+    if (!buffer.open(QIODevice::ReadOnly))
+        return {};
+    QImageReader reader(&buffer);
+    reader.setDecideFormatFromContent(true);
+    const QByteArray format = reader.format();
+    if (format != "png" && format != "jpeg" && format != "gif" && format != "webp")
+        return {}; // SVG/HTML and unknown types are downloadable, never inline
+    const QSize size = reader.size();
+    if (size.width() <= 0 || size.height() <= 0 || qint64(size.width()) * size.height() > 16 * 1024 * 1024)
+        return {};
+    return {"image/" + format, match->data};
+}
+
+bool MailController::saveDecryptedAttachment(const QString& token, int index, const QUrl& destination)
+{
+    if (!decryptedStillOurs() || token != m_decryptedToken || index < 0 || index >= m_decryptedAttachments.size())
+        return false;
+    if (m_settingsStore.hostileLocationProtectionEnabled()) { // protected file export
+        setLastError(i18n("Hostile Location Protection does not permit saving attachments."));
+        return false;
+    }
+    if (!destination.isLocalFile() || !destination.host().isEmpty() || destination.toLocalFile().contains(QChar::Null)) {
+        setLastError(i18n("Choose a local file for this attachment."));
+        return false;
+    }
+    QSaveFile file(destination.toLocalFile());
+    // No direct-write fallback: a failed write must leave an existing file intact.
+    const auto& bytes = m_decryptedAttachments[index].data;
+    if (!file.open(QIODevice::WriteOnly) || !file.setPermissions(QFile::ReadOwner | QFile::WriteOwner)
+        || file.write(bytes) != bytes.size() || !file.commit()) {
+        setLastError(i18n("Could not save the attachment."));
+        return false;
+    }
+    setLastError({});
+    return true;
+}
+
+bool MailController::openDecryptedAttachmentTemporarily(const QString& token, int index)
+{
+    if (!decryptedStillOurs() || token != m_decryptedToken || index < 0 || index >= m_decryptedAttachments.size()
+        || !m_settingsStore.hostileLocationProtectionEnabled())
+        return false;
+    const auto& file = m_decryptedAttachments[index];
+    return openAttachmentEphemerally(safeAttachmentName(file.name), file.mimeType, file.data);
+}
+
 void MailController::setAppLocked(bool locked)
 {
     m_appLocked = locked;
@@ -1773,6 +1866,8 @@ void MailController::forgetDecrypted()
     m_decryptedMessageId.clear();
     m_decryptedHtml.clear();
     m_decryptedPlain.clear();
+    m_decryptedAttachments.clear();
+    m_decryptedToken.clear();
     m_decryptedSubject.clear();
     m_decryptedFolder.clear();
     m_decryptFailure.clear();
@@ -1887,6 +1982,8 @@ void MailController::applyDecryptResult(const PairingIdentity& identity, const Q
     m_decryptedMessageId = messageId;
     m_decryptedHtml = body.html;
     m_decryptedPlain = body.plain;
+    m_decryptedAttachments = body.attachments;
+    m_decryptedToken = QUuid::createUuid().toString(QUuid::WithoutBraces);
     m_decryptedSubject = body.subject;
     m_decryptedFolder = folder;
     // Against the RESOLVED sender, never the display form -- which this app

@@ -95,6 +95,9 @@ QByteArray wrappedBase64(const QByteArray& data)
         out += encoded.mid(at, 76);
         out += "\r\n";
     }
+    // Even a zero-byte part needs the CRLF belonging to the next delimiter.
+    if (out.isEmpty())
+        out = "\r\n";
     return out;
 }
 

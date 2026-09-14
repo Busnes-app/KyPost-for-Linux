@@ -35,6 +35,9 @@ private slots:
     void partCountIsBounded();
     void walkedBytesAreBounded();
     void emptyInputIsEmpty();
+    void encryptedWriterAttachmentsRoundTrip();
+    void extendedFilenamesAndNamedText();
+    void malformedAttachmentsDoNotPartiallySucceed();
     void protectedSubjectRoundTrips();
     void legacySubjectAndNestedSubjects();
     void malformedAndLimitedMessagesAreExplicit();
@@ -216,7 +219,8 @@ void MimeBodyReaderTest::attachmentsOnlyLeaveNothingToRead()
                                 "\r\n"
                                 "iVBORw0KGgo=\r\n"
                                 "--sep--\r\n";
-    QVERIFY(readMimeBody(message).isEmpty());
+    QVERIFY(readMimeBody(message).plain.isEmpty());
+    QCOMPARE(readMimeBody(message).attachments.size(), 1);
 }
 
 // A delimiter counts only at the start of a line. Otherwise a message that
@@ -432,7 +436,9 @@ void MimeBodyReaderTest::partCountIsBounded()
 void MimeBodyReaderTest::walkedBytesAreBounded()
 {
     QByteArray message = "Content-Type: multipart/mixed; boundary=b\r\n\r\n--b\r\nContent-Type: text/plain\r\n\r\n";
-    message.append(5 * 1024 * 1024, 'x');
+    message.replace("--b\r\nContent-Type: text/plain", "--b\r\nContent-Type: multipart/mixed; boundary=c\r\n\r\n--c\r\nContent-Type: text/plain");
+    message.append(25 * 1024 * 1024, 'x');
+    message += "\r\n--c--";
     message += "\r\n--b--\r\n";
 
     const MimeBody body = readMimeBody(message);
@@ -496,6 +502,59 @@ void MimeBodyReaderTest::malformedAndLimitedMessagesAreExplicit()
     QCOMPARE(result.status, MimeBody::Status::TooLarge);
     QVERIFY(result.isEmpty());
     QVERIFY(result.subject.isEmpty());
+}
+
+void MimeBodyReaderTest::encryptedWriterAttachmentsRoundTrip()
+{
+    OutgoingMessage message;
+    message.subject = QStringLiteral("secret");
+    message.mode = QStringLiteral("plain");
+    message.body = QStringLiteral("the body");
+    message.attachments = {{QStringLiteral("empty.txt"), QStringLiteral("text/plain"), {}},
+        {QStringLiteral("café.bin"), QStringLiteral("application/octet-stream"), QByteArray::fromHex("00ff010203")}};
+    const MimeBody parsed = readMimeBody(protectedContent(message, QStringLiteral("b")));
+    QCOMPARE(parsed.status, MimeBody::Status::Complete);
+    QCOMPARE(parsed.attachments.size(), 2);
+    QCOMPARE(parsed.plain, message.body);
+    for (qsizetype i = 0; i < parsed.attachments.size(); ++i) {
+        QCOMPARE(parsed.attachments[i].name, message.attachments[i].name);
+        QCOMPARE(parsed.attachments[i].data, message.attachments[i].data);
+    }
+}
+
+void MimeBodyReaderTest::extendedFilenamesAndNamedText()
+{
+    const auto result = readMimeBody("Content-Type: multipart/mixed; boundary=b\r\n\r\n"
+        "--b\r\nContent-Type: text/plain\r\nContent-Disposition: attachment; filename*0*=UTF-8''caf%C3; filename*1*=%A9%2520.txt\r\n"
+        "Content-Transfer-Encoding: quoted-printable\r\n\r\nfile=00=FF\r\n"
+        "--b\r\nContent-Type: image/png; name=\"a; b\\\".png\"\r\nContent-ID: <logo@example>\r\n\r\npng bytes\r\n"
+        "--b\r\nContent-Type: text/plain\r\n\r\nbody\r\n--b--\r\n");
+    QCOMPARE(result.status, MimeBody::Status::Complete);
+    QCOMPARE(result.plain, QStringLiteral("body"));
+    QCOMPARE(result.attachments.size(), 2);
+    QCOMPARE(result.attachments[0].name, QStringLiteral("café%20.txt"));
+    QCOMPARE(result.attachments[0].data, QByteArray::fromHex("66696c6500ff"));
+    QCOMPARE(result.attachments[1].name, QStringLiteral("a; b\".png"));
+    QCOMPARE(result.attachments[1].contentId, QStringLiteral("logo@example"));
+    const auto attachedMessage = readMimeBody("Content-Type: message/rfc822\r\n\r\nSubject: another message\r\n\r\nbody");
+    QCOMPARE(attachedMessage.attachments.size(), 1);
+    QCOMPARE(attachedMessage.attachments[0].name, QStringLiteral("message.eml"));
+    QVERIFY(attachedMessage.subject.isEmpty());
+}
+
+void MimeBodyReaderTest::malformedAttachmentsDoNotPartiallySucceed()
+{
+    for (const QByteArray& encoding : {QByteArray("base64"), QByteArray("quoted-printable"), QByteArray("unknown")}) {
+        const auto result = readMimeBody("Content-Type: multipart/mixed; boundary=b\r\n\r\n"
+            "--b\r\nContent-Type: text/plain\r\n\r\nbody\r\n"
+            "--b\r\nContent-Type: application/octet-stream\r\nContent-Transfer-Encoding: " + encoding
+            + "\r\n\r\n=XX!\r\n--b--\r\n");
+        QCOMPARE(result.status, MimeBody::Status::Malformed);
+        QVERIFY(result.isEmpty());
+    }
+    const auto truncated = readMimeBody("Content-Type: multipart/mixed; boundary=b\r\n\r\n"
+        "--b\r\nContent-Type: text/plain\r\n\r\nbody\r\n--b--fake\r\n");
+    QCOMPARE(truncated.status, MimeBody::Status::Malformed);
 }
 
 QTEST_GUILESS_MAIN(MimeBodyReaderTest)

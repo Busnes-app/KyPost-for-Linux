@@ -331,3 +331,8 @@ app/security/AppLockManager.cpp	    if (!couldNotEvaluate)	    if (true)	AppLock
 # Cancelling a protected read must invalidate even an as-yet-empty memory slot.
 app/mail/MailController.cpp	            if (generation != m_decryptGeneration || m_appLocked) {	            if (false) {	MailDecryptionTest:forgettingInvalidatesAnInFlightRead
 app/qml/utils/format.js	        && !!folder && String(folder) === String(heldFolder)	        && true	QmlTests:DecryptedBody::test_sameUidInAnotherFolderCannotReadProtectedContent
+
+# --- protected attachments and self-encrypted drafts -----------------------
+app/mail/MailController.cpp	    if (!decryptedStillOurs() || token != m_decryptedToken || index < 0 || index >= m_decryptedAttachments.size())	    if (false)	MailDecryptionTest:decryptedAttachmentsStayLocalAndRequireTheCurrentToken
+app/mail/MailController.cpp	    if (m_settingsStore.hostileLocationProtectionEnabled()) { // protected file export	    if (false) { // protected file export	MailDecryptionTest:decryptedAttachmentsStayLocalAndRequireTheCurrentToken
+app/mail/MailController.cpp	        || url.host() != m_decryptedToken || url.hasQuery() || url.hasFragment()	        || url.hasQuery() || url.hasFragment()	MailDecryptionTest:cidImagesAreBoundToTheCurrentUnlockedMessage
