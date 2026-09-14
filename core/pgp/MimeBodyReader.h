@@ -33,9 +33,8 @@ struct MimeBody
 //
 // WHAT IT DELIBERATELY DOES NOT DO: RFC 2231 parameter continuations
 // (`boundary*0=`), message/rfc822 recursion, and any attachment handling. An
-// entity using them yields a boundary this parser does not recognise, the
-// multipart fails to split, and the fallback below applies. Losing formatting
-// is an acceptable failure; guessing at a structure is not.
+// entity using an unsupported boundary cannot be split and is reported as
+// Malformed. Attachment parts are skipped; extraction is the next parity step.
 //
 // INPUT IS ATTACKER-CONTROLLED -- it is whatever the sender encrypted, and
 // the relay never saw it, so nothing upstream has sanity-checked its shape.

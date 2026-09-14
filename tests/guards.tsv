@@ -91,7 +91,7 @@ core/net/PgpResolveClient.cpp	    key.usable = object.value(QStringLiteral("usab
 core/pgp/MimeBodyReader.cpp	        if (!terminated) {	        if (false) {	MimeBodyReaderTest:nestedBoundariesThatPrefixEachOtherDoNotTruncate
 
 # --- sender text is never treated as trusted compose HTML ----------------
-app/qml/DesktopRoot.qml	                initialBodyIsHtml: composeWindow.popInitialBodyIsHtml	                initialBodyIsHtml: true	ComposeSeeding:test_popout_compose_preserves_body_trust
+app/qml/DesktopRoot.qml	                initialBodyIsHtml: composeWindow.popInitialBodyIsHtml	                initialBodyIsHtml: true	QmlTests:ComposeSeeding::test_popout_compose_preserves_body_trust
 # A decrypted MIME entity cannot make the recursive walker copy arbitrary bytes.
 core/pgp/MimeBodyReader.cpp	    if (depth > kMaxDepth || partBudget <= 0 || raw.size() > byteBudget) {	    if (false) {	MimeBodyReaderTest:walkedBytesAreBounded
 
@@ -180,7 +180,7 @@ core/db/DatabaseEncryptionMigration.cpp	        if (!QFile::rename(m_supersededP
 # and the state transition that acted on it.
 
 # the flag that decides ":memory:" vs the real file, and whether it landed
-core/stores/SettingsStore.cpp	    return m_settings.status() == QSettings::NoError;	    return true;	SettingsStoreTest:aHostileLocationFlagThatCannotReachTheDiskIsReportedAsFailed
+core/stores/SettingsStore.cpp	    return m_settings.status() == QSettings::NoError; // Hostile-location relaunch requires durable settings.	    return true;	SettingsStoreTest:aHostileLocationFlagThatCannotReachTheDiskIsReportedAsFailed
 
 # the erase and the relaunch happen only if that flag actually landed
 app/security/AppLockManager.cpp	    if (!m_settingsStore.setHostileLocationProtectionEnabled(enabled)) {	    if (m_settingsStore.setHostileLocationProtectionEnabled(enabled), false) {	AppLockManagerTest:hostileLocationErasesNothingWhenTheFlagCannotBePersisted
@@ -330,4 +330,4 @@ app/security/AppLockManager.cpp	    if (!couldNotEvaluate)	    if (true)	AppLock
 
 # Cancelling a protected read must invalidate even an as-yet-empty memory slot.
 app/mail/MailController.cpp	            if (generation != m_decryptGeneration || m_appLocked) {	            if (false) {	MailDecryptionTest:forgettingInvalidatesAnInFlightRead
-app/qml/utils/format.js	        && !!folder && String(folder) === String(heldFolder)	        && true	DecryptedBody:test_sameUidInAnotherFolderCannotReadProtectedContent
+app/qml/utils/format.js	        && !!folder && String(folder) === String(heldFolder)	        && true	QmlTests:DecryptedBody::test_sameUidInAnotherFolderCannotReadProtectedContent

@@ -72,7 +72,7 @@ class MailController : public QObject
     // secret store rather than behind their OpenPGP passphrase, so caching
     // the plaintext would quietly demote the message to the protection level
     // of every other mail in the app. Enforced by
-    // MailControllerTest::aDecryptedMessageNeverReachesTheDatabase.
+    // MailDecryptionTest::aDecryptedMessageNeverReachesTheDatabase.
     //
     // Only one message is held at a time, and forgetDecrypted() drops it.
     Q_PROPERTY(bool decryptBusy READ decryptBusy NOTIFY decryptedChanged)
@@ -122,7 +122,7 @@ public:
     bool isBusy() const;
     QString lastError() const; // "" when none
     bool decryptBusy() const { return m_decryptInFlight; }
-    // All three answer as though nothing is held once the account has been
+    // Protected fields answer as though nothing is held once the account has been
     // replaced. See decryptedStillOurs().
     QString decryptedMessageId() const { return decryptedStillOurs() ? m_decryptedMessageId : QString(); }
     QString decryptedHtml() const { return decryptedStillOurs() ? m_decryptedHtml : QString(); }
