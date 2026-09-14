@@ -209,6 +209,7 @@ void MailController::selectFolder(const QString& wireFolder)
 void MailController::selectFolderInternal(const QString& wireFolder)
 {
     if (m_currentFolder != wireFolder) {
+        forgetDecrypted();
         m_currentFolder = wireFolder;
         emit currentFolderChanged();
     }
@@ -1410,7 +1411,7 @@ void MailController::openFromNotification(const QString& messageId)
         selectFolderInternal(inbox);
 }
 
-QVariantMap MailController::findByMessageId(const QString& messageId) const
+QVariantMap MailController::findByMessageId(const QString& messageId, const QString& folder) const
 {
     // An empty map now means one of TWO things: the id isn't cached, or it is
     // cached under more than one folder and there is no way to tell which
@@ -1424,9 +1425,11 @@ QVariantMap MailController::findByMessageId(const QString& messageId) const
     // Resolved 2026-08-23. An ambiguous id is no longer an empty result:
     // openFromNotification() asks MailRepository::foldersHolding() and emits
     // notificationEmailAmbiguous(), which both roots answer with
-    // NotificationFolderDialog. This function still returns an empty map for
-    // both cases, and that is fine -- its callers already know the folder.
-    const std::optional<Email> email = m_mailRepository.findCachedEmail(messageId);
+    // NotificationFolderDialog. Readers that know their folder pass it
+    // explicitly; notification callers without one retain the unique-ID rule.
+    const std::optional<Email> email = folder.isEmpty()
+        ? m_mailRepository.findCachedEmail(messageId)
+        : m_mailRepository.cachedEmail(folder, messageId);
     if (!email.has_value())
         return {};
 
@@ -1743,13 +1746,23 @@ void MailController::finishClientEncryptedSend(quint64 token, const ClientEncryp
 
 bool MailController::decryptedStillOurs() const
 {
-    if (m_decryptedMessageId.isEmpty())
+    if (m_appLocked || m_decryptedMessageId.isEmpty())
         return false;
     return m_pairingStore.stillCurrent(m_decryptedIdentity);
 }
 
+void MailController::setAppLocked(bool locked)
+{
+    m_appLocked = locked;
+    if (locked)
+        forgetDecrypted();
+}
+
 void MailController::forgetDecrypted()
 {
+    // Invalidate work still waiting for pinentry or a relay reply, even when
+    // there is no result in memory yet. Clearing strings alone cannot do that.
+    ++m_decryptGeneration;
     // Reads the MEMBERS, not the getters: the getters answer empty once the
     // account has been replaced, which is exactly when there is most to clear.
     if (m_decryptedMessageId.isEmpty() && m_decryptedHtml.isEmpty() && m_decryptedPlain.isEmpty()
@@ -1760,6 +1773,8 @@ void MailController::forgetDecrypted()
     m_decryptedMessageId.clear();
     m_decryptedHtml.clear();
     m_decryptedPlain.clear();
+    m_decryptedSubject.clear();
+    m_decryptedFolder.clear();
     m_decryptFailure.clear();
     m_decryptedSignature.clear();
     m_decryptedSignatureIsWarning = false;
@@ -1767,9 +1782,9 @@ void MailController::forgetDecrypted()
     emit decryptedChanged();
 }
 
-void MailController::decryptMessage(const QString& messageId)
+void MailController::decryptMessage(const QString& messageId, const QString& folder)
 {
-    if (messageId.isEmpty() || m_decryptInFlight)
+    if (m_appLocked || messageId.isEmpty() || m_decryptInFlight)
         return;
 
     const std::optional<DevicePairing> pairing = m_pairingStore.load();
@@ -1778,10 +1793,12 @@ void MailController::decryptMessage(const QString& messageId)
         return;
     }
 
-    // The mailbox comes from the CACHED row, not from the caller. The
-    // endpoint takes a mailbox and a UID, and letting a view pass both would
-    // make "which mailbox" a QML-side decision about someone else's mail.
-    const std::optional<Email> email = m_mailRepository.findCachedEmail(messageId);
+    // Resolve the selection against the cache before dispatch. A caller
+    // without a folder must supply an unambiguous UID; a folder never grants
+    // access to a row that is absent from this account's cache.
+    const std::optional<Email> email = folder.isEmpty()
+        ? m_mailRepository.findCachedEmail(messageId)
+        : m_mailRepository.cachedEmail(folder, messageId);
     if (!email.has_value())
         return;
 
@@ -1794,6 +1811,7 @@ void MailController::decryptMessage(const QString& messageId)
                                    RelayAuth{ pairing->deviceId, pairing->deviceSecret } };
     const PairingIdentity identity = identityOf(*pairing);
 
+    const quint64 generation = m_decryptGeneration;
     m_decryptInFlight = true;
     emit decryptedChanged();
 
@@ -1807,18 +1825,26 @@ void MailController::decryptMessage(const QString& messageId)
             const PgpPayloadClient payloads(http);
             const OpenPgpDecryptor decryptor;
             const EncryptedMessageReader reader(payloads, decryptor);
-            return reader.read(endpoint.serverBaseUrl, endpoint.auth, mailbox, messageId);
+            PgpReadResult result = reader.read(endpoint.serverBaseUrl, endpoint.auth, mailbox, messageId);
+            MimeBody body;
+            if (result.status == PgpReadStatus::Decrypted)
+                body = readMimeBody(result.plaintext);
+            result.plaintext.clear();
+            return std::make_pair(std::move(result), std::move(body));
         },
-        [this, identity, messageId](const PgpReadResult& result) {
-            applyDecryptResult(identity, messageId, result);
+        [this, identity, folder = email->folder, messageId, generation](const std::pair<PgpReadResult, MimeBody>& result) {
+            m_decryptInFlight = false;
+            if (generation != m_decryptGeneration || m_appLocked) {
+                emit decryptedChanged();
+                return;
+            }
+            applyDecryptResult(identity, folder, messageId, result.first, result.second);
         });
 }
 
-void MailController::applyDecryptResult(const PairingIdentity& identity, const QString& messageId,
-                                         const PgpReadResult& result)
+void MailController::applyDecryptResult(const PairingIdentity& identity, const QString& folder, const QString& messageId,
+                                         const PgpReadResult& result, const MimeBody& body)
 {
-    m_decryptInFlight = false;
-
     // The account may have been replaced while pinentry was open -- which is
     // an unbounded wait, so this window is wider here than anywhere else in
     // the app. Showing the previous account's decrypted mail in the new
@@ -1837,7 +1863,14 @@ void MailController::applyDecryptResult(const PairingIdentity& identity, const Q
         return;
     }
 
-    const MimeBody body = readMimeBody(result.plaintext);
+    if (body.status != MimeBody::Status::Complete) {
+        m_decryptFailure = body.status == MimeBody::Status::TooLarge
+            ? i18n("This message exceeds the supported MIME size or complexity limits.")
+            : i18n("This message contains malformed MIME content.");
+        m_decryptRetryable = false;
+        emit decryptedChanged();
+        return;
+    }
     if (body.isEmpty()) {
         // It decrypted, and there is no text in it -- an entity whose only
         // parts are attachments, or one shaped in a way this parser will not
@@ -1854,6 +1887,8 @@ void MailController::applyDecryptResult(const PairingIdentity& identity, const Q
     m_decryptedMessageId = messageId;
     m_decryptedHtml = body.html;
     m_decryptedPlain = body.plain;
+    m_decryptedSubject = body.subject;
+    m_decryptedFolder = folder;
     // Against the RESOLVED sender, never the display form -- which this app
     // does not parse at all, precisely so it cannot end up here.
     m_decryptedSignature = pgpSignatureLabel(result.signature, result.signedBy);

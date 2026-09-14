@@ -21,6 +21,15 @@ TestCase {
         compare(someoneElses.isHtml, false)
     }
 
+    function test_sameUidInAnotherFolderCannotReadProtectedContent() {
+        compare(Format.decryptedBodyFor("5", "5", "", "secret", "Archive", "INBOX").body, "")
+        compare(Format.decryptedBodyFor("5", "5", "", "secret", "INBOX", "INBOX").body, "secret")
+        compare(Format.protectedSubjectFor("5", "5", "Archive", "INBOX", "secret subject", "outer"), "outer")
+        compare(Format.protectedSubjectFor("5", "5", "INBOX", "INBOX", "secret subject", "outer"), "secret subject")
+        compare(Format.protectedSubjectFor("5", "", "INBOX", "", "", "outer"), "outer")
+        compare(Format.protectedSubjectFor("5", "5", "INBOX", "INBOX", "", "outer"), "outer")
+    }
+
     // The empty-selection state must not match an empty held id and let a
     // body through on a view showing nothing.
     function test_noMessageSelectedShowsNothing() {

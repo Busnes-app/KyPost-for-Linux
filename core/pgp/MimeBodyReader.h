@@ -12,6 +12,9 @@ struct MimeBody
 {
     QString html;
     QString plain;
+    QString subject; // inner protected header only; transient, like the body
+    enum class Status { Complete, Malformed, TooLarge };
+    Status status = Status::Complete;
 
     bool isEmpty() const { return html.isEmpty() && plain.isEmpty(); }
     bool operator==(const MimeBody&) const = default;
@@ -37,8 +40,8 @@ struct MimeBody
 // INPUT IS ATTACKER-CONTROLLED -- it is whatever the sender encrypted, and
 // the relay never saw it, so nothing upstream has sanity-checked its shape.
 // Nesting depth, part count, header size and cumulative walked bytes are all bounded; see the
-// constants in the .cpp. Exceeding a bound stops the walk and returns
-// whatever was already found, never a partial part.
+// constants in the .cpp. Exceeding a bound returns TooLarge and no partial content. Malformed
+// multipart structure returns Malformed; callers must check status before rendering.
 //
 // Bytes that are not a MIME entity at all -- inline PGP, which is still
 // common -- are returned whole as `plain`. That case is detected by requiring

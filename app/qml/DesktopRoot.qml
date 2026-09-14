@@ -766,7 +766,7 @@ Kirigami.ApplicationWindow {
             // content for exactly this reason.
             title: AppLock.locked
                 ? i18n("Email")
-                : ((poppedEmail.email && poppedEmail.email.subject) ? poppedEmail.email.subject : i18n("Email"))
+                : (poppedEmail.displaySubject || i18n("Email"))
 
             EmailDetail {
                 id: poppedEmail

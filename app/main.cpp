@@ -1216,10 +1216,10 @@ int main(int argc, char* argv[])
     //
     // Only on the transition INTO locked. Dropping it on unlock too would
     // work but says the wrong thing about when it matters.
+    mailController.setAppLocked(appLockManager.locked());
     QObject::connect(&appLockManager, &AppLockManager::lockedChanged, &mailController,
                      [&mailController, &appLockManager]() {
-                         if (appLockManager.locked())
-                             mailController.forgetDecrypted();
+                         mailController.setAppLocked(appLockManager.locked());
                      });
 
     // A pinned-certificate mismatch aborts every request before it is sent,

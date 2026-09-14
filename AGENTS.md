@@ -917,6 +917,18 @@ worse than no comment: the next reader stops looking.
   `SecurityWipe::eraseOnDiskProfile()` and feeds a failure into the same
   banner rather than dropping three return values on the floor.
 
+## 6j. Protected-message lifetime (2026-09-14)
+
+- **Forgetting invalidates pending reads, including when no result exists yet.**
+  `MailController::forgetDecrypted()` advances a generation; completion checks it
+  before applying parsed content. Keep the C++ app-lock gate and seed it in main.
+  Clearing strings alone lets a late pinentry/relay reply restore locked content.
+- **Protected subjects share the body's transient lifetime.** Display them only
+  for the matching account, mailbox and UID; keep the outer subject in the cache.
+  MIME parsing runs on NetworkExecutor and returns an explicit failure when a
+  structural limit is exceeded, rather than successful partial content. See
+  `docs/THREADING.md` and `MailDecryptionTest` for the completion checks.
+
 ## 7. DOX framework
 
 ### Core Contract

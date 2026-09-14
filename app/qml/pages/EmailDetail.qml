@@ -74,7 +74,10 @@ Item {
     readonly property var decrypted: Format.decryptedBodyFor(root.messageId,
                                                               MailApp.decryptedMessageId,
                                                               MailApp.decryptedHtml,
-                                                              MailApp.decryptedPlain)
+                                                              MailApp.decryptedPlain, root.folder, MailApp.decryptedFolder)
+    readonly property string displaySubject: Format.protectedSubjectFor(root.messageId,
+        MailApp.decryptedMessageId, root.folder, MailApp.decryptedFolder,
+        MailApp.decryptedSubject, root.email.subject)
     readonly property bool hasDecryptedBody: root.decrypted.body !== ""
     // Which form it is comes from the message's own MIME Content-Type, not
     // from sniffing the characters -- see Format.renderedEmailHtml.
@@ -87,7 +90,10 @@ Item {
         MailApp.forgetDecrypted()
         reload()
     }
-    onFolderChanged: reload()
+    onFolderChanged: {
+        MailApp.forgetDecrypted()
+        reload()
+    }
 
     // MailApp is a singleton and the plaintext arrives asynchronously, so the
     // web view has to be told to re-render when it does -- and again when it
@@ -100,6 +106,7 @@ Item {
         }
     }
     Component.onCompleted: reload()
+    Component.onDestruction: MailApp.forgetDecrypted()
 
     // Archive/Junk/Delete dispatch and return; the answer arrives here.
     //
@@ -164,7 +171,7 @@ Item {
             root.attachments = []
             return
         }
-        root.email = MailApp.findByMessageId(root.messageId)
+        root.email = MailApp.findByMessageId(root.messageId, root.folder)
         // Cleared, then refilled by onAttachmentsListed below. The list is
         // fetched off-thread now, so it cannot be assigned here -- and
         // leaving the previous message's attachments up while the new
@@ -338,7 +345,7 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     textFormat: Text.PlainText
-                    text: root.email.subject || ""
+                    text: root.displaySubject
                     color: Theme.inkStrong
                     font.family: Theme.fontUi
                     font.pixelSize: 20
@@ -408,7 +415,7 @@ Item {
                 enabled: !MailApp.isBusy
                 onClicked: {
                     const to = root.extractAddress(root.email.sender)
-                    const subject = root.withPrefix(root.email.subject, "Re:")
+                    const subject = root.withPrefix(root.displaySubject, "Re:")
                     const body = "\n\n" + i18n("%1 wrote:", root.email.sender) + "\n" + root.email.preview
                     root.composeRequested(to, subject, body)
                 }
@@ -430,7 +437,7 @@ Item {
                             deduped.push(a)
                         }
                     }
-                    const subject = root.withPrefix(root.email.subject, "Re:")
+                    const subject = root.withPrefix(root.displaySubject, "Re:")
                     const body = "\n\n" + i18n("%1 wrote:", root.email.sender) + "\n" + root.email.preview
                     root.composeRequested(deduped.join(", "), subject, body)
                 }
@@ -440,10 +447,10 @@ Item {
                 tooltip: i18n("Forward")
                 enabled: !MailApp.isBusy
                 onClicked: {
-                    const subject = root.withPrefix(root.email.subject, "Fwd:")
+                    const subject = root.withPrefix(root.displaySubject, "Fwd:")
                     const body = "\n\n" + i18n("---------- Forwarded message ----------")
                         + "\n" + i18n("From: %1", root.email.sender)
-                        + "\n" + i18n("Subject: %1", root.email.subject)
+                        + "\n" + i18n("Subject: %1", root.displaySubject)
                         + "\n\n" + root.email.preview
                     root.composeRequested("", subject, body)
                 }
@@ -654,7 +661,7 @@ Item {
                     visible: !!root.email.canDecryptHere && !root.hasDecryptedBody
                              && !MailApp.decryptBusy
                     text: i18n("Decrypt with your key")
-                    onClicked: MailApp.decryptMessage(root.messageId)
+                    onClicked: MailApp.decryptMessage(root.messageId, root.folder)
                 }
 
                 Text {
@@ -692,7 +699,7 @@ Item {
                     // asked.
                     visible: MailApp.decryptRetryable && !MailApp.decryptBusy
                     text: i18n("Try again")
-                    onClicked: MailApp.decryptMessage(root.messageId)
+                    onClicked: MailApp.decryptMessage(root.messageId, root.folder)
                 }
 
                 PrimaryButton {

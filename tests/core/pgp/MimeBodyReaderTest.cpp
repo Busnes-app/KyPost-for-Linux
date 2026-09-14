@@ -1,4 +1,5 @@
 #include "pgp/MimeBodyReader.h"
+#include "pgp/PgpMimeWriter.h"
 
 #include <QTest>
 
@@ -34,6 +35,9 @@ private slots:
     void partCountIsBounded();
     void walkedBytesAreBounded();
     void emptyInputIsEmpty();
+    void protectedSubjectRoundTrips();
+    void legacySubjectAndNestedSubjects();
+    void malformedAndLimitedMessagesAreExplicit();
 };
 
 void MimeBodyReaderTest::inlinePgpIsTheWholeMessage()
@@ -427,8 +431,9 @@ void MimeBodyReaderTest::partCountIsBounded()
 
 void MimeBodyReaderTest::walkedBytesAreBounded()
 {
-    QByteArray message = "Content-Type: text/plain\r\n\r\n";
-    message.append(9 * 1024 * 1024, 'x');
+    QByteArray message = "Content-Type: multipart/mixed; boundary=b\r\n\r\n--b\r\nContent-Type: text/plain\r\n\r\n";
+    message.append(5 * 1024 * 1024, 'x');
+    message += "\r\n--b--\r\n";
 
     const MimeBody body = readMimeBody(message);
     QVERIFY2(body.plain.isEmpty(), "the MIME walk exceeded its cumulative byte budget");
@@ -437,6 +442,60 @@ void MimeBodyReaderTest::walkedBytesAreBounded()
 void MimeBodyReaderTest::emptyInputIsEmpty()
 {
     QVERIFY(readMimeBody(QByteArray()).isEmpty());
+}
+
+void MimeBodyReaderTest::protectedSubjectRoundTrips()
+{
+    OutgoingMessage message;
+    message.subject = QStringLiteral("秘密 — café ").repeated(20);
+    message.body = QStringLiteral("body");
+    message.mode = QStringLiteral("plain");
+    const MimeBody parsed = readMimeBody(protectedContent(message, QStringLiteral("test-boundary")));
+    QCOMPARE(parsed.status, MimeBody::Status::Complete);
+    QCOMPARE(parsed.subject, message.subject.trimmed());
+    QCOMPARE(parsed.plain, message.body);
+    QCOMPARE(readMimeBody("Subject: =?UTF-8?Q?caf=C3=A9_?=\r\n =?UTF-8?Q?menu?=\r\nContent-Type: text/plain\r\n\r\nbody").subject,
+             QStringLiteral("café menu"));
+    QCOMPARE(readMimeBody("Subject: =?UTF-8?B?YQ0KYg==?=\r\nContent-Type: text/plain\r\n\r\nbody").subject,
+             QStringLiteral("a  b"));
+}
+
+void MimeBodyReaderTest::legacySubjectAndNestedSubjects()
+{
+    const QByteArray legacy = "Content-Type: multipart/mixed; boundary=b\r\n\r\n"
+        "--b\r\nContent-Type: text/rfc822-headers; protected-headers=v1\r\n\r\nSubject: Legacy\r\n"
+        "--b\r\nContent-Type: text/plain\r\nSubject: Nested forgery\r\n\r\nbody\r\n--b--\r\n";
+    QCOMPARE(readMimeBody(legacy).subject, QStringLiteral("Legacy"));
+    QCOMPARE(readMimeBody("Subject: Root\r\n" + legacy).subject, QStringLiteral("Root"));
+    QByteArray attached = legacy;
+    attached.replace("Content-Type: text/rfc822-headers;", "Content-Disposition: attachment\r\nContent-Type: text/rfc822-headers;");
+    QVERIFY(readMimeBody(attached).subject.isEmpty());
+    QVERIFY(readMimeBody("Content-Type: multipart/mixed; boundary=b\r\n\r\n"
+        "--b\r\nContent-Type: message/rfc822\r\n\r\nSubject: Attached forgery\r\n"
+        "Content-Type: text/plain\r\n\r\nattached\r\n"
+        "--b\r\nContent-Type: text/plain\r\n\r\nbody\r\n--b--\r\n").subject.isEmpty());
+}
+
+void MimeBodyReaderTest::malformedAndLimitedMessagesAreExplicit()
+{
+    QCOMPARE(readMimeBody("Content-Type: multipart/mixed\r\n\r\nmissing boundary").status,
+             MimeBody::Status::Malformed);
+    QCOMPARE(readMimeBody("Content-Type: multipart/mixed; boundary=b\r\n\r\n"
+        "--b\r\nContent-Type: text/plain\r\n\r\nbody\r\n--b\r\nunfinished").status,
+             MimeBody::Status::Malformed);
+    QByteArray hugeHeader = "Subject: ";
+    hugeHeader.append(65536, 'x');
+    hugeHeader += "\r\nContent-Type: text/plain\r\n\r\nbody";
+    QCOMPARE(readMimeBody(hugeHeader).status, MimeBody::Status::TooLarge);
+    QVERIFY(readMimeBody(hugeHeader).subject.isEmpty());
+    QByteArray partial = "Subject: secret\r\nContent-Type: multipart/mixed; boundary=b\r\n\r\n";
+    for (int i = 0; i < 65; ++i)
+        partial += "--b\r\nContent-Type: text/plain\r\n\r\nbody\r\n";
+    partial += "--b--\r\n";
+    const MimeBody result = readMimeBody(partial);
+    QCOMPARE(result.status, MimeBody::Status::TooLarge);
+    QVERIFY(result.isEmpty());
+    QVERIFY(result.subject.isEmpty());
 }
 
 QTEST_GUILESS_MAIN(MimeBodyReaderTest)

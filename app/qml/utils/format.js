@@ -171,11 +171,22 @@ function renderedEmailHtml(body, imagesLoaded, style, forcePlainText) {
 // Lives here rather than inside EmailDetail.qml for the same reason
 // isExternallyOpenableUrl does -- so it is testable without standing up the
 // whole singleton graph that file needs.
-function decryptedBodyFor(messageId, decryptedMessageId, html, plain) {
+function protectedMessageMatches(messageId, heldId, folder, heldFolder) {
+    return !!messageId && String(messageId) === String(heldId)
+        && !!folder && String(folder) === String(heldFolder)
+}
+
+function protectedSubjectFor(messageId, heldId, folder, heldFolder, subject, fallback) {
+    return protectedMessageMatches(messageId, heldId, folder, heldFolder) && subject
+        ? String(subject) : String(fallback || "")
+}
+
+function decryptedBodyFor(messageId, decryptedMessageId, html, plain, folder, heldFolder) {
     const id = String(messageId === undefined || messageId === null ? "" : messageId)
     const heldId = String(decryptedMessageId === undefined || decryptedMessageId === null
                           ? "" : decryptedMessageId)
-    if (id === "" || id !== heldId)
+    if (id === "" || id !== heldId
+        || (folder !== undefined && !protectedMessageMatches(id, heldId, folder, heldFolder)))
         return { body: "", isHtml: false }
 
     const asHtml = String(html === undefined || html === null ? "" : html)

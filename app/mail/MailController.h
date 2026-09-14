@@ -6,6 +6,7 @@
 #include "models/Email.h"
 #include "net/RelayMailSource.h" // MailAttachmentUpload -- held by value in PendingSend below
 #include "pgp/EncryptedMessageReader.h" // PgpReadResult/PgpReadStatus -- carried across the hop
+#include "pgp/MimeBodyReader.h"
 
 #include <QDesktopServices>
 #include <QObject>
@@ -82,6 +83,8 @@ class MailController : public QObject
     Q_PROPERTY(QString decryptedMessageId READ decryptedMessageId NOTIFY decryptedChanged)
     Q_PROPERTY(QString decryptedHtml READ decryptedHtml NOTIFY decryptedChanged)
     Q_PROPERTY(QString decryptedPlain READ decryptedPlain NOTIFY decryptedChanged)
+    Q_PROPERTY(QString decryptedSubject READ decryptedSubject NOTIFY decryptedChanged)
+    Q_PROPERTY(QString decryptedFolder READ decryptedFolder NOTIFY decryptedChanged)
     // Localized sentence for the last failed decryption, or empty. Paired
     // with decryptRetryable so the UI knows whether a Retry button can help.
     Q_PROPERTY(QString decryptFailure READ decryptFailure NOTIFY decryptedChanged)
@@ -124,8 +127,11 @@ public:
     QString decryptedMessageId() const { return decryptedStillOurs() ? m_decryptedMessageId : QString(); }
     QString decryptedHtml() const { return decryptedStillOurs() ? m_decryptedHtml : QString(); }
     QString decryptedPlain() const { return decryptedStillOurs() ? m_decryptedPlain : QString(); }
+    QString decryptedSubject() const { return decryptedStillOurs() ? m_decryptedSubject : QString(); }
+    QString decryptedFolder() const { return decryptedStillOurs() ? m_decryptedFolder : QString(); }
+    void setAppLocked(bool locked);
     QString decryptFailure() const { return m_decryptFailure; }
-    QString decryptedSignature() const { return m_decryptedSignature; }
+    QString decryptedSignature() const { return decryptedStillOurs() ? m_decryptedSignature : QString(); }
     bool decryptedSignatureIsWarning() const { return m_decryptedSignatureIsWarning; }
     bool decryptRetryable() const { return m_decryptRetryable; }
     bool pgpCanEncrypt() const;
@@ -196,7 +202,7 @@ public slots:
     // emailModel row properties. Returns an empty map if the messageId
     // isn't cached locally -- this is a pure local-cache read (no network
     // call), so a miss just means "not fetched/cached yet", not an error.
-    Q_INVOKABLE QVariantMap findByMessageId(const QString& messageId) const;
+    Q_INVOKABLE QVariantMap findByMessageId(const QString& messageId, const QString& folder = QString()) const;
 
     // Fetches this message's ciphertext and decrypts it with the user's own
     // gpg-agent. Dispatches and returns; the result arrives on the
@@ -206,7 +212,7 @@ public slots:
     // pinentry, which for a hardware token means the user has to physically
     // touch it -- so it happens when they ask for it, not when a list
     // selection changes.
-    Q_INVOKABLE void decryptMessage(const QString& messageId);
+    Q_INVOKABLE void decryptMessage(const QString& messageId, const QString& folder = QString());
 
     // Drops the held plaintext. Called when the reader moves on, and wired
     // to the app lock in main.cpp: a locked app must not still be holding a
@@ -518,8 +524,8 @@ private:
     // Runs on the GUI thread once the reader has answered. Takes the
     // identity the request was planned against so a reply for a replaced
     // account can be discarded rather than displayed.
-    void applyDecryptResult(const PairingIdentity& identity, const QString& messageId,
-                             const PgpReadResult& result);
+    void applyDecryptResult(const PairingIdentity& identity, const QString& folder, const QString& messageId,
+                             const PgpReadResult& result, const MimeBody& body);
     void finishClientEncryptedSend(quint64 token, const ClientEncryptedOutcome& outcome);
     // Loads pairing state via m_pairingStore.load() into serverBaseUrl/auth.
     // Returns false (and sets lastError to "Not paired") without touching
@@ -690,6 +696,10 @@ private:
     QString m_decryptedMessageId;
     QString m_decryptedHtml;
     QString m_decryptedPlain;
+    QString m_decryptedSubject;
+    QString m_decryptedFolder;
+    quint64 m_decryptGeneration = 0;
+    bool m_appLocked = false;
     QString m_decryptFailure;
     QString m_decryptedSignature;
     bool m_decryptedSignatureIsWarning = false;

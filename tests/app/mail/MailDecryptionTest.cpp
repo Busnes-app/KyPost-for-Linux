@@ -108,6 +108,10 @@ private slots:
     void decryptingAClientProtectedMessageShowsItsText();
     void aDecryptedMessageNeverReachesTheDatabase();
     void forgettingDropsTheHeldPlaintext();
+    void forgettingInvalidatesAnInFlightRead();
+    void lockingInvalidatesAnInFlightRead();
+    void protectedSubjectIsTransient();
+    void duplicateUidsUseTheSelectedFolder();
     void serverCustodyIsExplainedRatherThanRetried();
     void anOutageIsTheOneRetryableFailure();
     void aReplyForAReplacedAccountIsNeverShown();
@@ -360,6 +364,90 @@ void MailDecryptionTest::aDecryptedMessageIsNotVisibleAfterTheAccountIsReplaced(
     QVERIFY2(!harness.controller->decryptedPlain().contains(QString::fromUtf8(kCanary)),
              "the previous account's plaintext is still readable");
     QVERIFY(harness.controller->decryptedHtml().isEmpty());
+}
+
+void MailDecryptionTest::forgettingInvalidatesAnInFlightRead()
+{
+    const QByteArray armored = m_fixture.encryptToTestKey("Content-Type: text/plain\r\nSubject: Secret\r\n\r\nsecret body");
+    QVERIFY(!armored.isEmpty());
+    FakeRelayServer fake(httpResponse(200, "OK", inboxWithOneEncryptedMessage()));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    h.controller->refresh();
+    QTRY_VERIFY(!h.controller->isBusy());
+    fake.setResponse(payloadResponse(armored));
+    h.controller->decryptMessage(QStringLiteral("5"));
+    QVERIFY(h.controller->decryptBusy());
+    h.controller->forgetDecrypted();
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller->decryptBusy(), 15000);
+    QVERIFY(h.controller->decryptedMessageId().isEmpty());
+    QVERIFY(h.controller->decryptedSubject().isEmpty());
+    QVERIFY(h.controller->decryptedPlain().isEmpty());
+}
+
+void MailDecryptionTest::lockingInvalidatesAnInFlightRead()
+{
+    const QByteArray armored = m_fixture.encryptToTestKey("Content-Type: text/plain\r\nSubject: Secret\r\n\r\nsecret body");
+    QVERIFY(!armored.isEmpty());
+    FakeRelayServer fake(httpResponse(200, "OK", inboxWithOneEncryptedMessage()));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    h.controller->refresh();
+    QTRY_VERIFY(!h.controller->isBusy());
+    fake.setResponse(payloadResponse(armored));
+    h.controller->decryptMessage(QStringLiteral("5"));
+    h.controller->setAppLocked(true);
+    h.controller->setAppLocked(false);
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller->decryptBusy(), 15000);
+    QVERIFY(h.controller->decryptedMessageId().isEmpty());
+    QVERIFY(h.controller->decryptedSubject().isEmpty());
+    h.controller->setAppLocked(true);
+    h.controller->decryptMessage(QStringLiteral("5"));
+    QVERIFY(!h.controller->decryptBusy());
+}
+
+void MailDecryptionTest::protectedSubjectIsTransient()
+{
+    const QByteArray armored = m_fixture.encryptToTestKey("Content-Type: text/plain\r\nSubject: protected-subject-canary\r\n\r\nbody");
+    QVERIFY(!armored.isEmpty());
+    FakeRelayServer fake(httpResponse(200, "OK", inboxWithOneEncryptedMessage()));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    h.controller->refresh();
+    QTRY_VERIFY(!h.controller->isBusy());
+    fake.setResponse(payloadResponse(armored));
+    h.controller->decryptMessage(QStringLiteral("5"));
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller->decryptBusy(), 15000);
+    QCOMPARE(h.controller->decryptedSubject(), QStringLiteral("protected-subject-canary"));
+    QCOMPARE(h.controller->decryptedFolder(), QStringLiteral("INBOX"));
+    QVERIFY(!everythingInTheDatabase(h.db.handle()).contains(QStringLiteral("protected-subject-canary")));
+    h.controller->setAppLocked(true);
+    QVERIFY(h.controller->decryptedSubject().isEmpty());
+    QVERIFY(h.controller->decryptedFolder().isEmpty());
+}
+
+void MailDecryptionTest::duplicateUidsUseTheSelectedFolder()
+{
+    const QByteArray armored = m_fixture.encryptToTestKey("Content-Type: text/plain\r\nSubject: Archive subject\r\n\r\narchive body");
+    QVERIFY(!armored.isEmpty());
+    FakeRelayServer fake(httpResponse(200, "OK", inboxWithOneEncryptedMessage()));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    h.controller->refresh();
+    QTRY_VERIFY(!h.controller->isBusy());
+    auto copy = h.mailRepository->cachedEmail(QStringLiteral("INBOX"), QStringLiteral("5"));
+    QVERIFY(copy.has_value());
+    copy->folder = QStringLiteral("Archive");
+    QVERIFY(h.emailDao->insertOrReplace(*copy));
+    QVERIFY(h.controller->findByMessageId(QStringLiteral("5")).isEmpty());
+    QCOMPARE(h.controller->findByMessageId(QStringLiteral("5"), QStringLiteral("Archive"))
+        .value(QStringLiteral("folder")).toString(), QStringLiteral("Archive"));
+    fake.setResponse(payloadResponse(armored));
+    h.controller->decryptMessage(QStringLiteral("5"), QStringLiteral("Archive"));
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller->decryptBusy(), 15000);
+    QCOMPARE(h.controller->decryptedFolder(), QStringLiteral("Archive"));
+    QCOMPARE(h.controller->decryptedSubject(), QStringLiteral("Archive subject"));
+    QVERIFY(fake.receivedRequest().contains("mailbox=Archive"));
 }
 
 QTEST_GUILESS_MAIN(MailDecryptionTest)

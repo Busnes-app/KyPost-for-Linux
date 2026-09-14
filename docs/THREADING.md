@@ -361,3 +361,15 @@ The executor's entry goes through `NetworkExecutor::configure()`, which
 applies the change on the executor thread and blocks — the pin is read
 mid-handshake there, so writing it from the GUI thread would be the race the
 affinity guard now catches.
+
+## Protected-message reads (2026-09-14)
+
+`MailController::decryptMessage` resolves the mailbox/UID against the account's
+cache, then fetches, decrypts and parses MIME on NetworkExecutor. Only the parsed
+body and subject cross back to the GUI; they remain transient. `forgetDecrypted`
+always advances a generation, even before a result exists. Completion checks that
+generation and the C++ app-lock state before applying anything, and checks pairing
+identity before exposing the result. A lock followed by unlock cannot revive an
+old pinentry or relay result. The UI compares both mailbox and UID, because UIDs
+can repeat between folders. `MailDecryptionTest` exercises these transitions with
+real GnuPG and a fake relay.
