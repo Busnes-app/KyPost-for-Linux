@@ -23,6 +23,9 @@ struct MimeBody
     QString html;
     QString plain;
     QVector<MimeAttachment> attachments;
+    QString to;
+    QString cc;
+    QString bcc;
     QString subject; // inner protected header only; transient, like the body
     enum class Status { Complete, Malformed, TooLarge };
     Status status = Status::Complete;

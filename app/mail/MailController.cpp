@@ -455,16 +455,34 @@ void MailController::moveEmails(const QStringList& messageIds, const QString& ta
 // body, so reading/encoding attachments must not diverge between them.
 // Returns false and sets lastError on the first unreadable file or once the
 // running total passes the cap.
-bool MailController::readAttachments(const QStringList& paths, QVector<MailAttachmentUpload>& out)
+bool MailController::readAttachments(const QStringList& paths, QVector<MailAttachmentUpload>& out, const QString& draftToken)
 {
     // Matches Android's MAX_ATTACHMENT_BYTES / the backend's own cap.
     static constexpr qint64 kMaxAttachmentBytes = 25LL * 1024 * 1024;
 
+    if (!draftSessionCurrent(draftToken))
+        return false;
     QMimeDatabase mimeDb;
     out.clear();
     out.reserve(paths.size());
     qint64 totalBytes = 0;
     for (const QString& path : paths) {
+        if (path.startsWith(QStringLiteral("kypost-draft:"))) {
+            bool ok = false;
+            const int index = path.mid(13).toInt(&ok);
+            if (draftToken.isEmpty() || !ok || index < 0 || index >= m_draftAttachments.size()) {
+                setLastError(i18n("This restored draft is no longer available. Reopen it from Drafts."));
+                return false;
+            }
+            const auto& part = m_draftAttachments[index];
+            totalBytes += part.data.size();
+            if (totalBytes > kMaxAttachmentBytes) {
+                setLastError(i18n("Attachments exceed the 25 MB limit"));
+                return false;
+            }
+            out.append({part.name, part.mimeType, part.data});
+            continue;
+        }
         QFile file(path);
         if (!file.open(QIODevice::ReadOnly)) {
             setLastError(i18n("Could not open attachment: %1", path));
@@ -638,9 +656,9 @@ void MailController::deleteFolder(const QString& folder)
 }
 
 quint64 MailController::saveDraft(const QString& to, const QString& cc, const QString& bcc, const QString& subject,
-                                    const QString& body, const QStringList& attachmentFilePaths)
+                                    const QString& body, const QStringList& attachmentFilePaths, const QString& draftToken)
 {
-    return saveDraftInternal(to, cc, bcc, subject, body, attachmentFilePaths, /*thenOpenWebmail=*/QUrl());
+    return saveDraftInternal(to, cc, bcc, subject, body, attachmentFilePaths, /*thenOpenWebmail=*/QUrl(), draftToken);
 }
 
 // `thenOpenWebmail`, when non-empty, is opened in the user's browser once the
@@ -650,7 +668,7 @@ quint64 MailController::saveDraft(const QString& to, const QString& cc, const QS
 // there yet loses the user's message.
 quint64 MailController::saveDraftInternal(const QString& to, const QString& cc, const QString& bcc,
                                             const QString& subject, const QString& body,
-                                            const QStringList& attachmentFilePaths, const QUrl& thenOpenWebmail)
+                                            const QStringList& attachmentFilePaths, const QUrl& thenOpenWebmail, const QString& draftToken)
 {
     if (m_appLocked || m_draftInFlight)
         return 0;
@@ -664,7 +682,7 @@ quint64 MailController::saveDraftInternal(const QString& to, const QString& cc, 
     const PairingIdentity requestedBy = identityOf(*pairing);
 
     QVector<MailAttachmentUpload> attachments;
-    if (!readAttachments(attachmentFilePaths, attachments))
+    if (!readAttachments(attachmentFilePaths, attachments, draftToken))
         return 0;
 
     enum class Failure { None, CustodyUnknown, IdentityMissing, Encryption };
@@ -679,10 +697,14 @@ quint64 MailController::saveDraftInternal(const QString& to, const QString& cc, 
     pushBusy();
     m_executor.run(
         this,
-        [serverBaseUrl, auth, to, cc, bcc, subject, body, attachments, date](HttpClient& http) {
+        [serverBaseUrl, auth, to, cc, bcc, subject, body, attachments, date, restored = !draftToken.isEmpty()](HttpClient& http) {
             Outcome out;
             const auto identity = PgpBootstrapClient(http).fetch(serverBaseUrl, auth);
             const bool client = identity.protection == QStringLiteral("client");
+            if (restored && !client) {
+                out.failure = Failure::CustodyUnknown;
+                return out;
+            }
             const bool plaintextAllowed = identity.protection == QStringLiteral("server")
                 || (identity.protection.isEmpty() && !identity.hasIdentity);
             if (!identity.ok || (!client && !plaintextAllowed)) {
@@ -764,7 +786,7 @@ quint64 MailController::saveDraftInternal(const QString& to, const QString& cc, 
 
 quint64 MailController::sendMail(const QString& to, const QString& cc, const QString& bcc, const QString& subject,
                                    const QString& body, const QStringList& attachmentFilePaths, bool sign,
-                                   bool encrypt)
+                                   bool encrypt, const QString& draftToken)
 {
     // FIRST statement, before any early return below: PendingSend's own doc
     // comment promises the cached plaintext dies when a fresh send starts,
@@ -772,6 +794,8 @@ quint64 MailController::sendMail(const QString& to, const QString& cc, const QSt
     // to return without honoring that, leaving a previous refusal's payload
     // alive past the composition that made it.
     m_pendingSend = {};
+    if (!draftToken.isEmpty())
+        return sendClientEncrypted(to, cc, bcc, subject, body, attachmentFilePaths, draftToken);
 
     QUrl serverBaseUrl;
     RelayAuth auth;
@@ -779,7 +803,7 @@ quint64 MailController::sendMail(const QString& to, const QString& cc, const QSt
         return 0;
 
     QVector<MailAttachmentUpload> attachments;
-    if (!readAttachments(attachmentFilePaths, attachments))
+    if (!readAttachments(attachmentFilePaths, attachments, draftToken))
         return 0;
 
     const QString sendMode = QStringLiteral("html");
@@ -1075,7 +1099,7 @@ void MailController::applyKeylessRecipients(const QStringList& keyless)
 // webmailMailboxUrl() refuses to build a link from a downgraded base.
 quint64 MailController::openWebmailDrafts(const QString& to, const QString& cc, const QString& bcc,
                                             const QString& subject, const QString& body,
-                                            const QStringList& attachmentFilePaths)
+                                            const QStringList& attachmentFilePaths, const QString& draftToken)
 {
     // Pairing is checked first so the two distinct failures read distinctly:
     // webmailMailboxUrl() returns an empty URL for an unpaired client just as
@@ -1097,7 +1121,7 @@ quint64 MailController::openWebmailDrafts(const QString& to, const QString& cc, 
     // The browser is opened by the save's completion handler, not here: the
     // save no longer finishes before this returns, and opening a browser onto
     // a draft that has not landed yet loses the user's message.
-    return saveDraftInternal(to, cc, bcc, subject, body, attachmentFilePaths, url);
+    return saveDraftInternal(to, cc, bcc, subject, body, attachmentFilePaths, url, draftToken);
 }
 
 void MailController::listAttachments(const QString& mailbox, const QString& messageId)
@@ -1732,13 +1756,13 @@ MailController::ClientEncryptedOutcome runClientEncryptedSend(
 
 quint64 MailController::sendClientEncrypted(const QString& to, const QString& cc, const QString& bcc,
                                              const QString& subject, const QString& body,
-                                             const QStringList& attachmentFilePaths)
+                                             const QStringList& attachmentFilePaths, const QString& draftToken)
 {
     m_pendingSend = {};
     m_lastSendMissingSentCopy = false;
 
     QVector<MailAttachmentUpload> attachments;
-    if (!readAttachments(attachmentFilePaths, attachments))
+    if (!readAttachments(attachmentFilePaths, attachments, draftToken))
         return 0; // readAttachments has already said what went wrong
 
     const std::optional<DevicePairing> pairing = m_pairingStore.load();
@@ -1932,11 +1956,64 @@ bool MailController::openDecryptedAttachmentTemporarily(const QString& token, in
     return openAttachmentEphemerally(safeAttachmentName(file.name), file.mimeType, file.data);
 }
 
+bool MailController::draftSessionCurrent(const QString& token)
+{
+    if (m_appLocked)
+        return false;
+    if (token.isEmpty())
+        return true;
+    if (token == m_draftToken && m_pairingStore.stillCurrent(m_draftIdentity))
+        return true;
+    releaseDraft(token);
+    setLastError(i18n("This restored draft is no longer available. Reopen it from Drafts."));
+    return false;
+}
+
+void MailController::releaseDraft(const QString& token)
+{
+    if (token != m_draftToken)
+        return;
+    m_draftToken.clear();
+    m_draftIdentity = {};
+    m_draftAttachments.clear();
+}
+
+QVariantMap MailController::reopenDecryptedDraft(const QString& token)
+{
+    if (!decryptedStillOurs() || token.isEmpty() || token != m_decryptedToken
+        || m_decryptedFolder != QStringLiteral("Drafts"))
+        return {};
+    const auto email = m_mailRepository.cachedEmail(m_decryptedFolder, m_decryptedMessageId);
+    if (!email || !email->pgpEncrypted)
+        return {};
+    m_draftToken = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    m_draftIdentity = m_decryptedIdentity;
+    m_draftAttachments = m_decryptedAttachments;
+    QStringList paths;
+    QVariantMap names;
+    for (qsizetype i = 0; i < m_draftAttachments.size(); ++i) {
+        auto& file = m_draftAttachments[i];
+        file.name = safeAttachmentName(file.name);
+        const QString path = QStringLiteral("kypost-draft:") + QString::number(i);
+        paths.append(path);
+        names.insert(path, file.name);
+    }
+    return {{QStringLiteral("token"), m_draftToken},
+            {QStringLiteral("to"), m_decryptedTo.isEmpty() ? email->sentTo : m_decryptedTo},
+            {QStringLiteral("cc"), m_decryptedCc.isEmpty() ? email->cc : m_decryptedCc},
+            {QStringLiteral("bcc"), m_decryptedBcc},
+            {QStringLiteral("subject"), m_decryptedSubject.isEmpty() ? email->subject : m_decryptedSubject},
+            {QStringLiteral("body"), m_decryptedHtml.isEmpty() ? m_decryptedPlain.toHtmlEscaped().replace(QLatin1Char('\n'), QStringLiteral("<br>")) : m_decryptedHtml},
+            {QStringLiteral("paths"), paths}, {QStringLiteral("names"), names}};
+}
+
 void MailController::setAppLocked(bool locked)
 {
     m_appLocked = locked;
-    if (locked)
+    if (locked) {
+        releaseDraft(m_draftToken);
         forgetDecrypted();
+    }
 }
 
 void MailController::forgetDecrypted()
@@ -1957,6 +2034,9 @@ void MailController::forgetDecrypted()
     m_decryptedAttachments.clear();
     m_decryptedToken.clear();
     m_decryptedSubject.clear();
+    m_decryptedTo.clear();
+    m_decryptedCc.clear();
+    m_decryptedBcc.clear();
     m_decryptedFolder.clear();
     m_decryptFailure.clear();
     m_decryptedSignature.clear();
@@ -2077,6 +2157,9 @@ void MailController::applyDecryptResult(const PairingIdentity& identity, const Q
     m_decryptedAttachments = body.attachments;
     m_decryptedToken = QUuid::createUuid().toString(QUuid::WithoutBraces);
     m_decryptedSubject = body.subject;
+    m_decryptedTo = body.to;
+    m_decryptedCc = body.cc;
+    m_decryptedBcc = body.bcc;
     m_decryptedFolder = folder;
     // Against the RESOLVED sender, never the display form -- which this app
     // does not parse at all, precisely so it cannot end up here.

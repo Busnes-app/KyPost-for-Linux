@@ -952,6 +952,15 @@ worse than no comment: the next reader stops looking.
   expired, revoked, absent and unknown tiers do not. Unknown tier strings are
   still valid decoder input, never parse errors or implicit permission.
 
+- **Restored encrypted drafts remain account-bound in the composer.**
+  `reopenDecryptedDraft` accepts only the current protected token in Drafts.
+  File bytes stay in C++; the composer carries a session token and attachment
+  indexes. The shared attachment reader checks session identity even with no
+  files selected. Lock and release revoke the session; reader navigation does
+  not. One restored draft is held at a time. Saving uses APPEND, so the UI
+  explicitly says it edits a copy. Restored HTML enters an inert template and
+  passes the editor allowlist before insertion into the live editable page.
+
 ## 7. DOX framework
 
 ### Core Contract

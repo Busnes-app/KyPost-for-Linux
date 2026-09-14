@@ -16,6 +16,7 @@ Item {
 
     // Public API -- pre-fill values, set by EmailDetail.qml for reply/
     // reply-all/forward, left empty for a fresh compose.
+    property var restoredDraft: ({})
     property string initialTo: ""
     property string initialSubject: ""
     property string initialBody: ""
@@ -123,11 +124,27 @@ Item {
     }
 
     function seedTokensFromString(field, value) {
-        const parts = (value || "").split(",")
+        // Commas inside quoted display names or angle addresses are not separators.
+        const parts = []
+        let start = 0, quoted = false, angle = false, escaped = false
+        const text = value || ""
+        for (let i = 0; i < text.length; ++i) {
+            const c = text[i]
+            if (escaped) { escaped = false; continue }
+            if (quoted && c === "\\") { escaped = true; continue }
+            if (c === '"') quoted = !quoted
+            if (!quoted && c === '<') angle = true
+            if (!quoted && c === '>') angle = false
+            if (!quoted && !angle && c === ',') { parts.push(text.slice(start, i)); start = i + 1 }
+        }
+        parts.push(text.slice(start))
         for (let i = 0; i < parts.length; i++) {
             const trimmed = parts[i].trim()
-            if (trimmed !== "")
-                field.addToken(trimmed)
+            if (trimmed !== "") {
+                // TokenField and recipient-key lookup use mailbox addresses, not display names.
+                const mailbox = trimmed.match(/<([^<>]+)>$/)
+                field.addToken(mailbox ? mailbox[1].trim() : trimmed)
+            }
         }
     }
 
@@ -158,17 +175,26 @@ Item {
     }
 
     Component.onCompleted: {
-        seedTokensFromString(toField, root.initialTo)
-        subjectField.text = root.initialSubject
+        // Own this snapshot; a later seed in the host must not change our session token.
+        root.restoredDraft = Object.assign({}, root.restoredDraft)
+        seedTokensFromString(toField, root.restoredDraft.to || root.initialTo)
+        seedTokensFromString(ccField, root.restoredDraft.cc || "")
+        seedTokensFromString(bccField, root.restoredDraft.bcc || "")
+        root.attachmentPaths = root.restoredDraft.paths || []
+        subjectField.text = root.restoredDraft.subject || root.initialSubject
         // Pop-out drafts arrive as already-sanitized HTML (see
         // initialBodyIsHtml above) and must be loaded as-is -- escaping or
         // blockquote-wrapping it would corrupt the formatting. Reply/Forward
         // drafts are plain text and still need quotedInitialBodyHtml().
-        bodyEditor.loadInitialHtml(root.initialBodyIsHtml ? root.initialBody : root.quotedInitialBodyHtml(root.initialBody))
+        bodyEditor.loadInitialHtml(root.restoredDraft.token ? root.restoredDraft.body : (root.initialBodyIsHtml ? root.initialBody : root.quotedInitialBodyHtml(root.initialBody)))
         // Which PGP controls may appear at all depends on the account's key
         // custody, which only the relay knows. A failure leaves every control
         // hidden -- "couldn't check" is never "no PGP".
         MailApp.refreshPgpComposeState()
+    }
+
+    Component.onDestruction: {
+        if (root.restoredDraft.token) MailApp.releaseDraft(root.restoredDraft.token)
     }
 
     // Hands the composition to webmail: saves it as a draft, then opens the
@@ -188,7 +214,7 @@ Item {
             root.draftHandoffToWebmail = true
             root.myDraftToken = MailApp.openWebmailDrafts(toField.joinedText, ccField.joinedText,
                                                            bccField.joinedText, subjectField.text, result.html,
-                                                           root.attachmentPaths)
+                                                           root.attachmentPaths, root.restoredDraft.token || "")
         })
     }
 
@@ -203,7 +229,7 @@ Item {
         bodyEditor.requestSendableHtml(function(result) {
             // Mirrors Android's "Please fill in all fields" check -- Cc/Bcc
             // stay optional, only To/Subject/Body are required.
-            if (toField.joinedText.trim() === "" || subjectField.text.trim() === "" || result.isEmpty) {
+            if (toField.joinedText.trim() === "" || subjectField.text.trim() === "" || (result.isEmpty && root.attachmentPaths.length === 0)) {
                 root.validationError = i18n("Please fill in all fields")
                 return
             }
@@ -214,13 +240,9 @@ Item {
             // C++ owns both halves of that decision -- the account's custody
             // mode and whether there is a usable gpg -- so this is one test.
             if (MailApp.pgpCanSendFromThisDevice) {
-                // Refused rather than silently dropped. This path builds its
-                // own MIME and does not write multipart bodies yet, so an
-                // attachment cannot travel; sending the message without it
-                // would be a data loss the sender never sees.
                 root.mySendToken = MailApp.sendClientEncrypted(toField.joinedText, ccField.joinedText,
                                                                bccField.joinedText, subjectField.text,
-                                                               result.html, root.attachmentPaths)
+                                                               result.html, root.attachmentPaths, root.restoredDraft.token || "")
                 return
             }
 
@@ -231,7 +253,7 @@ Item {
             // carries the same value back.
             root.mySendToken = MailApp.sendMail(toField.joinedText, ccField.joinedText, bccField.joinedText,
                                                  subjectField.text, result.html, root.attachmentPaths,
-                                                 signToggle.checked, encryptToggle.checked)
+                                                 signToggle.checked, encryptToggle.checked, root.restoredDraft.token || "")
         })
     }
 
@@ -248,7 +270,7 @@ Item {
             // Acknowledged by onDraftSaveCompleted below, once the draft has
             // actually reached the server.
             root.myDraftToken = MailApp.saveDraft(toField.joinedText, ccField.joinedText, bccField.joinedText,
-                                                   subjectField.text, result.html, root.attachmentPaths)
+                                                   subjectField.text, result.html, root.attachmentPaths, root.restoredDraft.token || "")
             root.draftHandoffToWebmail = false
         })
     }
@@ -264,6 +286,8 @@ Item {
     }
 
     function fileNameOf(path) {
+        if (root.restoredDraft.names && root.restoredDraft.names[path])
+            return root.restoredDraft.names[path]
         const parts = path.split("/")
         return parts[parts.length - 1]
     }
@@ -305,7 +329,7 @@ Item {
         // draft on Mobile has no separate-window concept to detach into.
         RowLayout {
             Layout.fillWidth: true
-            visible: General.isDesktopMode && !root.isPoppedOut
+            visible: General.isDesktopMode && !root.isPoppedOut && !root.restoredDraft.token
             spacing: 8
 
             Item { Layout.fillWidth: true }
@@ -357,6 +381,15 @@ Item {
             id: subjectField
             Layout.fillWidth: true
             placeholderText: i18n("Subject")
+        }
+
+        Text {
+            Layout.fillWidth: true
+            visible: !!root.restoredDraft.token
+            textFormat: Text.PlainText
+            text: i18n("Editing a copy. Saving creates another draft. Inline images remain attached files; the editor keeps basic text formatting.")
+            color: Theme.ink
+            wrapMode: Text.WordWrap
         }
 
         // Body -- rich HTML editor (see RichBodyEditor.qml; supersedes the

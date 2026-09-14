@@ -29,6 +29,7 @@ Item {
     // more standalone to go.
     property bool isPoppedOut: false
 
+    signal draftRequested(var draft)
     signal composeRequested(string to, string subject, string body)
     signal actionCompleted(string action) // action: "archive" | "junk" | "delete"
     // Detach into a standalone top-level window (Desktop mode only -- see
@@ -415,6 +416,18 @@ Item {
         RowLayout {
             Layout.alignment: Qt.AlignHCenter
             spacing: 8
+
+            IconButton {
+                objectName: "editProtectedDraft"
+                icon: "document-edit"
+                tooltip: i18n("Edit draft")
+                visible: root.folder === "Drafts" && root.hasProtectedMessage && root.email.pgpState === 1
+                enabled: !MailApp.isBusy
+                onClicked: {
+                    const draft = MailApp.reopenDecryptedDraft(MailApp.decryptedToken)
+                    if (draft.token) root.draftRequested(draft)
+                }
+            }
 
             IconButton {
                 icon: "mail-reply-sender"

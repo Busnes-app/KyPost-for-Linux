@@ -192,7 +192,7 @@ public slots:
     // pickup-fallback round trip, so the two mechanisms the old comment here
     // described separately are now one.
     quint64 sendMail(const QString& to, const QString& cc, const QString& bcc, const QString& subject,
-                     const QString& body, const QStringList& attachmentFilePaths, bool sign, bool encrypt);
+                     const QString& body, const QStringList& attachmentFilePaths, bool sign, bool encrypt, const QString& draftToken = QString());
     // Dispatches; the list arrives as attachmentsListed().
     void listAttachments(const QString& mailbox, const QString& messageId);
     // Writes the downloaded bytes to QStandardPaths::DownloadLocation,
@@ -228,6 +228,8 @@ public slots:
     // to the app lock in main.cpp: a locked app must not still be holding a
     // decrypted message for whoever picks the machine up next.
     Q_INVOKABLE void forgetDecrypted();
+    Q_INVOKABLE QVariantMap reopenDecryptedDraft(const QString& token);
+    Q_INVOKABLE void releaseDraft(const QString& token);
 
 public:
     // What sendClientEncrypted() does off-thread, as one value so the GUI
@@ -268,7 +270,7 @@ public slots:
     // put the request over the relay's cap with three.
     Q_INVOKABLE quint64 sendClientEncrypted(const QString& to, const QString& cc, const QString& bcc,
                                              const QString& subject, const QString& body,
-                                             const QStringList& attachmentFilePaths);
+                                             const QStringList& attachmentFilePaths, const QString& draftToken = QString());
 
     // The notification tap-through entry point.
     //
@@ -329,7 +331,7 @@ public slots:
     // carries back.
     Q_INVOKABLE quint64 saveDraft(const QString& to, const QString& cc, const QString& bcc,
                                    const QString& subject, const QString& body,
-                                   const QStringList& attachmentFilePaths);
+                                   const QStringList& attachmentFilePaths, const QString& draftToken = QString());
 
     // Deletes every ephemeral attachment still on disk. Called on shutdown
     // so a clean quit leaves nothing behind, rather than waiting for timers
@@ -398,7 +400,7 @@ public slots:
     // browser launch.
     Q_INVOKABLE quint64 openWebmailDrafts(const QString& to, const QString& cc, const QString& bcc,
                                            const QString& subject, const QString& body,
-                                           const QStringList& attachmentFilePaths);
+                                           const QStringList& attachmentFilePaths, const QString& draftToken = QString());
 
 signals:
     void currentFolderChanged();
@@ -543,7 +545,8 @@ private:
     // calling method below short-circuits on this before making a request.
     bool requirePairing(QUrl& serverBaseUrl, RelayAuth& auth);
     // Shared by sendMail() and saveDraft() -- see the .cpp.
-    bool readAttachments(const QStringList& paths, QVector<MailAttachmentUpload>& out);
+    bool readAttachments(const QStringList& paths, QVector<MailAttachmentUpload>& out, const QString& draftToken = QString());
+    bool draftSessionCurrent(const QString& token);
     // The half of downloadAttachment() that must stay on this thread.
     bool storeDownloadedAttachment(const QString& suggestedName, const DownloadAttachmentResult& result);
     void applyKeylessRecipients(const QStringList& keyless);
@@ -560,7 +563,7 @@ private:
     void refreshInternal(bool forceFullResync);
     quint64 saveDraftInternal(const QString& to, const QString& cc, const QString& bcc, const QString& subject,
                                const QString& body, const QStringList& attachmentFilePaths,
-                               const QUrl& thenOpenWebmail);
+                               const QUrl& thenOpenWebmail, const QString& draftToken);
     void finishSend(quint64 sendToken, const SendMailResult& result);
 
     // Hostile Location Protection's replacement for save-to-Downloads: a
@@ -710,6 +713,12 @@ private:
     QVector<MimeAttachment> m_decryptedAttachments;
     QString m_decryptedToken;
     QString m_decryptedSubject;
+    QString m_decryptedTo, m_decryptedCc, m_decryptedBcc;
+    // ponytail: one restored draft at a time; use bounded per-composer sessions
+    // if simultaneous restored drafts become necessary. A replacement invalidates the old token.
+    PairingIdentity m_draftIdentity;
+    QString m_draftToken;
+    QVector<MimeAttachment> m_draftAttachments;
     QString m_decryptedFolder;
     quint64 m_decryptGeneration = 0;
     bool m_appLocked = false;

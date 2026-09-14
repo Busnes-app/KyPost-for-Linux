@@ -556,6 +556,11 @@ MimeBody readMimeBody(const QByteArray& entity)
     // Only the decrypted root and its leading legacy display part can name
     // this message. In particular, never descend into an attached message or
     // let a nested part replace the subject of the enclosing mail.
+    // Preserve mailbox syntax: decoding a display-name comma before splitting
+    // recipients would turn it into a new recipient separator.
+    out.to = QString::fromUtf8(headerOf(parsed, "to"));
+    out.cc = QString::fromUtf8(headerOf(parsed, "cc"));
+    out.bcc = QString::fromUtf8(headerOf(parsed, "bcc"));
     out.subject = decodeSubject(headerOf(parsed, "subject"));
     if (out.subject.isEmpty() && mimeTypeOf(parsed).startsWith("multipart/")) {
         const auto parts = splitOnBoundary(parsed.body, parameterOf(headerOf(parsed, "content-type"), "boundary"), out.status);
