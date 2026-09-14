@@ -668,7 +668,7 @@ Item {
                     // machine. Already decrypted, or busy, and it goes away.
                     visible: !!root.email.canDecryptHere && !root.hasDecryptedBody
                              && !MailApp.decryptBusy
-                    text: i18n("Decrypt with your key")
+                    text: root.email.pgpReadAction || i18n("Decrypt with your key")
                     onClicked: MailApp.decryptMessage(root.messageId, root.folder)
                 }
 
@@ -677,7 +677,7 @@ Item {
                     Layout.fillWidth: true
                     textFormat: Text.PlainText
                     visible: MailApp.decryptBusy
-                    text: i18n("Waiting for your key…")
+                    text: root.email.pgpState === 4 ? i18n("Checking signature…") : i18n("Waiting for your key…")
                     color: Theme.ink
                     font.family: Theme.fontUi
                     font.pixelSize: 12

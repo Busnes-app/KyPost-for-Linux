@@ -72,6 +72,12 @@ struct PgpDecryptResult
     PgpSignature signature;
 };
 
+enum class PgpVerifyStatus { Checked, Malformed, TooLarge, EngineUnavailable };
+struct PgpVerifyResult {
+    PgpVerifyStatus status = PgpVerifyStatus::EngineUnavailable;
+    PgpSignature signature;
+};
+
 class OpenPgpDecryptor
 {
 public:
@@ -86,6 +92,11 @@ public:
     explicit OpenPgpDecryptor(qint64 maxPlaintextBytes = kMaxPlaintextBytes);
 
     PgpDecryptResult decrypt(const QByteArray& ciphertext, const QString& homeDirectory = QString()) const;
+
+    // Detached verification covers these exact bytes; it never parses or
+    // canonicalizes MIME. A checked signature may still be invalid/unknown.
+    PgpVerifyResult verifyDetached(const QByteArray& signedPart, const QByteArray& signature,
+                                    const QString& homeDirectory = {}) const;
 
     // False when there is no usable gpg on this system. Callers use it to
     // explain the situation once rather than reporting every message as

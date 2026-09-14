@@ -339,3 +339,10 @@ app/mail/MailController.cpp	        || url.host() != m_decryptedToken || url.has
 app/mail/MailController.cpp	            if (!identity.ok || (!client && !plaintextAllowed)) {	            if (false) {	MailDecryptionTest:draftCustodyFailuresNeverPost
 app/mail/MailController.cpp	            if (client) {	            if (false) {	MailDecryptionTest:encryptedDraftNeverUploadsPlaintext
 core/net/RelayMailSource.cpp	    if (QJsonDocument(request).toJson(QJsonDocument::Compact).size() > 25 * 1024 * 1024) {	    if (false) {	RelayMailSourceTest:oversizedEncryptedDraftNeverPosts
+
+# --- signed MIME, discovery consent, and current-key selection -------------
+core/pgp/EncryptedMessageReader.cpp	            out.signature = verdictFor(verified.signature, boundFingerprints);	            out.signature = PgpSignatureVerdict::ValidFromSender;	EncryptedMessageReaderTest:detachedSignatureVerdicts
+core/pgp/OpenPgpDecryptor.cpp	    if (signedPart.size() > m_maxPlaintextBytes || signature.size() > 1024 * 1024) {	    if (false) {	EncryptedMessageReaderTest:detachedVerificationHonorsTheReadCeiling
+core/net/PgpPayloadClient.cpp	    if (!bytes || bytes.decoded.isEmpty() || bytes.decoded.toBase64() != base64	    if (false	PgpPayloadClientTest:malformedSignedOctets
+core/net/PgpPayloadClient.cpp	    if (encoded.size() > ((maxSignedBytes + 2) / 3) * 4 || out.signaturePayload.size() > 1024 * 1024) {	    if (false) {	PgpPayloadClientTest:detachedSignatureHasItsOwnSizeCeiling
+app/mail/MailController.cpp	            if ((result.status == PgpReadStatus::SignedOnly && !signedOnly)	            if (false	MailDecryptionTest:signedInboxRowCanBeReadAndVerified

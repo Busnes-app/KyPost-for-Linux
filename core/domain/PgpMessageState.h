@@ -22,9 +22,8 @@ enum class PgpMessageState
     None,
 
     // Encrypted, and the server deliberately did not decrypt it because the
-    // account's key is end-to-end (client) protected. There is no body, and
-    // this client holds no private key, so the only route to the content is
-    // webmail.
+    // account's key is end-to-end (client) protected. There is no body, so
+    // the app must fetch and decrypt it on demand through GnuPG.
     ClientProtected,
 
     // Encrypted, and the server tried to decrypt and failed. There is a real
@@ -35,6 +34,9 @@ enum class PgpMessageState
     // than rendering silently: the user should be able to tell that the
     // server read their mail.
     DecryptedByServer,
+
+    // Signature reported by the relay; its validity has not been checked here.
+    SignedOnly,
 };
 
 // The ordering matters. A non-blank `pgpDecryptError` is checked before the

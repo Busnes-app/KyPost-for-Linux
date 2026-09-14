@@ -98,6 +98,20 @@ public:
         return gpg.readAllStandardOutput();
     }
 
+    QByteArray detachedSignature(const QByteArray& bytes, const QString& uid) const
+    {
+        QProcess gpg;
+        gpg.setProcessEnvironment(environment());
+        gpg.start(QStringLiteral("gpg"), {QStringLiteral("--batch"), QStringLiteral("--yes"),
+            QStringLiteral("--armor"), QStringLiteral("--detach-sign"), QStringLiteral("--local-user"), uid});
+        if (!gpg.waitForStarted(10000) || gpg.write(bytes) != bytes.size())
+            return {};
+        gpg.closeWriteChannel();
+        if (!gpg.waitForFinished(30000) || gpg.exitCode() != 0)
+            return {};
+        return gpg.readAllStandardOutput();
+    }
+
     QString path() const { return m_home.path(); }
 
     // A key that is ALREADY EXPIRED, for the case gpg holds a key and still

@@ -54,6 +54,7 @@ InboxEmailItem inboxItemFromJson(const QJsonObject& obj)
     // core/domain/PgpMessageState.h for what the pair means once combined
     // with the body.
     item.email.pgpEncrypted = obj.value(QStringLiteral("pgpEncrypted")).toBool();
+    item.email.pgpSigned = obj.value(QStringLiteral("pgpSigned")).toBool();
     item.email.pgpDecryptError = obj.value(QStringLiteral("pgpDecryptError")).toString();
 
     if (obj.contains(QStringLiteral("detail")))

@@ -22,5 +22,7 @@ PgpMessageState pgpMessageStateOf(bool pgpEncrypted, const QString& pgpDecryptEr
 // does mean "there is no body".
 PgpMessageState pgpMessageStateOf(const Email& email)
 {
+    if (!email.pgpEncrypted && email.pgpSigned)
+        return PgpMessageState::SignedOnly;
     return pgpMessageStateOf(email.pgpEncrypted, email.pgpDecryptError, email.body);
 }

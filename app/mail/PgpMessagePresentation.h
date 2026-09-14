@@ -56,9 +56,8 @@ bool pgpReadIsRetryable(PgpReadStatus status);
 // two are attacker-separable, which is why PgpPayloadResult does not even
 // carry the display form.
 //
-// Empty for PgpSignatureVerdict::None: an unsigned message is not evidence of
-// anything, and saying "not signed" beside every one of them trains people to
-// ignore the line that matters.
+// None explicitly discloses encryption without a signature; only a sender-bound
+// valid signature earns a positive signature label.
 QString pgpSignatureLabel(PgpSignatureVerdict verdict, const QString& signedBy);
 
 // Whether that sentence is a warning rather than a reassurance.

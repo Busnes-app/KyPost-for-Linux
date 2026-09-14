@@ -15,8 +15,11 @@ namespace {
 PgpReadStatus statusFromFetch(PgpPayloadStatus status)
 {
     switch (status) {
+    case PgpPayloadStatus::SignedOnly:
     case PgpPayloadStatus::Fetched:
         return PgpReadStatus::FetchFailed;
+    case PgpPayloadStatus::Malformed:
+        return PgpReadStatus::Malformed;
     case PgpPayloadStatus::NoCiphertext:
         return PgpReadStatus::NoCiphertext;
     case PgpPayloadStatus::ServerCustody:
@@ -115,7 +118,7 @@ PgpReadResult EncryptedMessageReader::read(const QUrl& serverBaseUrl, const Rela
     }
 
     const PgpPayloadResult payload = m_payloads.fetch(serverBaseUrl, auth, mailbox, messageId);
-    if (payload.status != PgpPayloadStatus::Fetched) {
+    if (payload.status != PgpPayloadStatus::Fetched && payload.status != PgpPayloadStatus::SignedOnly) {
         out.status = statusFromFetch(payload.status);
         // Only on the retryable status, matching what the header promises.
         // The terminal ones carry a relay-authored sentence that says
@@ -169,6 +172,22 @@ PgpReadResult EncryptedMessageReader::read(const QUrl& serverBaseUrl, const Rela
             || imported.status == PgpImportStatus::Unchanged) {
             boundFingerprints.append(imported.fingerprint);
         }
+    }
+
+    if (payload.status == PgpPayloadStatus::SignedOnly) {
+        const auto verified = m_decryptor.verifyDetached(payload.signedPart, payload.signaturePayload.toUtf8(), gnupgHome);
+        switch (verified.status) {
+        case PgpVerifyStatus::Checked:
+            out.status = PgpReadStatus::SignedOnly;
+            out.plaintext = payload.signedPart;
+            out.signedBy = payload.resolvedSender;
+            out.signature = verdictFor(verified.signature, boundFingerprints);
+            break;
+        case PgpVerifyStatus::TooLarge: out.status = PgpReadStatus::TooLarge; break;
+        case PgpVerifyStatus::EngineUnavailable: out.status = PgpReadStatus::EngineUnavailable; break;
+        case PgpVerifyStatus::Malformed: out.status = PgpReadStatus::Malformed; break;
+        }
+        return out;
     }
 
     const PgpDecryptResult decrypted = m_decryptor.decrypt(payload.encryptedPayload.toUtf8(), gnupgHome);

@@ -8,7 +8,11 @@ namespace {
 // but reset() still names it so an upgraded profile does not keep the stale
 // value forever in a file nothing else touches.
 constexpr auto kLegacyMailCursorKey = "sync/mailCursor";
-constexpr auto kMailCursorGroup = "sync/mail";
+// One full cursor window per folder backfills pgpSigned after migration 008.
+// Namespace the cursor by the cache representation: existing old cursors
+// cannot skip rows whose signature flag this client never persisted.
+constexpr auto kOldMailCursorGroup = "sync/mail";
+constexpr auto kMailCursorGroup = "sync/mail-signed-v1";
 constexpr auto kContactBaseCursorKey = "sync/contactBaseCursor";
 constexpr auto kNotificationCursorKey = "sync/notificationCursor";
 
@@ -73,6 +77,7 @@ bool CursorStore::reset()
 {
     m_settings.remove(kMailCursorGroup); // the whole per-(subscriber, folder) tree
     m_settings.remove(kLegacyMailCursorKey);
+    m_settings.remove(kOldMailCursorGroup);
     m_settings.remove(kContactBaseCursorKey);
     return flush();
 }

@@ -1557,7 +1557,10 @@ QVariantMap MailController::findByMessageId(const QString& messageId, const QStr
     // either way: a key kept on another machine is a perfectly ordinary
     // setup, and this button cannot help there.
     map[QStringLiteral("canDecryptHere")] =
-        pgpState == PgpMessageState::ClientProtected && openPgpEngineAvailable();
+        (pgpState == PgpMessageState::ClientProtected || pgpState == PgpMessageState::SignedOnly)
+        && openPgpEngineAvailable();
+    map[QStringLiteral("pgpReadAction")] = pgpState == PgpMessageState::SignedOnly
+        ? i18n("Verify signature") : i18n("Decrypt with your key");
     return map;
 }
 
@@ -1985,7 +1988,7 @@ void MailController::decryptMessage(const QString& messageId, const QString& fol
 
     m_executor.run(
         this,
-        [endpoint, mailbox = email->folder, messageId](HttpClient& http) {
+        [endpoint, mailbox = email->folder, messageId, signedOnly = pgpMessageStateOf(*email) == PgpMessageState::SignedOnly](HttpClient& http) {
             // Constructed here, on the executor thread, for the same reason
             // FolderRepository::listWith constructs its client there: the
             // HttpClient belongs to that thread and these are stateless
@@ -1994,8 +1997,12 @@ void MailController::decryptMessage(const QString& messageId, const QString& fol
             const OpenPgpDecryptor decryptor;
             const EncryptedMessageReader reader(payloads, decryptor);
             PgpReadResult result = reader.read(endpoint.serverBaseUrl, endpoint.auth, mailbox, messageId);
+            if ((result.status == PgpReadStatus::SignedOnly && !signedOnly)
+                || (result.status == PgpReadStatus::Decrypted && signedOnly)) {
+                result.status = PgpReadStatus::Malformed;
+            }
             MimeBody body;
-            if (result.status == PgpReadStatus::Decrypted)
+            if (result.status == PgpReadStatus::Decrypted || result.status == PgpReadStatus::SignedOnly)
                 body = readMimeBody(result.plaintext);
             result.plaintext.clear();
             return std::make_pair(std::move(result), std::move(body));
@@ -2024,7 +2031,7 @@ void MailController::applyDecryptResult(const PairingIdentity& identity, const Q
         return;
     }
 
-    if (result.status != PgpReadStatus::Decrypted) {
+    if (result.status != PgpReadStatus::Decrypted && result.status != PgpReadStatus::SignedOnly) {
         m_decryptFailure = pgpReadFailureMessage(result.status);
         m_decryptRetryable = pgpReadIsRetryable(result.status);
         emit decryptedChanged();
@@ -2045,7 +2052,7 @@ void MailController::applyDecryptResult(const PairingIdentity& identity, const Q
         // guess at. Its own sentence rather than a decryption failure,
         // because the decryption did work and saying otherwise would send
         // the user to check their key.
-        m_decryptFailure = i18n("This message decrypted, but contains no readable text.");
+        m_decryptFailure = i18n("This message contains no readable content.");
         m_decryptRetryable = false;
         emit decryptedChanged();
         return;

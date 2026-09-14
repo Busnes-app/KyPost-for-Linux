@@ -40,6 +40,7 @@ void EmailDaoTest::roundTripsInsertUpdateDelete()
     email.cc = QStringLiteral("c@example.com");
     email.bcc = QStringLiteral("d@example.com");
     email.subject = QStringLiteral("Subject");
+    email.pgpSigned = true;
     email.preview = QStringLiteral("Preview");
     email.body = QStringLiteral("Body text");
     email.bodyMode = QStringLiteral("html");
@@ -69,6 +70,7 @@ void EmailDaoTest::roundTripsInsertUpdateDelete()
     // Also exercises clearing the PGP columns, so a stale decrypt error
     // can't survive a re-sync of a message that is no longer failing.
     updated.pgpEncrypted = false;
+    updated.pgpSigned = false;
     updated.pgpDecryptError = QString();
     QVERIFY(dao.insertOrReplace(updated));
 

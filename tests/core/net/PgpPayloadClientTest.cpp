@@ -38,6 +38,9 @@ class PgpPayloadClientTest : public QObject
     Q_OBJECT
 
 private slots:
+    void detachedSignatureHasItsOwnSizeCeiling();
+    void malformedSignedOctets_data();
+    void malformedSignedOctets();
     void handsBackTheArmoredCiphertextVerbatim();
     void asksTheRightEndpointWithPairingAuth();
     void ignoresTheFieldsNoVerifierCanUseYet();
@@ -50,6 +53,31 @@ private slots:
     void anUndecodableResponseIsNotAnEmptySuccess();
     void transportFailureStaysRetryable();
 };
+
+void PgpPayloadClientTest::detachedSignatureHasItsOwnSizeCeiling()
+{
+    const QJsonObject payload{{"signedPartBase64", "aGk="}, {"signaturePayload", QString(1024 * 1024 + 1, QLatin1Char('A'))}};
+    FakeRelayServer fake(httpResponse(200, "OK", QJsonDocument(payload).toJson()));
+    QCOMPARE(fetchAgainst(fake).status, PgpPayloadStatus::TooLarge);
+}
+
+void PgpPayloadClientTest::malformedSignedOctets_data()
+{
+    QTest::addColumn<QByteArray>("json");
+    QTest::newRow("garbage") << QByteArray(R"({"signedPartBase64":"!!!","signaturePayload":"signature"})");
+    QTest::newRow("truncated") << QByteArray(R"({"signedPartBase64":"aGk","signaturePayload":"signature"})");
+    QTest::newRow("missing-signature") << QByteArray(R"({"signedPartBase64":"aGk="})");
+    QTest::newRow("missing-part") << QByteArray(R"({"signaturePayload":"signature"})");
+    QTest::newRow("wrong-type") << QByteArray(R"({"signedPartBase64":12,"signaturePayload":"signature"})");
+}
+void PgpPayloadClientTest::malformedSignedOctets()
+{
+    QFETCH(QByteArray, json);
+    FakeRelayServer fake(httpResponse(200, "OK", json));
+    const auto result = fetchAgainst(fake);
+    QCOMPARE(result.status, PgpPayloadStatus::Malformed);
+    QVERIFY(result.signedPart.isEmpty());
+}
 
 void PgpPayloadClientTest::handsBackTheArmoredCiphertextVerbatim()
 {
@@ -80,10 +108,8 @@ void PgpPayloadClientTest::asksTheRightEndpointWithPairingAuth()
     QVERIFY(request.contains("X-Kypost-Device-Secret: secret-1"));
 }
 
-// signerKeys/signaturePayload/sender/resolvedSender are real fields this
-// client deliberately does not parse until there is a verifier to bind them
-// (see the header). Their presence must not disturb it, and nothing here may
-// quietly start depending on them.
+// Extra metadata and detached fields do not override a nonempty encrypted
+// payload. The display sender is still deliberately never used as a binding.
 void PgpPayloadClientTest::ignoresTheFieldsNoVerifierCanUseYet()
 {
     FakeRelayServer fake(httpResponse(
@@ -136,8 +162,9 @@ void PgpPayloadClientTest::signedButNotEncryptedCarriesNoCiphertext()
 
     const PgpPayloadResult result = fetchAgainst(fake);
 
-    QCOMPARE(result.status, PgpPayloadStatus::NoCiphertext);
+    QCOMPARE(result.status, PgpPayloadStatus::SignedOnly);
     QVERIFY(result.encryptedPayload.isEmpty());
+    QCOMPARE(result.signedPart, QByteArray("hi"));
 }
 
 // Armor is whitespace-delimited, so a payload of nothing but newlines is not

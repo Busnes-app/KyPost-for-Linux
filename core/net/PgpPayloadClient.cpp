@@ -91,16 +91,41 @@ PgpPayloadResult PgpPayloadClient::fetch(const QUrl& serverBaseUrl, const RelayA
         if (!key.publicKey.trimmed().isEmpty())
             out.signerKeys.append(key);
     }
-    // Blank ciphertext on a 200 is the signed-but-not-encrypted message. Not
-    // a decode failure and not a fetch failure -- there is simply nothing on
-    // this path to decrypt. Trimmed before the test because armor is
-    // whitespace-delimited and a payload of nothing but newlines is not one.
-    if (out.encryptedPayload.trimmed().isEmpty()) {
-        out.encryptedPayload.clear();
+    const auto encodedValue = decoded->value(QStringLiteral("signedPartBase64"));
+    const auto signatureValue = decoded->value(QStringLiteral("signaturePayload"));
+    if ((!encodedValue.isUndefined() && !encodedValue.isString())
+        || (!signatureValue.isUndefined() && !signatureValue.isString())) {
+        out.status = PgpPayloadStatus::Malformed;
+        return out;
+    }
+    if (!out.encryptedPayload.trimmed().isEmpty()) {
+        out.status = PgpPayloadStatus::Fetched;
+        return out;
+    }
+    out.encryptedPayload.clear();
+    const QString encoded = encodedValue.toString();
+    out.signaturePayload = signatureValue.toString();
+    if (encoded.isEmpty() && out.signaturePayload.trimmed().isEmpty()) {
         out.status = PgpPayloadStatus::NoCiphertext;
         return out;
     }
-
-    out.status = PgpPayloadStatus::Fetched;
+    constexpr qsizetype maxSignedBytes = 32 * 1024 * 1024;
+    if (encoded.size() > ((maxSignedBytes + 2) / 3) * 4 || out.signaturePayload.size() > 1024 * 1024) {
+        out.status = PgpPayloadStatus::TooLarge;
+        return out;
+    }
+    const QByteArray base64 = encoded.toLatin1();
+    auto bytes = QByteArray::fromBase64Encoding(base64, QByteArray::AbortOnBase64DecodingErrors);
+    if (!bytes || bytes.decoded.isEmpty() || bytes.decoded.toBase64() != base64
+        || out.signaturePayload.trimmed().isEmpty()) {
+        out.status = PgpPayloadStatus::Malformed;
+        return out;
+    }
+    if (bytes.decoded.size() > maxSignedBytes) {
+        out.status = PgpPayloadStatus::TooLarge;
+        return out;
+    }
+    out.signedPart = std::move(bytes.decoded);
+    out.status = PgpPayloadStatus::SignedOnly;
     return out;
 }

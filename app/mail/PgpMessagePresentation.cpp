@@ -13,6 +13,7 @@ QString pgpRowMarker(PgpMessageState state)
         return QStringLiteral("\U0001F512"); // lock
     case PgpMessageState::DecryptFailed:
         return QStringLiteral("⚠"); // warning sign
+    case PgpMessageState::SignedOnly:
     case PgpMessageState::None:
     case PgpMessageState::DecryptedByServer:
         break;
@@ -24,9 +25,10 @@ QString pgpRowMarkerAccessibleName(PgpMessageState state)
 {
     switch (state) {
     case PgpMessageState::ClientProtected:
-        return i18n("Encrypted, cannot be read in this app");
+        return i18n("Encrypted; decrypt with your key");
     case PgpMessageState::DecryptFailed:
         return i18n("Encrypted, could not be decrypted");
+    case PgpMessageState::SignedOnly:
     case PgpMessageState::None:
     case PgpMessageState::DecryptedByServer:
         break;
@@ -38,7 +40,7 @@ QString pgpSignatureLabel(PgpSignatureVerdict verdict, const QString& signedBy)
 {
     switch (verdict) {
     case PgpSignatureVerdict::None:
-        return {};
+        return i18n("Encrypted, but not signed.");
     case PgpSignatureVerdict::ValidFromSender:
         return signedBy.isEmpty() ? i18n("Signed, and the signature checks out.")
                                    : i18n("Signed by %1.", signedBy);
@@ -62,17 +64,19 @@ QString pgpSignatureLabel(PgpSignatureVerdict verdict, const QString& signedBy)
 
 bool pgpSignatureIsWarning(PgpSignatureVerdict verdict)
 {
-    return verdict == PgpSignatureVerdict::ValidFromUnknownKey
+    return verdict == PgpSignatureVerdict::CannotCheck
+        || verdict == PgpSignatureVerdict::ValidFromUnknownKey
         || verdict == PgpSignatureVerdict::Invalid;
 }
 
 QString pgpReadFailureMessage(PgpReadStatus status)
 {
     switch (status) {
+    case PgpReadStatus::SignedOnly:
     case PgpReadStatus::Decrypted:
         return {};
     case PgpReadStatus::NoCiphertext:
-        return i18n("This message carries no encrypted content to open.");
+        return i18n("This message carries no readable OpenPGP payload.");
     case PgpReadStatus::ServerCustody:
         return i18n("This account's key is still held by the server. Finish moving it to this "
                      "device in webmail, and encrypted mail will open here.");
@@ -108,6 +112,8 @@ QString pgpBannerTitle(PgpMessageState state)
         return i18n("This message could not be decrypted");
     case PgpMessageState::DecryptedByServer:
         return i18n("Decrypted by the server");
+    case PgpMessageState::SignedOnly:
+        return i18n("This message has an OpenPGP signature");
     case PgpMessageState::None:
         break;
     }
@@ -121,9 +127,7 @@ QString pgpBannerBody(PgpMessageState state, const QString& decryptError)
         // Deliberately names *why* rather than apologising: the account is
         // configured so the server cannot read it either, which is the
         // feature working, not a failure.
-        return i18n("Your account's PGP key is held only by you, so neither the server nor this "
-                    "app can decrypt this message. Open it in webmail, where your key is "
-                    "unlocked, to read it.");
+        return i18n("Decrypt with your GnuPG key to read this message, or open it in webmail where you keep your key.");
     case PgpMessageState::DecryptFailed:
         return decryptError.trimmed().isEmpty()
             ? i18n("The server tried to decrypt this message and failed.")
@@ -131,6 +135,8 @@ QString pgpBannerBody(PgpMessageState state, const QString& decryptError)
     case PgpMessageState::DecryptedByServer:
         return i18n("This message arrived encrypted. The server decrypted it to show it here, "
                     "which means the server could read its contents.");
+    case PgpMessageState::SignedOnly:
+        return i18n("Verify the signature to check the signed content and its sender. This message is not encrypted.");
     case PgpMessageState::None:
         break;
     }

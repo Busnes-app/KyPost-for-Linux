@@ -111,6 +111,9 @@ private slots:
     void initTestCase();
     void cleanupTestCase();
 
+    void signedInboxRowCanBeReadAndVerified_data();
+    void signedInboxRowCanBeReadAndVerified();
+    void largeEncryptedWindowKeepsDeltaAndFolderCursors();
     void encryptedDraftNeverUploadsPlaintext();
     void draftCustodyFailuresNeverPost_data();
     void draftCustodyFailuresNeverPost();
@@ -151,6 +154,100 @@ void MailDecryptionTest::initTestCase()
 void MailDecryptionTest::cleanupTestCase()
 {
     GnupgFixture::killAgent(m_fixture.path());
+}
+
+void MailDecryptionTest::signedInboxRowCanBeReadAndVerified_data()
+{
+    QTest::addColumn<bool>("attachmentOnly");
+    QTest::newRow("body") << false;
+    QTest::newRow("attachment-only") << true;
+}
+
+void MailDecryptionTest::signedInboxRowCanBeReadAndVerified()
+{
+    QFETCH(bool, attachmentOnly);
+    QByteArray inbox = inboxWithOneEncryptedMessage();
+    inbox.replace("\"pgpEncrypted\": true", "\"pgpSigned\": true");
+    FakeRelayServer fake(httpResponse(200, "OK", inbox));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    h.controller->refresh();
+    QTRY_VERIFY(!h.controller->isBusy());
+    const auto row = h.controller->findByMessageId(QStringLiteral("5"));
+    QCOMPARE(row.value(QStringLiteral("pgpState")).toInt(), 4);
+    QVERIFY(row.value(QStringLiteral("canDecryptHere")).toBool());
+    QCOMPARE(row.value(QStringLiteral("pgpReadAction")).toString(), QStringLiteral("Verify signature"));
+    OutgoingMessage message;
+    message.mode = QStringLiteral("plain");
+    message.subject = QStringLiteral("signed subject");
+    message.body = attachmentOnly ? QString() : QStringLiteral("signed body");
+    if (attachmentOnly)
+        message.attachments = {{QStringLiteral("signed.bin"), QStringLiteral("application/octet-stream"), QByteArray("signed bytes")}};
+    const QByteArray content = protectedContent(message, randomMimeBoundary());
+    const auto signature = m_fixture.detachedSignature(content, QStringLiteral("test@example.com"));
+    QVERIFY(!signature.isEmpty());
+    const QJsonArray keys{QJsonObject{{"publicKey", QString::fromUtf8(m_fixture.exportPublicKey(QStringLiteral("test@example.com")))},
+        {"fingerprint", m_fixture.fingerprintOf(QStringLiteral("test@example.com"))}}};
+    const QJsonObject payload{{"signedPartBase64", QString::fromLatin1(content.toBase64())},
+        {"signaturePayload", QString::fromUtf8(signature)}, {"resolvedSender", "test@example.com"}, {"signerKeys", keys}};
+    fake.setResponse(httpResponse(200, "OK", QJsonDocument(payload).toJson()));
+    h.controller->decryptMessage(QStringLiteral("5"));
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller->decryptBusy(), 10000);
+    QVERIFY2(h.controller->decryptFailure().isEmpty(), qPrintable(h.controller->decryptFailure()));
+    QCOMPARE(h.controller->decryptedPlain().trimmed(), message.body);
+    QCOMPARE(h.controller->decryptedAttachments().size(), attachmentOnly ? 1 : 0);
+    QCOMPARE(h.controller->decryptedSubject(), QStringLiteral("signed subject"));
+    QCOMPARE(h.controller->decryptedSignature(), QStringLiteral("Signed by test@example.com."));
+    QVERIFY(!h.controller->decryptedSignatureIsWarning());
+    // A signed-only response cannot impersonate successful decryption of a
+    // row classified as encrypted. The page must not imply confidentiality.
+    auto encryptedRow = h.mailRepository->cachedEmail(QStringLiteral("INBOX"), QStringLiteral("5"));
+    QVERIFY(encryptedRow.has_value());
+    encryptedRow->pgpEncrypted = true;
+    QVERIFY(h.emailDao->insertOrReplace(*encryptedRow));
+    h.controller->decryptMessage(QStringLiteral("5"));
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller->decryptBusy(), 10000);
+    QVERIFY(!h.controller->decryptFailure().isEmpty());
+    QVERIFY(h.controller->decryptedMessageId().isEmpty());
+}
+
+void MailDecryptionTest::largeEncryptedWindowKeepsDeltaAndFolderCursors()
+{
+    QJsonArray rows;
+    for (int i = 1; i <= 500; ++i)
+        rows.append(QJsonObject{{"messageId", QString::number(i)}, {"pgpEncrypted", true},
+            {"subject", "[Encrypted]"}, {"sender", "sender@example.com"}, {"status", "unread"}});
+    QJsonObject window{{"byTab", QJsonObject{{"Uncategorized", rows}}}, {"delta", false}, {"cursor", 100}};
+    FakeRelayServer fake(httpResponse(200, "OK", QJsonDocument(window).toJson()));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    h.controller->refresh();
+    QTRY_VERIFY(!h.controller->isBusy());
+    QVERIFY(fake.receivedRequest().contains("since=0"));
+    QCOMPARE(h.mailRepository->cachedEmails(QStringLiteral("INBOX")).size(), 500);
+    QCOMPARE(h.cursorStore->mailCursor(QStringLiteral("sub-1"), QStringLiteral("INBOX")), QStringLiteral("100"));
+    window = QJsonObject{{"byTab", QJsonObject{{"Uncategorized", QJsonArray{QJsonObject{
+        {"messageId", "5"}, {"pgpEncrypted", true}, {"pgpSigned", true}, {"status", "read"}, {"changeType", "updated"}}}}}},
+        {"delta", true}, {"cursor", 101}, {"removed", QJsonArray{"7"}}};
+    fake.setResponse(httpResponse(200, "OK", QJsonDocument(window).toJson()));
+    h.controller->refresh();
+    QTRY_VERIFY(!h.controller->isBusy());
+    QVERIFY(fake.receivedRequest().contains("since=100"));
+    QCOMPARE(h.mailRepository->cachedEmails(QStringLiteral("INBOX")).size(), 499);
+    const auto row = h.mailRepository->cachedEmail(QStringLiteral("INBOX"), QStringLiteral("5"));
+    QVERIFY(row.has_value() && row->pgpEncrypted && row->pgpSigned);
+    QVERIFY(!row->body.has_value() || row->body->isEmpty());
+    QCOMPARE(row->status, QStringLiteral("read"));
+    QCOMPARE(h.cursorStore->mailCursor(QStringLiteral("sub-1"), QStringLiteral("INBOX")), QStringLiteral("101"));
+    const auto archive = h.mailRepository->planRefresh(QStringLiteral("Archive"), false);
+    QVERIFY(archive.has_value());
+    QCOMPARE(archive->since, qint64(0));
+    window = QJsonObject{{"byTab", QJsonObject{{"Uncategorized", rows}}}, {"delta", false}, {"cursor", 102}};
+    fake.setResponse(httpResponse(200, "OK", QJsonDocument(window).toJson()));
+    h.controller->refresh(true);
+    QTRY_VERIFY(!h.controller->isBusy());
+    QVERIFY(fake.receivedRequest().contains("since=0"));
+    QCOMPARE(h.cursorStore->mailCursor(QStringLiteral("sub-1"), QStringLiteral("INBOX")), QStringLiteral("102"));
 }
 
 void MailDecryptionTest::encryptedDraftNeverUploadsPlaintext()
