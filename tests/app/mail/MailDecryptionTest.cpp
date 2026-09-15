@@ -116,6 +116,8 @@ private slots:
     void largeEncryptedWindowKeepsDeltaAndFolderCursors();
     void encryptedDraftNeverUploadsPlaintext();
     void reopenedDraftPreservesRecipientsAndMemoryAttachments();
+    void pairingChangeReleasesRestoredDraft_data();
+    void pairingChangeReleasesRestoredDraft();
     void draftCustodyFailuresNeverPost_data();
     void draftCustodyFailuresNeverPost();
     void serverCustodyDraftStillSaves();
@@ -424,6 +426,53 @@ void MailDecryptionTest::reopenedDraftPreservesRecipientsAndMemoryAttachments()
     const auto afterRead = fake.receivedRequests().size();
     QCOMPARE(h.controller->saveDraft(message.to.first(), {}, {}, message.subject, message.body, paths, lockToken), 0);
     QCOMPARE(fake.receivedRequests().size(), afterRead);
+}
+
+void MailDecryptionTest::pairingChangeReleasesRestoredDraft_data()
+{
+    QTest::addColumn<bool>("closeReaderFirst");
+    QTest::newRow("reader-open") << false;
+    QTest::newRow("reader-already-closed") << true;
+}
+
+void MailDecryptionTest::pairingChangeReleasesRestoredDraft()
+{
+    QFETCH(bool, closeReaderFirst);
+    OutgoingMessage message;
+    message.to = {QStringLiteral("test@example.com")};
+    message.body = QStringLiteral("private draft");
+    message.attachments = {{QStringLiteral("private.bin"), QStringLiteral("application/octet-stream"), QByteArray("secret attachment")}};
+    const auto armored = m_fixture.encryptToTestKey(protectedDraftContent(message, {}, QStringLiteral("pairing-change")));
+    QVERIFY(!armored.isEmpty());
+    FakeRelayServer fake(payloadResponse(armored));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    Email row;
+    row.messageId = QStringLiteral("5");
+    row.folder = QStringLiteral("Drafts");
+    row.pgpEncrypted = true;
+    QVERIFY(h.emailDao->insertOrReplace(row));
+    h.controller->decryptMessage(row.messageId, row.folder);
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller->decryptBusy(), 15000);
+    const auto seed = h.controller->reopenDecryptedDraft(h.controller->decryptedToken());
+    const auto token = seed.value("token").toString();
+    QVERIFY(!token.isEmpty());
+    QCOMPARE(h.controller->m_draftAttachments.size(), 1);
+    if (closeReaderFirst) {
+        h.controller->forgetDecrypted();
+        QCOMPARE(h.controller->m_draftToken, token);
+        QCOMPARE(h.controller->m_draftAttachments.size(), 1);
+    }
+    auto pairing = h.pairingStore->load();
+    QVERIFY(pairing.has_value());
+    pairing->subscriberId = QStringLiteral("replacement-account");
+    QVERIFY(h.pairingStore->save(*pairing));
+    h.controller->forgetDecrypted(); // Same hook used by PairingController::pairingChanged.
+    QVERIFY(h.controller->m_draftToken.isEmpty());
+    QVERIFY(h.controller->m_draftAttachments.isEmpty());
+    h.controller->forgetDecrypted();
+    h.controller->releaseDraft(token);
+    QVERIFY(h.controller->m_draftAttachments.isEmpty());
 }
 
 void MailDecryptionTest::draftCustodyFailuresNeverPost_data()

@@ -374,3 +374,6 @@ core/pgp/OpenPgpKeyImporter.cpp	    if (ring.snapshot.activeFingerprint != norma
 core/pgp/OpenPgpKeyImporter.cpp	    if (actual != claimed)	    if (false)	OpenPgpKeyringTest:malformedRingIsRejectedBeforeDestinationWrites
 core/pgp/OpenPgpKeyImporter.cpp	                || info.replies != 1 || !info.clear)	                || info.replies != 1)	OpenPgpKeyringTest:protectedSecretPacketsAreRejected
 core/pgp/OpenPgpKeyImporter.cpp	    if (stillCurrent && !stillCurrent())	    if (false)	OpenPgpKeyringTest:cancellationAfterPartialImportCanBeRetried
+
+# Pairing teardown frees the draft plaintext holder even after reader navigation.
+app/mail/MailController.cpp	    if (!m_draftToken.isEmpty() && !m_pairingStore.stillCurrent(m_draftIdentity))	    if (false)	MailDecryptionTest:pairingChangeReleasesRestoredDraft

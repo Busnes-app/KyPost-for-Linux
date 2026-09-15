@@ -2018,6 +2018,11 @@ void MailController::setAppLocked(bool locked)
 
 void MailController::forgetDecrypted()
 {
+    // Pairing changes must release the composer's separate plaintext holder,
+    // even if the reader was already closed. Ordinary reader navigation keeps
+    // the current account's restored draft alive for the composer.
+    if (!m_draftToken.isEmpty() && !m_pairingStore.stillCurrent(m_draftIdentity))
+        releaseDraft(m_draftToken);
     // Invalidate work still waiting for pinentry or a relay reply, even when
     // there is no result in memory yet. Clearing strings alone cannot do that.
     ++m_decryptGeneration;

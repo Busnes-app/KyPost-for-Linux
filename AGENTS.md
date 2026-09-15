@@ -962,8 +962,11 @@ worse than no comment: the next reader stops looking.
   `reopenDecryptedDraft` accepts only the current protected token in Drafts.
   File bytes stay in C++; the composer carries a session token and attachment
   indexes. The shared attachment reader checks session identity even with no
-  files selected. Lock and release revoke the session; reader navigation does
-  not. One restored draft is held at a time. Saving uses APPEND, so the UI
+  files selected. Lock and release revoke the session. The pairing-change hook
+  in `forgetDecrypted` also releases retained draft attachments when their
+  identity is stale, even after the reader has closed; test the retained state,
+  not access-filtered getters. Same-account reader navigation preserves it.
+  One restored draft is held at a time. Saving uses APPEND, so the UI
   explicitly says it edits a copy. Restored HTML enters an inert template and
   passes the editor allowlist before insertion into the live editable page.
 

@@ -518,6 +518,7 @@ signals:
     void notificationEmailAmbiguous(const QString& messageId, const QStringList& folders);
 
 private:
+    friend class MailDecryptionTest; // Inspect retained plaintext, not access-filtered getters.
     void applyFilter(); // recomputes m_model from m_currentFolderEmails + m_selectedKeyword
     // Re-reads the current folder's cache into the model. Shared by
     // selectFolderInternal() and the refresh completion.
