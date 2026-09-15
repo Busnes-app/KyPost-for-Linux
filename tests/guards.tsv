@@ -355,3 +355,9 @@ app/mail/MailController.cpp	        releaseDraft(m_draftToken);	        /* neutr
 app/mail/MailController.cpp	            if (restored && !client) {	            if (false) {	MailDecryptionTest:reopenedDraftPreservesRecipientsAndMemoryAttachments
 app/mail/MailController.cpp	    if (!draftToken.isEmpty())	    if (false)	MailDecryptionTest:reopenedDraftPreservesRecipientsAndMemoryAttachments
 app/qml/components/RichBodyEditor.qml	            + JSON.stringify(html) + "; clean(template.content); document.body.replaceChildren(template.content); })();"	            + JSON.stringify(html) + "; document.body.replaceChildren(template.content); })();"	ProtectedImageHandlerTest:restoredDraftHtmlIsCleanedBeforeEnteringTheEditor
+
+# Explicit v3 framing, size admission and authenticated plaintext release.
+core/pgp/DeviceEnrollmentCrypto.cpp	    const int maximum = version == 3 ? kMaxV3EnvelopeBytes : kMaxEnvelopeBytes;	    const int maximum = kMaxEnvelopeBytes;	DeviceEnrollmentCryptoTest:v3LimitsCountUtf8Bytes
+core/pgp/DeviceEnrollmentCrypto.cpp	    if (object.value(QStringLiteral("v")) != QJsonValue(version)	    if (false	DeviceEnrollmentCryptoTest:rejectsV3BindingAndFramingChanges
+core/pgp/DeviceEnrollmentCrypto.cpp	        || (canonical && QString::fromLatin1(decoded.decoded.toBase64()) != value.toString()))	        || false)	DeviceEnrollmentCryptoTest:rejectsV3BindingAndFramingChanges
+core/pgp/DeviceEnrollmentCrypto.cpp	            reinterpret_cast<unsigned char*>(plaintext.bytes().data()) + written, &finalBytes) != 1)	            reinterpret_cast<unsigned char*>(plaintext.bytes().data()) + written, &finalBytes) == -999)	DeviceEnrollmentCryptoTest:rejectsV3BindingAndFramingChanges

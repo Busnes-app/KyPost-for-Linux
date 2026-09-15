@@ -13,17 +13,22 @@
 
 namespace {
 constexpr auto kInfo = "kypost-device-envelope/v2";
+constexpr auto kV3Info = "kypost-device-envelope/v3";
+constexpr int kMaxV3EnvelopeBytes = 128 * 1024;
 constexpr auto kAlgorithm = "ECDH-P256+HKDF-SHA256+A256GCM";
 constexpr auto kCrockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 constexpr int kMaxEnvelopeBytes = 1024 * 1024;
 
-QByteArray strictBase64(const QJsonValue& value)
+QByteArray strictBase64(const QJsonValue& value, bool canonical)
 {
     if (!value.isString())
         return {};
     const auto decoded = QByteArray::fromBase64Encoding(value.toString().toLatin1(),
                                                          QByteArray::AbortOnBase64DecodingErrors);
-    return decoded.decodingStatus == QByteArray::Base64DecodingStatus::Ok ? decoded.decoded : QByteArray();
+    if (decoded.decodingStatus != QByteArray::Base64DecodingStatus::Ok
+        || (canonical && QString::fromLatin1(decoded.decoded.toBase64()) != value.toString()))
+        return {};
+    return decoded.decoded;
 }
 
 EVP_PKEY* publicKeyFromPoint(const QByteArray& point)
@@ -43,7 +48,7 @@ EVP_PKEY* publicKeyFromPoint(const QByteArray& point)
     return EVP_PKEY_fromdata(context.get(), &key, EVP_PKEY_PUBLIC_KEY, parameters) > 0 ? key : nullptr;
 }
 
-SecureBytes hkdf(const SecureBytes& sharedSecret, const QByteArray& salt)
+SecureBytes hkdf(const SecureBytes& sharedSecret, const QByteArray& salt, const char* domain)
 {
     SecureBytes key(QByteArray(32, '\0'));
     std::unique_ptr<EVP_KDF, decltype(&EVP_KDF_free)> algorithm(EVP_KDF_fetch(nullptr, "HKDF", nullptr),
@@ -53,7 +58,7 @@ SecureBytes hkdf(const SecureBytes& sharedSecret, const QByteArray& salt)
     if (!context)
         return {};
     char digest[] = "SHA256";
-    QByteArray info(kInfo);
+    QByteArray info(domain);
     OSSL_PARAM parameters[] = {
         OSSL_PARAM_construct_utf8_string(OSSL_KDF_PARAM_DIGEST, digest, 0),
         OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_KEY,
@@ -182,40 +187,62 @@ QByteArray deviceEnvelopeAad(const QString& deviceId, const QString& fingerprint
     return aad;
 }
 
+QByteArray deviceEnvelopeV3Aad(const QString& deviceId, const QString& activeFingerprint)
+{
+    const QByteArray id = deviceId.toUtf8();
+    const QByteArray fingerprint = activeFingerprint.toUtf8();
+    if (id.isEmpty() || id.size() > 0xffff
+        || (fingerprint.size() != 40 && fingerprint.size() != 64)
+        || !std::all_of(fingerprint.cbegin(), fingerprint.cend(), [](char c) {
+            return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F');
+        }))
+        return {};
+    // V3 binds exact UTF-8 bytes. V2's normalization must not leak into it.
+    QByteArray aad(kV3Info);
+    aad.append(static_cast<char>((id.size() >> 8) & 0xff));
+    aad.append(static_cast<char>(id.size() & 0xff));
+    aad.append(id);
+    aad.append(static_cast<char>((fingerprint.size() >> 8) & 0xff));
+    aad.append(static_cast<char>(fingerprint.size() & 0xff));
+    aad.append(fingerprint);
+    return aad;
+}
+
 SecureBytes DeviceEnrollmentCrypto::openEnvelope(const QByteArray& envelopeJson, const QString& deviceId,
                                                   const QString& fingerprint) const
 {
-    if (!isReady() || envelopeJson.isEmpty() || envelopeJson.size() > kMaxEnvelopeBytes)
+    return open(envelopeJson, deviceId, fingerprint, 2);
+}
+
+SecureBytes DeviceEnrollmentCrypto::openKeyringEnvelope(const QByteArray& envelopeJson, const QString& deviceId,
+                                                         const QString& activeFingerprint) const
+{
+    return open(envelopeJson, deviceId, activeFingerprint, 3);
+}
+
+SecureBytes DeviceEnrollmentCrypto::open(const QByteArray& envelopeJson, const QString& deviceId,
+                                          const QString& fingerprint, int version) const
+{
+    const int maximum = version == 3 ? kMaxV3EnvelopeBytes : kMaxEnvelopeBytes;
+    if (!isReady() || envelopeJson.isEmpty() || envelopeJson.size() > maximum)
         return {};
     const QJsonDocument document = QJsonDocument::fromJson(envelopeJson);
     if (!document.isObject())
         return {};
     const QJsonObject object = document.object();
-    if (object.value(QStringLiteral("v")).toInt() != 2
+    if (object.value(QStringLiteral("v")) != QJsonValue(version)
         || object.value(QStringLiteral("alg")).toString() != QString::fromLatin1(kAlgorithm))
         return {};
-    const QByteArray peerPoint = strictBase64(object.value(QStringLiteral("epk")));
-    const QByteArray iv = strictBase64(object.value(QStringLiteral("iv")));
-    const QByteArray ciphertextAndTag = strictBase64(object.value(QStringLiteral("ct")));
-    const QByteArray aad = deviceEnvelopeAad(deviceId, fingerprint);
+    const QByteArray peerPoint = strictBase64(object.value(QStringLiteral("epk")), version == 3);
+    const QByteArray iv = strictBase64(object.value(QStringLiteral("iv")), version == 3);
+    const QByteArray ciphertextAndTag = strictBase64(object.value(QStringLiteral("ct")), version == 3);
+    const QByteArray aad = version == 3 ? deviceEnvelopeV3Aad(deviceId, fingerprint)
+                                         : deviceEnvelopeAad(deviceId, fingerprint);
     if (peerPoint.size() != 65 || peerPoint.front() != '\x04' || iv.size() != 12
         || ciphertextAndTag.size() <= 16 || aad.isEmpty())
         return {};
 
-    std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)> peer(publicKeyFromPoint(peerPoint), &EVP_PKEY_free);
-    std::unique_ptr<EVP_PKEY_CTX, decltype(&EVP_PKEY_CTX_free)> derive(
-        peer ? EVP_PKEY_CTX_new(m_key, nullptr) : nullptr, &EVP_PKEY_CTX_free);
-    if (!derive || EVP_PKEY_derive_init(derive.get()) <= 0 || EVP_PKEY_derive_set_peer(derive.get(), peer.get()) <= 0)
-        return {};
-    size_t sharedSize = 0;
-    if (EVP_PKEY_derive(derive.get(), nullptr, &sharedSize) <= 0 || sharedSize == 0 || sharedSize > 128)
-        return {};
-    SecureBytes shared(QByteArray(static_cast<qsizetype>(sharedSize), '\0'));
-    if (EVP_PKEY_derive(derive.get(), reinterpret_cast<unsigned char*>(shared.bytes().data()), &sharedSize) <= 0)
-        return {};
-    shared.bytes().resize(static_cast<qsizetype>(sharedSize));
-    SecureBytes key = hkdf(shared, m_publicKey);
-    shared.clear();
+    SecureBytes key = envelopeKey(peerPoint, version);
     if (key.isEmpty())
         return {};
 
@@ -241,7 +268,36 @@ SecureBytes DeviceEnrollmentCrypto::openEnvelope(const QByteArray& envelopeJson,
             reinterpret_cast<unsigned char*>(plaintext.bytes().data()) + written, &finalBytes) != 1)
         return {};
     plaintext.bytes().resize(written + finalBytes);
-    if (!plaintext.bytes().startsWith("-----BEGIN PGP PRIVATE KEY BLOCK-----"))
+    if (version == 2 && !plaintext.bytes().startsWith("-----BEGIN PGP PRIVATE KEY BLOCK-----"))
         return {};
     return plaintext;
+}
+
+SecureBytes DeviceEnrollmentCrypto::sharedSecret(const QByteArray& peerPoint) const
+{
+    if (!isReady() || peerPoint.size() != 65 || peerPoint.front() != '\x04')
+        return {};
+    std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)> peer(publicKeyFromPoint(peerPoint), &EVP_PKEY_free);
+    std::unique_ptr<EVP_PKEY_CTX, decltype(&EVP_PKEY_CTX_free)> derive(
+        peer ? EVP_PKEY_CTX_new(m_key, nullptr) : nullptr, &EVP_PKEY_CTX_free);
+    if (!derive || EVP_PKEY_derive_init(derive.get()) <= 0 || EVP_PKEY_derive_set_peer(derive.get(), peer.get()) <= 0)
+        return {};
+    size_t sharedSize = 0;
+    if (EVP_PKEY_derive(derive.get(), nullptr, &sharedSize) <= 0 || sharedSize != 32)
+        return {};
+    SecureBytes shared(QByteArray(static_cast<qsizetype>(sharedSize), '\0'));
+    if (EVP_PKEY_derive(derive.get(), reinterpret_cast<unsigned char*>(shared.bytes().data()), &sharedSize) <= 0)
+        return {};
+    shared.bytes().resize(static_cast<qsizetype>(sharedSize));
+    return shared;
+}
+
+SecureBytes DeviceEnrollmentCrypto::envelopeKey(const QByteArray& peerPoint, int version) const
+{
+    if (version != 2 && version != 3)
+        return {};
+    SecureBytes shared = sharedSecret(peerPoint);
+    if (shared.isEmpty())
+        return {};
+    return hkdf(shared, m_publicKey, version == 3 ? kV3Info : kInfo);
 }

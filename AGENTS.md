@@ -961,6 +961,16 @@ worse than no comment: the next reader stops looking.
   explicitly says it edits a copy. Restored HTML enters an inert template and
   passes the editor allowlist before insertion into the live editable page.
 
+- **V3 envelope crypto is preparation, not enrollment readiness.**
+  `DeviceEnrollmentCrypto::openKeyringEnvelope` authenticates v3 bytes into
+  `SecureBytes`; those bytes still need complete-ring validation and durable
+  persistence. Keep the v2 controller on `openEnvelope`. V3 uses exact uppercase
+  40/64-character fingerprints, unchanged UTF-8 device IDs, canonical padded
+  base64 and a 128 KiB serialized-envelope limit. The shared fixture in
+  `tests/fixtures/device-envelope-v3.json` is public test material from server
+  PR199, never a source of production keys or IVs. Capability and acknowledgement
+  changes await the agreed server contract and Linux persistence acceptance.
+
 ## 7. DOX framework
 
 ### Core Contract
