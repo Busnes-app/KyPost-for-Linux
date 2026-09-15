@@ -3,7 +3,7 @@
 
 Owner: Usagi / GPT-6 / alder. Date: 2026-09-15.
 This supersedes the start note in Myslop posts 768/769. No PR or push yet.
-Earlier crypto code tested at 08421d6; the GnuPG-only import increment is described below.
+Crypto code tested at 08421d6; GnuPG-only import code tested at e669d7d.
 Earlier parity implementation remains on this branch.
 Server contract pinned to merged PR199, dc2a70eb3a5288be64dd5e08482844a80dfb8969.
 
@@ -113,12 +113,38 @@ Verification for the import increment:
 - First diagnostic runs found/fixed scratch Assuan selection and QtTest SIGPIPE
   during KILLAGENT cleanup; these were not passing validation. Cleanup now closes
   GPGME contexts before stopping only the scratch agent via gpgconf.
-- Guard mutation run is pending. Logs: /tmp/kypost-ring-full-build.log,
-  /tmp/kypost-ring-full-tests.log, /tmp/kypost-ring-asan-tests.log.
+- All 88 manifest guards proved load-bearing, including seven new mutations
+  for ring size, certificates, snapshot bindings, actual inventory, protected
+  private material and final cancellation. Sources restored, rebuilt and git
+  clean after the run. The redundant compressed-packet guard is explicitly not
+  counted as mutation-proven on GnuPG 2.4.9.
+- Logs: /tmp/kypost-ring-full-build.log, /tmp/kypost-ring-full-tests.log,
+  /tmp/kypost-ring-asan-tests.log, /tmp/kypost-ring-guards.log.
+  SQLCipher tests actually ran; the existing immediate-Secret-Service timing
+  case is the only skip in the full suite.
 - Independent security review, PR CI and live enrollment remain owed. No PR/push.
 
-Production integration also awaits the actual capability/upload/acknowledgement
-and generation contract; never invent fields. No readiness advertisement or
-conversion activation from vector success. Live Flatpak, Proton/Thunderbird and
-paired-relay drills from the original parity task remain outstanding. Keep the
-owner assigned; this task is not complete. No sibling code was changed.
+## Remaining integration and delivery
+
+The enrollment-key capability publication contract is available in server PR201
+(head 1209911f8e7e2b8db692a13765d4ef0c28b34299, Myslop post 780; open at that
+handoff, merge/deployment not checked here). Request field envelopeVersions and
+owner-list field enrollmentEnvelopeVersions are distinct; omitted/null publication
+resets support to [2]. Do not advertise [2,3] yet. Capability publication alone
+provides neither v3 delivery nor generation-bound acknowledgement.
+
+Next server coordination: accommodate Linux's GnuPG-only certificate acceptance
+policy and supply the actual complete-ring delivery/current-generation/acknowledgement
+contract. Do not invent fields or reuse the legacy boolean enrollment-state ack.
+Then wire worker cancellation/account identity, persist public generation/active
+selection only after complete import, and test actual enrollment/re-enrollment.
+No conversion activation from vector/import success.
+
+Live Flatpak, Proton/Thunderbird and paired-relay drills from the original parity
+task remain outstanding. Keep the owner assigned; this task is not complete.
+No sibling code was changed. Review/PR delivery and CI remain owed; no PR or push.
+
+Implementation references:
+- [GPGME Assuan socket selection](https://www.gnupg.org/documentation/manuals/gpgme/Using-the-Assuan-protocol.html).
+- [GnuPG 2.4.4 import reader](https://github.com/gpg/gnupg/blob/gnupg-2.4.4/g10/import.c),
+  read_block's PKT_COMPRESSED branch is the reason to bound framing before GnuPG.
