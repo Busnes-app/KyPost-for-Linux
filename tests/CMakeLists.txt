@@ -265,6 +265,17 @@ kypost_add_app_test(ProtectedImageHandlerTest
 target_compile_definitions(ProtectedImageHandlerTest PRIVATE KYPOST_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 set_tests_properties(ProtectedImageHandlerTest PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu;QT_QUICK_BACKEND=software")
+if(EXISTS "/.flatpak-info")
+  # BaseApp's WebEngine lives in /app, outside the SDK Qt prefix. Its nested
+  # sandbox uses the Flatpak portal, which requires an installed app; the
+  # builder has not installed this one yet. Scope this to the test process
+  # inside the build sandbox, never the shipped app or native tests.
+  set_property(TEST ProtectedImageHandlerTest APPEND PROPERTY ENVIRONMENT
+    "QTWEBENGINEPROCESS_PATH=/app/lib/libexec/QtWebEngineProcess"
+    "QTWEBENGINE_RESOURCES_PATH=/app/resources"
+    "QTWEBENGINE_LOCALES_PATH=/app/translations/qtwebengine_locales"
+    "QTWEBENGINE_DISABLE_SANDBOX=1")
+endif()
 
 # ContactListModel/ContactsController (Task 33) live in app/contacts/, not
 # kypostcore -- same app/ test pattern as EmailListModelTest/MailControllerTest

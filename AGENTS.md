@@ -68,6 +68,12 @@ Test, added 2026-07-26 — see `tests/qml/`). The QML tests run against fake
 components from the shipped `app/qml/qml.qrc`, so a component missing from
 the resource bundle fails there rather than at runtime.
 
+`ProtectedImageHandlerTest` also runs real WebEngine pages. Inside a Flatpak
+build, its CTest environment points at the BaseApp's `/app` resources and
+disables the nested Chromium sandbox, whose portal requires an installed app.
+This applies only to that test inside the build sandbox, never to the shipped
+application or native tests.
+
 ## 4. Locked decisions (do not relitigate)
 
 Carried forward verbatim (in substance) from `Linux_QT_Client_Plan.md`'s own
