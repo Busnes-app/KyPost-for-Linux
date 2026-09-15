@@ -135,6 +135,9 @@ private slots:
     void aReplyForAReplacedAccountIsNeverShown();
     void aDecryptedMessageIsNotVisibleAfterTheAccountIsReplaced();
 
+    void addressBootstrapWithRetiredKeyNeverUploads_data();
+    void addressBootstrapWithRetiredKeyNeverUploads();
+
 private:
     GnupgFixture m_fixture;
 };
@@ -498,6 +501,32 @@ void MailDecryptionTest::draftCustodyFailuresNeverPost()
     QCOMPARE(fake.receivedRequests().size(), 1);
     QVERIFY(fake.receivedRequests().first().startsWith("GET /api/pgp/bootstrap"));
     QVERIFY(!h.controller->lastError().isEmpty());
+}
+
+void MailDecryptionTest::addressBootstrapWithRetiredKeyNeverUploads_data()
+{
+    QTest::addColumn<bool>("retired");
+    QTest::newRow("one-key") << false;
+    QTest::newRow("retired-key") << true;
+}
+
+void MailDecryptionTest::addressBootstrapWithRetiredKeyNeverUploads()
+{
+    QFETCH(bool, retired);
+    // Keep both secret keys, as real users do for reading historical mail.
+    if (retired)
+        QVERIFY(m_fixture.build(QStringLiteral("Retired Identity <test@example.com>")));
+    QCOMPARE(GnupgFixture::fingerprintsIn(m_fixture.path()).size(), retired ? 2 : 1);
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"hasIdentity":true,"protection":"client","fingerprint":"test@example.com","suggestedUserIDs":["test@example.com"]})"));
+    fake.setResponseForPath("/api/mail/draft", httpResponse(200, "OK", R"({"ok":true})"));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    QSignalSpy saved(h.controller.get(), &MailController::draftSaveCompleted);
+    QVERIFY(h.controller->saveDraft(QStringLiteral("to@example.com"), {}, {}, QStringLiteral("Secret"), QStringLiteral("secret body"), {}) != 0);
+    QTRY_COMPARE_WITH_TIMEOUT(saved.size(), 1, 10000);
+    QVERIFY(!saved.first().at(1).toBool());
+    QCOMPARE(fake.receivedRequests().size(), 1);
+    QVERIFY(fake.receivedRequests().first().startsWith("GET /api/pgp/bootstrap"));
 }
 
 void MailDecryptionTest::serverCustodyDraftStillSaves()

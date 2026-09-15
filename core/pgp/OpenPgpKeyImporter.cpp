@@ -1,4 +1,5 @@
 #include "pgp/OpenPgpKeyImporter.h"
+#include "pgp/PgpFingerprint.h"
 
 #include "pgp/GpgmeInit.h"
 
@@ -158,16 +159,6 @@ struct RingPayload {
     bool hasCertificate = false;
 };
 
-QString normalizedFingerprint(const QByteArray& bytes)
-{
-    if (bytes.size() != 40 && bytes.size() != 64)
-        return {};
-    for (char c : bytes) {
-        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
-            return {};
-    }
-    return QString::fromLatin1(bytes).toUpper();
-}
 
 class RingReader {
 public:

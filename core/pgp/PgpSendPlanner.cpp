@@ -85,7 +85,8 @@ PgpSendPlan buildPgpSendPlan(const OutgoingMessage& message, const QStringList& 
     // An explicit current fingerprint must never fall back to an older key
     // that happens to share the From address. Empty retains the low-level
     // no-Sent-copy API; production supplies bootstrap's current fingerprint.
-    const QString signer = senderFingerprint.trimmed().isEmpty() ? message.from : senderFingerprint.trimmed();
+    const QString signer = senderFingerprint.trimmed().isEmpty()
+        ? ownKeyFingerprint(message.from, homeDirectory) : senderFingerprint.trimmed();
 
     const auto encryptInto = [&](const QStringList& fingerprints, const QStringList& smtpRecipients,
                                   PgpSendPlan& into) -> bool {

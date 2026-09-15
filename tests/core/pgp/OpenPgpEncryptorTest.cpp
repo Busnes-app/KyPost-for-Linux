@@ -31,6 +31,8 @@ private slots:
     void aSenderWithNoSecretKeySendsNothingRatherThanSendingItUnsigned();
     void thereIsNothingToEncryptWithNoRecipients();
     void emptyInputIsRefused();
+    void keyPatternsAreNotFingerprints_data();
+    void keyPatternsAreNotFingerprints();
 
 private:
     QString importInto(const QString& home, const GnupgFixture& from, const QString& uid) const;
@@ -96,7 +98,7 @@ void OpenPgpEncryptorTest::theRecipientCanReadWhatTheSenderEncrypted()
     const QByteArray secret = "the numbers are worse than we said\n";
 
     const PgpEncryptResult encrypted = signAndEncrypt(
-        secret, QStringLiteral("sender@example.com"), { m_recipientFingerprint }, m_sender.path());
+        secret, m_sender.fingerprintOf(QStringLiteral("sender@example.com")), { m_recipientFingerprint }, m_sender.path());
 
     QCOMPARE(encrypted.status, PgpEncryptStatus::Encrypted);
     QVERIFY(encrypted.armoredCiphertext.startsWith(QStringLiteral("-----BEGIN PGP MESSAGE-----")));
@@ -116,7 +118,7 @@ void OpenPgpEncryptorTest::theRecipientCanReadWhatTheSenderEncrypted()
 void OpenPgpEncryptorTest::theMessageIsSignedAndTheSignatureVerifies()
 {
     const PgpEncryptResult encrypted =
-        signAndEncrypt("signed and sealed\n", QStringLiteral("sender@example.com"),
+        signAndEncrypt("signed and sealed\n", m_sender.fingerprintOf(QStringLiteral("sender@example.com")),
                         { m_recipientFingerprint }, m_sender.path());
     QCOMPARE(encrypted.status, PgpEncryptStatus::Encrypted);
 
@@ -143,7 +145,7 @@ void OpenPgpEncryptorTest::theMessageIsSignedAndTheSignatureVerifies()
 void OpenPgpEncryptorTest::aStrangerCannotReadIt()
 {
     const PgpEncryptResult encrypted =
-        signAndEncrypt("not for you\n", QStringLiteral("sender@example.com"),
+        signAndEncrypt("not for you\n", m_sender.fingerprintOf(QStringLiteral("sender@example.com")),
                         { m_recipientFingerprint }, m_sender.path());
     QCOMPARE(encrypted.status, PgpEncryptStatus::Encrypted);
 
@@ -160,7 +162,7 @@ void OpenPgpEncryptorTest::everyRecipientOfATwoWayMessageCanReadIt()
     const QByteArray secret = "both of you\n";
 
     const PgpEncryptResult encrypted =
-        signAndEncrypt(secret, QStringLiteral("sender@example.com"),
+        signAndEncrypt(secret, m_sender.fingerprintOf(QStringLiteral("sender@example.com")),
                         { m_recipientFingerprint, m_secondFingerprint }, m_sender.path());
     QCOMPARE(encrypted.status, PgpEncryptStatus::Encrypted);
 
@@ -179,7 +181,7 @@ void OpenPgpEncryptorTest::oneMissingRecipientKeyFailsTheWholeMessage()
     const QString absent = QStringLiteral("0000000000000000000000000000000000000000");
 
     const PgpEncryptResult encrypted =
-        signAndEncrypt("half a message\n", QStringLiteral("sender@example.com"),
+        signAndEncrypt("half a message\n", m_sender.fingerprintOf(QStringLiteral("sender@example.com")),
                         { m_recipientFingerprint, absent }, m_sender.path());
 
     QCOMPARE(encrypted.status, PgpEncryptStatus::RecipientKeyUnusable);
@@ -189,23 +191,15 @@ void OpenPgpEncryptorTest::oneMissingRecipientKeyFailsTheWholeMessage()
              "the user is not told WHICH recipient could not be encrypted to");
 }
 
-// The OTHER way a recipient can be unreachable, and the one the pre-flight
-// key lookup cannot see: gpg HOLDS the key and refuses to encrypt to it.
-//
-// The sibling test above uses a fingerprint that is not in the keyring at all,
-// so gpgme_get_key fails and the pre-flight check catches it -- which means
-// that test says nothing about what happens when encryption itself reports an
-// invalid recipient. Found by scripts/verify-guards.sh: neutralising the
-// post-encryption check left that test green.
-//
-// Expired is the ordinary way a held key becomes unusable.
+// The key is present but expired. Our preflight now rejects it before gpg
+// encryption runs; this verifies the outcome, not the post-operation guard.
 void OpenPgpEncryptorTest::aRecipientWhoseKeyGpgHoldsButRefusesAlsoFailsTheWholeMessage()
 {
     if (m_expiredFingerprint.isEmpty())
         QSKIP("could not build an expired key -- the refused-recipient path is NOT covered");
 
     const PgpEncryptResult encrypted =
-        signAndEncrypt("half a message\n", QStringLiteral("sender@example.com"),
+        signAndEncrypt("half a message\n", m_sender.fingerprintOf(QStringLiteral("sender@example.com")),
                         { m_recipientFingerprint, m_expiredFingerprint }, m_sender.path());
 
     QCOMPARE(encrypted.status, PgpEncryptStatus::RecipientKeyUnusable);
@@ -230,7 +224,7 @@ void OpenPgpEncryptorTest::aSenderWithNoSecretKeySendsNothingRatherThanSendingIt
 void OpenPgpEncryptorTest::thereIsNothingToEncryptWithNoRecipients()
 {
     const PgpEncryptResult encrypted =
-        signAndEncrypt("hello\n", QStringLiteral("sender@example.com"), {}, m_sender.path());
+        signAndEncrypt("hello\n", m_sender.fingerprintOf(QStringLiteral("sender@example.com")), {}, m_sender.path());
 
     QCOMPARE(encrypted.status, PgpEncryptStatus::Failed);
     QVERIFY(encrypted.armoredCiphertext.isEmpty());
@@ -238,10 +232,33 @@ void OpenPgpEncryptorTest::thereIsNothingToEncryptWithNoRecipients()
 
 void OpenPgpEncryptorTest::emptyInputIsRefused()
 {
-    QCOMPARE(signAndEncrypt(QByteArray(), QStringLiteral("sender@example.com"),
+    QCOMPARE(signAndEncrypt(QByteArray(), m_sender.fingerprintOf(QStringLiteral("sender@example.com")),
                              { m_recipientFingerprint }, m_sender.path())
                  .status,
              PgpEncryptStatus::Failed);
+}
+
+void OpenPgpEncryptorTest::keyPatternsAreNotFingerprints_data()
+{
+    QTest::addColumn<bool>("signerPattern");
+    QTest::addColumn<bool>("shortId");
+    QTest::newRow("signer-address") << true << false;
+    QTest::newRow("recipient-address") << false << false;
+    QTest::newRow("signer-short-id") << true << true;
+    QTest::newRow("recipient-short-id") << false << true;
+}
+
+void OpenPgpEncryptorTest::keyPatternsAreNotFingerprints()
+{
+    QFETCH(bool, signerPattern);
+    QFETCH(bool, shortId);
+    const auto signer = m_sender.fingerprintOf(QStringLiteral("sender@example.com"));
+    const auto pattern = shortId ? (signerPattern ? signer : m_recipientFingerprint).right(16)
+        : (signerPattern ? QStringLiteral("sender@example.com") : QStringLiteral("recipient@example.com"));
+    const auto encrypted = signAndEncrypt("private", signerPattern ? pattern : signer,
+                                         {signerPattern ? m_recipientFingerprint : pattern}, m_sender.path());
+    QCOMPARE(encrypted.status, signerPattern ? PgpEncryptStatus::NoSigningKey : PgpEncryptStatus::RecipientKeyUnusable);
+    QVERIFY(encrypted.armoredCiphertext.isEmpty());
 }
 
 QTEST_GUILESS_MAIN(OpenPgpEncryptorTest)

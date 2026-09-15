@@ -381,7 +381,10 @@ either way: a guard this build cannot speak to is a guard nobody has checked.
 The first run found two real things, which is the argument for having it:
 `oneMissingRecipientKeyFailsTheWholeMessage` proved only the pre-flight key
 lookup and stayed green when the post-encryption `invalid_recipients` check was
-removed -- a second, uncovered branch, now tested with an expired key. And the
+removed -- a second, uncovered branch, then tested with an expired key.
+The 2026-09-15 key-usability preflight now catches that expired key first,
+so its post-operation mutation is explicitly unproven in the manifest; the
+post-operation check remains defense in depth. And the
 decrypt path's `stillCurrent` check cannot be proven from outside at all,
 because the read-time guard already refuses to hand the plaintext out; that is
 recorded in the manifest rather than papered over.
@@ -946,6 +949,13 @@ worse than no comment: the next reader stops looking.
   exports. CID responses are bounded raster images, served only on off-the-record
   profiles with HTTP caching disabled; remote content stays opt-in. The handler
   and image sniffing belong in `app/`, never `core/`.
+- **Bootstrap key selectors are full primary fingerprints.** Reuse the ring
+  importer's 40/64-hex normalization; invalid values become empty and fail
+  closed. `signAndEncrypt` independently requires each resolved primary
+  fingerprint to match exactly and the key to be usable for signing/encryption.
+  Addresses and short key IDs must never select draft or Sent-copy keys.
+  No enrolled fingerprint is persisted today; this is selector validation, not
+  a local pin against a relay that consistently claims a different full key.
 - **Client-custody drafts are encrypted before the first POST.** Fetch fresh,
   type-checked bootstrap custody; missing/unknown answers fail closed. Encrypt
   draft To/Cc/Bcc, subject, body and files to the current account fingerprint.

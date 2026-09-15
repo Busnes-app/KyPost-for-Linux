@@ -71,13 +71,13 @@ struct PgpEncryptResult
 // input is a stranger's compressed ciphertext that can expand without limit;
 // here it is a message this user just composed and is already in memory.
 //
-// signerAddress selects the secret key -- an address or a fingerprint, both of
-// which gpg accepts. recipientFingerprints are fingerprints rather than
-// addresses on purpose: an address can match more than one key in a keyring,
+// signerFingerprint and recipientFingerprints must be full uppercase primary
+// fingerprints. Resolved keys must match exactly and be usable for their role;
+// never accept GnuPG key patterns. An address can match more than one key,
 // and "whichever gpg picked" is not a decision this code may make silently.
 //
 // homeDirectory is for tests, as everywhere else in core/pgp.
-PgpEncryptResult signAndEncrypt(const QByteArray& plaintext, const QString& signerAddress,
+PgpEncryptResult signAndEncrypt(const QByteArray& plaintext, const QString& signerFingerprint,
                                  const QStringList& recipientFingerprints,
                                  const QString& homeDirectory = QString());
 

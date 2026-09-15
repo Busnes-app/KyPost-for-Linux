@@ -67,10 +67,10 @@ core/pgp/OpenPgpKeyImporter.cpp	        && observed.compare(expectedFingerprint,
 # The PRE-flight lookup: a fingerprint that is not in the keyring at all.
 core/pgp/OpenPgpEncryptor.cpp	            out.unusableRecipients.append(fingerprint);	            ;	OpenPgpEncryptorTest:oneMissingRecipientKeyFailsTheWholeMessage
 
-# The POST-encryption check: gpg holds the key and refuses it anyway. A
-# separate guard from the one above, and it needed its own test -- the
-# missing-key test stayed green without it, which is what this harness is for.
-core/pgp/OpenPgpEncryptor.cpp	            out.unusableRecipients.append(QString::fromUtf8(invalid->fpr));	            ;	OpenPgpEncryptorTest:aRecipientWhoseKeyGpgHoldsButRefusesAlsoFailsTheWholeMessage
+# The POST-encryption invalid_recipients check remains defense in depth.
+# Since key usability is checked before encryption, the expired-key case is
+# rejected there first: removing the post check now stays green (measured).
+# Do not claim that case proves the post-operation guard independently.
 
 # --- each blind recipient gets their own ciphertext ----------------------
 core/pgp/PgpSendPlanner.cpp	        if (!encryptInto({ bccFingerprints.at(i) }, { bcc.at(i) }, plan))	        if (!encryptInto(toCcFingerprints, { bcc.at(i) }, plan))	PgpSendPlannerTest:aBccRecipientIsNotNamedInAnybodyElsesDelivery
@@ -377,3 +377,9 @@ core/pgp/OpenPgpKeyImporter.cpp	    if (stillCurrent && !stillCurrent())	    if 
 
 # Pairing teardown frees the draft plaintext holder even after reader navigation.
 app/mail/MailController.cpp	    if (!m_draftToken.isEmpty() && !m_pairingStore.stillCurrent(m_draftIdentity))	    if (false)	MailDecryptionTest:pairingChangeReleasesRestoredDraft
+
+# Bootstrap selectors and resolved keys must be full fingerprints, not patterns.
+core/net/PgpBootstrapClient.cpp	    out.fingerprint = normalizedFingerprint(obj.value(QStringLiteral("fingerprint")).toString().toUtf8());	    out.fingerprint = obj.value(QStringLiteral("fingerprint")).toString();	PgpBootstrapClientTest:fingerprintAdmission
+core/pgp/OpenPgpEncryptor.cpp	        && requested == QString::fromLatin1(key->fpr)	        && true	OpenPgpEncryptorTest:keyPatternsAreNotFingerprints
+core/pgp/OpenPgpEncryptor.cpp	        || !usableKey(signer, signerFingerprint, true)) {	        || signer == nullptr) {	OpenPgpEncryptorTest:keyPatternsAreNotFingerprints
+core/pgp/OpenPgpEncryptor.cpp	            || !usableKey(key, fingerprint, false)) {	            || key == nullptr) {	OpenPgpEncryptorTest:keyPatternsAreNotFingerprints

@@ -155,7 +155,7 @@ QByteArray EncryptedMessageReaderTest::signedAndEncryptedTo(const GnupgFixture& 
         return {};
 
     const PgpEncryptResult encrypted =
-        signAndEncrypt(plaintext, signerAddress, { imported.fingerprint }, signer.path());
+        signAndEncrypt(plaintext, signer.fingerprintOf(signerAddress), { imported.fingerprint }, signer.path());
     return encrypted.status == PgpEncryptStatus::Encrypted ? encrypted.armoredCiphertext.toUtf8()
                                                             : QByteArray();
 }

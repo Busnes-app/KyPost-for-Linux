@@ -20,7 +20,7 @@ struct PgpBootstrapResult
     bool ok = false;
     bool hasIdentity = false;
     QString protection;
-    QString fingerprint;
+    QString fingerprint; // Normalized full fingerprint, empty for invalid selectors.
 
     // The account's own mail address -- suggestedUserIDs[0], which the server
     // takes from the IMAP username.
