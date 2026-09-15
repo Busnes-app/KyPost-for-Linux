@@ -240,6 +240,12 @@ is no key at rest here to protect, and no passphrase to keep out of a
 key material, and reversing the custody decision later must not also quietly
 delete the constraints that come with it.
 
+**Reaffirmed 2026-09-15: GnuPG-only for complete-ring enrollment too.** No
+original-JSON archive or second private store. Refuse a bundle containing an
+unpublished revocation certificate before any durable import: importing it would
+apply a revocation, and discarding it must not count as complete enrollment.
+Never delete existing user keys on failed enrollment, unpair or wipe.
+
 The rules below apply to any implementation, under either model. They are
 written now, before the code, because every one of them is easier to design
 in than to retrofit.
@@ -961,15 +967,31 @@ worse than no comment: the next reader stops looking.
   explicitly says it edits a copy. Restored HTML enters an inert template and
   passes the editor allowlist before insertion into the live editable page.
 
-- **V3 envelope crypto is preparation, not enrollment readiness.**
-  `DeviceEnrollmentCrypto::openKeyringEnvelope` authenticates v3 bytes into
-  `SecureBytes`; those bytes still need complete-ring validation and durable
-  persistence. Keep the v2 controller on `openEnvelope`. V3 uses exact uppercase
-  40/64-character fingerprints, unchanged UTF-8 device IDs, canonical padded
-  base64 and a 128 KiB serialized-envelope limit. The shared fixture in
-  `tests/fixtures/device-envelope-v3.json` is public test material from server
-  PR199, never a source of production keys or IVs. Capability and acknowledgement
-  changes await the agreed server contract and Linux persistence acceptance.
+- **V3 crypto and ring import are preparation, not enrollment readiness.**
+  `DeviceEnrollmentCrypto::openKeyringEnvelope` authenticates v3 into
+  `SecureBytes`. `importPrivateKeyring` validates the ASCII JSON schema without
+  secret QString values (128 KiB, 16 primary keys, 256 fingerprints), binds it
+  to the expected active fingerprint, material generation and complete inventory,
+  then validates every key in a disposable GnuPG home before durable import.
+  Only unprotected, present secret packets qualify; GPGME KEYINFO queries the
+  scratch agent's explicit socket. The JSON path rejects compressed/streaming
+  key packets before GnuPG can expand them (older supported engines allow this).
+  Legacy single-key admission is unchanged. Unpublished revocation certificates
+  produce an explicit unsupported result; no archive, discard or revocation.
+  Every import result and persisted secret inventory is checked. Failure or
+  cancellation may leave a subset in GnuPG; retain it, retry idempotently, and
+  never advance active selection or acknowledge partial success. Existing keys
+  are never deleted. The expected snapshot must come from the authenticated
+  server, not the payload itself. Run the importer on a worker with a thread-safe
+  identity/cancellation predicate.
+  Keep the v2 controller on `openEnvelope`. V3 uses exact uppercase 40/64-digit
+  fingerprints, unchanged UTF-8 device IDs, canonical padded base64 and a 128 KiB
+  serialized-envelope limit. Both shared fixtures in `tests/fixtures/` are public
+  test material from server PR199. Capability publication and revision/generation
+  acknowledgement remain gated on server delivery contracts and Linux certificate
+  acceptance; import/vector tests do not authorize conversion. `OpenPgpKeyringTest`
+  covers real disk imports, agent restart, historical/hidden-recipient decrypt,
+  current signing, malformed payloads, partial failure/cancellation and retry.
 
 ## 7. DOX framework
 

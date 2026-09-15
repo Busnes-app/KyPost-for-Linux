@@ -3,10 +3,11 @@
 
 Owner: Usagi / GPT-6 / alder. Date: 2026-09-15.
 This supersedes the start note in Myslop posts 768/769. No PR or push yet.
-Code tested at 08421d6; earlier parity implementation remains on this branch.
+Earlier crypto code tested at 08421d6; the GnuPG-only import increment is described below.
+Earlier parity implementation remains on this branch.
 Server contract pinned to merged PR199, dc2a70eb3a5288be64dd5e08482844a80dfb8969.
 
-## Completed increment
+## Previous crypto increment
 
 DeviceEnrollmentCrypto::openKeyringEnvelope explicitly consumes v3 framing using
 the existing OpenSSL P-256 ECDH, HKDF-SHA256 and AES-256-GCM implementation.
@@ -27,7 +28,7 @@ from the server merge above; SHA256:
 0ce8d5ac20ec94bcc35facff6e76fcf78ec0d66f666aabc2dcef1965408e9c3a.
 Fixed scalars/IVs exist only in tests. Production still generates ephemeral keys.
 
-## Verification
+## Previous crypto verification
 
 - Fresh RelWithDebInfo build and all 101 ctest targets passed.
 - DeviceEnrollmentCryptoTest passed under ASan/UBSan.
@@ -50,36 +51,71 @@ Fixed scalars/IVs exist only in tests. Production still generates ephemeral keys
 - AGENTS.md and docs/PARITY.md describe the preparation/activation boundary.
   Independent security review and PR CI remain owed before delivery.
 
-## Blocked decision and next implementation
+## Custody decision and next implementation
 
-The user has been asked which Linux custody contract to follow; no answer has
-arrived. Server owner redwood acknowledged this as a separate design decision in
-Myslop post 772. Server capability negotiation does not authorize a custody change.
+User decision, 2026-09-15: **GnuPG-only**. This supersedes the blocked question
+in Myslop posts 775/776. Keep durable private-key custody in the user's GnuPG
+keyring; do not add an original-JSON archive or a second encrypted key store.
+Existing keys remain untouched by unpair/wipe. The Linux acceptance contract
+therefore measures imported key material and inventory, not original JSON bytes.
 
-The server handoff requires persisting the original versioned JSON, including
-unpublished revocation certificates, while also requiring GnuPG-only custody and
-no duplicate private store. GnuPG imports packet material; it does not retain the
-original JSON or an unpublished revocation certificate as an opaque secret.
-Importing such a certificate applies the revocation. Linux's existing teardown
-intentionally never deletes keys from the user's keyring, unlike the generic
-device-wipe paragraph.
+Unpublished revocation certificates cannot be imported without applying the
+revocation. The Linux importer will explicitly refuse bundles containing them
+before writing to the real keyring. It will neither discard them while claiming
+complete enrollment nor apply them. The server-side sealed ring remains their
+home; activation needs the server to accommodate this Linux acceptance policy.
+This is a supported-payload limit, not authorization for a second custody system.
 
-Required decision:
-1. Keep GnuPG-only custody and revise the Linux persistence acceptance requirement,
-   explicitly specifying treatment of unpublished revocation certificates; or
-2. Explicitly authorize an encrypted original-bundle archive alongside GnuPG and
-   define its protection, durability and teardown contract.
+## GnuPG-only import increment
 
-Do not implement a second store, discard certificates, apply unpublished
-revocations, or alter key deletion rules by inference.
+Implemented importPrivateKeyring as an explicit preparation API; production v2
+controller wiring and its boolean acknowledgement remain unchanged. It requires
+the caller's expected active fingerprint, material generation and complete
+fingerprint inventory from an authenticated server snapshot. It does not derive
+that authority from the incoming ring. The server generation delivery/acknowledgement
+contract is still needed before wiring this API into enrollment.
 
-After that decision, implement bounded complete-ring validation without putting
-private JSON strings into QString; validate all primary/subkey members and the
-exact inventory in disposable state; persist according to the agreed contract;
-check every import and preserve existing keys on partial failure; report success
-and switch active selection only after all required durability succeeds. Test
-fresh/re-enrollment, partial failures, retry, process restart, old-mail decrypt
-and active signing with disposable stores. Keep the legacy single-primary guard.
+- Bounded ASCII schema decoding holds private strings only in owned SecureBytes;
+  no QJson private-key strings, archive or new dependency. Reject unknown/duplicate
+  fields, invalid/non-safe generations, missing/duplicate members, and more than
+  128 KiB JSON, 16 primary members or 256 fingerprints. Fingerprints normalize case.
+- Inspect armored packet framing before GnuPG: no compressed/literal/encrypted
+  packets or partial/indeterminate lengths. GnuPG remains the packet-body/crypto
+  authority. Its 2.4.4 import reader expands compressed key packets; this machine's
+  2.4.9 independently refuses them. The local compressed-key test therefore does
+  not prove the admission guard load-bearing by mutation; recorded in guards.tsv.
+- Validate every member in a disposable GnuPG home, including exact primary and
+  complete subkey inventory and present, unprotected private material. GPGME
+  KEYINFO uses the scratch agent socket resolved by gpgconf; an Assuan home_dir
+  alone does not select that agent. Missing/stubbed/protected material is rejected.
+- Explicit UnsupportedRevocationCertificate before destination writes. No
+  unpublished revocations applied or silently discarded. Existing user keys remain.
+- Import only after all validation, check every GPGME import status and re-read
+  secret inventory. Cancellation/failure can leave partial imports; never delete
+  or report success. Retry merges idempotently. Active selection/ack belongs to
+  the future controller and is allowed only after full success.
+- Shared legacy importer now checks each GPGME status result, scratch directory
+  permissions, and secret_imported when deciding whether material changed. Its
+  single-primary guard remains in place.
+- Vendored tests/fixtures/pgp-keyring-v1.json is byte-identical public test material
+  from server PR199 dc2a70eb3a5288be64dd5e08482844a80dfb8969.
+
+Verification for the import increment:
+- Fresh RelWithDebInfo build and all 102 ctest targets passed using SQLCipher at
+  /home/yoshi/.cache/kypost-v3/sqlcipher.
+- ASan/UBSan: OpenPgpKeyringTest, OpenPgpKeyImporterTest and DeviceEnrollmentCryptoTest
+  passed. Ring tests exercise fresh/repeated import, GnuPG agent process restart
+  and disk reload, historical and hidden-recipient decrypt, explicit current
+  signing, malformed/oversize input, snapshot binding, dummy/public/protected
+  material, unsupported certificates, cancellation and retry. A filesystem
+  obstruction during the second real import reports failure; restoring the path
+  proves the first key survives and retry completes the ring. No power-loss claim.
+- First diagnostic runs found/fixed scratch Assuan selection and QtTest SIGPIPE
+  during KILLAGENT cleanup; these were not passing validation. Cleanup now closes
+  GPGME contexts before stopping only the scratch agent via gpgconf.
+- Guard mutation run is pending. Logs: /tmp/kypost-ring-full-build.log,
+  /tmp/kypost-ring-full-tests.log, /tmp/kypost-ring-asan-tests.log.
+- Independent security review, PR CI and live enrollment remain owed. No PR/push.
 
 Production integration also awaits the actual capability/upload/acknowledgement
 and generation contract; never invent fields. No readiness advertisement or

@@ -361,3 +361,16 @@ core/pgp/DeviceEnrollmentCrypto.cpp	    const int maximum = version == 3 ? kMaxV
 core/pgp/DeviceEnrollmentCrypto.cpp	    if (object.value(QStringLiteral("v")) != QJsonValue(version)	    if (false	DeviceEnrollmentCryptoTest:rejectsV3BindingAndFramingChanges
 core/pgp/DeviceEnrollmentCrypto.cpp	        || (canonical && QString::fromLatin1(decoded.decoded.toBase64()) != value.toString()))	        || false)	DeviceEnrollmentCryptoTest:rejectsV3BindingAndFramingChanges
 core/pgp/DeviceEnrollmentCrypto.cpp	            reinterpret_cast<unsigned char*>(plaintext.bytes().data()) + written, &finalBytes) != 1)	            reinterpret_cast<unsigned char*>(plaintext.bytes().data()) + written, &finalBytes) == -999)	DeviceEnrollmentCryptoTest:rejectsV3BindingAndFramingChanges
+
+# Complete-ring GnuPG-only custody: scratch admission, snapshot binding and no partial success.
+# boundedKeyPackets additionally refuses compressed key packets before GnuPG 2.4.4
+# can expand them (upstream g10/import.c read_block). GnuPG 2.4.9 also refuses
+# compression, so the API-level compressed-key test cannot distinguish this guard
+# from the engine's redundant refusal on this machine. Do not claim it mutated red.
+core/pgp/OpenPgpKeyImporter.cpp	        if (m_bytes.size() > 128 * 1024)	        if (false)	OpenPgpKeyringTest:malformedRingIsRejectedBeforeDestinationWrites
+core/pgp/OpenPgpKeyImporter.cpp	    if (ring.hasCertificate)	    if (false)	OpenPgpKeyringTest:unpublishedCertificateIsNeverAppliedOrDiscarded
+core/pgp/OpenPgpKeyImporter.cpp	        || ring.snapshot.materialGeneration != expected.materialGeneration || claimed != expectedInventory)	        || false)	OpenPgpKeyringTest:snapshotBindingsAreRequired
+core/pgp/OpenPgpKeyImporter.cpp	    if (ring.snapshot.activeFingerprint != normalizedFingerprint(expected.activeFingerprint.toLatin1())	    if (false	OpenPgpKeyringTest:snapshotBindingsAreRequired
+core/pgp/OpenPgpKeyImporter.cpp	    if (actual != claimed)	    if (false)	OpenPgpKeyringTest:malformedRingIsRejectedBeforeDestinationWrites
+core/pgp/OpenPgpKeyImporter.cpp	                || info.replies != 1 || !info.clear)	                || info.replies != 1)	OpenPgpKeyringTest:protectedSecretPacketsAreRejected
+core/pgp/OpenPgpKeyImporter.cpp	    if (stillCurrent && !stillCurrent())	    if (false)	OpenPgpKeyringTest:cancellationAfterPartialImportCanBeRetried
