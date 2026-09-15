@@ -44,6 +44,7 @@ Email emailFromQuery(const QSqlQuery& query)
     email.atUtc = query.value(QStringLiteral("at_utc")).toString();
     email.hasAttachments = query.value(QStringLiteral("has_attachments")).toInt() != 0;
     email.sourceMode = query.value(QStringLiteral("source_mode")).toString();
+    email.pgpSigned = query.value(QStringLiteral("pgp_signed")).toInt() != 0;
     email.pgpEncrypted = query.value(QStringLiteral("pgp_encrypted")).toInt() != 0;
     email.pgpDecryptError = query.value(QStringLiteral("pgp_decrypt_error")).toString();
     return email;
@@ -69,10 +70,10 @@ bool EmailDao::insertOrReplace(const Email& email)
     query.prepare(QStringLiteral(
         "INSERT OR REPLACE INTO emails "
         "(message_id, folder, sender, sent_to, cc, bcc, subject, preview, body, body_mode, label, "
-        "keywords_json, status, at_utc, has_attachments, source_mode, pgp_encrypted, pgp_decrypt_error) "
+        "keywords_json, status, at_utc, has_attachments, source_mode, pgp_encrypted, pgp_signed, pgp_decrypt_error) "
         "VALUES (:message_id, :folder, :sender, :sent_to, :cc, :bcc, :subject, :preview, :body, "
         ":body_mode, :label, :keywords_json, :status, :at_utc, :has_attachments, :source_mode, "
-        ":pgp_encrypted, :pgp_decrypt_error)"));
+        ":pgp_encrypted, :pgp_signed, :pgp_decrypt_error)"));
     query.bindValue(QStringLiteral(":message_id"), email.messageId);
     // A default-constructed QString is NULL to Qt's SQL layer, not ''. Since
     // migration 006 `folder` is NOT NULL and half of the PRIMARY KEY, so
@@ -96,6 +97,7 @@ bool EmailDao::insertOrReplace(const Email& email)
     query.bindValue(QStringLiteral(":has_attachments"), email.hasAttachments ? 1 : 0);
     query.bindValue(QStringLiteral(":source_mode"), email.sourceMode);
     query.bindValue(QStringLiteral(":pgp_encrypted"), email.pgpEncrypted ? 1 : 0);
+    query.bindValue(QStringLiteral(":pgp_signed"), email.pgpSigned ? 1 : 0);
     query.bindValue(QStringLiteral(":pgp_decrypt_error"), email.pgpDecryptError);
     return query.exec();
 }

@@ -62,7 +62,9 @@ kypost_add_test(OpenPgpDecryptorTest core/pgp/OpenPgpDecryptorTest.cpp)
 kypost_add_test(MimeBodyReaderTest core/pgp/MimeBodyReaderTest.cpp)
 kypost_add_test(PgpMimeWriterTest core/pgp/PgpMimeWriterTest.cpp)
 kypost_add_test(OpenPgpKeyImporterTest core/pgp/OpenPgpKeyImporterTest.cpp)
+kypost_add_test(OpenPgpKeyringTest core/pgp/OpenPgpKeyringTest.cpp)
 kypost_add_test(DeviceEnrollmentCryptoTest core/pgp/DeviceEnrollmentCryptoTest.cpp)
+target_link_libraries(DeviceEnrollmentCryptoTest PRIVATE OpenSSL::Crypto)
 kypost_add_test(OpenPgpEncryptorTest core/pgp/OpenPgpEncryptorTest.cpp)
 kypost_add_test(PgpSendPlannerTest core/pgp/PgpSendPlannerTest.cpp)
 kypost_add_test(EncryptedMessageReaderTest core/pgp/EncryptedMessageReaderTest.cpp)
@@ -252,6 +254,28 @@ kypost_add_app_test(RemoteContentInterceptorTest
     ${CMAKE_SOURCE_DIR}/app/mail/RemoteContentInterceptor.cpp
   LIBS Qt6::WebEngineCore Qt6::WebEngineQuick
 )
+
+kypost_add_app_test(ProtectedImageHandlerTest
+  SOURCES
+    app/mail/ProtectedImageHandlerTest.cpp
+    ${CMAKE_SOURCE_DIR}/app/mail/ProtectedImageHandler.cpp
+    ${CMAKE_SOURCE_DIR}/app/mail/RemoteContentInterceptor.cpp
+  LIBS Qt6::WebEngineCore Qt6::WebEngineQuick Qt6::Qml Qt6::Gui
+)
+target_compile_definitions(ProtectedImageHandlerTest PRIVATE KYPOST_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+set_tests_properties(ProtectedImageHandlerTest PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu;QT_QUICK_BACKEND=software")
+if(EXISTS "/.flatpak-info")
+  # BaseApp's WebEngine lives in /app, outside the SDK Qt prefix. Its nested
+  # sandbox uses the Flatpak portal, which requires an installed app; the
+  # builder has not installed this one yet. Scope this to the test process
+  # inside the build sandbox, never the shipped app or native tests.
+  set_property(TEST ProtectedImageHandlerTest APPEND PROPERTY ENVIRONMENT
+    "QTWEBENGINEPROCESS_PATH=/app/lib/libexec/QtWebEngineProcess"
+    "QTWEBENGINE_RESOURCES_PATH=/app/resources"
+    "QTWEBENGINE_LOCALES_PATH=/app/translations/qtwebengine_locales"
+    "QTWEBENGINE_DISABLE_SANDBOX=1")
+endif()
 
 # ContactListModel/ContactsController (Task 33) live in app/contacts/, not
 # kypostcore -- same app/ test pattern as EmailListModelTest/MailControllerTest

@@ -2,6 +2,8 @@
 
 #include <QByteArray>
 #include <QString>
+#include <QStringList>
+#include <functional>
 
 #include "security/SecureBytes.h"
 
@@ -86,3 +88,32 @@ PgpImportResult importPublicKey(const QByteArray& armoredPublicKey, const QStrin
 
 PgpImportResult importPrivateKey(const SecureBytes& armoredPrivateKey, const QString& expectedFingerprint,
                                   const QString& homeDirectory = QString());
+
+struct PgpKeyringSnapshot
+{
+    QString activeFingerprint;
+    qint64 materialGeneration = 0;
+    QStringList keyFingerprints;
+};
+
+enum class PgpKeyringImportStatus
+{
+    Imported,
+    Unchanged,
+    Rejected, // Validation failed before touching the destination.
+    UnsupportedRevocationCertificate, // Never discard or apply an unpublished certificate.
+    ImportFailed, // Destination may contain a subset; retain it and retry, never delete.
+    Cancelled, // May also follow partial import; cannot acknowledge enrollment.
+    EngineUnavailable,
+};
+
+// Preparation only: the v2 enrollment controller must not call this or use its
+// legacy boolean acknowledgement for v3. expected comes from the authenticated
+// current server snapshot, not from parsing this payload. No archive is written.
+// All members are validated in isolation before the first destination import.
+// Only Imported/Unchanged permit the caller to advance active selection/ack.
+// Run on a worker. stillCurrent, if supplied, must be thread-safe; it is checked
+// between imports and after the last one. GnuPG imports cannot be rolled back.
+PgpKeyringImportStatus importPrivateKeyring(
+    const SecureBytes& keyringJson, const PgpKeyringSnapshot& expected,
+    const QString& homeDirectory = {}, const std::function<bool()>& stillCurrent = {});

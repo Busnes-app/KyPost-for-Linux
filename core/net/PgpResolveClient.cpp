@@ -26,6 +26,14 @@ ResolvedRecipientKey keyFromJson(const QJsonObject& object)
 
 } // namespace
 
+bool ResolvedRecipientKey::canEncryptWithoutConfirmation() const
+{
+    // pgp_resolver.go: only pinned contacts and WKD authorize automatic use.
+    // Keyserver discovery requires confirmation; changed/revoked/expired,
+    // absent and future tiers must not become consent merely by carrying bytes.
+    return usable && (tier == QStringLiteral("verified") || tier == QStringLiteral("wkd"));
+}
+
 PgpResolveClient::PgpResolveClient(HttpClient& httpClient)
     : m_httpClient(httpClient)
 {

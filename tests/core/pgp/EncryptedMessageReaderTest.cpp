@@ -85,6 +85,9 @@ private slots:
     void aPlaintextOverTheCeilingIsTheSameAnswer();
     void onlyTheRetryableStatusCarriesDetail();
 
+    void detachedVerificationHonorsTheReadCeiling();
+    void detachedSignatureVerdicts_data();
+    void detachedSignatureVerdicts();
     void aSignatureFromTheSendersOwnKeyIsCreditedToThem();
     void aSignatureFromTheSendersSigningSubkeyIsCreditedToThem();
     void aValidSignatureFromAKeyNobodyBindsToTheSenderIsNotCreditedToThem();
@@ -152,7 +155,7 @@ QByteArray EncryptedMessageReaderTest::signedAndEncryptedTo(const GnupgFixture& 
         return {};
 
     const PgpEncryptResult encrypted =
-        signAndEncrypt(plaintext, signerAddress, { imported.fingerprint }, signer.path());
+        signAndEncrypt(plaintext, signer.fingerprintOf(signerAddress), { imported.fingerprint }, signer.path());
     return encrypted.status == PgpEncryptStatus::Encrypted ? encrypted.armoredCiphertext.toUtf8()
                                                             : QByteArray();
 }
@@ -300,6 +303,63 @@ void EncryptedMessageReaderTest::onlyTheRetryableStatusCarriesDetail()
 }
 
 // The one state that may be shown as verified.
+void EncryptedMessageReaderTest::detachedVerificationHonorsTheReadCeiling()
+{
+    const QByteArray bytes("longer than the tiny test ceiling");
+    const auto signature = m_signer.detachedSignature(bytes, QStringLiteral("sender@example.com"));
+    QVERIFY(!signature.isEmpty());
+    const auto result = OpenPgpDecryptor(8).verifyDetached(bytes, signature, m_signer.path());
+    QCOMPARE(result.status, PgpVerifyStatus::TooLarge);
+}
+
+void EncryptedMessageReaderTest::detachedSignatureVerdicts_data()
+{
+    QTest::addColumn<QString>("variant");
+    QTest::addColumn<int>("expected");
+    QTest::newRow("valid") << QStringLiteral("valid") << int(PgpSignatureVerdict::ValidFromSender);
+    QTest::newRow("tampered") << QStringLiteral("tampered") << int(PgpSignatureVerdict::Invalid);
+    QTest::newRow("changed-line-endings") << QStringLiteral("lf") << int(PgpSignatureVerdict::Invalid);
+    QTest::newRow("missing-key") << QStringLiteral("missing") << int(PgpSignatureVerdict::CannotCheck);
+    QTest::newRow("conflicting-binding") << QStringLiteral("conflict") << int(PgpSignatureVerdict::CannotCheck);
+    QTest::newRow("other-binding") << QStringLiteral("other") << int(PgpSignatureVerdict::ValidFromUnknownKey);
+}
+
+void EncryptedMessageReaderTest::detachedSignatureVerdicts()
+{
+    QFETCH(QString, variant);
+    QFETCH(int, expected);
+    const QByteArray original("Content-Type: text/plain\r\n\r\nexact signed bytes\r\n");
+    const auto signature = m_signer.detachedSignature(original, QStringLiteral("sender@example.com"));
+    QVERIFY(!signature.isEmpty());
+    QByteArray bytes = original;
+    if (variant == QStringLiteral("tampered")) bytes.replace("exact", "other");
+    if (variant == QStringLiteral("lf")) bytes.replace("\r\n", "\n");
+    // Separate home per case, including no pre-imported correspondent keys.
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    if (variant == QStringLiteral("other")) {
+        const auto imported = importPublicKey(m_signer.exportPublicKey(QStringLiteral("sender@example.com")),
+            m_signer.fingerprintOf(QStringLiteral("sender@example.com")), home.path());
+        QCOMPARE(imported.status, PgpImportStatus::Imported);
+    }
+    QJsonArray keys;
+    if (variant != QStringLiteral("missing")) {
+        const auto& signer = variant == QStringLiteral("other") ? m_stranger : m_signer;
+        const QString uid = variant == QStringLiteral("other") ? QStringLiteral("eve@evil.example") : QStringLiteral("sender@example.com");
+        keys.append(QJsonObject{{"publicKey", QString::fromUtf8(signer.exportPublicKey(uid))},
+            {"fingerprint", signer.fingerprintOf(uid)}, {"conflict", variant == QStringLiteral("conflict")},
+            {"tier", "future-tier"}, {"futureMetadata", 7}});
+    }
+    const QJsonObject payload{{"signedPartBase64", QString::fromLatin1(bytes.toBase64())},
+        {"signaturePayload", QString::fromUtf8(signature)}, {"resolvedSender", "sender@example.com"}, {"signerKeys", keys}};
+    FakeRelayServer fake(httpResponse(200, "OK", QJsonDocument(payload).toJson()));
+    const auto result = readAgainst(fake, OpenPgpDecryptor(), home.path());
+    QCOMPARE(result.status, PgpReadStatus::SignedOnly);
+    QCOMPARE(result.plaintext, bytes);
+    QCOMPARE(int(result.signature), expected);
+    GnupgFixture::killAgent(home.path());
+}
+
 void EncryptedMessageReaderTest::aSignatureFromTheSendersOwnKeyIsCreditedToThem()
 {
     const QByteArray armored =
@@ -347,6 +407,18 @@ void EncryptedMessageReaderTest::aSignatureFromTheSendersSigningSubkeyIsCredited
 
     QCOMPARE(result.status, PgpReadStatus::Decrypted);
     QCOMPARE(result.signature, PgpSignatureVerdict::ValidFromSender);
+
+    const QByteArray part("Content-Type: text/plain\r\n\r\nsigned by a subkey\r\n");
+    const auto detached = subkeySigner.detachedSignature(part, QStringLiteral("sub@example.com"));
+    QVERIFY(!detached.isEmpty());
+    const QJsonArray keys{QJsonObject{{"publicKey", QString::fromUtf8(subkeySigner.exportPublicKey(QStringLiteral("sub@example.com")))},
+        {"fingerprint", subkeySigner.fingerprintOf(QStringLiteral("sub@example.com"))}}};
+    fake.setResponse(httpResponse(200, "OK", QJsonDocument(QJsonObject{
+        {"signedPartBase64", QString::fromLatin1(part.toBase64())}, {"signaturePayload", QString::fromUtf8(detached)},
+        {"resolvedSender", "sub@example.com"}, {"signerKeys", keys}}).toJson()));
+    const auto signedResult = readAgainst(fake, OpenPgpDecryptor(), reader.path());
+    QCOMPARE(signedResult.status, PgpReadStatus::SignedOnly);
+    QCOMPARE(signedResult.signature, PgpSignatureVerdict::ValidFromSender);
 
     GnupgFixture::killAgent(subkeySigner.path());
     GnupgFixture::killAgent(reader.path());

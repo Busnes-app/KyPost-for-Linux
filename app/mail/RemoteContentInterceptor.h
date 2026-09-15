@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QObject>
+#include <QMutex>
+#include <QUrl>
 #include <QWebEngineUrlRequestInterceptor>
 
 class QQuickWebEngineProfile;
@@ -31,11 +33,14 @@ class QQuickWebEngineProfile;
 class RemoteContentInterceptor : public QWebEngineUrlRequestInterceptor
 {
     Q_OBJECT
+    Q_PROPERTY(QUrl localImageBase READ localImageBase WRITE setLocalImageBase NOTIFY localImageBaseChanged)
     Q_PROPERTY(bool imagesLoaded READ imagesLoaded WRITE setImagesLoaded NOTIFY imagesLoadedChanged)
 
 public:
     explicit RemoteContentInterceptor(QObject* parent = nullptr);
 
+    QUrl localImageBase() const;
+    void setLocalImageBase(const QUrl& base);
     bool imagesLoaded() const;
     void setImagesLoaded(bool loaded);
 
@@ -50,8 +55,11 @@ public:
 
 signals:
     void imagesLoadedChanged();
+    void localImageBaseChanged();
 
 private:
+    mutable QMutex m_mutex;
+    QUrl m_localImageBase;
     bool m_imagesLoaded = false;
 };
 
@@ -61,3 +69,5 @@ private:
 // tests to use). ResourceType is a plain public enum, passable by value
 // with no instance needed.
 bool shouldBlockRemoteContentRequest(QWebEngineUrlRequestInfo::ResourceType resourceType, bool imagesLoaded);
+
+bool isProtectedImageRequest(const QUrl& url, const QUrl& base, QWebEngineUrlRequestInfo::ResourceType type);

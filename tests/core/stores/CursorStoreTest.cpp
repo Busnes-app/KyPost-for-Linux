@@ -9,6 +9,7 @@ class CursorStoreTest : public QObject
     Q_OBJECT
 
 private slots:
+    void oldMailCursorsCannotSkipSignedFlagBackfill();
     void defaultsAreEmpty();
     void mailCursorRoundTrips();
     void mailCursorIsScopedPerSubscriberAndFolder();
@@ -26,6 +27,23 @@ private:
 QString CursorStoreTest::tempFilePath(QTemporaryDir& dir, const QString& name) const
 {
     return dir.filePath(name);
+}
+
+void CursorStoreTest::oldMailCursorsCannotSkipSignedFlagBackfill()
+{
+    QTemporaryDir dir;
+    const auto path = dir.filePath(QStringLiteral("cursors.ini"));
+    QSettings old(path, QSettings::IniFormat);
+    old.setValue(QStringLiteral("sync/mail/sub-1/INBOX"), QStringLiteral("123"));
+    old.setValue(QStringLiteral("sync/contactBaseCursor"), QStringLiteral("456"));
+    old.sync();
+    QCOMPARE(old.status(), QSettings::NoError);
+    CursorStore store(path);
+    QVERIFY(store.mailCursor(QStringLiteral("sub-1"), QStringLiteral("INBOX")).isEmpty());
+    QCOMPARE(store.contactBaseCursor(), QStringLiteral("456"));
+    QVERIFY(store.setMailCursor(QStringLiteral("sub-1"), QStringLiteral("INBOX"), QStringLiteral("789")));
+    CursorStore reopened(path);
+    QCOMPARE(reopened.mailCursor(QStringLiteral("sub-1"), QStringLiteral("INBOX")), QStringLiteral("789"));
 }
 
 void CursorStoreTest::defaultsAreEmpty()

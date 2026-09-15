@@ -9,15 +9,10 @@
 
 struct RelayAuth;
 
-// Response from GET {serverBaseUrl}/api/pgp/bootstrap -- the Go backend's
-// PGP bootstrap handler. The real response also carries wrappedPrivateKey,
-// unlockRequired, signerPublicKeys, payloadEndpoint, fingerprint, keyId,
-// publicKey, keySource and createdAt, but those exist for the browser (which
-// does the actual OpenPGP work); this client never holds the account's
-// private key and does no OpenPGP itself, so only hasIdentity, protection and
-// the primary address are parsed. ok is false on any transport/HTTP/decode failure so a caller
-// can tell "couldn't check" apart from a genuine "no identity" -- see
-// PgpBootstrapClientTest::failureIsNotAnEmptySuccess.
+// Account identity and custody from GET /api/pgp/bootstrap. Required custody
+// fields are type-checked: an unavailable or malformed answer must never be
+// mistaken for permission to upload a plaintext draft. Browser key-wrapping
+// fields are deliberately not retained here; durable key custody is GnuPG's.
 struct PgpBootstrapResult
 {
     std::optional<NetworkError> error;
@@ -25,7 +20,7 @@ struct PgpBootstrapResult
     bool ok = false;
     bool hasIdentity = false;
     QString protection;
-    QString fingerprint;
+    QString fingerprint; // Normalized full fingerprint, empty for invalid selectors.
 
     // The account's own mail address -- suggestedUserIDs[0], which the server
     // takes from the IMAP username.

@@ -67,10 +67,10 @@ core/pgp/OpenPgpKeyImporter.cpp	        && observed.compare(expectedFingerprint,
 # The PRE-flight lookup: a fingerprint that is not in the keyring at all.
 core/pgp/OpenPgpEncryptor.cpp	            out.unusableRecipients.append(fingerprint);	            ;	OpenPgpEncryptorTest:oneMissingRecipientKeyFailsTheWholeMessage
 
-# The POST-encryption check: gpg holds the key and refuses it anyway. A
-# separate guard from the one above, and it needed its own test -- the
-# missing-key test stayed green without it, which is what this harness is for.
-core/pgp/OpenPgpEncryptor.cpp	            out.unusableRecipients.append(QString::fromUtf8(invalid->fpr));	            ;	OpenPgpEncryptorTest:aRecipientWhoseKeyGpgHoldsButRefusesAlsoFailsTheWholeMessage
+# The POST-encryption invalid_recipients check remains defense in depth.
+# Since key usability is checked before encryption, the expired-key case is
+# rejected there first: removing the post check now stays green (measured).
+# Do not claim that case proves the post-operation guard independently.
 
 # --- each blind recipient gets their own ciphertext ----------------------
 core/pgp/PgpSendPlanner.cpp	        if (!encryptInto({ bccFingerprints.at(i) }, { bcc.at(i) }, plan))	        if (!encryptInto(toCcFingerprints, { bcc.at(i) }, plan))	PgpSendPlannerTest:aBccRecipientIsNotNamedInAnybodyElsesDelivery
@@ -91,9 +91,9 @@ core/net/PgpResolveClient.cpp	    key.usable = object.value(QStringLiteral("usab
 core/pgp/MimeBodyReader.cpp	        if (!terminated) {	        if (false) {	MimeBodyReaderTest:nestedBoundariesThatPrefixEachOtherDoNotTruncate
 
 # --- sender text is never treated as trusted compose HTML ----------------
-app/qml/DesktopRoot.qml	                initialBodyIsHtml: composeWindow.popInitialBodyIsHtml	                initialBodyIsHtml: true	ComposeSeeding:test_popout_compose_preserves_body_trust
+app/qml/DesktopRoot.qml	                initialBodyIsHtml: composeWindow.popInitialBodyIsHtml	                initialBodyIsHtml: true	QmlTests:ComposeSeeding::test_popout_compose_preserves_body_trust
 # A decrypted MIME entity cannot make the recursive walker copy arbitrary bytes.
-core/pgp/MimeBodyReader.cpp	    if (depth > kMaxDepth || partBudget <= 0 || raw.size() > byteBudget)	if (false)	MimeBodyReaderTest:walkedBytesAreBounded
+core/pgp/MimeBodyReader.cpp	    if (depth > kMaxDepth || partBudget <= 0 || raw.size() > byteBudget) {	    if (false) {	MimeBodyReaderTest:walkedBytesAreBounded
 
 # --- a header value cannot inject another header -------------------------
 core/pgp/PgpMimeWriter.cpp	    value.remove(QLatin1Char('"'));		PgpMimeWriterTest:aFilenameCannotEscapeItsQuotedString
@@ -180,7 +180,7 @@ core/db/DatabaseEncryptionMigration.cpp	        if (!QFile::rename(m_supersededP
 # and the state transition that acted on it.
 
 # the flag that decides ":memory:" vs the real file, and whether it landed
-core/stores/SettingsStore.cpp	    return m_settings.status() == QSettings::NoError;	    return true;	SettingsStoreTest:aHostileLocationFlagThatCannotReachTheDiskIsReportedAsFailed
+core/stores/SettingsStore.cpp	    return m_settings.status() == QSettings::NoError; // Hostile-location relaunch requires durable settings.	    return true;	SettingsStoreTest:aHostileLocationFlagThatCannotReachTheDiskIsReportedAsFailed
 
 # the erase and the relaunch happen only if that flag actually landed
 app/security/AppLockManager.cpp	    if (!m_settingsStore.setHostileLocationProtectionEnabled(enabled)) {	    if (m_settingsStore.setHostileLocationProtectionEnabled(enabled), false) {	AppLockManagerTest:hostileLocationErasesNothingWhenTheFlagCannotBePersisted
@@ -327,3 +327,59 @@ core/security/AppLockStore.cpp	    if (actual.isEmpty()) {	    if (false) {	AppL
 # so one line covers both -- which is also why it is a function rather than
 # two copies.
 app/security/AppLockManager.cpp	    if (!couldNotEvaluate)	    if (true)	AppLockManagerTest:aVerifierThatCannotBeComputedNeverReachesTheWipe
+
+# Cancelling a protected read must invalidate even an as-yet-empty memory slot.
+app/mail/MailController.cpp	            if (generation != m_decryptGeneration || m_appLocked) {	            if (false) {	MailDecryptionTest:forgettingInvalidatesAnInFlightRead
+app/qml/utils/format.js	        && !!folder && String(folder) === String(heldFolder)	        && true	QmlTests:DecryptedBody::test_sameUidInAnotherFolderCannotReadProtectedContent
+
+# --- protected attachments and self-encrypted drafts -----------------------
+app/mail/MailController.cpp	    if (!decryptedStillOurs() || token != m_decryptedToken || index < 0 || index >= m_decryptedAttachments.size())	    if (false)	MailDecryptionTest:decryptedAttachmentsStayLocalAndRequireTheCurrentToken
+app/mail/MailController.cpp	    if (m_settingsStore.hostileLocationProtectionEnabled()) { // protected file export	    if (false) { // protected file export	MailDecryptionTest:decryptedAttachmentsStayLocalAndRequireTheCurrentToken
+app/mail/MailController.cpp	        || url.host() != m_decryptedToken || url.hasQuery() || url.hasFragment()	        || url.hasQuery() || url.hasFragment()	MailDecryptionTest:cidImagesAreBoundToTheCurrentUnlockedMessage
+app/mail/MailController.cpp	            if (!identity.ok || (!client && !plaintextAllowed)) {	            if (false) {	MailDecryptionTest:draftCustodyFailuresNeverPost
+app/mail/MailController.cpp	            if (client) {	            if (false) {	MailDecryptionTest:encryptedDraftNeverUploadsPlaintext
+core/net/RelayMailSource.cpp	    if (QJsonDocument(request).toJson(QJsonDocument::Compact).size() > 25 * 1024 * 1024) {	    if (false) {	RelayMailSourceTest:oversizedEncryptedDraftNeverPosts
+
+# --- signed MIME, discovery consent, and current-key selection -------------
+core/pgp/EncryptedMessageReader.cpp	            out.signature = verdictFor(verified.signature, boundFingerprints);	            out.signature = PgpSignatureVerdict::ValidFromSender;	EncryptedMessageReaderTest:detachedSignatureVerdicts
+core/pgp/OpenPgpDecryptor.cpp	    if (signedPart.size() > m_maxPlaintextBytes || signature.size() > 1024 * 1024) {	    if (false) {	EncryptedMessageReaderTest:detachedVerificationHonorsTheReadCeiling
+core/net/PgpPayloadClient.cpp	    if (!bytes || bytes.decoded.isEmpty() || bytes.decoded.toBase64() != base64	    if (false	PgpPayloadClientTest:malformedSignedOctets
+core/net/PgpPayloadClient.cpp	    if (encoded.size() > ((maxSignedBytes + 2) / 3) * 4 || out.signaturePayload.size() > 1024 * 1024) {	    if (false) {	PgpPayloadClientTest:detachedSignatureHasItsOwnSizeCeiling
+app/mail/MailController.cpp	            if ((result.status == PgpReadStatus::SignedOnly && !signedOnly)	            if (false	MailDecryptionTest:signedInboxRowCanBeReadAndVerified
+core/net/PgpResolveClient.cpp	    return usable && (tier == QStringLiteral("verified") || tier == QStringLiteral("wkd"));	    return usable;	MailEncryptedSendTest:unsafeDiscoveryTierNeverSends
+core/pgp/PgpSendPlanner.cpp	        ? ownKeyFingerprint(message.from, homeDirectory) : senderFingerprint.trimmed();	        ? ownKeyFingerprint(message.from, homeDirectory) : ownKeyFingerprint(message.from, homeDirectory);	PgpSendPlannerTest:missingCurrentKeyNeverFallsBackToOldAddressKey
+
+# Restored drafts carry attachments in memory across reader navigation.
+app/mail/MailController.cpp	    if (token == m_draftToken && m_pairingStore.stillCurrent(m_draftIdentity))	    if (token == m_draftToken)	MailDecryptionTest:reopenedDraftPreservesRecipientsAndMemoryAttachments
+app/mail/MailController.cpp	        releaseDraft(m_draftToken);	        /* neutralized restored-draft lock revocation */	MailDecryptionTest:reopenedDraftPreservesRecipientsAndMemoryAttachments
+app/mail/MailController.cpp	            if (restored && !client) {	            if (false) {	MailDecryptionTest:reopenedDraftPreservesRecipientsAndMemoryAttachments
+app/mail/MailController.cpp	    if (!draftToken.isEmpty())	    if (false)	MailDecryptionTest:reopenedDraftPreservesRecipientsAndMemoryAttachments
+app/qml/components/RichBodyEditor.qml	            + JSON.stringify(html) + "; clean(template.content); document.body.replaceChildren(template.content); })();"	            + JSON.stringify(html) + "; document.body.replaceChildren(template.content); })();"	ProtectedImageHandlerTest:restoredDraftHtmlIsCleanedBeforeEnteringTheEditor
+
+# Explicit v3 framing, size admission and authenticated plaintext release.
+core/pgp/DeviceEnrollmentCrypto.cpp	    const int maximum = version == 3 ? kMaxV3EnvelopeBytes : kMaxEnvelopeBytes;	    const int maximum = kMaxEnvelopeBytes;	DeviceEnrollmentCryptoTest:v3LimitsCountUtf8Bytes
+core/pgp/DeviceEnrollmentCrypto.cpp	    if (object.value(QStringLiteral("v")) != QJsonValue(version)	    if (false	DeviceEnrollmentCryptoTest:rejectsV3BindingAndFramingChanges
+core/pgp/DeviceEnrollmentCrypto.cpp	        || (canonical && QString::fromLatin1(decoded.decoded.toBase64()) != value.toString()))	        || false)	DeviceEnrollmentCryptoTest:rejectsV3BindingAndFramingChanges
+core/pgp/DeviceEnrollmentCrypto.cpp	            reinterpret_cast<unsigned char*>(plaintext.bytes().data()) + written, &finalBytes) != 1)	            reinterpret_cast<unsigned char*>(plaintext.bytes().data()) + written, &finalBytes) == -999)	DeviceEnrollmentCryptoTest:rejectsV3BindingAndFramingChanges
+
+# Complete-ring GnuPG-only custody: scratch admission, snapshot binding and no partial success.
+# boundedKeyPackets additionally refuses compressed key packets before GnuPG 2.4.4
+# can expand them (upstream g10/import.c read_block). GnuPG 2.4.9 also refuses
+# compression, so the API-level compressed-key test cannot distinguish this guard
+# from the engine's redundant refusal on this machine. Do not claim it mutated red.
+core/pgp/OpenPgpKeyImporter.cpp	        if (m_bytes.size() > 128 * 1024)	        if (false)	OpenPgpKeyringTest:malformedRingIsRejectedBeforeDestinationWrites
+core/pgp/OpenPgpKeyImporter.cpp	    if (ring.hasCertificate)	    if (false)	OpenPgpKeyringTest:unpublishedCertificateIsNeverAppliedOrDiscarded
+core/pgp/OpenPgpKeyImporter.cpp	        || ring.snapshot.materialGeneration != expected.materialGeneration || claimed != expectedInventory)	        || false)	OpenPgpKeyringTest:snapshotBindingsAreRequired
+core/pgp/OpenPgpKeyImporter.cpp	    if (ring.snapshot.activeFingerprint != normalizedFingerprint(expected.activeFingerprint.toLatin1())	    if (false	OpenPgpKeyringTest:snapshotBindingsAreRequired
+core/pgp/OpenPgpKeyImporter.cpp	    if (actual != claimed)	    if (false)	OpenPgpKeyringTest:malformedRingIsRejectedBeforeDestinationWrites
+core/pgp/OpenPgpKeyImporter.cpp	                || info.replies != 1 || !info.clear)	                || info.replies != 1)	OpenPgpKeyringTest:protectedSecretPacketsAreRejected
+core/pgp/OpenPgpKeyImporter.cpp	    if (stillCurrent && !stillCurrent())	    if (false)	OpenPgpKeyringTest:cancellationAfterPartialImportCanBeRetried
+
+# Pairing teardown frees the draft plaintext holder even after reader navigation.
+app/mail/MailController.cpp	    if (!m_draftToken.isEmpty() && !m_pairingStore.stillCurrent(m_draftIdentity))	    if (false)	MailDecryptionTest:pairingChangeReleasesRestoredDraft
+
+# Bootstrap selectors and resolved keys must be full fingerprints, not patterns.
+core/net/PgpBootstrapClient.cpp	    out.fingerprint = normalizedFingerprint(obj.value(QStringLiteral("fingerprint")).toString().toUtf8());	    out.fingerprint = obj.value(QStringLiteral("fingerprint")).toString();	PgpBootstrapClientTest:fingerprintAdmission
+core/pgp/OpenPgpEncryptor.cpp	        && requested == QString::fromLatin1(key->fpr)	        && true	OpenPgpEncryptorTest:keyPatternsAreNotFingerprints
+core/pgp/OpenPgpEncryptor.cpp	        || !usableKey(signer, signerFingerprint, true)) {	        || signer == nullptr) {	OpenPgpEncryptorTest:keyPatternsAreNotFingerprints
+core/pgp/OpenPgpEncryptor.cpp	            || !usableKey(key, fingerprint, false)) {	            || key == nullptr) {	OpenPgpEncryptorTest:keyPatternsAreNotFingerprints

@@ -1,6 +1,8 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import QtQuick.Dialogs
+import QtCore
 import QtWebEngine
 import com.kysecurity.mail 1.0
 import "../components"
@@ -27,6 +29,7 @@ Item {
     // more standalone to go.
     property bool isPoppedOut: false
 
+    signal draftRequested(var draft)
     signal composeRequested(string to, string subject, string body)
     signal actionCompleted(string action) // action: "archive" | "junk" | "delete"
     // Detach into a standalone top-level window (Desktop mode only -- see
@@ -44,6 +47,10 @@ Item {
     // comment). {} (empty map) means "nothing loaded yet" or "not cached".
     property var email: ({})
     property var attachments: [] // [{index, name, mimeType, size}, ...]
+    readonly property bool hasProtectedMessage: Format.protectedMessageMatches(root.messageId,
+        MailApp.decryptedMessageId, root.folder, MailApp.decryptedFolder)
+    readonly property var visibleAttachments: root.hasProtectedMessage ? MailApp.decryptedAttachments : root.attachments
+    readonly property string localImageBase: root.hasProtectedMessage ? MailApp.decryptedImageBase : ""
     property string attachmentStatus: ""
     // Remote images are blocked by default (see WebEngineView's
     // settings.autoLoadImages below) -- true once the user has explicitly
@@ -74,8 +81,11 @@ Item {
     readonly property var decrypted: Format.decryptedBodyFor(root.messageId,
                                                               MailApp.decryptedMessageId,
                                                               MailApp.decryptedHtml,
-                                                              MailApp.decryptedPlain)
-    readonly property bool hasDecryptedBody: root.decrypted.body !== ""
+                                                              MailApp.decryptedPlain, root.folder, MailApp.decryptedFolder)
+    readonly property string displaySubject: Format.protectedSubjectFor(root.messageId,
+        MailApp.decryptedMessageId, root.folder, MailApp.decryptedFolder,
+        MailApp.decryptedSubject, root.email.subject)
+    readonly property bool hasDecryptedBody: root.hasProtectedMessage // includes attachment-only mail
     // Which form it is comes from the message's own MIME Content-Type, not
     // from sniffing the characters -- see Format.renderedEmailHtml.
     readonly property bool decryptedIsHtml: root.decrypted.isHtml
@@ -87,7 +97,10 @@ Item {
         MailApp.forgetDecrypted()
         reload()
     }
-    onFolderChanged: reload()
+    onFolderChanged: {
+        MailApp.forgetDecrypted()
+        reload()
+    }
 
     // MailApp is a singleton and the plaintext arrives asynchronously, so the
     // web view has to be told to re-render when it does -- and again when it
@@ -96,10 +109,13 @@ Item {
     Connections {
         target: MailApp
         function onDecryptedChanged() {
+            if (protectedSaveDialog.visible && protectedSaveDialog.messageToken !== MailApp.decryptedToken)
+                protectedSaveDialog.close()
             webViewLoader.applyContent()
         }
     }
     Component.onCompleted: reload()
+    Component.onDestruction: MailApp.forgetDecrypted()
 
     // Archive/Junk/Delete dispatch and return; the answer arrives here.
     //
@@ -164,14 +180,14 @@ Item {
             root.attachments = []
             return
         }
-        root.email = MailApp.findByMessageId(root.messageId)
+        root.email = MailApp.findByMessageId(root.messageId, root.folder)
         // Cleared, then refilled by onAttachmentsListed below. The list is
         // fetched off-thread now, so it cannot be assigned here -- and
         // leaving the previous message's attachments up while the new
         // message's are in flight would offer downloads that belong to the
         // mail the user just navigated away from.
         root.attachments = []
-        if (root.email && root.email.hasAttachments)
+        if (root.email && root.email.hasAttachments && root.email.pgpState !== 1)
             MailApp.listAttachments(root.folder, root.messageId)
         webViewLoader.applyContent()
     }
@@ -282,7 +298,7 @@ Item {
     }
 
     function renderedHtml(body, forcePlainText) {
-        return Format.renderedEmailHtml(body, root.imagesLoaded, root.bodyStyle(), forcePlainText)
+        return Format.renderedEmailHtml(body, root.imagesLoaded, root.bodyStyle(), forcePlainText, root.localImageBase)
     }
 
     // ---- layout ----------------------------------------------------
@@ -338,7 +354,7 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     textFormat: Text.PlainText
-                    text: root.email.subject || ""
+                    text: root.displaySubject
                     color: Theme.inkStrong
                     font.family: Theme.fontUi
                     font.pixelSize: 20
@@ -402,13 +418,25 @@ Item {
             spacing: 8
 
             IconButton {
+                objectName: "editProtectedDraft"
+                icon: "document-edit"
+                tooltip: i18n("Edit draft")
+                visible: root.folder === "Drafts" && root.hasProtectedMessage && root.email.pgpState === 1
+                enabled: !MailApp.isBusy
+                onClicked: {
+                    const draft = MailApp.reopenDecryptedDraft(MailApp.decryptedToken)
+                    if (draft.token) root.draftRequested(draft)
+                }
+            }
+
+            IconButton {
                 icon: "mail-reply-sender"
                 tooltip: i18n("Reply")
                 variant: "primary"
                 enabled: !MailApp.isBusy
                 onClicked: {
                     const to = root.extractAddress(root.email.sender)
-                    const subject = root.withPrefix(root.email.subject, "Re:")
+                    const subject = root.withPrefix(root.displaySubject, "Re:")
                     const body = "\n\n" + i18n("%1 wrote:", root.email.sender) + "\n" + root.email.preview
                     root.composeRequested(to, subject, body)
                 }
@@ -430,7 +458,7 @@ Item {
                             deduped.push(a)
                         }
                     }
-                    const subject = root.withPrefix(root.email.subject, "Re:")
+                    const subject = root.withPrefix(root.displaySubject, "Re:")
                     const body = "\n\n" + i18n("%1 wrote:", root.email.sender) + "\n" + root.email.preview
                     root.composeRequested(deduped.join(", "), subject, body)
                 }
@@ -440,10 +468,10 @@ Item {
                 tooltip: i18n("Forward")
                 enabled: !MailApp.isBusy
                 onClicked: {
-                    const subject = root.withPrefix(root.email.subject, "Fwd:")
+                    const subject = root.withPrefix(root.displaySubject, "Fwd:")
                     const body = "\n\n" + i18n("---------- Forwarded message ----------")
                         + "\n" + i18n("From: %1", root.email.sender)
-                        + "\n" + i18n("Subject: %1", root.email.subject)
+                        + "\n" + i18n("Subject: %1", root.displaySubject)
                         + "\n\n" + root.email.preview
                     root.composeRequested("", subject, body)
                 }
@@ -653,8 +681,8 @@ Item {
                     // machine. Already decrypted, or busy, and it goes away.
                     visible: !!root.email.canDecryptHere && !root.hasDecryptedBody
                              && !MailApp.decryptBusy
-                    text: i18n("Decrypt with your key")
-                    onClicked: MailApp.decryptMessage(root.messageId)
+                    text: root.email.pgpReadAction || i18n("Decrypt with your key")
+                    onClicked: MailApp.decryptMessage(root.messageId, root.folder)
                 }
 
                 Text {
@@ -662,7 +690,7 @@ Item {
                     Layout.fillWidth: true
                     textFormat: Text.PlainText
                     visible: MailApp.decryptBusy
-                    text: i18n("Waiting for your key…")
+                    text: root.email.pgpState === 4 ? i18n("Checking signature…") : i18n("Waiting for your key…")
                     color: Theme.ink
                     font.family: Theme.fontUi
                     font.pixelSize: 12
@@ -692,7 +720,7 @@ Item {
                     // asked.
                     visible: MailApp.decryptRetryable && !MailApp.decryptBusy
                     text: i18n("Try again")
-                    onClicked: MailApp.decryptMessage(root.messageId)
+                    onClicked: MailApp.decryptMessage(root.messageId, root.folder)
                 }
 
                 PrimaryButton {
@@ -791,7 +819,7 @@ Item {
                 // autoLoadImages follows root.imagesLoaded so the "Show
                 // images" affordance above can opt back in per-message.
                 settings.javascriptEnabled: false
-                settings.autoLoadImages: root.imagesLoaded
+                settings.autoLoadImages: root.imagesLoaded || root.hasProtectedMessage
 
                 // VibeSec fix: settings.autoLoadImages above only gates
                 // Blink's "Image" resource-loading policy -- a sender's
@@ -810,11 +838,15 @@ Item {
                 // installOn() Q_INVOKABLE instead.
                 profile: WebEngineProfile {
                     id: emailProfile
-                    Component.onCompleted: contentInterceptor.installOn(emailProfile)
+                    Component.onCompleted: {
+                        contentInterceptor.installOn(emailProfile)
+                        ProtectedImages.installOn(emailProfile)
+                    }
                 }
 
                 property RemoteContentInterceptor contentInterceptor: RemoteContentInterceptor {
                     imagesLoaded: root.imagesLoaded
+                    localImageBase: root.localImageBase
                 }
 
                 // VibeSec fix: this used to only reject LinkClickedNavigation,
@@ -871,7 +903,7 @@ Item {
             id: attachmentsColumn
             Layout.fillWidth: true
             spacing: 8
-            visible: root.email.hasAttachments === true
+            visible: root.visibleAttachments.length > 0
 
             SectionLabel { text: i18n("Attachments") }
 
@@ -880,7 +912,7 @@ Item {
                 spacing: 8
 
                 Repeater {
-                    model: root.attachments
+                    model: root.visibleAttachments
                     delegate: Rectangle {
                         radius: Theme.shapeButton
                         color: Theme.panel
@@ -909,8 +941,19 @@ Item {
                             // has to live up there rather than here: the
                             // status line outlives this chip, and the chip
                             // does not survive a reload().
-                            onTapped: MailApp.downloadAttachment(
-                                root.folder, root.messageId, modelData.index, modelData.name)
+                            onTapped: {
+                                if (!root.hasProtectedMessage) {
+                                    MailApp.downloadAttachment(root.folder, root.messageId, modelData.index, modelData.name)
+                                } else if (AppLock.hostileLocationEnabled) {
+                                    const ok = MailApp.openDecryptedAttachmentTemporarily(modelData.token, modelData.index)
+                                    root.attachmentStatus = ok ? i18n("Opened temporarily — not saved") : MailApp.lastError
+                                } else {
+                                    protectedSaveDialog.messageToken = modelData.token
+                                    protectedSaveDialog.partIndex = modelData.index
+                                    protectedSaveDialog.selectedFile = protectedSaveDialog.currentFolder.toString().replace(/\/?$/, "/") + encodeURIComponent(modelData.name)
+                                    protectedSaveDialog.open()
+                                }
+                            }
                         }
                     }
                 }
@@ -927,6 +970,19 @@ Item {
         }
         } // contentColumn
     } // flickable
+
+    FileDialog {
+        id: protectedSaveDialog
+        property string messageToken: ""
+        property int partIndex: -1
+        title: i18n("Save attachment")
+        fileMode: FileDialog.SaveFile
+        currentFolder: StandardPaths.writableLocation(StandardPaths.DownloadLocation)
+        onAccepted: {
+            const ok = MailApp.saveDecryptedAttachment(messageToken, partIndex, selectedFile)
+            root.attachmentStatus = ok ? i18n("Attachment saved") : MailApp.lastError
+        }
+    }
 
     // No dedicated Toast component exists yet (Task 35 brief allows either
     // choice) -- a plain Text that self-clears via this Timer is enough for

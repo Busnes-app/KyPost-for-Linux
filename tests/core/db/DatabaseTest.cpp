@@ -38,7 +38,7 @@ void DatabaseTest::opensInMemoryAndAppliesSchema()
     // 007_emails_body_mode) -- bumping this when a migration is added is how
     // this test proves the loop in Database::open() actually walks
     // version+1..N end-to-end.
-    QCOMPARE(versionQuery.value(0).toInt(), 7);
+    QCOMPARE(versionQuery.value(0).toInt(), 8);
 
     QSqlQuery tablesQuery(db.handle());
     QVERIFY(tablesQuery.exec(
@@ -87,7 +87,7 @@ void DatabaseTest::openIsIdempotentOnRealFile()
         QSqlQuery query(db1.handle());
         QVERIFY(query.exec(QStringLiteral("PRAGMA user_version")));
         QVERIFY(query.next());
-        QCOMPARE(query.value(0).toInt(), 7);
+        QCOMPARE(query.value(0).toInt(), 8);
     }
     {
         Database db2;
@@ -95,7 +95,7 @@ void DatabaseTest::openIsIdempotentOnRealFile()
         QSqlQuery query(db2.handle());
         QVERIFY(query.exec(QStringLiteral("PRAGMA user_version")));
         QVERIFY(query.next());
-        QCOMPARE(query.value(0).toInt(), 7);
+        QCOMPARE(query.value(0).toInt(), 8);
     }
 }
 
@@ -269,7 +269,7 @@ void DatabaseTest::migrationIsAtomicSoAFailureLeavesNoHalfAppliedSchema()
     QSqlQuery versionQuery(db.handle());
     QVERIFY(versionQuery.exec(QStringLiteral("PRAGMA user_version")));
     QVERIFY(versionQuery.next());
-    QCOMPARE(versionQuery.value(0).toInt(), 7);
+    QCOMPARE(versionQuery.value(0).toInt(), 8);
 }
 
 
@@ -361,7 +361,7 @@ void DatabaseTest::migration006RekeysAnExistingProfileWithoutLosingCachedMail()
     QSqlQuery version(db.handle());
     QVERIFY(version.exec(QStringLiteral("PRAGMA user_version")));
     QVERIFY(version.next());
-    QCOMPARE(version.value(0).toInt(), 7);
+    QCOMPARE(version.value(0).toInt(), 8);
 
     // Nothing was dropped on the way across, values included.
     EmailDao dao(db.handle());

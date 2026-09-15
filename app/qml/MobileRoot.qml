@@ -250,6 +250,9 @@ Kirigami.ApplicationWindow {
                 messageId: emailDetailPage.messageId
                 folder: emailDetailPage.folder
 
+                onDraftRequested: function (draft) {
+                    root.pageStack.push(composePageComponent, { restoredDraft: draft })
+                }
                 onComposeRequested: function (to, subject, body) {
                     root.pageStack.push(composePageComponent,
                         { initialTo: to, initialSubject: subject, initialBody: body })
@@ -270,12 +273,14 @@ Kirigami.ApplicationWindow {
             id: composePage
             objectName: "composePage"
             title: i18n("Compose")
+            property var restoredDraft: ({})
             property string initialTo: ""
             property string initialSubject: ""
             property string initialBody: ""
 
             Compose {
                 anchors.fill: parent
+                restoredDraft: composePage.restoredDraft
                 initialTo: composePage.initialTo
                 initialSubject: composePage.initialSubject
                 initialBody: composePage.initialBody

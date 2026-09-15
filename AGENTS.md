@@ -68,6 +68,12 @@ Test, added 2026-07-26 — see `tests/qml/`). The QML tests run against fake
 components from the shipped `app/qml/qml.qrc`, so a component missing from
 the resource bundle fails there rather than at runtime.
 
+`ProtectedImageHandlerTest` also runs real WebEngine pages. Inside a Flatpak
+build, its CTest environment points at the BaseApp's `/app` resources and
+disables the nested Chromium sandbox, whose portal requires an installed app.
+This applies only to that test inside the build sandbox, never to the shipped
+application or native tests.
+
 ## 4. Locked decisions (do not relitigate)
 
 Carried forward verbatim (in substance) from `Linux_QT_Client_Plan.md`'s own
@@ -240,6 +246,12 @@ is no key at rest here to protect, and no passphrase to keep out of a
 key material, and reversing the custody decision later must not also quietly
 delete the constraints that come with it.
 
+**Reaffirmed 2026-09-15: GnuPG-only for complete-ring enrollment too.** No
+original-JSON archive or second private store. Refuse a bundle containing an
+unpublished revocation certificate before any durable import: importing it would
+apply a revocation, and discarding it must not count as complete enrollment.
+Never delete existing user keys on failed enrollment, unpair or wipe.
+
 The rules below apply to any implementation, under either model. They are
 written now, before the code, because every one of them is easier to design
 in than to retrofit.
@@ -369,7 +381,10 @@ either way: a guard this build cannot speak to is a guard nobody has checked.
 The first run found two real things, which is the argument for having it:
 `oneMissingRecipientKeyFailsTheWholeMessage` proved only the pre-flight key
 lookup and stayed green when the post-encryption `invalid_recipients` check was
-removed -- a second, uncovered branch, now tested with an expired key. And the
+removed -- a second, uncovered branch, then tested with an expired key.
+The 2026-09-15 key-usability preflight now catches that expired key first,
+so its post-operation mutation is explicitly unproven in the manifest; the
+post-operation check remains defense in depth. And the
 decrypt path's `stillCurrent` check cannot be proven from outside at all,
 because the read-time guard already refuses to hand the plaintext out; that is
 recorded in the manifest rather than papered over.
@@ -916,6 +931,86 @@ worse than no comment: the next reader stops looking.
   unpaired device. Startup aggregates its own cleanup through
   `SecurityWipe::eraseOnDiskProfile()` and feeds a failure into the same
   banner rather than dropping three return values on the floor.
+
+## 6j. Protected-message lifetime (2026-09-14)
+
+- **Forgetting invalidates pending reads, including when no result exists yet.**
+  `MailController::forgetDecrypted()` advances a generation; completion checks it
+  before applying parsed content. Keep the C++ app-lock gate and seed it in main.
+  Clearing strings alone lets a late pinentry/relay reply restore locked content.
+- **Protected subjects share the body's transient lifetime.** Display them only
+  for the matching account, mailbox and UID; keep the outer subject in the cache.
+  MIME parsing runs on NetworkExecutor and returns an explicit failure when a
+  structural limit is exceeded, rather than successful partial content. See
+  `docs/THREADING.md` and `MailDecryptionTest` for the completion checks.
+
+- **Protected attachments share the message token and stay in C++ memory.**
+  Recheck token/account/lock on every save and CID lookup. HLP forbids permanent
+  exports. CID responses are bounded raster images, served only on off-the-record
+  profiles with HTTP caching disabled; remote content stays opt-in. The handler
+  and image sniffing belong in `app/`, never `core/`.
+- **Bootstrap key selectors are full primary fingerprints.** Reuse the ring
+  importer's 40/64-hex normalization; invalid values become empty and fail
+  closed. `signAndEncrypt` independently requires each resolved primary
+  fingerprint to match exactly and the key to be usable for signing/encryption.
+  Addresses and short key IDs must never select draft or Sent-copy keys.
+  No enrolled fingerprint is persisted today; this is selector validation, not
+  a local pin against a relay that consistently claims a different full key.
+- **Client-custody drafts are encrypted before the first POST.** Fetch fresh,
+  type-checked bootstrap custody; missing/unknown answers fail closed. Encrypt
+  draft To/Cc/Bcc, subject, body and files to the current account fingerprint.
+  Only outer To and `pgpDraft` go to the relay. Never fall back to plaintext after
+  a key/encryption failure; Bcc is a protected draft header, never a delivery
+  header. `MailDecryptionTest` checks the actual upload with a throwaway keyring.
+
+- **Signed-only content is verified over exact wire octets.** Never normalize or
+  rebuild MIME before GPGME verification. Keep signed readability separate from
+  decryption and signature validity. Persist only the relay's `pgpSigned`
+  classification (migration 008); the cursor namespace forces one full window
+  per folder to backfill old rows. Verification verdicts remain transient.
+- **New sends select the current fingerprint, not an arbitrary address match.**
+  Keep retired GnuPG keys for decryption. Only usable `verified` and `wkd`
+  recipient tiers authorize automatic use; unconfirmed keyserver, changed,
+  expired, revoked, absent and unknown tiers do not. Unknown tier strings are
+  still valid decoder input, never parse errors or implicit permission.
+
+- **Restored encrypted drafts remain account-bound in the composer.**
+  `reopenDecryptedDraft` accepts only the current protected token in Drafts.
+  File bytes stay in C++; the composer carries a session token and attachment
+  indexes. The shared attachment reader checks session identity even with no
+  files selected. Lock and release revoke the session. The pairing-change hook
+  in `forgetDecrypted` also releases retained draft attachments when their
+  identity is stale, even after the reader has closed; test the retained state,
+  not access-filtered getters. Same-account reader navigation preserves it.
+  One restored draft is held at a time. Saving uses APPEND, so the UI
+  explicitly says it edits a copy. Restored HTML enters an inert template and
+  passes the editor allowlist before insertion into the live editable page.
+
+- **V3 crypto and ring import are preparation, not enrollment readiness.**
+  `DeviceEnrollmentCrypto::openKeyringEnvelope` authenticates v3 into
+  `SecureBytes`. `importPrivateKeyring` validates the ASCII JSON schema without
+  secret QString values (128 KiB, 16 primary keys, 256 fingerprints), binds it
+  to the expected active fingerprint, material generation and complete inventory,
+  then validates every key in a disposable GnuPG home before durable import.
+  Only unprotected, present secret packets qualify; GPGME KEYINFO queries the
+  scratch agent's explicit socket. The JSON path rejects compressed/streaming
+  key packets before GnuPG can expand them (older supported engines allow this).
+  Legacy single-key admission is unchanged. Unpublished revocation certificates
+  produce an explicit unsupported result; no archive, discard or revocation.
+  Every import result and persisted secret inventory is checked. Failure or
+  cancellation may leave a subset in GnuPG; retain it, retry idempotently, and
+  never advance active selection or acknowledge partial success. Existing keys
+  are never deleted. The expected snapshot must come from the authenticated
+  server, not the payload itself. Run the importer on a worker with a thread-safe
+  identity/cancellation predicate.
+  Keep the v2 controller on `openEnvelope`. V3 uses exact uppercase 40/64-digit
+  fingerprints, unchanged UTF-8 device IDs, canonical padded base64 and a 128 KiB
+  serialized-envelope limit. Both shared fixtures in `tests/fixtures/` are public
+  test material from server PR199. Capability publication and revision/generation
+  acknowledgement remain gated on server delivery contracts and Linux certificate
+  acceptance; import/vector tests do not authorize conversion. `OpenPgpKeyringTest`
+  covers real disk imports, agent restart, historical/hidden-recipient decrypt,
+  current signing, malformed payloads, partial failure/cancellation and retry.
 
 ## 7. DOX framework
 

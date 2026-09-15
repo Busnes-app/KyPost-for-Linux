@@ -25,12 +25,18 @@
 #include "../ExecutorShutdownGuard.h"
 
 #include <QJsonDocument>
+#include <QImage>
+#include <QBuffer>
+#include "pgp/PgpMimeWriter.h"
+#include "pgp/MimeBodyReader.h"
 #include <QJsonObject>
+#include <QJsonArray>
 #include <QNetworkAccessManager>
 #include <QSqlQuery>
 #include <QSqlRecord>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QSignalSpy>
 
 namespace {
 
@@ -105,13 +111,32 @@ private slots:
     void initTestCase();
     void cleanupTestCase();
 
+    void signedInboxRowCanBeReadAndVerified_data();
+    void signedInboxRowCanBeReadAndVerified();
+    void largeEncryptedWindowKeepsDeltaAndFolderCursors();
+    void encryptedDraftNeverUploadsPlaintext();
+    void reopenedDraftPreservesRecipientsAndMemoryAttachments();
+    void pairingChangeReleasesRestoredDraft_data();
+    void pairingChangeReleasesRestoredDraft();
+    void draftCustodyFailuresNeverPost_data();
+    void draftCustodyFailuresNeverPost();
+    void serverCustodyDraftStillSaves();
     void decryptingAClientProtectedMessageShowsItsText();
     void aDecryptedMessageNeverReachesTheDatabase();
     void forgettingDropsTheHeldPlaintext();
+    void forgettingInvalidatesAnInFlightRead();
+    void lockingInvalidatesAnInFlightRead();
+    void protectedSubjectIsTransient();
+    void decryptedAttachmentsStayLocalAndRequireTheCurrentToken();
+    void cidImagesAreBoundToTheCurrentUnlockedMessage();
+    void duplicateUidsUseTheSelectedFolder();
     void serverCustodyIsExplainedRatherThanRetried();
     void anOutageIsTheOneRetryableFailure();
     void aReplyForAReplacedAccountIsNeverShown();
     void aDecryptedMessageIsNotVisibleAfterTheAccountIsReplaced();
+
+    void addressBootstrapWithRetiredKeyNeverUploads_data();
+    void addressBootstrapWithRetiredKeyNeverUploads();
 
 private:
     GnupgFixture m_fixture;
@@ -135,6 +160,388 @@ void MailDecryptionTest::initTestCase()
 void MailDecryptionTest::cleanupTestCase()
 {
     GnupgFixture::killAgent(m_fixture.path());
+}
+
+void MailDecryptionTest::signedInboxRowCanBeReadAndVerified_data()
+{
+    QTest::addColumn<bool>("attachmentOnly");
+    QTest::newRow("body") << false;
+    QTest::newRow("attachment-only") << true;
+}
+
+void MailDecryptionTest::signedInboxRowCanBeReadAndVerified()
+{
+    QFETCH(bool, attachmentOnly);
+    QByteArray inbox = inboxWithOneEncryptedMessage();
+    inbox.replace("\"pgpEncrypted\": true", "\"pgpSigned\": true");
+    FakeRelayServer fake(httpResponse(200, "OK", inbox));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    h.controller->refresh();
+    QTRY_VERIFY(!h.controller->isBusy());
+    const auto row = h.controller->findByMessageId(QStringLiteral("5"));
+    QCOMPARE(row.value(QStringLiteral("pgpState")).toInt(), 4);
+    QVERIFY(row.value(QStringLiteral("canDecryptHere")).toBool());
+    QCOMPARE(row.value(QStringLiteral("pgpReadAction")).toString(), QStringLiteral("Verify signature"));
+    OutgoingMessage message;
+    message.mode = QStringLiteral("plain");
+    message.subject = QStringLiteral("signed subject");
+    message.body = attachmentOnly ? QString() : QStringLiteral("signed body");
+    if (attachmentOnly)
+        message.attachments = {{QStringLiteral("signed.bin"), QStringLiteral("application/octet-stream"), QByteArray("signed bytes")}};
+    const QByteArray content = protectedContent(message, randomMimeBoundary());
+    const auto signature = m_fixture.detachedSignature(content, QStringLiteral("test@example.com"));
+    QVERIFY(!signature.isEmpty());
+    const QJsonArray keys{QJsonObject{{"publicKey", QString::fromUtf8(m_fixture.exportPublicKey(QStringLiteral("test@example.com")))},
+        {"fingerprint", m_fixture.fingerprintOf(QStringLiteral("test@example.com"))}}};
+    const QJsonObject payload{{"signedPartBase64", QString::fromLatin1(content.toBase64())},
+        {"signaturePayload", QString::fromUtf8(signature)}, {"resolvedSender", "test@example.com"}, {"signerKeys", keys}};
+    fake.setResponse(httpResponse(200, "OK", QJsonDocument(payload).toJson()));
+    h.controller->decryptMessage(QStringLiteral("5"));
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller->decryptBusy(), 10000);
+    QVERIFY2(h.controller->decryptFailure().isEmpty(), qPrintable(h.controller->decryptFailure()));
+    QCOMPARE(h.controller->decryptedPlain().trimmed(), message.body);
+    QCOMPARE(h.controller->decryptedAttachments().size(), attachmentOnly ? 1 : 0);
+    QCOMPARE(h.controller->decryptedSubject(), QStringLiteral("signed subject"));
+    QCOMPARE(h.controller->decryptedSignature(), QStringLiteral("Signed by test@example.com."));
+    QVERIFY(!h.controller->decryptedSignatureIsWarning());
+    // A signed-only response cannot impersonate successful decryption of a
+    // row classified as encrypted. The page must not imply confidentiality.
+    auto encryptedRow = h.mailRepository->cachedEmail(QStringLiteral("INBOX"), QStringLiteral("5"));
+    QVERIFY(encryptedRow.has_value());
+    encryptedRow->pgpEncrypted = true;
+    QVERIFY(h.emailDao->insertOrReplace(*encryptedRow));
+    h.controller->decryptMessage(QStringLiteral("5"));
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller->decryptBusy(), 10000);
+    QVERIFY(!h.controller->decryptFailure().isEmpty());
+    QVERIFY(h.controller->decryptedMessageId().isEmpty());
+}
+
+void MailDecryptionTest::largeEncryptedWindowKeepsDeltaAndFolderCursors()
+{
+    QJsonArray rows;
+    for (int i = 1; i <= 500; ++i)
+        rows.append(QJsonObject{{"messageId", QString::number(i)}, {"pgpEncrypted", true},
+            {"subject", "[Encrypted]"}, {"sender", "sender@example.com"}, {"status", "unread"}});
+    QJsonObject window{{"byTab", QJsonObject{{"Uncategorized", rows}}}, {"delta", false}, {"cursor", 100}};
+    FakeRelayServer fake(httpResponse(200, "OK", QJsonDocument(window).toJson()));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    h.controller->refresh();
+    QTRY_VERIFY(!h.controller->isBusy());
+    QVERIFY(fake.receivedRequest().contains("since=0"));
+    QCOMPARE(h.mailRepository->cachedEmails(QStringLiteral("INBOX")).size(), 500);
+    QCOMPARE(h.cursorStore->mailCursor(QStringLiteral("sub-1"), QStringLiteral("INBOX")), QStringLiteral("100"));
+    window = QJsonObject{{"byTab", QJsonObject{{"Uncategorized", QJsonArray{QJsonObject{
+        {"messageId", "5"}, {"pgpEncrypted", true}, {"pgpSigned", true}, {"status", "read"}, {"changeType", "updated"}}}}}},
+        {"delta", true}, {"cursor", 101}, {"removed", QJsonArray{"7"}}};
+    fake.setResponse(httpResponse(200, "OK", QJsonDocument(window).toJson()));
+    h.controller->refresh();
+    QTRY_VERIFY(!h.controller->isBusy());
+    QVERIFY(fake.receivedRequest().contains("since=100"));
+    QCOMPARE(h.mailRepository->cachedEmails(QStringLiteral("INBOX")).size(), 499);
+    const auto row = h.mailRepository->cachedEmail(QStringLiteral("INBOX"), QStringLiteral("5"));
+    QVERIFY(row.has_value() && row->pgpEncrypted && row->pgpSigned);
+    QVERIFY(!row->body.has_value() || row->body->isEmpty());
+    QCOMPARE(row->status, QStringLiteral("read"));
+    QCOMPARE(h.cursorStore->mailCursor(QStringLiteral("sub-1"), QStringLiteral("INBOX")), QStringLiteral("101"));
+    const auto archive = h.mailRepository->planRefresh(QStringLiteral("Archive"), false);
+    QVERIFY(archive.has_value());
+    QCOMPARE(archive->since, qint64(0));
+    window = QJsonObject{{"byTab", QJsonObject{{"Uncategorized", rows}}}, {"delta", false}, {"cursor", 102}};
+    fake.setResponse(httpResponse(200, "OK", QJsonDocument(window).toJson()));
+    h.controller->refresh(true);
+    QTRY_VERIFY(!h.controller->isBusy());
+    QVERIFY(fake.receivedRequest().contains("since=0"));
+    QCOMPARE(h.cursorStore->mailCursor(QStringLiteral("sub-1"), QStringLiteral("INBOX")), QStringLiteral("102"));
+}
+
+void MailDecryptionTest::encryptedDraftNeverUploadsPlaintext()
+{
+    const QString fingerprint = GnupgFixture::firstFingerprint(m_fixture.path(), QStringLiteral("test@example.com"));
+    QVERIFY(!fingerprint.isEmpty());
+    const QJsonObject bootstrap{{"hasIdentity", true}, {"protection", "client"},
+                                {"fingerprint", fingerprint},
+                                {"suggestedUserIDs", QJsonArray{"test@example.com"}}};
+    FakeRelayServer fake(httpResponse(200, "OK", "{}"));
+    fake.setResponseForPath("/api/pgp/bootstrap", httpResponse(200, "OK", QJsonDocument(bootstrap).toJson()));
+    fake.setResponseForPath("/api/mail/draft", httpResponse(200, "OK", R"({"ok":true})"));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    QTemporaryDir files;
+    QFile file(files.filePath(QStringLiteral("private-file.txt")));
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    QCOMPARE(file.write("private-file-bytes"), 18);
+    file.close();
+    QSignalSpy saved(h.controller.get(), &MailController::draftSaveCompleted);
+    const auto token = h.controller->saveDraft(QStringLiteral("to@example.com"), QStringLiteral("cc@example.com"),
+        QStringLiteral("blind@example.com"), QStringLiteral("Private draft subject"), QStringLiteral("<p>Private draft body</p>"), {file.fileName()});
+    QVERIFY(token != 0);
+    QVERIFY(h.controller->isBusy());
+    QCOMPARE(h.controller->saveDraft({}, {}, {}, {}, {}, {}), 0);
+    QTRY_COMPARE_WITH_TIMEOUT(saved.size(), 1, 10000);
+    QCOMPARE(saved.first().at(0).toULongLong(), token);
+    QVERIFY2(saved.first().at(1).toBool(), qPrintable(h.controller->lastError()));
+    QCOMPARE(fake.receivedRequests().size(), 2);
+    const QByteArray request = fake.receivedRequests().last();
+    for (const QByteArray& secret : {QByteArray("Private draft"), QByteArray("private-file"), QByteArray("blind@example.com"), QByteArray("cc@example.com")})
+        QVERIFY(!request.contains(secret));
+    const auto json = QJsonDocument::fromJson(request.mid(request.indexOf("\r\n\r\n") + 4)).object();
+    QCOMPARE(json.size(), 2);
+    QCOMPARE(json.value("to").toString(), QStringLiteral("to@example.com"));
+    const QByteArray mime = json.value("pgpDraft").toString().toUtf8();
+    QVERIFY(mime.contains("multipart/encrypted"));
+    const int start = mime.indexOf("-----BEGIN PGP MESSAGE-----");
+    const int end = mime.indexOf("-----END PGP MESSAGE-----", start);
+    QVERIFY(start >= 0 && end > start);
+    const auto decrypted = OpenPgpDecryptor().decrypt(mime.mid(start, end + 25 - start), m_fixture.path());
+    QCOMPARE(decrypted.status, PgpDecryptStatus::Decrypted);
+    QVERIFY(decrypted.plaintext.contains("To: to@example.com\r\n"));
+    QVERIFY(decrypted.plaintext.contains("Cc: cc@example.com\r\n"));
+    QVERIFY(decrypted.plaintext.contains("Bcc: blind@example.com\r\n"));
+    const auto parsed = readMimeBody(decrypted.plaintext);
+    QCOMPARE(parsed.subject, QStringLiteral("Private draft subject"));
+    QCOMPARE(parsed.html, QStringLiteral("<p>Private draft body</p>"));
+    QCOMPARE(parsed.attachments.size(), 1);
+    QCOMPARE(parsed.attachments.first().data, QByteArray("private-file-bytes"));
+}
+
+void MailDecryptionTest::reopenedDraftPreservesRecipientsAndMemoryAttachments()
+{
+    OutgoingMessage message;
+    message.to = {QStringLiteral("\"Doe, Jane\" <jane@example.com>")};
+    message.cc = {QStringLiteral("copy@example.com")};
+    message.subject = QStringLiteral("restored-private-subject");
+    message.body = QStringLiteral("<p>restored-private-body</p>");
+    message.mode = QStringLiteral("html");
+    message.attachments = {{QStringLiteral("private.bin"), QStringLiteral("application/octet-stream"), QByteArray("secret\0bytes", 12)},
+                           {QStringLiteral("empty.txt"), QStringLiteral("text/plain"), {}}};
+    const auto entity = protectedDraftContent(message, {QStringLiteral("blind@example.com")}, QStringLiteral("restore"));
+    const auto armored = m_fixture.encryptToTestKey(entity);
+    QVERIFY(!armored.isEmpty());
+    FakeRelayServer fake(payloadResponse(armored));
+    fake.setResponseForPath("/pgp-payload", payloadResponse(armored));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    Email row;
+    row.messageId = QStringLiteral("5");
+    row.folder = QStringLiteral("Drafts");
+    row.subject = QStringLiteral("Encrypted");
+    row.sentTo = QStringLiteral("outer@example.com");
+    row.pgpEncrypted = true;
+    QVERIFY(h.emailDao->insertOrReplace(row));
+    h.controller->decryptMessage(row.messageId, row.folder);
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller->decryptBusy(), 15000);
+    QCOMPARE(h.controller->decryptFailure(), QString());
+    QVERIFY(h.controller->reopenDecryptedDraft(QStringLiteral("stale")).isEmpty());
+    const auto seed = h.controller->reopenDecryptedDraft(h.controller->decryptedToken());
+    const QString session = seed.value("token").toString();
+    QVERIFY(!session.isEmpty());
+    QCOMPARE(seed.value("to").toString(), message.to.first());
+    QCOMPARE(seed.value("cc").toString(), message.cc.first());
+    QCOMPARE(seed.value("bcc").toString(), QStringLiteral("blind@example.com"));
+    QCOMPARE(seed.value("subject").toString(), message.subject);
+    QCOMPARE(seed.value("body").toString(), message.body);
+    const QStringList paths = seed.value("paths").toStringList();
+    QCOMPARE(paths.size(), 2);
+    QVERIFY(!QFile::exists(paths.first()));
+    h.controller->forgetDecrypted(); // navigating to Compose must not drop its files
+    const QString fingerprint = GnupgFixture::firstFingerprint(m_fixture.path(), QStringLiteral("test@example.com"));
+    const QJsonObject bootstrap{{"hasIdentity", true}, {"protection", "client"}, {"fingerprint", fingerprint},
+                               {"suggestedUserIDs", QJsonArray{"test@example.com"}}};
+    fake.setResponse(httpResponse(200, "OK", QJsonDocument(bootstrap).toJson()));
+    fake.setResponseForPath("/api/mail/draft", httpResponse(200, "OK", R"({"ok":true})"));
+    QSignalSpy saved(h.controller.get(), &MailController::draftSaveCompleted);
+    QVERIFY(h.controller->saveDraft(seed.value("to").toString(), seed.value("cc").toString(), seed.value("bcc").toString(),
+        message.subject, message.body, paths, session) != 0);
+    QTRY_COMPARE_WITH_TIMEOUT(saved.size(), 1, 15000);
+    QVERIFY2(saved.last()[1].toBool(), qPrintable(h.controller->lastError()));
+    const auto request = fake.receivedRequests().last();
+    QVERIFY(!request.contains("restored-private"));
+    QVERIFY(!request.contains("private.bin"));
+    const auto json = QJsonDocument::fromJson(request.mid(request.indexOf("\r\n\r\n") + 4)).object();
+    const auto mime = json.value("pgpDraft").toString().toUtf8();
+    const int start = mime.indexOf("-----BEGIN PGP MESSAGE-----");
+    const int end = mime.indexOf("-----END PGP MESSAGE-----", start);
+    QVERIFY(start >= 0 && end > start);
+    const auto decrypted = OpenPgpDecryptor().decrypt(mime.mid(start, end + 25 - start), m_fixture.path());
+    QCOMPARE(decrypted.status, PgpDecryptStatus::Decrypted);
+    const auto restored = readMimeBody(decrypted.plaintext);
+    QCOMPARE(restored.to, message.to.first());
+    QCOMPARE(restored.bcc, QStringLiteral("blind@example.com"));
+    QCOMPARE(restored.attachments.size(), 2);
+    QCOMPARE(restored.attachments[0].data, message.attachments[0].data);
+    QCOMPARE(restored.attachments[1].data, QByteArray());
+    QVERIFY(!everythingInTheDatabase(h.db.handle()).contains(message.subject));
+
+    const QJsonObject key{{"address", "test@example.com"}, {"fingerprint", fingerprint},
+                         {"publicKey", QString::fromUtf8(m_fixture.exportPublicKey(QStringLiteral("test@example.com")))},
+                         {"tier", "verified"}, {"usable", true}};
+    fake.setResponseForPath("/api/pgp/recipients/resolve", httpResponse(200, "OK",
+        QJsonDocument(QJsonObject{{"results", QJsonArray{key}}}).toJson()));
+    fake.setResponseForPath("/api/mail/send-pgp", httpResponse(200, "OK", R"({"ok":true,"sentSaved":true})"));
+    QSignalSpy sent(h.controller.get(), &MailController::sendCompleted);
+    // Even the legacy entry point with both toggles off must encrypt a restored draft.
+    QVERIFY(h.controller->sendMail(QStringLiteral("test@example.com"), {}, {}, message.subject,
+                                  message.body, paths, false, false, session) != 0);
+    QTRY_COMPARE_WITH_TIMEOUT(sent.size(), 1, 15000);
+    QVERIFY2(sent.last()[1].toBool(), qPrintable(h.controller->lastError()));
+    const auto deliveryRequest = fake.receivedRequests().last();
+    QVERIFY(deliveryRequest.startsWith("POST /api/mail/send-pgp"));
+    QVERIFY(!deliveryRequest.contains("restored-private"));
+    const auto deliveryJson = QJsonDocument::fromJson(deliveryRequest.mid(deliveryRequest.indexOf("\r\n\r\n") + 4)).object();
+    const auto delivery = deliveryJson.value("deliveries").toArray().first().toObject().value("ciphertext").toString().toUtf8();
+    const int deliveryStart = delivery.indexOf("-----BEGIN PGP MESSAGE-----");
+    const int deliveryEnd = delivery.indexOf("-----END PGP MESSAGE-----");
+    QVERIFY(deliveryStart >= 0 && deliveryEnd > deliveryStart);
+    const auto sentClear = OpenPgpDecryptor().decrypt(delivery.mid(deliveryStart, deliveryEnd + 25 - deliveryStart), m_fixture.path());
+    QCOMPARE(sentClear.status, PgpDecryptStatus::Decrypted);
+    const auto sentBody = readMimeBody(sentClear.plaintext);
+    QCOMPARE(sentBody.attachments.size(), 2);
+    QCOMPARE(sentBody.attachments[0].data, message.attachments[0].data);
+
+    // An account custody change cannot downgrade a previously encrypted draft.
+    fake.setResponse(httpResponse(200, "OK", R"({"hasIdentity":true,"protection":"server"})"));
+    const auto beforeDowngrade = fake.receivedRequests().size();
+    QVERIFY(h.controller->saveDraft(message.to.first(), {}, {}, message.subject, message.body, {}, session) != 0);
+    QTRY_COMPARE_WITH_TIMEOUT(saved.size(), 2, 15000);
+    QVERIFY(!saved.last()[1].toBool());
+    QCOMPARE(fake.receivedRequests().size(), beforeDowngrade + 1); // bootstrap only
+
+    // Even an attachment-free restored draft cannot cross to another pairing.
+    auto pairing = h.pairingStore->load();
+    QVERIFY(pairing.has_value());
+    const auto original = *pairing;
+    pairing->subscriberId = QStringLiteral("another-account");
+    QVERIFY(h.pairingStore->save(*pairing));
+    const auto requests = fake.receivedRequests().size();
+    QCOMPARE(h.controller->saveDraft(message.to.first(), {}, {}, message.subject, message.body, {}, session), 0);
+    QCOMPARE(h.controller->sendClientEncrypted(message.to.first(), {}, {}, message.subject, message.body, {}, session), 0);
+    QCOMPARE(fake.receivedRequests().size(), requests);
+    QVERIFY(h.pairingStore->save(original));
+    h.controller->decryptMessage(row.messageId, row.folder);
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller->decryptBusy(), 15000);
+    const auto lockSeed = h.controller->reopenDecryptedDraft(h.controller->decryptedToken());
+    const auto lockToken = lockSeed.value("token").toString();
+    QVERIFY(!lockToken.isEmpty());
+    h.controller->setAppLocked(true);
+    h.controller->setAppLocked(false);
+    const auto afterRead = fake.receivedRequests().size();
+    QCOMPARE(h.controller->saveDraft(message.to.first(), {}, {}, message.subject, message.body, paths, lockToken), 0);
+    QCOMPARE(fake.receivedRequests().size(), afterRead);
+}
+
+void MailDecryptionTest::pairingChangeReleasesRestoredDraft_data()
+{
+    QTest::addColumn<bool>("closeReaderFirst");
+    QTest::newRow("reader-open") << false;
+    QTest::newRow("reader-already-closed") << true;
+}
+
+void MailDecryptionTest::pairingChangeReleasesRestoredDraft()
+{
+    QFETCH(bool, closeReaderFirst);
+    OutgoingMessage message;
+    message.to = {QStringLiteral("test@example.com")};
+    message.body = QStringLiteral("private draft");
+    message.attachments = {{QStringLiteral("private.bin"), QStringLiteral("application/octet-stream"), QByteArray("secret attachment")}};
+    const auto armored = m_fixture.encryptToTestKey(protectedDraftContent(message, {}, QStringLiteral("pairing-change")));
+    QVERIFY(!armored.isEmpty());
+    FakeRelayServer fake(payloadResponse(armored));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    Email row;
+    row.messageId = QStringLiteral("5");
+    row.folder = QStringLiteral("Drafts");
+    row.pgpEncrypted = true;
+    QVERIFY(h.emailDao->insertOrReplace(row));
+    h.controller->decryptMessage(row.messageId, row.folder);
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller->decryptBusy(), 15000);
+    const auto seed = h.controller->reopenDecryptedDraft(h.controller->decryptedToken());
+    const auto token = seed.value("token").toString();
+    QVERIFY(!token.isEmpty());
+    QCOMPARE(h.controller->m_draftAttachments.size(), 1);
+    if (closeReaderFirst) {
+        h.controller->forgetDecrypted();
+        QCOMPARE(h.controller->m_draftToken, token);
+        QCOMPARE(h.controller->m_draftAttachments.size(), 1);
+    }
+    auto pairing = h.pairingStore->load();
+    QVERIFY(pairing.has_value());
+    pairing->subscriberId = QStringLiteral("replacement-account");
+    QVERIFY(h.pairingStore->save(*pairing));
+    h.controller->forgetDecrypted(); // Same hook used by PairingController::pairingChanged.
+    QVERIFY(h.controller->m_draftToken.isEmpty());
+    QVERIFY(h.controller->m_draftAttachments.isEmpty());
+    h.controller->forgetDecrypted();
+    h.controller->releaseDraft(token);
+    QVERIFY(h.controller->m_draftAttachments.isEmpty());
+}
+
+void MailDecryptionTest::draftCustodyFailuresNeverPost_data()
+{
+    QTest::addColumn<QByteArray>("bootstrap");
+    QTest::newRow("empty") << QByteArray("{}");
+    QTest::newRow("wrong-type") << QByteArray(R"({"hasIdentity":"false","protection":""})");
+    QTest::newRow("unknown-mode") << QByteArray(R"({"hasIdentity":true,"protection":"future"})");
+    QTest::newRow("missing-identity") << QByteArray(R"({"hasIdentity":false,"protection":"client"})");
+    QTest::newRow("missing-local-key") << QByteArray(R"({"hasIdentity":true,"protection":"client","fingerprint":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","suggestedUserIDs":["test@example.com"]})");
+}
+
+void MailDecryptionTest::draftCustodyFailuresNeverPost()
+{
+    QFETCH(QByteArray, bootstrap);
+    FakeRelayServer fake(httpResponse(200, "OK", bootstrap));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    QSignalSpy saved(h.controller.get(), &MailController::draftSaveCompleted);
+    QVERIFY(h.controller->saveDraft(QStringLiteral("to@example.com"), {}, {}, QStringLiteral("Secret"), QStringLiteral("secret body"), {}) != 0);
+    QTRY_COMPARE_WITH_TIMEOUT(saved.size(), 1, 10000);
+    QVERIFY(!saved.first().at(1).toBool());
+    QCOMPARE(fake.receivedRequests().size(), 1);
+    QVERIFY(fake.receivedRequests().first().startsWith("GET /api/pgp/bootstrap"));
+    QVERIFY(!h.controller->lastError().isEmpty());
+}
+
+void MailDecryptionTest::addressBootstrapWithRetiredKeyNeverUploads_data()
+{
+    QTest::addColumn<bool>("retired");
+    QTest::newRow("one-key") << false;
+    QTest::newRow("retired-key") << true;
+}
+
+void MailDecryptionTest::addressBootstrapWithRetiredKeyNeverUploads()
+{
+    QFETCH(bool, retired);
+    // Keep both secret keys, as real users do for reading historical mail.
+    if (retired)
+        QVERIFY(m_fixture.build(QStringLiteral("Retired Identity <test@example.com>")));
+    QCOMPARE(GnupgFixture::fingerprintsIn(m_fixture.path()).size(), retired ? 2 : 1);
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"hasIdentity":true,"protection":"client","fingerprint":"test@example.com","suggestedUserIDs":["test@example.com"]})"));
+    fake.setResponseForPath("/api/mail/draft", httpResponse(200, "OK", R"({"ok":true})"));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    QSignalSpy saved(h.controller.get(), &MailController::draftSaveCompleted);
+    QVERIFY(h.controller->saveDraft(QStringLiteral("to@example.com"), {}, {}, QStringLiteral("Secret"), QStringLiteral("secret body"), {}) != 0);
+    QTRY_COMPARE_WITH_TIMEOUT(saved.size(), 1, 10000);
+    QVERIFY(!saved.first().at(1).toBool());
+    QCOMPARE(fake.receivedRequests().size(), 1);
+    QVERIFY(fake.receivedRequests().first().startsWith("GET /api/pgp/bootstrap"));
+}
+
+void MailDecryptionTest::serverCustodyDraftStillSaves()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"hasIdentity":true,"protection":"server"})"));
+    fake.setResponseForPath("/api/mail/draft", httpResponse(200, "OK", R"({"ok":true})"));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    QSignalSpy saved(h.controller.get(), &MailController::draftSaveCompleted);
+    QVERIFY(h.controller->saveDraft(QStringLiteral("to@example.com"), {}, {}, {}, QStringLiteral("draft body"), {}) != 0);
+    QTRY_COMPARE(saved.size(), 1);
+    QVERIFY(saved.first().at(1).toBool());
+    QCOMPARE(fake.receivedRequests().size(), 2);
+    QVERIFY(fake.receivedRequests().last().contains("draft body"));
+    QVERIFY(!fake.receivedRequests().last().contains("pgpDraft"));
 }
 
 void MailDecryptionTest::decryptingAClientProtectedMessageShowsItsText()
@@ -360,6 +767,161 @@ void MailDecryptionTest::aDecryptedMessageIsNotVisibleAfterTheAccountIsReplaced(
     QVERIFY2(!harness.controller->decryptedPlain().contains(QString::fromUtf8(kCanary)),
              "the previous account's plaintext is still readable");
     QVERIFY(harness.controller->decryptedHtml().isEmpty());
+}
+
+void MailDecryptionTest::forgettingInvalidatesAnInFlightRead()
+{
+    const QByteArray armored = m_fixture.encryptToTestKey("Content-Type: text/plain\r\nSubject: Secret\r\n\r\nsecret body");
+    QVERIFY(!armored.isEmpty());
+    FakeRelayServer fake(httpResponse(200, "OK", inboxWithOneEncryptedMessage()));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    h.controller->refresh();
+    QTRY_VERIFY(!h.controller->isBusy());
+    fake.setResponse(payloadResponse(armored));
+    h.controller->decryptMessage(QStringLiteral("5"));
+    QVERIFY(h.controller->decryptBusy());
+    h.controller->forgetDecrypted();
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller->decryptBusy(), 15000);
+    QVERIFY(h.controller->decryptedMessageId().isEmpty());
+    QVERIFY(h.controller->decryptedSubject().isEmpty());
+    QVERIFY(h.controller->decryptedPlain().isEmpty());
+}
+
+void MailDecryptionTest::lockingInvalidatesAnInFlightRead()
+{
+    const QByteArray armored = m_fixture.encryptToTestKey("Content-Type: text/plain\r\nSubject: Secret\r\n\r\nsecret body");
+    QVERIFY(!armored.isEmpty());
+    FakeRelayServer fake(httpResponse(200, "OK", inboxWithOneEncryptedMessage()));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    h.controller->refresh();
+    QTRY_VERIFY(!h.controller->isBusy());
+    fake.setResponse(payloadResponse(armored));
+    h.controller->decryptMessage(QStringLiteral("5"));
+    h.controller->setAppLocked(true);
+    h.controller->setAppLocked(false);
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller->decryptBusy(), 15000);
+    QVERIFY(h.controller->decryptedMessageId().isEmpty());
+    QVERIFY(h.controller->decryptedSubject().isEmpty());
+    h.controller->setAppLocked(true);
+    h.controller->decryptMessage(QStringLiteral("5"));
+    QVERIFY(!h.controller->decryptBusy());
+}
+
+void MailDecryptionTest::protectedSubjectIsTransient()
+{
+    const QByteArray armored = m_fixture.encryptToTestKey("Content-Type: text/plain\r\nSubject: protected-subject-canary\r\n\r\nbody");
+    QVERIFY(!armored.isEmpty());
+    FakeRelayServer fake(httpResponse(200, "OK", inboxWithOneEncryptedMessage()));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    h.controller->refresh();
+    QTRY_VERIFY(!h.controller->isBusy());
+    fake.setResponse(payloadResponse(armored));
+    h.controller->decryptMessage(QStringLiteral("5"));
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller->decryptBusy(), 15000);
+    QCOMPARE(h.controller->decryptedSubject(), QStringLiteral("protected-subject-canary"));
+    QCOMPARE(h.controller->decryptedFolder(), QStringLiteral("INBOX"));
+    QVERIFY(!everythingInTheDatabase(h.db.handle()).contains(QStringLiteral("protected-subject-canary")));
+    h.controller->setAppLocked(true);
+    QVERIFY(h.controller->decryptedSubject().isEmpty());
+    QVERIFY(h.controller->decryptedFolder().isEmpty());
+}
+
+void MailDecryptionTest::duplicateUidsUseTheSelectedFolder()
+{
+    const QByteArray armored = m_fixture.encryptToTestKey("Content-Type: text/plain\r\nSubject: Archive subject\r\n\r\narchive body");
+    QVERIFY(!armored.isEmpty());
+    FakeRelayServer fake(httpResponse(200, "OK", inboxWithOneEncryptedMessage()));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    h.controller->refresh();
+    QTRY_VERIFY(!h.controller->isBusy());
+    auto copy = h.mailRepository->cachedEmail(QStringLiteral("INBOX"), QStringLiteral("5"));
+    QVERIFY(copy.has_value());
+    copy->folder = QStringLiteral("Archive");
+    QVERIFY(h.emailDao->insertOrReplace(*copy));
+    QVERIFY(h.controller->findByMessageId(QStringLiteral("5")).isEmpty());
+    QCOMPARE(h.controller->findByMessageId(QStringLiteral("5"), QStringLiteral("Archive"))
+        .value(QStringLiteral("folder")).toString(), QStringLiteral("Archive"));
+    fake.setResponse(payloadResponse(armored));
+    h.controller->decryptMessage(QStringLiteral("5"), QStringLiteral("Archive"));
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller->decryptBusy(), 15000);
+    QCOMPARE(h.controller->decryptedFolder(), QStringLiteral("Archive"));
+    QCOMPARE(h.controller->decryptedSubject(), QStringLiteral("Archive subject"));
+    QVERIFY(fake.receivedRequest().contains("mailbox=Archive"));
+}
+
+void MailDecryptionTest::decryptedAttachmentsStayLocalAndRequireTheCurrentToken()
+{
+    OutgoingMessage message;
+    message.mode = QStringLiteral("plain");
+    message.attachments = {{QStringLiteral("../secret.bin"), QStringLiteral("application/octet-stream"), QByteArray::fromHex("00ff010203")}};
+    const auto encrypted = m_fixture.encryptToTestKey(protectedContent(message, QStringLiteral("b")));
+    QVERIFY(!encrypted.isEmpty());
+    FakeRelayServer fake(httpResponse(200, "OK", inboxWithOneEncryptedMessage()));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    h.controller->refresh();
+    QTRY_VERIFY(!h.controller->isBusy());
+    fake.setResponse(payloadResponse(encrypted));
+    h.controller->decryptMessage(QStringLiteral("5"));
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller->decryptBusy(), 15000);
+    QVERIFY(h.controller->decryptFailure().isEmpty());
+    QCOMPARE(h.controller->decryptedAttachments().size(), 1);
+    QCOMPARE(h.controller->decryptedAttachments()[0].toMap().value(QStringLiteral("name")).toString(), QStringLiteral("secret.bin"));
+    const QString token = h.controller->decryptedToken();
+    QVERIFY(!token.isEmpty());
+    QTemporaryDir output;
+    QVERIFY(output.isValid());
+    const QUrl target = QUrl::fromLocalFile(output.filePath(QStringLiteral("saved.bin")));
+    QVERIFY(!h.controller->saveDecryptedAttachment(QStringLiteral("wrong"), 0, target));
+    QVERIFY(!QFile::exists(target.toLocalFile()));
+    QVERIFY(h.controller->saveDecryptedAttachment(token, 0, target));
+    QFile saved(target.toLocalFile());
+    QVERIFY(saved.open(QIODevice::ReadOnly));
+    QCOMPARE(saved.readAll(), message.attachments[0].data);
+    QVERIFY(!(saved.permissions() & (QFile::ReadGroup | QFile::ReadOther)));
+    QVERIFY(h.settingsStore->setHostileLocationProtectionEnabled(true));
+    QVERIFY(!h.controller->saveDecryptedAttachment(token, 0, target));
+    QVERIFY(h.settingsStore->setHostileLocationProtectionEnabled(false));
+    QVERIFY(!h.controller->saveDecryptedAttachment(token, 0, QUrl::fromLocalFile(output.path())));
+    h.controller->forgetDecrypted();
+    QVERIFY(h.controller->decryptedAttachments().isEmpty());
+    QVERIFY(!h.controller->saveDecryptedAttachment(token, 0, target));
+}
+
+void MailDecryptionTest::cidImagesAreBoundToTheCurrentUnlockedMessage()
+{
+    QByteArray png;
+    QBuffer buffer(&png);
+    QVERIFY(buffer.open(QIODevice::WriteOnly));
+    QImage image(2, 2, QImage::Format_ARGB32);
+    image.fill(Qt::red);
+    QVERIFY(image.save(&buffer, "PNG"));
+    const auto entity = QByteArray("Content-Type: multipart/related; boundary=b\r\n\r\n"
+        "--b\r\nContent-Type: text/html\r\n\r\n<img src=\"cid:logo@example\">\r\n"
+        "--b\r\nContent-Type: image/png\r\nContent-ID: <logo@example>\r\nContent-Transfer-Encoding: base64\r\n\r\n")
+        + png.toBase64() + "\r\n--b--\r\n";
+    const auto encrypted = m_fixture.encryptToTestKey(entity);
+    QVERIFY(!encrypted.isEmpty());
+    FakeRelayServer fake(httpResponse(200, "OK", inboxWithOneEncryptedMessage()));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    h.controller->refresh();
+    QTRY_VERIFY(!h.controller->isBusy());
+    fake.setResponse(payloadResponse(encrypted));
+    h.controller->decryptMessage(QStringLiteral("5"));
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller->decryptBusy(), 15000);
+    const QUrl url(h.controller->decryptedImageBase() + QStringLiteral("logo@example"));
+    QCOMPARE(h.controller->protectedImage(url).second, png);
+    QCOMPARE(h.controller->protectedImage(url).first, QByteArray("image/png"));
+    QVERIFY(h.controller->protectedImage(QUrl(QStringLiteral("kypost-cid://wrong/logo@example"))).second.isEmpty());
+    h.controller->setAppLocked(true);
+    QVERIFY(h.controller->protectedImage(url).second.isEmpty());
+    h.controller->setAppLocked(false);
+    QVERIFY(h.controller->protectedImage(url).second.isEmpty());
 }
 
 QTEST_GUILESS_MAIN(MailDecryptionTest)

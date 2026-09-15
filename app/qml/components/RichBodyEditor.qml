@@ -21,8 +21,17 @@ Item {
     // Seeds the editor's content. Call exactly once, right after
     // construction (Compose.qml's Component.onCompleted) -- there is no
     // "reload" support, callers only ever seed a fresh draft.
+    property string pendingInitialHtml: ""
     function loadInitialHtml(html) {
-        webView.loadHtml(root.shellHtml(html))
+        pendingInitialHtml = html
+        webView.loadHtml(root.shellHtml(""))
+    }
+
+    function seedScript(html) {
+        // A template is inert: mail markup is cleaned before entering the live editor.
+        return "(function() {" + root.cleanScript
+            + "var template = document.createElement('template'); template.innerHTML = "
+            + JSON.stringify(html) + "; clean(template.content); document.body.replaceChildren(template.content); })();"
     }
 
     // Runs the sanitizer over the current DOM and invokes
@@ -78,8 +87,7 @@ Item {
     // element outside the fixed tag list, strips every attribute except
     // href/style on <a> (further restricted below). Runs against a cloned
     // subtree so it never mutates what's on screen.
-    readonly property string sanitizerScript: "
-        (function() {
+    readonly property string cleanScript: "
             var allowedTags = ['P', 'BR', 'DIV', 'B', 'STRONG', 'I', 'EM', 'U', 'A', 'BLOCKQUOTE'];
             var allowedStyleProps = ['color', 'background-color', 'padding', 'border-radius',
                                       'display', 'font-weight', 'text-decoration', 'border'];
@@ -113,6 +121,8 @@ Item {
                     }
                 });
             }
+    "
+    readonly property string sanitizerScript: "(function() {" + root.cleanScript + "
             var clone = document.body.cloneNode(true);
             clean(clone);
             return { html: clone.innerHTML, isEmpty: document.body.textContent.trim() === '' };
@@ -177,6 +187,8 @@ Item {
 
                 onLoadingChanged: function(loadRequest) {
                     if (loadRequest.status === WebEngineView.LoadSucceededStatus) {
+                        webView.runJavaScript(root.seedScript(root.pendingInitialHtml))
+                        root.pendingInitialHtml = ""
                         webView.runJavaScript(root.pasteScript)
                         // Confirmed: the pop-out Compose window's
                         // transparency isn't tied to resizing at all (it can

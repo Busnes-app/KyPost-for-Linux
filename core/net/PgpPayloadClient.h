@@ -23,16 +23,10 @@ enum class PgpPayloadStatus
     // Ciphertext in hand. The only status with a populated encryptedPayload.
     Fetched,
 
-    // There is nothing here to decrypt. Terminal, and deliberately NOT
-    // folded into Failed -- a transport error is worth retrying and this is
-    // not. Two routes reach it: the server's 404 (the message carries no
-    // OpenPGP payload at all), and a 200 whose encryptedPayload is blank,
-    // which is the signed-but-not-encrypted case. Named for the absent
-    // ciphertext rather than an absent "payload" because the second of those
-    // does carry one -- a detached signature -- and this client has no
-    // verifier to make anything of it. Saying "no OpenPGP payload" there
-    // would be false.
+    // Exact signed octets and their detached signature, not ciphertext.
+    SignedOnly,
     NoCiphertext,
+    Malformed,
 
     // 409: the account still holds its key server-side and has not migrated
     // to client custody. The server refuses ciphertext to such an account,
@@ -99,6 +93,8 @@ struct PgpPayloadResult
 
     // ASCII-armored OpenPGP message, verbatim. Populated only on Fetched.
     QString encryptedPayload;
+    QByteArray signedPart;
+    QString signaturePayload;
 
     // The keys a signature may be credited to. Empty means no verdict beyond
     // "cannot check" is available.
@@ -128,10 +124,8 @@ struct PgpPayloadResult
 // bind them (2026-08-23). `sender` -- the display form of the From header --
 // still is not, and must not be: see PgpPayloadResult::resolvedSender.
 //
-// signaturePayload and signedPartBase64 remain unparsed. They serve the
-// signed-but-NOT-encrypted case, which this client reports as NoCiphertext
-// and has no verifier for; a detached signature needs the exact transmitted
-// octets it covers, which is a different problem from this one.
+// signedPartBase64 is decoded strictly, within a bound, without normalizing
+// any of the transmitted octets. MIME parsing happens only after verification.
 class PgpPayloadClient
 {
 public:

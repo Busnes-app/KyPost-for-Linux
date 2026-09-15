@@ -220,14 +220,14 @@ public:
                              const QVector<MailAttachmentUpload>& attachments, bool sign = false, bool encrypt = false,
                              bool allowPickupFallback = false) const;
 
-    // POST /api/mail/draft. Same request body as sendMail (the backend
-    // decodes both with decodeMailRequest), but a much simpler response:
-    // {ok: true}, with every failure arriving as plain text via http.Error
-    // rather than JSON.
+    // POST /api/mail/draft. When pgpDraft is supplied, only To and the complete
+    // self-encrypted PGP/MIME message leave this process. The other arguments
+    // are intentionally excluded from the JSON in that case.
     SaveDraftResult saveDraft(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& to,
                                const QString& cc, const QString& bcc, const QString& subject,
                                const QString& body, const QString& mode,
-                               const QVector<MailAttachmentUpload>& attachments) const;
+                               const QVector<MailAttachmentUpload>& attachments,
+                               const QString& pgpDraft = {}) const;
 
     // messageId is an IMAP UID parsed server-side as an integer, but travels
     // as an ordinary query-string value like everywhere else in this class

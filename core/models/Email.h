@@ -36,16 +36,10 @@ struct Email
     bool hasAttachments = false;
     QString sourceMode;
 
-    // OpenPGP state as reported by /api/inbox (`pgpEncrypted` /
-    // `pgpDecryptError`, both `omitempty` on the wire, so absent means
-    // false/empty). Deliberately NOT interpreted here -- the four-way
-    // decision they feed lives in core/domain/PgpMessageState.h, because the
-    // rule depends on `body` as well and must be identical everywhere.
-    //
-    // This client holds no private key and never decrypts anything; these
-    // fields exist so the UI can explain an unreadable message rather than
-    // render a blank one.
+    // Relay classification, not a locally verified signature verdict.
+    // Interpretation belongs to PgpMessageState; verification is on demand.
     bool pgpEncrypted = false;
+    bool pgpSigned = false;
     QString pgpDecryptError;
 
     bool operator==(const Email&) const = default;

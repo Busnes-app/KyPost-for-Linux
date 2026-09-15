@@ -22,8 +22,10 @@ enum class PgpReadStatus
     // Plaintext in hand.
     Decrypted,
 
-    // Nothing here to decrypt: no OpenPGP payload at all, or a signed-but-
-    // not-encrypted message this client has no verifier for. Terminal.
+    // Readable signed content; signature verdict is independent of readability.
+    SignedOnly,
+
+    // No readable OpenPGP payload. Terminal.
     NoCiphertext,
 
     // The account still holds its key server-side and never migrated to
@@ -108,7 +110,7 @@ struct PgpReadResult
     // interchangeable.
     QString signedBy;
 
-    // Set only when Decrypted.
+    // Set only when Decrypted or SignedOnly.
     //
     // THIS MUST NOT BE PERSISTED. The sender chose end-to-end encryption;
     // the database key lives in the platform secret store and is not behind

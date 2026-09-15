@@ -139,6 +139,46 @@ QString primaryFingerprintOf(gpgme_ctx_t context, const QByteArray& signingFinge
     return QString::fromLatin1(key.handle->fpr);
 }
 
+PgpSignature signatureFromContext(gpgme_ctx_t context)
+{
+    PgpSignature result;
+    if (const gpgme_verify_result_t verified = gpgme_op_verify_result(context);
+        verified != nullptr && verified->signatures != nullptr) {
+        // The first signature only. A message signed by several keys is not
+        // something this client can present honestly -- "which of these do you
+        // mean" is a question the UI has no way to ask -- and taking the most
+        // favourable one would be the wrong answer by construction.
+        const gpgme_signature_t signature = verified->signatures;
+        result.present = true;
+
+        // COPIED OUT FIRST, every field, before any further gpgme call.
+        // The verify result belongs to `context` and is documented as living
+        // only until the next operation starts on it, so `status` -- the field
+        // that decides whether a signature counts as valid -- must not be read
+        // across the key lookup below. See primaryFingerprintOf().
+        const QByteArray signingFingerprint =
+            signature->fpr != nullptr ? QByteArray(signature->fpr) : QByteArray();
+        const gpgme_err_code_t signatureStatus = gpgme_err_code(signature->status);
+
+        result.fingerprint =
+            signingFingerprint.isEmpty() ? QString() : QString::fromLatin1(signingFingerprint);
+        result.primaryFingerprint = primaryFingerprintOf(context, signingFingerprint);
+        switch (signatureStatus) {
+        case GPG_ERR_NO_ERROR:
+            result.mathematicallyValid = true;
+            break;
+        case GPG_ERR_NO_PUBKEY:
+            result.keyUnavailable = true;
+            break;
+        default:
+            // Bad, expired, revoked: not valid, and not "cannot check".
+            break;
+        }
+    }
+
+    return result;
+}
+
 } // namespace
 
 OpenPgpDecryptor::OpenPgpDecryptor(qint64 maxPlaintextBytes) : m_maxPlaintextBytes(maxPlaintextBytes)
@@ -225,41 +265,42 @@ PgpDecryptResult OpenPgpDecryptor::decrypt(const QByteArray& ciphertext, const Q
         return result;
     }
 
-    if (const gpgme_verify_result_t verified = gpgme_op_verify_result(context.handle);
-        verified != nullptr && verified->signatures != nullptr) {
-        // The first signature only. A message signed by several keys is not
-        // something this client can present honestly -- "which of these do you
-        // mean" is a question the UI has no way to ask -- and taking the most
-        // favourable one would be the wrong answer by construction.
-        const gpgme_signature_t signature = verified->signatures;
-        result.signature.present = true;
-
-        // COPIED OUT FIRST, every field, before any further gpgme call.
-        // The verify result belongs to `context` and is documented as living
-        // only until the next operation starts on it, so `status` -- the field
-        // that decides whether a signature counts as valid -- must not be read
-        // across the key lookup below. See primaryFingerprintOf().
-        const QByteArray signingFingerprint =
-            signature->fpr != nullptr ? QByteArray(signature->fpr) : QByteArray();
-        const gpgme_err_code_t signatureStatus = gpgme_err_code(signature->status);
-
-        result.signature.fingerprint =
-            signingFingerprint.isEmpty() ? QString() : QString::fromLatin1(signingFingerprint);
-        result.signature.primaryFingerprint = primaryFingerprintOf(context.handle, signingFingerprint);
-        switch (signatureStatus) {
-        case GPG_ERR_NO_ERROR:
-            result.signature.mathematicallyValid = true;
-            break;
-        case GPG_ERR_NO_PUBKEY:
-            result.signature.keyUnavailable = true;
-            break;
-        default:
-            // Bad, expired, revoked: not valid, and not "cannot check".
-            break;
-        }
-    }
+    result.signature = signatureFromContext(context.handle);
 
     result.status = PgpDecryptStatus::Decrypted;
     result.plaintext = sink.data;
+    return result;
+}
+
+PgpVerifyResult OpenPgpDecryptor::verifyDetached(const QByteArray& signedPart, const QByteArray& signature,
+                                                const QString& homeDirectory) const
+{
+    PgpVerifyResult result;
+    if (signedPart.size() > m_maxPlaintextBytes || signature.size() > 1024 * 1024) {
+        result.status = PgpVerifyStatus::TooLarge;
+        return result;
+    }
+    if (signedPart.isEmpty() || signature.isEmpty()) {
+        result.status = PgpVerifyStatus::Malformed;
+        return result;
+    }
+    ensureGpgmeInitialised();
+    ContextHandle context;
+    if (gpgme_new(&context.handle) || !context.handle)
+        return result;
+    const QByteArray home = homeDirectory.toUtf8();
+    if (!home.isEmpty() && gpgme_ctx_set_engine_info(context.handle, GPGME_PROTOCOL_OpenPGP, nullptr, home.constData()))
+        return result;
+    DataHandle data, detached;
+    if (gpgme_data_new_from_mem(&data.handle, signedPart.constData(), size_t(signedPart.size()), 0)
+        || gpgme_data_new_from_mem(&detached.handle, signature.constData(), size_t(signature.size()), 0))
+        return result;
+    const auto error = gpgme_op_verify(context.handle, detached.handle, data.handle, nullptr);
+    result.signature = signatureFromContext(context.handle);
+    if (error || !result.signature.present) {
+        result.status = PgpVerifyStatus::Malformed;
+        return result;
+    }
+    result.status = PgpVerifyStatus::Checked;
     return result;
 }

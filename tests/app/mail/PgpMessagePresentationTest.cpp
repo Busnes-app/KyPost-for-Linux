@@ -9,6 +9,7 @@ class PgpMessagePresentationTest : public QObject
     Q_OBJECT
 
 private slots:
+    void unsignedEncryptionIsDisclosed();
     void marksOnlyTheUnreadableStates();
     void everyMarkerHasAnAccessibleName();
     void bannerCopyExistsForEveryStateExceptNone();
@@ -20,6 +21,12 @@ private slots:
     void webmailMailboxUrlRejectsAnythingButHttps();
     void webmailMailboxUrlDropsAnyBaseQueryOrFragment();
 };
+
+void PgpMessagePresentationTest::unsignedEncryptionIsDisclosed()
+{
+    QCOMPARE(pgpSignatureLabel(PgpSignatureVerdict::None, {}), QStringLiteral("Encrypted, but not signed."));
+    QVERIFY(!pgpSignatureIsWarning(PgpSignatureVerdict::None));
+}
 
 void PgpMessagePresentationTest::marksOnlyTheUnreadableStates()
 {
@@ -38,7 +45,7 @@ void PgpMessagePresentationTest::everyMarkerHasAnAccessibleName()
     // A glyph with no spoken equivalent is invisible to a screen reader, so
     // the two must agree on which states are marked.
     for (const PgpMessageState state : { PgpMessageState::None, PgpMessageState::ClientProtected,
-                                          PgpMessageState::DecryptFailed, PgpMessageState::DecryptedByServer }) {
+                                          PgpMessageState::DecryptFailed, PgpMessageState::DecryptedByServer, PgpMessageState::SignedOnly }) {
         QCOMPARE(pgpRowMarker(state).isEmpty(), pgpRowMarkerAccessibleName(state).isEmpty());
     }
 }
@@ -49,7 +56,7 @@ void PgpMessagePresentationTest::bannerCopyExistsForEveryStateExceptNone()
     QVERIFY(pgpBannerBody(PgpMessageState::None, QString()).isEmpty());
 
     for (const PgpMessageState state : { PgpMessageState::ClientProtected, PgpMessageState::DecryptFailed,
-                                          PgpMessageState::DecryptedByServer }) {
+                                          PgpMessageState::DecryptedByServer, PgpMessageState::SignedOnly }) {
         QVERIFY(!pgpBannerTitle(state).isEmpty());
         QVERIFY(!pgpBannerBody(state, QString()).isEmpty());
     }

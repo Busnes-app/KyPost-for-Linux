@@ -1,6 +1,7 @@
 #include "pgp/PgpSendPlanner.h"
 
 #include "pgp/OpenPgpDecryptor.h"
+#include "pgp/OpenPgpEncryptor.h"
 #include "pgp/OpenPgpKeyImporter.h"
 
 #include "GnupgFixture.h"
@@ -55,6 +56,8 @@ private slots:
     void nothingIsBuiltWhenOneRecipientOfManyIsMissingAKey();
     void addressesMatchCaseInsensitively();
     void noRecipientsIsNotAPlan();
+    void currentFingerprintWinsWhileOldMailStillDecrypts();
+    void missingCurrentKeyNeverFallsBackToOldAddressKey();
 
 private:
     GnupgFixture m_sender;
@@ -269,6 +272,38 @@ void PgpSendPlannerTest::addressesMatchCaseInsensitively()
 
     QCOMPARE(plan.status, PgpSendPlanStatus::Built);
     QVERIFY(readAs(plan.deliveries.at(0), m_alice.path()).contains("The real body."));
+}
+
+void PgpSendPlannerTest::currentFingerprintWinsWhileOldMailStillDecrypts()
+{
+    const auto old = signAndEncrypt("old mail", m_senderFingerprint, {m_senderFingerprint}, m_sender.path());
+    QCOMPARE(old.status, PgpEncryptStatus::Encrypted);
+    const QString rotatedUid = QStringLiteral("Rotated <sender@example.com>");
+    QVERIFY(m_sender.build(rotatedUid));
+    const auto current = m_sender.fingerprintOf(rotatedUid);
+    QVERIFY(!current.isEmpty() && current != m_senderFingerprint);
+    auto message = sampleMessage();
+    message.to = {QStringLiteral("sender@example.com")};
+    const auto plan = buildPgpSendPlan(message, {}, {{message.from, current}}, current, m_sender.path());
+    QCOMPARE(plan.status, PgpSendPlanStatus::Built);
+    const auto begin = plan.sentCopy.indexOf("-----BEGIN PGP MESSAGE-----");
+    const auto end = plan.sentCopy.indexOf("-----END PGP MESSAGE-----");
+    QVERIFY(begin >= 0 && end > begin);
+    GnupgFixture::killAgent(m_sender.path());
+    const auto opened = OpenPgpDecryptor().decrypt(plan.sentCopy.mid(begin, end - begin + 25), m_sender.path());
+    QCOMPARE(opened.status, PgpDecryptStatus::Decrypted);
+    QCOMPARE(opened.signature.primaryFingerprint, current);
+    QCOMPARE(OpenPgpDecryptor().decrypt(old.armoredCiphertext.toUtf8(), m_sender.path()).plaintext, QByteArray("old mail"));
+}
+
+void PgpSendPlannerTest::missingCurrentKeyNeverFallsBackToOldAddressKey()
+{
+    auto message = sampleMessage();
+    message.to = {QStringLiteral("alice@example.com")};
+    const auto plan = buildPgpSendPlan(message, {}, m_fingerprints,
+        QStringLiteral("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), m_sender.path());
+    QCOMPARE(plan.status, PgpSendPlanStatus::SigningUnavailable);
+    QVERIFY(plan.deliveries.isEmpty());
 }
 
 void PgpSendPlannerTest::noRecipientsIsNotAPlan()

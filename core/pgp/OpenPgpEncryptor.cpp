@@ -48,6 +48,14 @@ struct KeyList
     }
 };
 
+bool usableKey(gpgme_key_t key, const QString& requested, bool signing)
+{
+    return key != nullptr && key->fpr != nullptr
+        && requested == QString::fromLatin1(key->fpr)
+        && !key->revoked && !key->expired && !key->disabled && !key->invalid
+        && (signing ? key->can_sign : key->can_encrypt);
+}
+
 PgpEncryptStatus statusFromError(gpgme_error_t error)
 {
     switch (gpgme_err_code(error)) {
@@ -79,7 +87,7 @@ QByteArray readAll(gpgme_data_t data)
 
 } // namespace
 
-PgpEncryptResult signAndEncrypt(const QByteArray& plaintext, const QString& signerAddress,
+PgpEncryptResult signAndEncrypt(const QByteArray& plaintext, const QString& signerFingerprint,
                                  const QStringList& recipientFingerprints,
                                  const QString& homeDirectory)
 {
@@ -119,12 +127,14 @@ PgpEncryptResult signAndEncrypt(const QByteArray& plaintext, const QString& sign
     // and finding that out before pinentry opens saves the user a prompt they
     // cannot satisfy.
     gpgme_key_t signer = nullptr;
-    if (gpgme_err_code(gpgme_get_key(context.handle, signerAddress.toUtf8().constData(), &signer,
+    if (gpgme_err_code(gpgme_get_key(context.handle, signerFingerprint.toUtf8().constData(), &signer,
                                        /*secret=*/1))
             != GPG_ERR_NO_ERROR
-        || signer == nullptr) {
+        || !usableKey(signer, signerFingerprint, true)) {
+        if (signer != nullptr)
+            gpgme_key_unref(signer);
         out.status = PgpEncryptStatus::NoSigningKey;
-        out.detail = QStringLiteral("no secret key for the sender address");
+        out.detail = QStringLiteral("no usable secret key for the sender fingerprint");
         return out;
     }
     gpgme_signers_clear(context.handle);
@@ -145,7 +155,9 @@ PgpEncryptResult signAndEncrypt(const QByteArray& plaintext, const QString& sign
         if (gpgme_err_code(
                 gpgme_get_key(context.handle, fingerprint.toUtf8().constData(), &key, /*secret=*/0))
                 != GPG_ERR_NO_ERROR
-            || key == nullptr) {
+            || !usableKey(key, fingerprint, false)) {
+            if (key != nullptr)
+                gpgme_key_unref(key);
             out.unusableRecipients.append(fingerprint);
             continue;
         }

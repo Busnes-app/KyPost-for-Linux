@@ -84,7 +84,7 @@ bool SettingsStore::setHostileLocationProtectionEnabled(bool enabled)
     // sync(). Reading the value back would prove nothing: QSettings answers
     // from its in-memory copy, which holds the new value either way.
     m_settings.sync();
-    return m_settings.status() == QSettings::NoError;
+    return m_settings.status() == QSettings::NoError; // Hostile-location relaunch requires durable settings.
 }
 
 QString SettingsStore::deliveryMode() const

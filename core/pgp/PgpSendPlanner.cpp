@@ -82,10 +82,16 @@ PgpSendPlan buildPgpSendPlan(const OutgoingMessage& message, const QStringList& 
     const QByteArray content =
         protectedContent(message, randomMimeBoundary(message.body.toUtf8()));
 
+    // An explicit current fingerprint must never fall back to an older key
+    // that happens to share the From address. Empty retains the low-level
+    // no-Sent-copy API; production supplies bootstrap's current fingerprint.
+    const QString signer = senderFingerprint.trimmed().isEmpty()
+        ? ownKeyFingerprint(message.from, homeDirectory) : senderFingerprint.trimmed();
+
     const auto encryptInto = [&](const QStringList& fingerprints, const QStringList& smtpRecipients,
                                   PgpSendPlan& into) -> bool {
         const PgpEncryptResult encrypted =
-            signAndEncrypt(content, message.from, fingerprints, homeDirectory);
+            signAndEncrypt(content, signer, fingerprints, homeDirectory);
         if (encrypted.status != PgpEncryptStatus::Encrypted) {
             into.status = statusFromEncrypt(encrypted.status);
             into.detail = encrypted.detail;
@@ -120,7 +126,7 @@ PgpSendPlan buildPgpSendPlan(const OutgoingMessage& message, const QStringList& 
         plan.sentCopyUnavailable = true;
     } else {
         const PgpEncryptResult copy =
-            signAndEncrypt(content, message.from, { senderFingerprint.trimmed() }, homeDirectory);
+            signAndEncrypt(content, signer, { senderFingerprint.trimmed() }, homeDirectory);
         if (copy.status == PgpEncryptStatus::Encrypted) {
             plan.sentCopy = pgpMimeDelivery(message, copy.armoredCiphertext,
                                              randomMimeBoundary(copy.armoredCiphertext.toUtf8()));

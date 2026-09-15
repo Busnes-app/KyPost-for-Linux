@@ -2,6 +2,7 @@
 
 #include "net/HttpClient.h"
 #include "net/RelayAuth.h"
+#include "pgp/PgpFingerprint.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -35,10 +36,15 @@ PgpBootstrapResult PgpBootstrapClient::fetch(const QUrl& serverBaseUrl, const Re
     }
 
     const QJsonObject obj = *decoded;
+    if (!obj.value(QStringLiteral("hasIdentity")).isBool()
+        || !obj.value(QStringLiteral("protection")).isString()) {
+        out.error = NetworkError::Decoding;
+        return out;
+    }
     out.ok = true;
     out.hasIdentity = obj.value(QStringLiteral("hasIdentity")).toBool();
     out.protection = obj.value(QStringLiteral("protection")).toString();
-    out.fingerprint = obj.value(QStringLiteral("fingerprint")).toString().trimmed();
+    out.fingerprint = normalizedFingerprint(obj.value(QStringLiteral("fingerprint")).toString().toUtf8());
     // Primary first, then any send-as aliases. Only the primary is taken:
     // this app has no send-as UI, and picking an alias the user did not choose
     // would put an address on their mail that they never selected.

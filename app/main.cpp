@@ -2,6 +2,7 @@
 #include "contacts/ContactsController.h"
 #include "general/GeneralController.h"
 #include "mail/MailController.h"
+#include "mail/ProtectedImageHandler.h"
 #include "mail/RemoteContentInterceptor.h"
 #include "pairing/PairingController.h"
 #include "pgp/PgpQrController.h"
@@ -178,6 +179,7 @@ int main(int argc, char* argv[])
     // QWidget cannot be constructed under a plain QGuiApplication. QApplication
     // is a strict superset of QGuiApplication, so every existing QGuiApplication-
     // typed usage of `app` below (e.g. applicationStateChanged) still compiles.
+    ProtectedImageHandler::registerScheme();
     QApplication app(argc, argv);
 
     // Task 11: applicationName + organizationDomain feed KDBusService's name
@@ -947,6 +949,12 @@ int main(int argc, char* argv[])
                                    networkExecutor);
     qmlRegisterSingletonInstance<MailController>(
         "com.kysecurity.mail", 1, 0, "MailApp", &mailController);
+    ProtectedImageHandler protectedImages([&mailController](const QUrl& url) {
+        return mailController.protectedImage(url);
+    });
+    qmlRegisterSingletonInstance<ProtectedImageHandler>(
+        "com.kysecurity.mail", 1, 0, "ProtectedImages", &protectedImages);
+
 
     // App lock ("AppLock"). Registered here rather than beside
     // Theme/General above because AppLockStore is part of the composition
@@ -1216,10 +1224,10 @@ int main(int argc, char* argv[])
     //
     // Only on the transition INTO locked. Dropping it on unlock too would
     // work but says the wrong thing about when it matters.
+    mailController.setAppLocked(appLockManager.locked());
     QObject::connect(&appLockManager, &AppLockManager::lockedChanged, &mailController,
                      [&mailController, &appLockManager]() {
-                         if (appLockManager.locked())
-                             mailController.forgetDecrypted();
+                         mailController.setAppLocked(appLockManager.locked());
                      });
 
     // A pinned-certificate mismatch aborts every request before it is sent,

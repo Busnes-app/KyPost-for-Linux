@@ -74,6 +74,8 @@ target_sources(kypost PRIVATE
 # headers need the component named explicitly here).
 find_package(Qt6 REQUIRED COMPONENTS WebEngineCore)
 target_sources(kypost PRIVATE
+  mail/ProtectedImageHandler.cpp
+  mail/ProtectedImageHandler.h
   mail/RemoteContentInterceptor.cpp
   mail/RemoteContentInterceptor.h
 )

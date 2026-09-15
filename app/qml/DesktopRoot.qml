@@ -186,7 +186,22 @@ Kirigami.ApplicationWindow {
             root.popOutCompose(to || "", subject || "", body || "", false)
             return
         }
+        root.detailMode = "empty" // recreate the editor before applying another seed
         root.composeSeed = { to: to || "", subject: subject || "", body: body || "" }
+        root.detailMode = "compose"
+    }
+
+    function openRestoredDraft(draft) {
+        if (root.detailCollapsed) {
+            const win = composeWindowComponent.createObject(null, { popRestoredDraft: draft })
+            win.show()
+            win.raise()
+            win.requestActivate()
+            root.detailMode = "empty"
+            return
+        }
+        root.detailMode = "empty" // recreate the editor before applying another seed
+        root.composeSeed = { to: "", subject: "", body: "", draft: draft }
         root.detailMode = "compose"
     }
 
@@ -721,6 +736,7 @@ Kirigami.ApplicationWindow {
     Component {
         id: composePaneComponent
         Compose {
+            restoredDraft: root.composeSeed.draft || ({})
             initialTo: root.composeSeed.to
             initialSubject: root.composeSeed.subject
             initialBody: root.composeSeed.body
@@ -766,7 +782,7 @@ Kirigami.ApplicationWindow {
             // content for exactly this reason.
             title: AppLock.locked
                 ? i18n("Email")
-                : ((poppedEmail.email && poppedEmail.email.subject) ? poppedEmail.email.subject : i18n("Email"))
+                : (poppedEmail.displaySubject || i18n("Email"))
 
             EmailDetail {
                 id: poppedEmail
@@ -774,6 +790,7 @@ Kirigami.ApplicationWindow {
                 messageId: emailWindow.popMessageId
                 folder: emailWindow.popFolder
                 isPoppedOut: true
+                onDraftRequested: function (draft) { root.openRestoredDraft(draft) }
                 onComposeRequested: function (to, subject, body) { root.openCompose(to, subject, body) }
                 onActionCompleted: emailWindow.close()
             }
@@ -808,6 +825,7 @@ Kirigami.ApplicationWindow {
             color: Theme.bg
             title: i18n("Compose")
 
+            property var popRestoredDraft: ({})
             property string popInitialTo: ""
             property string popInitialSubject: ""
             property string popInitialBody: ""
@@ -815,6 +833,7 @@ Kirigami.ApplicationWindow {
 
             Compose {
                 anchors.fill: parent
+                restoredDraft: composeWindow.popRestoredDraft
                 initialTo: composeWindow.popInitialTo
                 initialSubject: composeWindow.popInitialSubject
                 initialBody: composeWindow.popInitialBody
@@ -1487,6 +1506,7 @@ Kirigami.ApplicationWindow {
                     visible: root.detailMode === "email"
                     messageId: root.detailMode === "email" ? root.selectedMessageId : ""
                     folder: root.detailMode === "email" ? root.selectedEmailFolder : ""
+                    onDraftRequested: function (draft) { root.openRestoredDraft(draft) }
                     onComposeRequested: function (to, subject, body) { root.openCompose(to, subject, body) }
                     onActionCompleted: root.closeDetail()
                     onPopOutRequested: root.popOutEmail(root.selectedMessageId, root.selectedEmailFolder)

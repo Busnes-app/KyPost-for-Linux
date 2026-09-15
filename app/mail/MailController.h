@@ -6,6 +6,7 @@
 #include "models/Email.h"
 #include "net/RelayMailSource.h" // MailAttachmentUpload -- held by value in PendingSend below
 #include "pgp/EncryptedMessageReader.h" // PgpReadResult/PgpReadStatus -- carried across the hop
+#include "pgp/MimeBodyReader.h"
 
 #include <QDesktopServices>
 #include <QObject>
@@ -71,7 +72,7 @@ class MailController : public QObject
     // secret store rather than behind their OpenPGP passphrase, so caching
     // the plaintext would quietly demote the message to the protection level
     // of every other mail in the app. Enforced by
-    // MailControllerTest::aDecryptedMessageNeverReachesTheDatabase.
+    // MailDecryptionTest::aDecryptedMessageNeverReachesTheDatabase.
     //
     // Only one message is held at a time, and forgetDecrypted() drops it.
     Q_PROPERTY(bool decryptBusy READ decryptBusy NOTIFY decryptedChanged)
@@ -82,6 +83,11 @@ class MailController : public QObject
     Q_PROPERTY(QString decryptedMessageId READ decryptedMessageId NOTIFY decryptedChanged)
     Q_PROPERTY(QString decryptedHtml READ decryptedHtml NOTIFY decryptedChanged)
     Q_PROPERTY(QString decryptedPlain READ decryptedPlain NOTIFY decryptedChanged)
+    Q_PROPERTY(QVariantList decryptedAttachments READ decryptedAttachments NOTIFY decryptedChanged)
+    Q_PROPERTY(QString decryptedImageBase READ decryptedImageBase NOTIFY decryptedChanged)
+    Q_PROPERTY(QString decryptedToken READ decryptedToken NOTIFY decryptedChanged)
+    Q_PROPERTY(QString decryptedSubject READ decryptedSubject NOTIFY decryptedChanged)
+    Q_PROPERTY(QString decryptedFolder READ decryptedFolder NOTIFY decryptedChanged)
     // Localized sentence for the last failed decryption, or empty. Paired
     // with decryptRetryable so the UI knows whether a Retry button can help.
     Q_PROPERTY(QString decryptFailure READ decryptFailure NOTIFY decryptedChanged)
@@ -119,13 +125,23 @@ public:
     bool isBusy() const;
     QString lastError() const; // "" when none
     bool decryptBusy() const { return m_decryptInFlight; }
-    // All three answer as though nothing is held once the account has been
+    // Protected fields answer as though nothing is held once the account has been
     // replaced. See decryptedStillOurs().
     QString decryptedMessageId() const { return decryptedStillOurs() ? m_decryptedMessageId : QString(); }
     QString decryptedHtml() const { return decryptedStillOurs() ? m_decryptedHtml : QString(); }
     QString decryptedPlain() const { return decryptedStillOurs() ? m_decryptedPlain : QString(); }
+    QString decryptedSubject() const { return decryptedStillOurs() ? m_decryptedSubject : QString(); }
+    QString decryptedFolder() const { return decryptedStillOurs() ? m_decryptedFolder : QString(); }
+    void setAppLocked(bool locked);
+    QVariantList decryptedAttachments() const;
+    QString decryptedToken() const { return decryptedStillOurs() ? m_decryptedToken : QString(); }
+    QString decryptedImageBase() const { return decryptedStillOurs() ? QStringLiteral("kypost-cid://") + m_decryptedToken + QLatin1Char('/') : QString(); }
+    QPair<QByteArray, QByteArray> protectedImage(const QUrl& url) const;
+    Q_INVOKABLE bool saveDecryptedAttachment(const QString& token, int index, const QUrl& destination);
+    Q_INVOKABLE bool openDecryptedAttachmentTemporarily(const QString& token, int index);
+
     QString decryptFailure() const { return m_decryptFailure; }
-    QString decryptedSignature() const { return m_decryptedSignature; }
+    QString decryptedSignature() const { return decryptedStillOurs() ? m_decryptedSignature : QString(); }
     bool decryptedSignatureIsWarning() const { return m_decryptedSignatureIsWarning; }
     bool decryptRetryable() const { return m_decryptRetryable; }
     bool pgpCanEncrypt() const;
@@ -176,7 +192,7 @@ public slots:
     // pickup-fallback round trip, so the two mechanisms the old comment here
     // described separately are now one.
     quint64 sendMail(const QString& to, const QString& cc, const QString& bcc, const QString& subject,
-                     const QString& body, const QStringList& attachmentFilePaths, bool sign, bool encrypt);
+                     const QString& body, const QStringList& attachmentFilePaths, bool sign, bool encrypt, const QString& draftToken = QString());
     // Dispatches; the list arrives as attachmentsListed().
     void listAttachments(const QString& mailbox, const QString& messageId);
     // Writes the downloaded bytes to QStandardPaths::DownloadLocation,
@@ -196,7 +212,7 @@ public slots:
     // emailModel row properties. Returns an empty map if the messageId
     // isn't cached locally -- this is a pure local-cache read (no network
     // call), so a miss just means "not fetched/cached yet", not an error.
-    Q_INVOKABLE QVariantMap findByMessageId(const QString& messageId) const;
+    Q_INVOKABLE QVariantMap findByMessageId(const QString& messageId, const QString& folder = QString()) const;
 
     // Fetches this message's ciphertext and decrypts it with the user's own
     // gpg-agent. Dispatches and returns; the result arrives on the
@@ -206,12 +222,14 @@ public slots:
     // pinentry, which for a hardware token means the user has to physically
     // touch it -- so it happens when they ask for it, not when a list
     // selection changes.
-    Q_INVOKABLE void decryptMessage(const QString& messageId);
+    Q_INVOKABLE void decryptMessage(const QString& messageId, const QString& folder = QString());
 
     // Drops the held plaintext. Called when the reader moves on, and wired
     // to the app lock in main.cpp: a locked app must not still be holding a
     // decrypted message for whoever picks the machine up next.
     Q_INVOKABLE void forgetDecrypted();
+    Q_INVOKABLE QVariantMap reopenDecryptedDraft(const QString& token);
+    Q_INVOKABLE void releaseDraft(const QString& token);
 
 public:
     // What sendClientEncrypted() does off-thread, as one value so the GUI
@@ -252,7 +270,7 @@ public slots:
     // put the request over the relay's cap with three.
     Q_INVOKABLE quint64 sendClientEncrypted(const QString& to, const QString& cc, const QString& bcc,
                                              const QString& subject, const QString& body,
-                                             const QStringList& attachmentFilePaths);
+                                             const QStringList& attachmentFilePaths, const QString& draftToken = QString());
 
     // The notification tap-through entry point.
     //
@@ -313,7 +331,7 @@ public slots:
     // carries back.
     Q_INVOKABLE quint64 saveDraft(const QString& to, const QString& cc, const QString& bcc,
                                    const QString& subject, const QString& body,
-                                   const QStringList& attachmentFilePaths);
+                                   const QStringList& attachmentFilePaths, const QString& draftToken = QString());
 
     // Deletes every ephemeral attachment still on disk. Called on shutdown
     // so a clean quit leaves nothing behind, rather than waiting for timers
@@ -382,7 +400,7 @@ public slots:
     // browser launch.
     Q_INVOKABLE quint64 openWebmailDrafts(const QString& to, const QString& cc, const QString& bcc,
                                            const QString& subject, const QString& body,
-                                           const QStringList& attachmentFilePaths);
+                                           const QStringList& attachmentFilePaths, const QString& draftToken = QString());
 
 signals:
     void currentFolderChanged();
@@ -500,6 +518,7 @@ signals:
     void notificationEmailAmbiguous(const QString& messageId, const QStringList& folders);
 
 private:
+    friend class MailDecryptionTest; // Inspect retained plaintext, not access-filtered getters.
     void applyFilter(); // recomputes m_model from m_currentFolderEmails + m_selectedKeyword
     // Re-reads the current folder's cache into the model. Shared by
     // selectFolderInternal() and the refresh completion.
@@ -518,8 +537,8 @@ private:
     // Runs on the GUI thread once the reader has answered. Takes the
     // identity the request was planned against so a reply for a replaced
     // account can be discarded rather than displayed.
-    void applyDecryptResult(const PairingIdentity& identity, const QString& messageId,
-                             const PgpReadResult& result);
+    void applyDecryptResult(const PairingIdentity& identity, const QString& folder, const QString& messageId,
+                             const PgpReadResult& result, const MimeBody& body);
     void finishClientEncryptedSend(quint64 token, const ClientEncryptedOutcome& outcome);
     // Loads pairing state via m_pairingStore.load() into serverBaseUrl/auth.
     // Returns false (and sets lastError to "Not paired") without touching
@@ -527,7 +546,8 @@ private:
     // calling method below short-circuits on this before making a request.
     bool requirePairing(QUrl& serverBaseUrl, RelayAuth& auth);
     // Shared by sendMail() and saveDraft() -- see the .cpp.
-    bool readAttachments(const QStringList& paths, QVector<MailAttachmentUpload>& out);
+    bool readAttachments(const QStringList& paths, QVector<MailAttachmentUpload>& out, const QString& draftToken = QString());
+    bool draftSessionCurrent(const QString& token);
     // The half of downloadAttachment() that must stay on this thread.
     bool storeDownloadedAttachment(const QString& suggestedName, const DownloadAttachmentResult& result);
     void applyKeylessRecipients(const QStringList& keyless);
@@ -544,7 +564,7 @@ private:
     void refreshInternal(bool forceFullResync);
     quint64 saveDraftInternal(const QString& to, const QString& cc, const QString& bcc, const QString& subject,
                                const QString& body, const QStringList& attachmentFilePaths,
-                               const QUrl& thenOpenWebmail);
+                               const QUrl& thenOpenWebmail, const QString& draftToken);
     void finishSend(quint64 sendToken, const SendMailResult& result);
 
     // Hostile Location Protection's replacement for save-to-Downloads: a
@@ -664,6 +684,7 @@ private:
     // re-entrancy defences against the nested event loop; the requests are
     // off-thread now, so they only stop a second call piling up behind one
     // already out.
+    bool m_draftInFlight = false;
     bool m_preflightInFlight = false;
     bool m_pgpBootstrapInFlight = false;
 
@@ -690,6 +711,18 @@ private:
     QString m_decryptedMessageId;
     QString m_decryptedHtml;
     QString m_decryptedPlain;
+    QVector<MimeAttachment> m_decryptedAttachments;
+    QString m_decryptedToken;
+    QString m_decryptedSubject;
+    QString m_decryptedTo, m_decryptedCc, m_decryptedBcc;
+    // ponytail: one restored draft at a time; use bounded per-composer sessions
+    // if simultaneous restored drafts become necessary. A replacement invalidates the old token.
+    PairingIdentity m_draftIdentity;
+    QString m_draftToken;
+    QVector<MimeAttachment> m_draftAttachments;
+    QString m_decryptedFolder;
+    quint64 m_decryptGeneration = 0;
+    bool m_appLocked = false;
     QString m_decryptFailure;
     QString m_decryptedSignature;
     bool m_decryptedSignatureIsWarning = false;

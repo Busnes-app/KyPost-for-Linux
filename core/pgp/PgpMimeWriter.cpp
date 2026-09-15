@@ -95,6 +95,9 @@ QByteArray wrappedBase64(const QByteArray& data)
         out += encoded.mid(at, 76);
         out += "\r\n";
     }
+    // Even a zero-byte part needs the CRLF belonging to the next delimiter.
+    if (out.isEmpty())
+        out = "\r\n";
     return out;
 }
 
@@ -185,6 +188,15 @@ QByteArray protectedContent(const OutgoingMessage& message, const QString& bound
 
     out += "--" + boundaryUtf8 + "--\r\n";
     return out;
+}
+
+QByteArray protectedDraftContent(const OutgoingMessage& message, const QString& bcc,
+                                  const QString& boundary)
+{
+    return "To: " + joinAddresses(message.to).toUtf8() + "\r\n"
+        + "Cc: " + joinAddresses(message.cc).toUtf8() + "\r\n"
+        + "Bcc: " + mimeHeaderValue(bcc).toUtf8() + "\r\n"
+        + protectedContent(message, boundary);
 }
 
 QByteArray pgpMimeDelivery(const OutgoingMessage& message, const QString& armoredCiphertext,

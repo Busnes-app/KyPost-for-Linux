@@ -2,14 +2,15 @@
 
 #include <QList>
 #include <QPair>
+#include <QRegularExpression>
 #include <QStringDecoder>
+#include <QUrl>
+#include <optional>
 
 namespace {
 
 // Bounds on attacker-controlled structure. Exceeding any of them stops the
-// walk and keeps what was already found -- a message that renders partially
-// is better than one that costs the process, and neither is worth an
-// unbounded recursion on bytes a stranger chose.
+// walk and refuses the result, so a partial message cannot look complete.
 //
 // The numbers are generous against real mail: a signed, encrypted message
 // with an alternative body and inline images nests about four deep, and a
@@ -18,7 +19,8 @@ namespace {
 constexpr int kMaxDepth = 8;
 constexpr int kMaxParts = 64;
 constexpr qsizetype kMaxHeaderBytes = 64 * 1024;
-constexpr qsizetype kMaxWalkBytes = 8 * 1024 * 1024;
+constexpr qsizetype kMaxEntityBytes = 32 * 1024 * 1024;
+constexpr qsizetype kMaxWalkBytes = 64 * 1024 * 1024;
 
 struct Entity
 {
@@ -138,15 +140,19 @@ QByteArray parameterOf(const QByteArray& headerValue, const char* name)
         }
         const QByteArray key = headerValue.mid(at, equals - at).trimmed().toLower();
         qsizetype valueStart = equals + 1;
-        while (valueStart < headerValue.size() && headerValue[valueStart] == ' ')
+        while (valueStart < headerValue.size() && (headerValue[valueStart] == ' ' || headerValue[valueStart] == '\t'))
             ++valueStart;
 
         QByteArray value;
         if (valueStart < headerValue.size() && headerValue[valueStart] == '"') {
-            const qsizetype closing = headerValue.indexOf('"', valueStart + 1);
-            if (closing < 0)
+            qsizetype closing = valueStart + 1;
+            for (; closing < headerValue.size() && headerValue[closing] != '"'; ++closing) {
+                if (headerValue[closing] == '\\' && closing + 1 < headerValue.size())
+                    ++closing;
+                value += headerValue[closing];
+            }
+            if (closing == headerValue.size())
                 return {};
-            value = headerValue.mid(valueStart + 1, closing - valueStart - 1);
             at = closing;
         } else {
             qsizetype end = headerValue.indexOf(';', valueStart);
@@ -232,14 +238,131 @@ QString decodeText(const QByteArray& bytes, const QByteArray& charset)
     return QString::fromUtf8(bytes);
 }
 
+// Decode only complete RFC 2047 words. Adjacent encoded words discard their
+// folding whitespace; ordinary text retains it. Header size is bounded before
+// this runs, and the expression contains no nested repetition.
+QString decodeSubject(const QByteArray& value)
+{
+    static const QRegularExpression word(QStringLiteral("=\\?([^?\\s]{1,40})\\?([bBqQ])\\?([^?\\s]{1,75})\\?="));
+    const QString raw = QString::fromUtf8(value);
+    QString result;
+    qsizetype end = 0;
+    bool previousEncoded = false;
+    auto matches = word.globalMatch(raw);
+    while (matches.hasNext()) {
+        const auto match = matches.next();
+        const QString between = raw.mid(end, match.capturedStart() - end);
+        QByteArray bytes = match.captured(3).toLatin1();
+        bool valid = true;
+        if (match.captured(2).compare(QStringLiteral("b"), Qt::CaseInsensitive) == 0) {
+            const auto decoded = QByteArray::fromBase64Encoding(bytes, QByteArray::AbortOnBase64DecodingErrors);
+            valid = bool(decoded);
+            bytes = decoded.decoded;
+        } else {
+            bytes.replace('_', ' ');
+            bytes = decodeQuotedPrintable(bytes);
+        }
+        if (!previousEncoded || !valid || !between.trimmed().isEmpty())
+            result += between;
+        result += valid ? decodeText(bytes, match.captured(1).toLatin1()) : match.captured();
+        previousEncoded = valid;
+        end = match.capturedEnd();
+    }
+    result += raw.mid(end);
+    // A header rendered in a title or reply must remain a single line, even
+    // when a sender hid controls inside an encoded word.
+    for (QChar& c : result) {
+        if (c.unicode() < 0x20 || c.unicode() == 0x7f || c == QChar(0x2028) || c == QChar(0x2029))
+            c = QLatin1Char(' ');
+    }
+    return result.trimmed();
+}
+
+// RFC 2231: unescape each encoded segment once, then decode the combined
+// bytes so UTF-8 can span segments. Segment count and header bytes are bounded.
+QString filenameOf(const QByteArray& header, const char* parameter)
+{
+    const QByteArray name(parameter);
+    QByteArray joined;
+    QByteArray charset;
+    bool continued = false;
+    const auto append = [&joined, &charset](QByteArray part, bool encoded, bool first) {
+        if (encoded && first) {
+            const qsizetype quote = part.indexOf('\'');
+            const qsizetype languageEnd = part.indexOf('\'', quote + 1);
+            if (quote < 0 || languageEnd < 0)
+                return false;
+            charset = part.left(quote);
+            part = part.mid(languageEnd + 1);
+        }
+        joined += encoded ? QByteArray::fromPercentEncoding(part) : part;
+        return true;
+    };
+    for (int i = 0; i < kMaxParts; ++i) {
+        const QByteArray key = name + '*' + QByteArray::number(i);
+        QByteArray part = parameterOf(header, (key + '*').constData());
+        const bool encoded = !part.isEmpty();
+        if (!encoded)
+            part = parameterOf(header, key.constData());
+        if (part.isEmpty())
+            break;
+        continued = true;
+        if (!append(part, encoded, i == 0))
+            return {};
+    }
+    if (continued)
+        return decodeText(joined, charset);
+    const QByteArray extended = parameterOf(header, (name + '*').constData());
+    if (!extended.isEmpty()) {
+        if (!append(extended, true, true))
+            return {};
+        return decodeText(joined, charset);
+    }
+    return decodeSubject(parameterOf(header, parameter));
+}
+
+std::optional<QByteArray> attachmentBytes(const QByteArray& body, const QByteArray& encoding)
+{
+    const QByteArray enc = encoding.trimmed().toLower();
+    if (enc == "base64") {
+        QByteArray compact = body;
+        compact.replace("\r", ""); compact.replace("\n", "");
+        compact.replace("\t", ""); compact.replace(" ", "");
+        auto decoded = QByteArray::fromBase64Encoding(compact, QByteArray::AbortOnBase64DecodingErrors);
+        if (!decoded)
+            return std::nullopt;
+        return std::move(decoded.decoded);
+    }
+    if (enc == "quoted-printable") {
+        // For files, preserve-or-guess would silently corrupt bytes. Prose
+        // retains the legacy tolerant decoder, but attachments fail closed.
+        for (qsizetype i = 0; i < body.size(); ++i) {
+            if (body[i] != '=')
+                continue;
+            if (body.mid(i + 1, 2) == "\r\n") { i += 2; continue; }
+            if (body.mid(i + 1, 1) == "\n") { ++i; continue; }
+            const auto hex = [](char c) { return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f'); };
+            if (i + 2 >= body.size() || !hex(body[i + 1]) || !hex(body[i + 2]))
+                return std::nullopt;
+            i += 2;
+        }
+        return decodeQuotedPrintable(body);
+    }
+    if (enc.isEmpty() || enc == "7bit" || enc == "8bit" || enc == "binary")
+        return body;
+    return std::nullopt;
+}
+
 // Splits a multipart body on its boundary. Returns the parts between the
 // delimiters, dropping the preamble before the first and anything after the
 // closing `--boundary--`.
-QList<QByteArray> splitOnBoundary(const QByteArray& body, const QByteArray& boundary)
+QList<QByteArray> splitOnBoundary(const QByteArray& body, const QByteArray& boundary, MimeBody::Status& status)
 {
     QList<QByteArray> parts;
-    if (boundary.isEmpty())
+    if (boundary.isEmpty()) {
+        status = MimeBody::Status::Malformed;
         return parts;
+    }
 
     const QByteArray delimiter = "--" + boundary;
     qsizetype searchFrom = 0;
@@ -276,8 +399,13 @@ QList<QByteArray> splitOnBoundary(const QByteArray& body, const QByteArray& boun
             ++cursor;
 
         const bool closing = body.mid(cursor, 2) == "--";
-        const bool terminated = closing || cursor >= body.size() || body.at(cursor) == '\r'
-            || body.at(cursor) == '\n';
+        if (closing) {
+            cursor += 2;
+            while (cursor < body.size() && (body[cursor] == ' ' || body[cursor] == '\t'))
+                ++cursor;
+        }
+        const bool terminated = cursor >= body.size() || body.at(cursor) == '\n'
+            || body.mid(cursor, 2) == "\r\n";
         if (!terminated) {
             searchFrom = at + delimiter.size();
             continue;
@@ -292,6 +420,10 @@ QList<QByteArray> splitOnBoundary(const QByteArray& body, const QByteArray& boun
                 --end;
             if (end > partStart && body.at(end - 1) == '\r')
                 --end;
+            if (parts.size() >= kMaxParts) {
+                status = MimeBody::Status::TooLarge;
+                return {};
+            }
             parts.append(body.mid(partStart, end - partStart));
         }
 
@@ -300,37 +432,77 @@ QList<QByteArray> splitOnBoundary(const QByteArray& body, const QByteArray& boun
 
         const qsizetype nextLine = body.indexOf('\n', cursor);
         if (nextLine < 0)
-            return parts;
+            break;
         partStart = nextLine + 1;
         searchFrom = partStart;
     }
 
-    return parts;
+    status = MimeBody::Status::Malformed; // no closing delimiter
+    return {};
 }
 
 void walk(const QByteArray& raw, int depth, int& partBudget, qsizetype& byteBudget, MimeBody& out)
 {
-    if (depth > kMaxDepth || partBudget <= 0 || raw.size() > byteBudget)
+    if (depth > kMaxDepth || partBudget <= 0 || raw.size() > byteBudget) {
+        out.status = MimeBody::Status::TooLarge;
         return;
+    }
     --partBudget;
     byteBudget -= raw.size();
 
+    qsizetype bodyStart = 0;
+    if (headerBlockEnd(raw, &bodyStart) > kMaxHeaderBytes) {
+        out.status = MimeBody::Status::TooLarge;
+        return;
+    }
     const Entity entity = parseEntity(raw);
     const QByteArray contentType = headerOf(entity, "content-type");
     const QByteArray type = mimeTypeOf(entity);
 
-    if (type.startsWith("multipart/")) {
-        const QList<QByteArray> parts = splitOnBoundary(entity.body, parameterOf(contentType, "boundary"));
+    const QByteArray disposition = headerOf(entity, "content-disposition");
+    QString filename = filenameOf(disposition, "filename");
+    if (filename.isEmpty())
+        filename = filenameOf(contentType, "name");
+    const bool isAttachment = !filename.isEmpty() || disposition.trimmed().toLower().startsWith("attachment");
+
+    if (type.startsWith("multipart/") && !isAttachment) {
+        const QList<QByteArray> parts = splitOnBoundary(entity.body, parameterOf(contentType, "boundary"), out.status);
+        if (out.status != MimeBody::Status::Complete)
+            return;
+        if (parts.isEmpty()) {
+            out.status = MimeBody::Status::Malformed;
+            return;
+        }
         for (const QByteArray& part : parts) {
-            if (partBudget <= 0)
-                return;
             walk(part, depth + 1, partBudget, byteBudget, out);
+            if (out.status != MimeBody::Status::Complete)
+                return;
         }
         return;
     }
 
-    if (type != "text/html" && type != "text/plain")
-        return; // an attachment, an image, a signature: nothing to read here
+    if (type == "text/rfc822-headers" && !isAttachment)
+        return; // protected legacy header, extracted separately
+    // ponytail: attached messages stay downloadable .eml files; a future
+    // nested-message viewer can parse them without replacing the parent body.
+    if (isAttachment || (type != "text/html" && type != "text/plain")) {
+        const auto bytes = attachmentBytes(entity.body, headerOf(entity, "content-transfer-encoding"));
+        if (!bytes) {
+            out.status = MimeBody::Status::Malformed;
+            return;
+        }
+        MimeAttachment file;
+        file.name = filename.isEmpty() ? (type == "message/rfc822" ? QStringLiteral("message.eml") : QStringLiteral("attachment")) : filename;
+        file.mimeType = QString::fromLatin1(type);
+        file.contentId = QString::fromUtf8(headerOf(entity, "content-id")).trimmed();
+        if (file.contentId.startsWith(QLatin1Char('<')) && file.contentId.endsWith(QLatin1Char('>')))
+            file.contentId = file.contentId.mid(1, file.contentId.size() - 2);
+        file.data = type.startsWith("multipart/") ? raw : *bytes;
+        if (type.startsWith("multipart/"))
+            file.mimeType = QStringLiteral("message/rfc822");
+        out.attachments.append(std::move(file));
+        return;
+    }
 
     const QByteArray decoded =
         decodeTransfer(entity.body, headerOf(entity, "content-transfer-encoding"));
@@ -353,6 +525,12 @@ MimeBody readMimeBody(const QByteArray& entity)
     if (entity.isEmpty())
         return out;
 
+    qsizetype bodyStart = 0;
+    if (entity.size() > kMaxEntityBytes || headerBlockEnd(entity, &bodyStart) > kMaxHeaderBytes) {
+        out.status = MimeBody::Status::TooLarge;
+        return out;
+    }
+
     // Inline PGP: no MIME entity at all, just the message. Detected by the
     // ABSENCE of Content-Type/MIME-Version rather than by the shape of the
     // first line, because prose beginning "Note: something" parses as a
@@ -368,10 +546,35 @@ MimeBody readMimeBody(const QByteArray& entity)
     qsizetype byteBudget = kMaxWalkBytes;
     walk(entity, 0, partBudget, byteBudget, out);
 
-    // Structure said MIME and the walk found no readable text: an entity
-    // whose only parts are attachments, or one whose boundary this parser
-    // does not recognise. Both leave the reader with nothing, which the
-    // caller has to be able to tell apart from an empty message -- so
-    // nothing is invented here.
+    if (out.status != MimeBody::Status::Complete) {
+        out.html.clear();
+        out.plain.clear();
+        out.attachments.clear();
+        return out;
+    }
+
+    // Only the decrypted root and its leading legacy display part can name
+    // this message. In particular, never descend into an attached message or
+    // let a nested part replace the subject of the enclosing mail.
+    // Preserve mailbox syntax: decoding a display-name comma before splitting
+    // recipients would turn it into a new recipient separator.
+    out.to = QString::fromUtf8(headerOf(parsed, "to"));
+    out.cc = QString::fromUtf8(headerOf(parsed, "cc"));
+    out.bcc = QString::fromUtf8(headerOf(parsed, "bcc"));
+    out.subject = decodeSubject(headerOf(parsed, "subject"));
+    if (out.subject.isEmpty() && mimeTypeOf(parsed).startsWith("multipart/")) {
+        const auto parts = splitOnBoundary(parsed.body, parameterOf(headerOf(parsed, "content-type"), "boundary"), out.status);
+        if (!parts.isEmpty()) {
+            const Entity first = parseEntity(parts.first());
+            if (mimeTypeOf(first) == "text/rfc822-headers"
+                && parameterOf(headerOf(first, "content-type"), "protected-headers") == "v1"
+                && !headerOf(first, "content-disposition").toLower().startsWith("attachment")) {
+                const QByteArray headers = decodeTransfer(first.body, headerOf(first, "content-transfer-encoding"));
+                if (headers.size() <= kMaxHeaderBytes)
+                    out.subject = decodeSubject(headerOf(parseEntity(headers + "\r\n\r\n"), "subject"));
+            }
+        }
+    }
+
     return out;
 }

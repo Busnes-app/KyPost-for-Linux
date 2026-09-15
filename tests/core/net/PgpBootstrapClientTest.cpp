@@ -6,6 +6,8 @@
 #include "FakeRelayServer.h"
 
 #include <QNetworkAccessManager>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTest>
 
 class PgpBootstrapClientTest : public QObject
@@ -13,10 +15,38 @@ class PgpBootstrapClientTest : public QObject
     Q_OBJECT
 
 private slots:
+    void fingerprintAdmission_data();
+    void fingerprintAdmission();
     void parsesIdentityAndProtection();
     void ignoresTheBrowserOnlyFields();
     void failureIsNotAnEmptySuccess();
 };
+
+void PgpBootstrapClientTest::fingerprintAdmission_data()
+{
+    QTest::addColumn<QString>("wire");
+    QTest::addColumn<QString>("expected");
+    QTest::newRow("address") << QStringLiteral("user@example.com") << QString();
+    QTest::newRow("short-key-id") << QStringLiteral("0123456789ABCDEF") << QString();
+    QTest::newRow("non-hex") << QString(40, QLatin1Char('Z')) << QString();
+    QTest::newRow("trailing-newline") << (QString(40, QLatin1Char('A')) + QLatin1Char('\n')) << QString();
+    QTest::newRow("v4") << QString(40, QLatin1Char('a')) << QString(40, QLatin1Char('A'));
+    QTest::newRow("v6") << QString(64, QLatin1Char('B')) << QString(64, QLatin1Char('B'));
+}
+
+void PgpBootstrapClientTest::fingerprintAdmission()
+{
+    QFETCH(QString, wire);
+    QFETCH(QString, expected);
+    const QJsonObject body{{"hasIdentity", true}, {"protection", "client"}, {"fingerprint", wire}};
+    FakeRelayServer fake(httpResponse(200, "OK", QJsonDocument(body).toJson()));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    const auto result = PgpBootstrapClient(http).fetch(
+        QUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port())), {});
+    QVERIFY(result.ok);
+    QCOMPARE(result.fingerprint, expected);
+}
 
 void PgpBootstrapClientTest::parsesIdentityAndProtection()
 {
