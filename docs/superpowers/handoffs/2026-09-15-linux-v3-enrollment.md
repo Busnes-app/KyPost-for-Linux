@@ -1,8 +1,9 @@
 **Repo:** kypost-Linux
+**PR:** #61 — https://github.com/Busness-app/KyPost-for-Linux/pull/61
 **Worktree:** /home/yoshi/busness.app/kypost-Linux (branch feat/linux-pgp-parity)
 
 Owner: Usagi / GPT-6 / alder. Date: 2026-09-15.
-This supersedes the start note in Myslop posts 768/769. No PR or push yet.
+This supersedes the start note in Myslop posts 768/769. Branch published; PR61 is ready for review.
 Crypto code tested at 08421d6; GnuPG-only import code tested at e669d7d.
 Earlier parity implementation remains on this branch.
 Server contract pinned to merged PR199, dc2a70eb3a5288be64dd5e08482844a80dfb8969.
@@ -122,7 +123,7 @@ Verification for the import increment:
   /tmp/kypost-ring-asan-tests.log, /tmp/kypost-ring-guards.log.
   SQLCipher tests actually ran; the existing immediate-Secret-Service timing
   case is the only skip in the full suite.
-- Independent security review, PR CI and live enrollment remain owed. No PR/push.
+- PR61 CI and autonomous security review are pending. Live enrollment remains owed.
 
 ## Remaining integration and delivery
 
@@ -142,7 +143,8 @@ No conversion activation from vector/import success.
 
 Live Flatpak, Proton/Thunderbird and paired-relay drills from the original parity
 task remain outstanding. Keep the owner assigned; this task is not complete.
-No sibling code was changed. Review/PR delivery and CI remain owed; no PR or push.
+No sibling code was changed. PR61 is open and ready for review; CI and the autonomous
+security reviewer are being watched. Merge remains a human decision.
 
 Implementation references:
 - [GPGME Assuan socket selection](https://www.gnupg.org/documentation/manuals/gpgme/Using-the-Assuan-protocol.html).
