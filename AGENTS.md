@@ -1118,3 +1118,7 @@ worse than no comment: the next reader stops looking.
   `SecureStoreKeychain` bounds it; see AGENTS.md §6f.
 - **CI Pipline Failes** Before commiting any change check the CI pipline code.
   EVERY Push to main not ment to fix the CI pipeline has broken the CI pipeline.
+
+## Product icon
+
+App/launcher assets use the Busnes.app-site Systems stamp family. Regenerate platform sizes from the matching master in `../Busnes.app-site`; preserve resource names and adaptive foreground safe margins. This asset update does not change native theme defaults.
