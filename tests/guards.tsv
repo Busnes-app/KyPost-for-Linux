@@ -383,3 +383,12 @@ core/net/PgpBootstrapClient.cpp	    out.fingerprint = normalizedFingerprint(obj.
 core/pgp/OpenPgpEncryptor.cpp	        && requested == QString::fromLatin1(key->fpr)	        && true	OpenPgpEncryptorTest:keyPatternsAreNotFingerprints
 core/pgp/OpenPgpEncryptor.cpp	        || !usableKey(signer, signerFingerprint, true)) {	        || signer == nullptr) {	OpenPgpEncryptorTest:keyPatternsAreNotFingerprints
 core/pgp/OpenPgpEncryptor.cpp	            || !usableKey(key, fingerprint, false)) {	            || key == nullptr) {	OpenPgpEncryptorTest:keyPatternsAreNotFingerprints
+
+# --- RFC 8291 push payloads: once keys exist, only ciphertext for them is read --
+core/domain/PairingStore.cpp	        return WebPushCrypto::decrypt(keys, message);	        return message;	PairingStoreTest:pushMessagesNeedTheStoredKeysOnceThereAreAny
+core/domain/PairingStore.cpp	        return PushKeysStatus::Unreadable;	        return PushKeysStatus::Absent;	PairingStoreTest:unreadableOrCorruptPushKeysDropEverything
+core/domain/DeviceRegistrationService.cpp	    if (!m_pairingStore.savePushKeys(attempt.m_pushKeys) || !m_pairingStore.save(pairing, attempt.m_sealingKey)) {	    if (!m_pairingStore.save(pairing, attempt.m_sealingKey)) {	DeviceRegistrationServiceTest:successfulPairPersistsPairingAndSettings
+core/net/NativeRegistrationClient.cpp	    if (pushKeys.p256dh.size() != 65 || pushKeys.auth.size() != 16) {	    if (false) {	NativeRegistrationClientTest:missingPushKeysAreRefusedWithoutARequest
+core/security/WebPushCrypto.cpp	    if (keys.authSecret.bytes().size() != kAuthBytes || body.size() > kMaxBodyBytes	    if (keys.authSecret.bytes().size() != kAuthBytes	WebPushCryptoTest:oversizeBodiesAreRefusedUnread
+core/security/WebPushCrypto.cpp	    if (rs < quint32(kTagBytes + 2) || quint32(record.size()) > rs)	    if (false)	WebPushCryptoTest:aRecordLongerThanItsDeclaredSizeIsRefused
+app/push/PushPayloadParser.cpp	    if (data.value(QStringLiteral("type")).toString() == QLatin1String("mfa_challenge"))	    if (false)	PushPayloadParserTest:signInChallengeIsNotShownAsANotification

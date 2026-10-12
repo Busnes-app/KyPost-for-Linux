@@ -598,12 +598,18 @@ Item {
                         Layout.fillWidth: true
                         Layout.topMargin: 4
                         wrapMode: Text.WordWrap
-                        text: i18n("KyPost receives notifications through your system's UnifiedPush "
-                                    + "distributor. Sender names and subject lines pass through the "
-                                    + "push server that distributor is configured to use -- change it "
-                                    + "there, not here. With no distributor installed, KyPost instead "
-                                    + "checks the relay directly every 90 seconds and nothing passes "
-                                    + "through a third party.")
+                        // Unpaired: any pairing made now registers keys.
+                        text: !Pairing.isPaired || Pairing.pushEncrypted
+                            ? i18n("KyPost receives notifications through your system's UnifiedPush "
+                                   + "distributor. Your KyPost server encrypts them to this device, so the "
+                                   + "push server that distributor uses sees only that one arrived. With "
+                                   + "no distributor installed, KyPost instead checks the relay directly "
+                                   + "every 90 seconds.")
+                            : i18n("KyPost receives notifications through your system's UnifiedPush "
+                                   + "distributor. This pairing predates push encryption, so sender names "
+                                   + "and subject lines pass through that distributor's push server. Pair "
+                                   + "this device again to encrypt them. With no distributor installed, "
+                                   + "KyPost instead checks the relay directly every 90 seconds.")
                     }
                 }
             }
@@ -1011,11 +1017,11 @@ Item {
                         text: i18n("When on, the pairing credential is encrypted with your PIN. Mail, push and MFA stop working until you unlock the app — that is the point, and it is a real tradeoff.")
                     }
 
-                    // Permanently visible, not a one-time dialog: this is
-                    // true whatever the settings above are set to, and a
-                    // warning the user has dismissed is a warning they no
-                    // longer have.
+                    // Permanently visible while it is true, not a one-time
+                    // dialog: a warning the user has dismissed is a warning
+                    // they no longer have. Pairings with push keys make it false.
                     Rectangle {
+                        visible: Pairing.isPaired && !Pairing.pushEncrypted
                         Layout.fillWidth: true
                         implicitHeight: pushWarningText.implicitHeight + 24
                         radius: Theme.shapePanel
@@ -1029,7 +1035,7 @@ Item {
                             anchors.right: parent.right
                             anchors.verticalCenter: parent.verticalCenter
                             anchors.margins: 12
-                            text: i18n("Push notifications send the sender and subject through a relay server (UnifiedPush/ntfy), in the clear, even with the settings above enabled. For zero leakage, ask your server admin to switch this device to Pull mode.")
+                            text: i18n("This pairing predates push encryption: notifications send the sender and subject through a relay server (UnifiedPush/ntfy) in the clear, even with the settings above enabled. Pair this device again to encrypt them, or ask your server admin to switch it to Pull mode.")
                             color: Theme.ink
                             font.family: Theme.fontUi
                             font.pixelSize: 12
