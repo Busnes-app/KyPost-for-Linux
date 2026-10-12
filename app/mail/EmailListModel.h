@@ -41,6 +41,9 @@ public:
         // and both roots render identically.
         PgpMarkerRole,
         PgpMarkerAccessibleNameRole,
+        UnreadRole,
+        // Row summary for assistive technology; says "unread" when it is.
+        AccessibleNameRole,
     };
 
     explicit EmailListModel(QObject* parent = nullptr);
@@ -50,6 +53,8 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     void setEmails(const QVector<Email>& emails);
+    // Updates one row in place, so the list keeps its scroll position.
+    void setStatus(const QString& folder, const QString& messageId, const QString& status);
     Email emailAt(int row) const; // out-of-range -> default-constructed Email
 
 private:

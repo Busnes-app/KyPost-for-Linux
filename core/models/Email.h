@@ -31,7 +31,7 @@ struct Email
     std::optional<QString> bodyMode;
     QString label;
     QStringList keywords;
-    QString status;
+    QString status; // wire value: "read" or "unread"
     QString atUtc;
     bool hasAttachments = false;
     QString sourceMode;
@@ -41,6 +41,10 @@ struct Email
     bool pgpEncrypted = false;
     bool pgpSigned = false;
     QString pgpDecryptError;
+
+    // Only the exact wire value counts, as on Android: an empty or unknown
+    // status is not shown as unread.
+    bool isUnread() const { return status == QLatin1String("unread"); }
 
     bool operator==(const Email&) const = default;
 };

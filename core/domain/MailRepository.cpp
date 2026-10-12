@@ -63,6 +63,11 @@ QStringList MailRepository::foldersHolding(const QString& messageId) const
     return m_emailDao.foldersContaining(messageId);
 }
 
+bool MailRepository::setCachedStatus(const QString& folder, const QString& messageId, const QString& status)
+{
+    return m_emailDao.updateStatus(folder, messageId, status);
+}
+
 std::optional<MailRefreshPlan> MailRepository::planRefresh(const QString& folder, bool forceFullResync) const
 {
     const std::optional<DevicePairing> pairing = m_pairingStore.load();

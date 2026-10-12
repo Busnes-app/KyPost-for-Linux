@@ -44,6 +44,8 @@ public:
     QVector<Email> findByFolder(const QString& folder) const;
     QVector<Email> findAll() const;
     bool deleteById(const QString& folder, const QString& messageId);
+    // False when the write failed or no such row exists.
+    bool updateStatus(const QString& folder, const QString& messageId, const QString& status);
     bool deleteAll();
 
     bool deleteByFolder(const QString& folder);

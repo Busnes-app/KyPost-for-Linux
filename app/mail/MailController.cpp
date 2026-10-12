@@ -451,6 +451,104 @@ void MailController::moveEmails(const QStringList& messageIds, const QString& ta
     performActionCommon(messageIds, QStringLiteral("move"), targetFolder);
 }
 
+void MailController::markRead(const QString& folder, const QStringList& messageIds)
+{
+    setReadState(folder, messageIds, true);
+}
+
+void MailController::markUnread(const QString& folder, const QStringList& messageIds)
+{
+    setReadState(folder, messageIds, false);
+}
+
+void MailController::applyCachedStatus(const QString& folder, const QString& messageId, const QString& status)
+{
+    if (folder == m_currentFolder) {
+        for (Email& email : m_currentFolderEmails) {
+            if (email.messageId == messageId)
+                email.status = status;
+        }
+    }
+    m_model->setStatus(folder, messageId, status);
+    emit readStateChanged(folder, messageId, status == QLatin1String("unread"));
+}
+
+void MailController::setReadState(const QString& folder, const QStringList& messageIds, bool read)
+{
+    const QString target = read ? QStringLiteral("read") : QStringLiteral("unread");
+    QUrl serverBaseUrl;
+    RelayAuth auth;
+    if (read) {
+        const std::optional<DevicePairing> pairing = m_pairingStore.load();
+        if (!pairing.has_value())
+            return;
+        serverBaseUrl = QUrl(pairing->serverBaseUrl);
+        auth = RelayAuth{ pairing->deviceId, pairing->deviceSecret };
+    } else if (!requirePairing(serverBaseUrl, auth)) {
+        return;
+    }
+    const PairingIdentity owner = m_pairingStore.currentIdentity();
+
+    QStringList changed;
+    QHash<QString, QString> previous;
+    for (const QString& id : messageIds) {
+        const QString key = folder + QLatin1Char('\n') + id;
+        if (m_readStateInFlight.contains(key) || changed.contains(id))
+            continue;
+        const std::optional<Email> cached = m_mailRepository.cachedEmail(folder, id);
+        if (!cached.has_value() || cached->isUnread() != read)
+            continue;
+        if (!m_mailRepository.setCachedStatus(folder, id, target)) {
+            if (!read)
+                setLastError(i18n("Could not save the change on this device."));
+            continue;
+        }
+        previous.insert(id, cached->status);
+        changed.append(id);
+        m_readStateInFlight.insert(key);
+        applyCachedStatus(folder, id, target);
+    }
+    if (changed.isEmpty())
+        return;
+
+    m_executor.run(
+        this,
+        [serverBaseUrl, auth, target, changed, folder](HttpClient& http) {
+            RelayMailSource source(http);
+            return source.performAction(serverBaseUrl, auth, target, changed, folder, std::nullopt);
+        },
+        [this, folder, target, changed, previous, read, owner](const ActionResult& result) {
+            for (const QString& id : changed)
+                m_readStateInFlight.remove(folder + QLatin1Char('\n') + id);
+            // The pairing changed while this was out: the cache now belongs to
+            // another account, whose same-UID message a rollback would flip.
+            if (!m_pairingStore.stillCurrent(owner))
+                return;
+
+            QStringList failed;
+            if (result.error.has_value() || (!result.ok && result.failed.isEmpty())) {
+                failed = changed;
+            } else {
+                for (const ActionFailure& failure : result.failed) {
+                    if (changed.contains(failure.messageId))
+                        failed.append(failure.messageId);
+                }
+            }
+            for (const QString& id : failed) {
+                // Changed since dispatch (a refresh wrote the relay's answer): keep it.
+                const std::optional<Email> cached = m_mailRepository.cachedEmail(folder, id);
+                if (!cached.has_value() || cached->status != target)
+                    continue;
+                if (m_mailRepository.setCachedStatus(folder, id, previous.value(id)))
+                    applyCachedStatus(folder, id, previous.value(id));
+            }
+            if (!read && !failed.isEmpty()) {
+                setLastError(result.detail.isEmpty() ? i18n("Could not mark the message as unread.")
+                                                     : result.detail);
+            }
+        });
+}
+
 // Shared by sendMail() and saveDraft(): both post the identical request
 // body, so reading/encoding attachments must not diverge between them.
 // Returns false and sets lastError on the first unreadable file or once the

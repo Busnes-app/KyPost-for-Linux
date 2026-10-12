@@ -98,6 +98,9 @@ public:
     // the user, and this is what it asks with.
     QStringList foldersHolding(const QString& messageId) const;
 
+    // Local cache write only; the relay is told separately.
+    bool setCachedStatus(const QString& folder, const QString& messageId, const QString& status);
+
     // forceFullResync sends `since=0`; every other refresh sends the
     // CursorStore-persisted cursor for this (subscriber, folder), or 0 when
     // there isn't one yet. `since` is ALWAYS sent.

@@ -2,6 +2,7 @@
 
 #include "models/Email.h"
 
+#include <QSignalSpy>
 #include <QTest>
 
 class EmailListModelTest : public QObject
@@ -14,6 +15,8 @@ private slots:
     void pgpMarkerRolesReflectMessageState();
     void emailAtOutOfRangeReturnsDefaultConstructedEmail();
     void dataOutOfRangeReturnsInvalidVariant();
+    void unreadRolesFollowTheExactWireStatus();
+    void setStatusUpdatesTheRowInPlace();
 
 private:
     static Email sampleEmail();
@@ -81,9 +84,9 @@ void EmailListModelTest::dataRoundTripsEveryRoleForAPopulatedRow()
     QVERIFY(model.data(index, EmailListModel::PgpMarkerRole).toString().isEmpty());
     QVERIFY(model.data(index, EmailListModel::PgpMarkerAccessibleNameRole).toString().isEmpty());
 
-    // roleNames() must expose exactly these 17 role-name strings for QML.
+    // roleNames() must expose exactly these 19 role-name strings for QML.
     const QHash<int, QByteArray> roles = model.roleNames();
-    QCOMPARE(roles.size(), 17);
+    QCOMPARE(roles.size(), 19);
     QCOMPARE(roles.value(EmailListModel::MessageIdRole), QByteArrayLiteral("messageId"));
     QCOMPARE(roles.value(EmailListModel::KeywordsRole), QByteArrayLiteral("keywords"));
     QCOMPARE(roles.value(EmailListModel::HasAttachmentsRole), QByteArrayLiteral("hasAttachments"));
@@ -91,6 +94,8 @@ void EmailListModelTest::dataRoundTripsEveryRoleForAPopulatedRow()
     QCOMPARE(roles.value(EmailListModel::PgpMarkerRole), QByteArrayLiteral("pgpMarker"));
     QCOMPARE(roles.value(EmailListModel::PgpMarkerAccessibleNameRole),
              QByteArrayLiteral("pgpMarkerAccessibleName"));
+    QCOMPARE(roles.value(EmailListModel::UnreadRole), QByteArrayLiteral("unread"));
+    QCOMPARE(roles.value(EmailListModel::AccessibleNameRole), QByteArrayLiteral("accessibleName"));
 }
 
 void EmailListModelTest::pgpMarkerRolesReflectMessageState()
@@ -144,6 +149,55 @@ void EmailListModelTest::dataOutOfRangeReturnsInvalidVariant()
 
     QVERIFY(!model.data(model.index(1, 0), EmailListModel::MessageIdRole).isValid());
     QVERIFY(!model.data(QModelIndex(), EmailListModel::MessageIdRole).isValid());
+}
+
+void EmailListModelTest::unreadRolesFollowTheExactWireStatus()
+{
+    Email unread = sampleEmail();
+    Email read = sampleEmail();
+    read.status = QStringLiteral("read");
+    Email unknown = sampleEmail();
+    unknown.status = QString();
+
+    EmailListModel model;
+    model.setEmails({ unread, read, unknown });
+
+    QCOMPARE(model.data(model.index(0, 0), EmailListModel::UnreadRole).toBool(), true);
+    QCOMPARE(model.data(model.index(1, 0), EmailListModel::UnreadRole).toBool(), false);
+    QCOMPARE(model.data(model.index(2, 0), EmailListModel::UnreadRole).toBool(), false);
+
+    const QString unreadName = model.data(model.index(0, 0), EmailListModel::AccessibleNameRole).toString();
+    const QString readName = model.data(model.index(1, 0), EmailListModel::AccessibleNameRole).toString();
+    QVERIFY2(unreadName.contains(QStringLiteral("Unread")), qPrintable(unreadName));
+    QVERIFY2(!readName.contains(QStringLiteral("nread")), qPrintable(readName));
+    QVERIFY(unreadName.contains(QStringLiteral("alice@example.com")) && unreadName.contains(QStringLiteral("Hello")));
+}
+
+// A reset would throw away the list's scroll position on every message opened.
+void EmailListModelTest::setStatusUpdatesTheRowInPlace()
+{
+    Email other = sampleEmail();
+    other.messageId = QStringLiteral("m2");
+    Email archived = sampleEmail();
+    archived.folder = QStringLiteral("Archive");
+
+    EmailListModel model;
+    model.setEmails({ sampleEmail(), other, archived });
+
+    QSignalSpy resetSpy(&model, &QAbstractItemModel::modelReset);
+    QSignalSpy changedSpy(&model, &QAbstractItemModel::dataChanged);
+    model.setStatus(QStringLiteral("INBOX"), QStringLiteral("m1"), QStringLiteral("read"));
+
+    QCOMPARE(resetSpy.count(), 0);
+    QCOMPARE(changedSpy.count(), 1);
+    QCOMPARE(changedSpy.at(0).at(0).toModelIndex().row(), 0);
+    QCOMPARE(model.emailAt(0).status, QStringLiteral("read"));
+    QCOMPARE(model.emailAt(1).status, QStringLiteral("unread"));
+    QCOMPARE(model.emailAt(2).status, QStringLiteral("unread")); // same id, other folder
+
+    // Already in that state: nothing to announce.
+    model.setStatus(QStringLiteral("INBOX"), QStringLiteral("m1"), QStringLiteral("read"));
+    QCOMPARE(changedSpy.count(), 1);
 }
 
 QTEST_GUILESS_MAIN(EmailListModelTest)

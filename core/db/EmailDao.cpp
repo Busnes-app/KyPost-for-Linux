@@ -173,6 +173,16 @@ bool EmailDao::deleteById(const QString& folder, const QString& messageId)
     return query.exec();
 }
 
+bool EmailDao::updateStatus(const QString& folder, const QString& messageId, const QString& status)
+{
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral("UPDATE emails SET status = :status WHERE folder = :folder AND message_id = :message_id"));
+    query.bindValue(QStringLiteral(":status"), status);
+    query.bindValue(QStringLiteral(":folder"), folder);
+    query.bindValue(QStringLiteral(":message_id"), messageId);
+    return query.exec() && query.numRowsAffected() > 0;
+}
+
 bool EmailDao::deleteAll()
 {
     QSqlQuery query(m_db);
