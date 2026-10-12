@@ -239,6 +239,11 @@ Added 2026-07-26:
   subject of every mail through a third party. Don't reintroduce it; if
   no-distributor latency ever needs improving, shorten the poll interval.
   Reasoning in full: `core/domain/TransportStateMachine.h`.
+  The one addition (plan item L8, 2026-10-11) is Android's push-silence
+  backstop: in the Distributor tier, 3 h with no push (checked every 15 min
+  and on app foreground) triggers one pull and a mail refresh. Pulls skip
+  message ids already in history and items queued more than 6 h earlier,
+  because the Distributor tier never advances the notification cursor.
 
 ## 4a. Client-side OpenPGP (decision reversed 2026-08-22)
 

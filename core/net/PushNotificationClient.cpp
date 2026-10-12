@@ -85,6 +85,7 @@ PullResult PushNotificationClient::pull(const QUrl& pullEndpoint, const RelayAut
         const QJsonObject item = value.toObject();
         PullNotificationItem entry;
         entry.seq = static_cast<qint64>(item.value(QStringLiteral("seq")).toDouble());
+        entry.createdAt = QDateTime::fromString(item.value(QStringLiteral("createdAt")).toString(), Qt::ISODate);
         const QJsonObject data = item.value(QStringLiteral("data")).toObject();
         if (MfaChallenge::isChallengeType(data)) {
             // Same routing as PushPayloadParser: never mail, malformed dropped.

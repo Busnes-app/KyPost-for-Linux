@@ -66,7 +66,11 @@ public:
     // owns the retry/backoff policy); a caller that needs to distinguish
     // "no pairing" from "polled, nothing new" should check
     // PairingStore::isPaired() itself first.
-    QVector<PushNotification> pullOnce();
+    //
+    // A message already in history is not delivered again (push got it
+    // first), and neither is one the relay queued before minCreatedAtMs. The
+    // cursor still moves past both.
+    QVector<PushNotification> pullOnce(qint64 minCreatedAtMs = 0);
 
 private:
     QString resolvePullEndpoint(const QString& serverBaseUrl) const;
