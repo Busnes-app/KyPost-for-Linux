@@ -18,6 +18,7 @@ private slots:
     void subsequentPullSendsAfterQueryParam();
     void successWithZeroNotificationsIsDistinctFromFailure();
     void unauthorizedFrom401PassesErrorThrough();
+    void signInChallengesAreRoutedAndMalformedOnesDropped();
 };
 
 void PushNotificationClientTest::successMapsItemsAndSplitsMultiValueKeywords()
@@ -126,6 +127,35 @@ void PushNotificationClientTest::unauthorizedFrom401PassesErrorThrough()
     QVERIFY(result.error.has_value());
     QCOMPARE(*result.error, NetworkError::Unauthorized);
     QVERIFY(result.notifications.isEmpty());
+}
+
+// The pull queue carries the same data map as the push (PullNotification.Data).
+void PushNotificationClientTest::signInChallengesAreRoutedAndMalformedOnesDropped()
+{
+    const QByteArray body = R"({"deliveryMode":"pull","cursor":3,"notifications":[)"
+                             R"({"seq":1,"title":"Approve sign-in","body":"Tap to approve",)"
+                             R"("data":{"type":"mfa_challenge","challengeId":"0123456789abcdef0123456789abcdef0123456789abcdef",)"
+                             R"("issuedAt":"1760000000000","matchDigits":"42","decoyDigits":"07,93"}},)"
+                             R"({"seq":2,"title":"Approve sign-in","body":"Tap to approve",)"
+                             R"("data":{"type":"mfa_challenge","challengeId":"bad"}},)"
+                             R"({"seq":3,"title":"Alice","body":"Hi","data":{"messageId":"msg-1"}}]})";
+    FakeRelayServer fake(httpResponse(200, "OK", body));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    PushNotificationClient client(http);
+
+    const QUrl endpoint(QStringLiteral("http://127.0.0.1:%1/api/notifications/native/pull").arg(fake.port()));
+    const PullResult result = client.pull(endpoint, RelayAuth{ QStringLiteral("d"), QStringLiteral("s") }, 0);
+
+    QVERIFY(!result.error.has_value());
+    QCOMPARE(result.cursor, qint64(3));
+    QCOMPARE(result.notifications.size(), 2);
+    const PushNotification& challenge = result.notifications.at(0).notification;
+    QVERIFY(challenge.mfaChallenge.has_value());
+    QCOMPARE(challenge.mfaChallenge->decoyDigits, QStringList({ QStringLiteral("07"), QStringLiteral("93") }));
+    QVERIFY(challenge.title.isEmpty());
+    QCOMPARE(result.notifications.at(1).notification.messageId, QStringLiteral("msg-1"));
+    QVERIFY(!result.notifications.at(1).notification.mfaChallenge.has_value());
 }
 
 QTEST_GUILESS_MAIN(PushNotificationClientTest)

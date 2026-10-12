@@ -86,7 +86,9 @@ QVector<PushNotification> PushRepository::pullOnce()
     for (const PullNotificationItem& item : result.notifications) {
         if (item.seq <= lastCursor)
             continue;
-        records.append(PushRecord{ item.notification.messageId, item.seq, receivedAt, false });
+        // Delivered but not history: a challenge is not mail and has no messageId.
+        if (!item.notification.mfaChallenge.has_value())
+            records.append(PushRecord{ item.notification.messageId, item.seq, receivedAt, false });
         delivered.append(item.notification);
     }
 

@@ -172,39 +172,32 @@ Added 2026-07-25 (parity work with `kypost-android`):
   at runtime. `AppRelauncher` spawns the replacement only *after*
   `app.exec()` returns, so `KDBusService(Unique)` has released
   `com.kysecurity.mail` first. Don't "fix" that ordering.
-- **MFA over push is a non-goal on Linux.** Settled 2026-08-23 by the user:
-  Linux cannot do MFA push. Not a backend oversight to wait out -- the server
-  excludes it deliberately, and `MFATransportEligible`'s own comment gives the
-  reason: an MFA challenge carries sign-in metadata (IP address, user agent,
-  and the match digits themselves), and UnifiedPush delivers through an
-  unencrypted public broker such as ntfy.sh. `normalizeNativeTransport` maps
-  platform `linux` to that transport, so this client is excluded by
-  construction. Those devices stay fully usable for mail notifications.
+- **MFA over push works only because the payload is encrypted.** Settled
+  2026-08-23 as a non-goal: an MFA challenge carries sign-in metadata (IP
+  address, user agent, the match digits) and UnifiedPush crosses a public
+  broker such as ntfy.sh, so the relay's `MFATransportEligible` excluded this
+  client. Since 2026-10-11 the client registers RFC 8291 keys (`p256dh`/
+  `auth`) and the relay encrypts to them, which is what admits it. Keys live
+  in the secret store via `PairingStore`; never use KUnifiedPush's
+  `contentEncryption*()`, which writes the private key to a plain QSettings
+  file (see `UnifiedPushConnector.h`). Once keys are stored, a push that does
+  not decrypt is dropped, never parsed as cleartext. Do not weaken either rule
+  without re-reading `push_mfa_handlers.go`.
 
-  Earlier wording here said the filter was "explicitly temporary" and told
-  readers to "confirm the server filter is gone before building any MFA UI".
-  That misdescribed a privacy control as an oversight, and pointed at a
-  condition nobody should be waiting for. What would actually have to change
-  is end-to-end encryption of the push payload itself (RFC 8291 is what web
-  push uses); that is a UnifiedPush-ecosystem change, not a KyPost one.
-
-  **Update 2026-10-11:** this client now registers RFC 8291 keys (`p256dh`/
-  `auth`) and the relay encrypts to them, so `MFATransportEligible` admits
-  it and challenges do arrive. `PushPayloadParser` drops `mfa_challenge`
-  until the approval UI (plan item L1) lands. Keys live in the secret store
-  via `PairingStore`; never use KUnifiedPush's `contentEncryption*()`, which
-  writes the private key to a plain QSettings file (see
-  `UnifiedPushConnector.h`). Once keys are stored, a push that does not
-  decrypt is dropped, never parsed as cleartext.
-
-  `MfaApproval.qml` was deleted for this reason on 2026-07-25, and
-  `MfaController`, `MfaResponseClient` and `MfaChallenge` followed on
-  2026-08-24. They were dead -- nothing constructs a challenge for them to
-  answer -- but dead-and-compiled reads as finished machinery awaiting a
-  reconnect, which is the mistake this note exists to prevent. Do not
-  reintroduce them. If UnifiedPush ever gains RFC 8291 payload encryption and
-  the relay drops the filter, recover the implementation from git rather than
-  keeping a stub warm against a change nobody is waiting for.
+  Approval (plan item L1, 2026-10-11): `MfaChallenge::fromPushData` validates
+  the data map strictly and both arrival paths (`PushPayloadParser`,
+  `PushNotificationClient`) route a valid challenge to `MfaController`, never
+  to mail history or a mail notification; a malformed one is dropped.
+  `MfaChallengeTracker` keeps them in memory only, dedupes by id (answered
+  ids too), expires them at min(issuedAt, arrival) + 5 min, refuses an
+  issuedAt more than 2 min ahead, and caps pending at 8. The notification
+  carries fixed copy only; IP and user agent appear only on
+  `pages/MfaApproval.qml`, which both roots host as an Item under
+  `LockOverlay`. `MfaController` refuses to answer while locked and sends
+  exactly the number tapped -- the relay checks it, one wrong tap locks push
+  for that sign-in (429 `locked`). A pairing change clears every challenge.
+  With the app lock off, the tap on the matching number is the confirmation;
+  Android additionally asks for device auth per decision, Linux does not.
 
 - **Read state (plan item L3, 2026-10-11).** Unread is exactly `status ==
   "unread"` (`Email::isUnread`). `MailController::markRead/markUnread` write

@@ -9,3 +9,10 @@ Comment=A new email has arrived
 Icon=mail-unread
 Action=Popup
 ShowPopupsInDndMode=true
+
+[Event/signInRequest]
+Name=Sign-in request
+Comment=A sign-in to your account is waiting for approval
+Icon=dialog-password
+Action=Popup
+ShowPopupsInDndMode=true

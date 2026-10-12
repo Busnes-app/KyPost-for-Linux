@@ -14,7 +14,8 @@ private slots:
     void emptyKeywordsStringProducesEmptyStringList();
     void malformedKeywordsWithExtraCommasDropsEmpties();
     void malformedJsonFailsGracefully();
-    void signInChallengeIsNotShownAsANotification();
+    void signInChallengeIsRoutedNotShownAsMail();
+    void malformedSignInChallengeIsDroppedNotShownAsMail();
 };
 
 void PushPayloadParserTest::fullValidPayloadRoundTripsEveryField()
@@ -111,9 +112,26 @@ void PushPayloadParserTest::malformedKeywordsWithExtraCommasDropsEmpties()
     QCOMPARE(result->keywords, QStringList({ QStringLiteral("work"), QStringLiteral("urgent") }));
 }
 
-void PushPayloadParserTest::signInChallengeIsNotShownAsANotification()
+// push_mfa_handlers.go's envelope. Displayable, so only the type check keeps
+// it out of the mail path.
+void PushPayloadParserTest::signInChallengeIsRoutedNotShownAsMail()
 {
-    // push_mfa_handlers.go's envelope. Displayable, so only the type check drops it.
+    const QByteArray body = R"({"title":"Approve sign-in","body":"Tap to approve or deny a sign-in to your account.",)"
+                             R"("data":{"type":"mfa_challenge","challengeId":"0123456789abcdef0123456789abcdef0123456789abcdef",)"
+                             R"("issuedAt":"1760000000000","matchDigits":"42","decoyDigits":"07,93","ipAddress":"203.0.113.9"}})";
+
+    const std::optional<PushNotification> result = PushPayloadParser::parse(body);
+    QVERIFY(result.has_value());
+    QVERIFY(result->mfaChallenge.has_value());
+    QCOMPARE(result->mfaChallenge->matchDigits, QStringLiteral("42"));
+    QCOMPARE(result->mfaChallenge->ipAddress, QStringLiteral("203.0.113.9"));
+    QVERIFY(result->title.isEmpty());
+    QVERIFY(result->body.isEmpty());
+    QVERIFY(result->messageId.isEmpty());
+}
+
+void PushPayloadParserTest::malformedSignInChallengeIsDroppedNotShownAsMail()
+{
     const QByteArray body = R"({"title":"Approve sign-in","body":"Tap to approve or deny a sign-in to your account.",)"
                              R"("data":{"type":"mfa_challenge","challengeId":"c-1","issuedAt":"1","matchDigits":"42"}})";
 

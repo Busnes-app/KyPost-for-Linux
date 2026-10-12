@@ -391,7 +391,17 @@ core/domain/DeviceRegistrationService.cpp	    if (!m_pairingStore.savePushKeys(a
 core/net/NativeRegistrationClient.cpp	    if (pushKeys.p256dh.size() != 65 || pushKeys.auth.size() != 16) {	    if (false) {	NativeRegistrationClientTest:missingPushKeysAreRefusedWithoutARequest
 core/security/WebPushCrypto.cpp	    if (keys.authSecret.bytes().size() != kAuthBytes || body.size() > kMaxBodyBytes	    if (keys.authSecret.bytes().size() != kAuthBytes	WebPushCryptoTest:oversizeBodiesAreRefusedUnread
 core/security/WebPushCrypto.cpp	    if (rs < quint32(kTagBytes + 2) || quint32(record.size()) > rs)	    if (false)	WebPushCryptoTest:aRecordLongerThanItsDeclaredSizeIsRefused
-app/push/PushPayloadParser.cpp	    if (data.value(QStringLiteral("type")).toString() == QLatin1String("mfa_challenge"))	    if (false)	PushPayloadParserTest:signInChallengeIsNotShownAsANotification
+
+# --- sign-in approval: never mail, never answered locked, only offered numbers --
+app/push/PushPayloadParser.cpp	    if (MfaChallenge::isChallengeType(data)) {	    if (false) {	PushPayloadParserTest:signInChallengeIsRoutedNotShownAsMail
+app/push/PushPayloadParser.cpp	        if (!notification.mfaChallenge.has_value())	        if (false)	PushPayloadParserTest:malformedSignInChallengeIsDroppedNotShownAsMail
+core/net/PushNotificationClient.cpp	            if (!entry.notification.mfaChallenge.has_value())	            if (false)	PushNotificationClientTest:signInChallengesAreRoutedAndMalformedOnesDropped
+core/domain/PushRepository.cpp	        if (!item.notification.mfaChallenge.has_value())	        if (true)	PushRepositoryTest:pulledSignInChallengesAreDeliveredButNotStoredAsHistory
+core/domain/MfaChallengeTracker.cpp	    if (challenge.issuedAtMs > nowMs + kMaxFutureSkewMs)	    if (false)	MfaChallengeTrackerTest:farFutureIssuedAtIsRefused
+core/net/MfaResponseClient.cpp	        out.outcome = reply.value(QStringLiteral("ok")).toBool() ? MfaResponseOutcome::Success	        out.outcome = true ? MfaResponseOutcome::Success	MfaResponseClientTest:statusCodesMapToOutcomes
+app/pairing/MfaController.cpp	    if (m_appLocked) {	    if (false) {	MfaControllerTest:aLockedAppSendsNothing
+app/pairing/MfaController.cpp	    if (approve && !m_current->choices.contains(digits))	    if (false)	MfaControllerTest:numbersNotOfferedAreIgnored
+app/qml/pages/MfaApproval.qml	    readonly property bool canAnswer: Mfa.hasChallenge && !Mfa.inFlight && !AppLock.locked	    readonly property bool canAnswer: Mfa.hasChallenge && !Mfa.inFlight	QmlTests:MfaApproval::test_locked_app_cannot_answer
 
 # --- a push opened for a replaced pairing is never recorded or shown -------
 #

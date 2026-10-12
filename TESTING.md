@@ -320,36 +320,25 @@ accounts) to exercise the full handshake.
       generic QR scanner (phone camera app, etc.) should produce a working
       URL that, when opened, returns the same JSON contract directly.
 
-### MFA — removed, and why
+### MFA sign-in approval
 
-There is nothing to test here, deliberately.
+Needs a pairing with push keys (Settings shows no "predates push encryption"
+warning), push approval and TOTP enabled on the web account.
 
-`app/qml/pages/MfaApproval.qml` was **deleted on 2026-07-25**. It could never
-run: kypost-server derives `transport: "unifiedpush"` from `platform: "linux"`
-(`internal/api/server.go`), and `push_mfa_handlers.go` filters unifiedpush
-devices out of every MFA challenge before dispatch. A Linux device is
-therefore never notified of a challenge, in push *or* pull mode — so the
-screen had no reachable entry point and could not acquire a `challengeId` to
-act on.
-
-`MfaController`, `MfaResponseClient` and `MfaChallenge` were **deleted on
-2026-08-24**, along with their three test binaries.
-
-This paragraph used to say they were "deliberately kept" because the
-server-side filter was "explicitly temporary". That was wrong, and AGENTS.md
-section 4 had already retracted it: the filter is a privacy control, not an
-oversight. An MFA challenge carries sign-in metadata (IP address, user agent,
-the match digits themselves) and UnifiedPush delivers through an unencrypted
-public broker, so what would have to change is RFC 8291 payload encryption in
-the UnifiedPush ecosystem — not anything on either side of this repo.
-
-- [ ] **Do NOT expect MFA UI anywhere.** No push payload triggers it;
-      `main.cpp`'s only `NotificationDispatcher::openRequested` connection
-      targets `MailController::openEmailRequested`. A challenge must be
-      answered from the web app.
-- [ ] **Do not rebuild any MFA screen or client.** Git holds the deleted
-      implementation. Recovering it requires the broker to carry encrypted
-      payloads first, which is not a KyPost change.
+- [ ] **Start a web sign-in.** "Approve sign-in" notification appears with
+      fixed text only -- no IP address or browser in the popup.
+- [ ] **View opens the page.** Time, countdown, three numbers, Deny. IP and
+      browser appear only when the account has notification previews on.
+- [ ] **Locked app.** With the app lock on and locked, View shows the PIN
+      screen first; the approval page is behind it after unlocking.
+- [ ] **Right number approves**, the browser signs in, the page says
+      "Sign-in approved." and the request disappears.
+- [ ] **Wrong number locks push** for that sign-in; the browser falls back
+      to TOTP and the page says so.
+- [ ] **Deny** works without choosing a number.
+- [ ] **Expiry.** Leave one for five minutes: it disappears from the page.
+- [ ] **Pull mode.** Switch the device to Pull on the server and repeat the
+      first step; the challenge arrives on the next poll.
 
 ## App lock, credential gate, certificate pinning
 
@@ -783,9 +772,6 @@ access log:
   is an intentionally-empty `.gitkeep` placeholder; there is no
   `clickable build` job and none should be added until UBports ships a
   usable Qt6/KF6 track.
-- **MFA never arrives via push.** Covered above — restated here because
-  it's easy to assume otherwise given mail push works. It is a locked
-  Phase 7 design decision, not a missing feature.
 - ~~The Flatpak build does not currently produce a runnable app~~ —
   **resolved 2026-07-17**, see the `flatpak-builder` checklist item above
   for the full fix and live-confirmed evidence. The Flatpak manifest is now

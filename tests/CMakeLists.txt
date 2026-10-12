@@ -29,6 +29,7 @@ kypost_add_test(ContactTest core/models/ContactTest.cpp)
 kypost_add_test(StandardFolderTest core/models/StandardFolderTest.cpp)
 kypost_add_test(KeywordSettingsTest core/models/KeywordSettingsTest.cpp)
 kypost_add_test(PushNotificationTest core/models/PushNotificationTest.cpp)
+kypost_add_test(MfaChallengeTest core/models/MfaChallengeTest.cpp)
 
 # core/version: the dotted-numeric compare behind the update notice. Pure, no
 # network -- the check that decides whether a user is told they are behind.
@@ -105,6 +106,7 @@ kypost_add_test(ContactSyncRepositoryTest core/domain/ContactSyncRepositoryTest.
 kypost_add_test(GroupsRepositoryTest core/domain/GroupsRepositoryTest.cpp)
 kypost_add_test(ContactPhotoRepositoryTest core/domain/ContactPhotoRepositoryTest.cpp)
 kypost_add_test(PushRepositoryTest core/domain/PushRepositoryTest.cpp)
+kypost_add_test(MfaChallengeTrackerTest core/domain/MfaChallengeTrackerTest.cpp)
 kypost_add_test(TransportStateMachineTest core/domain/TransportStateMachineTest.cpp)
 kypost_add_test(PgpQrRepositoryTest core/domain/PgpQrRepositoryTest.cpp)
 
@@ -122,6 +124,7 @@ target_include_directories(NetworkExecutorTest PRIVATE ${CMAKE_CURRENT_SOURCE_DI
 kypost_add_test(NativeRegistrationClientTest core/net/NativeRegistrationClientTest.cpp)
 kypost_add_test(PushNotificationClientTest core/net/PushNotificationClientTest.cpp)
 kypost_add_test(DeregisterClientTest core/net/DeregisterClientTest.cpp)
+kypost_add_test(MfaResponseClientTest core/net/MfaResponseClientTest.cpp)
 kypost_add_test(ContactSyncClientTest core/net/ContactSyncClientTest.cpp)
 kypost_add_test(ClientVersionClientTest core/net/ClientVersionClientTest.cpp)
 kypost_add_test(FolderClientTest core/net/FolderClientTest.cpp)
@@ -312,6 +315,14 @@ kypost_add_app_test(WindowActivationTest
 # has no display at all -- without this the test aborts there and takes the
 # whole package build down with it, which is exactly how it was found.
 set_tests_properties(WindowActivationTest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# Sign-in approval: lock gate, tapped digits, expiry.
+kypost_add_app_test(MfaControllerTest
+  SOURCES
+    app/pairing/MfaControllerTest.cpp
+    ${CMAKE_SOURCE_DIR}/app/pairing/MfaController.cpp
+  LIBS KF6::I18n
+)
 
 kypost_add_app_test(PairingControllerTest
   SOURCES

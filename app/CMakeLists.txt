@@ -137,6 +137,8 @@ target_link_libraries(kypost PRIVATE ZXing::ZXing Qt6::Multimedia)
 target_sources(kypost PRIVATE
   pairing/PairingController.cpp
   pairing/PairingController.h
+  pairing/MfaController.cpp
+  pairing/MfaController.h
 )
 
 target_sources(kypost PRIVATE

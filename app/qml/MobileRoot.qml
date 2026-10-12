@@ -985,6 +985,22 @@ Kirigami.ApplicationWindow {
         }
     }
 
+    // Sign-in approval. An Item under LockOverlay, never a Popup: QQuickOverlay
+    // would stack it above the PIN screen.
+    MfaApproval {
+        anchors.fill: parent
+        z: 950
+        visible: Mfa.open
+    }
+
+    Connections {
+        target: Mfa
+        function onShowRequested() {
+            root.raise()
+            root.requestActivate()
+        }
+    }
+
     LockOverlay { id: unlockOverlay }
 
     // Answers a notification tap-through that cannot say which mailbox it

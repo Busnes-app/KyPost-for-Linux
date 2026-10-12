@@ -4,6 +4,7 @@
 #include "mail/MailController.h"
 #include "mail/ProtectedImageHandler.h"
 #include "mail/RemoteContentInterceptor.h"
+#include "pairing/MfaController.h"
 #include "pairing/PairingController.h"
 #include "pgp/PgpQrController.h"
 #include "pgp/PgpQrScanner.h"
@@ -1206,6 +1207,19 @@ int main(int argc, char* argv[])
                          notificationDispatcher.setContentHidden(appLockManager.locked());
                      });
 
+    // Sign-in approval (AGENTS.md section 4). Answering needs the app
+    // unlocked; the page sits under LockOverlay, so a locked app shows the PIN
+    // screen first. Challenges belong to the pairing that received them.
+    MfaController mfaController(networkExecutor, pairingStore);
+    qmlRegisterSingletonInstance<MfaController>("com.kysecurity.mail", 1, 0, "Mfa", &mfaController);
+    mfaController.setAppLocked(appLockManager.locked());
+    QObject::connect(&appLockManager, &AppLockManager::lockedChanged, &mfaController,
+                     [&mfaController, &appLockManager]() { mfaController.setAppLocked(appLockManager.locked()); });
+    QObject::connect(&pairingController, &PairingController::pairingChanged, &mfaController,
+                     [&mfaController]() { mfaController.clear(); });
+    QObject::connect(&notificationDispatcher, &NotificationDispatcher::signInViewRequested, &mfaController,
+                     &MfaController::show);
+
     // A decrypted message belongs to the account it was fetched for, and an
     // IMAP UID is not evidence of which account that was -- "5" exists again
     // in the next one. MailController refuses to hand the body out once the
@@ -1325,22 +1339,6 @@ int main(int argc, char* argv[])
     // where the Task 12 stub ran this) so PairingController already exists
     // to route a native-pair link to.
     routeDeepLink(app.arguments(), pairingControllerForDeepLinks);
-
-    // There is no MFA controller here. Settled 2026-08-23, deleted
-    // 2026-08-24, when the relay excluded every unifiedpush device because
-    // the payload crossed a public broker in the clear. Since 2026-10-11 this
-    // client registers RFC 8291 keys, which makes it eligible
-    // (MFATransportEligible), so challenges now arrive encrypted and
-    // PushPayloadParser drops them until an approval UI exists. See AGENTS.md
-    // section 4.
-    //
-    // The controller, its client and its model survived here for a while as
-    // dead-but-compiled code, which is worse than absent: it read as finished,
-    // tested machinery that only needed reconnecting. Answering a challenge
-    // means reading the pairing and firing an authenticated POST, so the next
-    // maintainer to "just wire it up" would have exposed sign-in metadata to
-    // a public broker without ever learning why it was unplugged. Git has the
-    // implementation.
 
     // Task 48: KLocalization::setupLocalizedContext() above makes i18n()/
     // i18nc()/i18np()/i18ncp() (and their xi18n* KUIT counterparts) callable
@@ -1597,14 +1595,24 @@ int main(int argc, char* argv[])
     // PushDao/PushRepository::recordPushArrival() treat messageId as the
     // required identity key, so persistence is skipped for a keyless
     // result; the notification is still shown either way.
+    //
+    // Both arrival paths end in `deliver`. A sign-in challenge is never mail.
+    // On the distributor tier it only runs once PushArrival has confirmed the
+    // pairing the push was opened for is still current, so a challenge
+    // decrypted under a replaced pairing's keys never reaches mfaController.
+    const auto deliver = [&mfaController, &notificationDispatcher](const PushNotification& payload) {
+        if (payload.mfaChallenge.has_value()) {
+            if (mfaController.receive(*payload.mfaChallenge))
+                notificationDispatcher.notifySignInRequest();
+            return;
+        }
+        notificationDispatcher.notify(payload);
+    };
+
     QObject::connect(&pushConnector, &UnifiedPushConnector::messageReceived, &pushConnector,
-                      [&pairingStore, &pushRepository, &notificationDispatcher](const QByteArray& message) {
-                          PushArrival::handle(
-                              message, pairingStore, pushRepository,
-                              [&notificationDispatcher](const PushNotification& payload) {
-                                  notificationDispatcher.notify(payload);
-                              },
-                              QDateTime::currentMSecsSinceEpoch());
+                      [&pairingStore, &pushRepository, deliver](const QByteArray& message) {
+                          PushArrival::handle(message, pairingStore, pushRepository, deliver,
+                                              QDateTime::currentMSecsSinceEpoch());
                       });
 
     // Polling-tier arrivals: PushRepository::pullOnce() (invoked internally
@@ -1613,9 +1621,9 @@ int main(int argc, char* argv[])
     // landed and its cursor is on the disk (core/domain/PushRepository.cpp)
     // -- so do not call recordPushArrival() again here.
     QObject::connect(&transportStateMachine, &TransportStateMachine::pollTick, &transportStateMachine,
-                      [&notificationDispatcher](const QVector<PushNotification>& delivered) {
+                      [deliver](const QVector<PushNotification>& delivered) {
                           for (const PushNotification& payload : delivered)
-                              notificationDispatcher.notify(payload);
+                              deliver(payload);
                       });
 
     // Observability only -- TransportStateMachine.cpp itself has no logging
