@@ -5,6 +5,7 @@
     <file>DesktopRoot.qml</file>
     <file>utils/format.js</file>
     <file>components/PrimaryButton.qml</file>
+    <file>components/ConnectionStatus.qml</file>
     <file>components/GhostButton.qml</file>
     <file>components/DangerButton.qml</file>
     <file>components/PillTab.qml</file>

@@ -247,6 +247,21 @@ Item {
                                 wrapMode: Text.WordWrap
                             }
                         }
+
+                        ConnectionStatus {
+                            Layout.fillWidth: true
+                            distributorActive: Pairing.distributorActive
+                            pushServerHost: Pairing.pushServerHost
+                            pushEncrypted: Pairing.pushEncrypted
+                            lastSyncAt: MailApp.lastSyncAt
+                            lastError: MailApp.lastError
+                            // Re-read each time the pane is opened.
+                            history: root.currentPane === 0 ? MailApp.notificationHistory() : []
+                            onOpenRequested: (messageId) => {
+                                root.closed()
+                                MailApp.openEmailRequested(messageId)
+                            }
+                        }
                     }
 
                     RowLayout {

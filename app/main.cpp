@@ -1631,6 +1631,8 @@ int main(int argc, char* argv[])
     // Push-silence backstop: a distributor silent for 3 h gets one pull, and
     // mail is resynced with it. Checked on a timer and whenever the app comes
     // forward. Mail is left alone while locked: the device secret may be sealed.
+    mailController.setNotificationHistorySource([&pushRepository]() { return pushRepository.history(30); });
+
     QObject::connect(&transportStateMachine, &TransportStateMachine::pushSilenceBackstop, &mailController,
                       [&mailController, &appLockManager]() {
                           if (!appLockManager.locked())
@@ -1662,6 +1664,7 @@ int main(int argc, char* argv[])
     // wire value to fall back to.
     QObject::connect(&transportStateMachine, &TransportStateMachine::tierChanged, &transportStateMachine,
                       [&pairingController, &pushConnector](TransportTier tier) {
+                          pairingController.setDistributorActive(tier == TransportTier::Distributor);
                           switch (tier) {
                           case TransportTier::Distributor:
                               pairingController.setDeviceToken(pushConnector.endpoint());

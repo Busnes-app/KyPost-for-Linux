@@ -3,11 +3,13 @@
 #include "domain/FolderRepository.h" // FolderMutationFetch -- carried across the thread hop below
 #include "domain/MailRepository.h"   // MailRefreshPlan -- likewise
 #include "mail/EmailListModel.h"
+#include "db/PushDao.h" // PushRecord
 #include "models/Email.h"
 #include "net/RelayMailSource.h" // MailAttachmentUpload -- held by value in PendingSend below
 #include "pgp/EncryptedMessageReader.h" // PgpReadResult/PgpReadStatus -- carried across the hop
 #include "pgp/MimeBodyReader.h"
 
+#include <QDateTime>
 #include <QDesktopServices>
 #include <QObject>
 #include <QSet>
@@ -99,6 +101,8 @@ class MailController : public QObject
     Q_PROPERTY(bool decryptedSignatureIsWarning READ decryptedSignatureIsWarning NOTIFY decryptedChanged)
     Q_PROPERTY(bool decryptRetryable READ decryptRetryable NOTIFY decryptedChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
+    // Last refresh the relay answered and the cache took. Memory only.
+    Q_PROPERTY(QDateTime lastSyncAt READ lastSyncAt NOTIFY lastSyncAtChanged)
     Q_PROPERTY(bool pgpCanEncrypt READ pgpCanEncrypt NOTIFY pgpComposeStateChanged)
     Q_PROPERTY(bool pgpCanSign READ pgpCanSign NOTIFY pgpComposeStateChanged)
     Q_PROPERTY(bool pgpHandoffToWebmail READ pgpHandoffToWebmail NOTIFY pgpComposeStateChanged)
@@ -298,6 +302,16 @@ public slots:
     // selects the Inbox, refreshes, and answers when that lands. Either way
     // the answer arrives as notificationEmailResolved().
     Q_INVOKABLE void openFromNotification(const QString& messageId);
+
+    // The 30 newest notification history rows, each {messageId, receivedAt,
+    // sender, subject}; sender/subject are empty when the message is not
+    // cached. History holds ids only, so the source is set from main.cpp.
+    Q_INVOKABLE QVariantList notificationHistory() const;
+    void setNotificationHistorySource(std::function<QVector<PushRecord>()> source)
+    {
+        m_notificationHistory = std::move(source);
+    }
+    QDateTime lastSyncAt() const { return m_lastSyncAt; }
     // Task 39: Settings > Keywords pane. Wraps keywordRepository.allSettings()
     // over the Inbox's cached emails specifically (m_mailRepository.
     // cachedEmails("INBOX")), NOT m_currentFolderEmails/whatever folder is
@@ -422,6 +436,7 @@ signals:
     void keywordTabsChanged();
     void isBusyChanged();
     void lastErrorChanged();
+    void lastSyncAtChanged();
     void decryptedChanged();
     void foldersChanged();
     // Outcome of archiveEmails/deleteEmails/markSpam/moveEmails. `action` is
@@ -694,6 +709,8 @@ private:
     // Empty when no tap-through is outstanding.
     QString m_pendingNotificationMessageId;
     QString m_lastError;
+    QDateTime m_lastSyncAt;
+    std::function<QVector<PushRecord>()> m_notificationHistory;
     bool m_pgpCanEncrypt = false;
     bool m_pgpCanSign = false;
     bool m_pgpHandoffToWebmail = false;

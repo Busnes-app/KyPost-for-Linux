@@ -33,6 +33,7 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimeZone>
 
 class MailControllerTest : public QObject
 {
@@ -230,6 +231,24 @@ void MailControllerTest::selectKeywordFiltersCachedEmailsWithoutAnyNetworkCall()
     controller.selectKeyword(QString());
     QCOMPARE(model->rowCount(), 2);
     QCOMPARE(fake.receivedRequest(), requestAfterRefresh);
+
+    // Settings -> Connection: the refresh above is the last sync, and
+    // notification history is labelled from this same cache.
+    QVERIFY(controller.lastSyncAt().isValid());
+    QVERIFY(controller.notificationHistory().isEmpty()); // no source set
+    controller.setNotificationHistorySource([]() {
+        return QVector<PushRecord>{ { QStringLiteral("m1"), 2, QStringLiteral("2026-10-11T07:05:00Z"), false },
+                                    { QStringLiteral("gone"), 1, QStringLiteral("2026-10-11T06:00:00Z"), true } };
+    });
+    const QVariantList history = controller.notificationHistory();
+    QCOMPARE(history.size(), 2);
+    const QVariantMap cached = history.at(0).toMap();
+    QCOMPARE(cached.value(QStringLiteral("messageId")).toString(), QStringLiteral("m1"));
+    QCOMPARE(cached.value(QStringLiteral("subject")).toString(), QStringLiteral("Work item"));
+    QCOMPARE(cached.value(QStringLiteral("sender")).toString(), QStringLiteral("a@example.com"));
+    QCOMPARE(cached.value(QStringLiteral("receivedAt")).toDateTime(),
+             QDateTime(QDate(2026, 10, 11), QTime(7, 5), QTimeZone::UTC));
+    QCOMPARE(history.at(1).toMap().value(QStringLiteral("subject")).toString(), QString());
 }
 
 void MailControllerTest::archiveEmailsNotPairedShortCircuitsWithNoNetworkCall()
