@@ -2240,10 +2240,20 @@ QVariantMap MailController::reopenDecryptedDraft(const QString& token)
 
 void MailController::setAppLocked(bool locked)
 {
+    const bool wasLocked = m_appLocked;
     m_appLocked = locked;
     if (locked) {
         releaseDraft(m_draftToken);
         forgetDecrypted();
+        // A query typed just before the lock is sent after unlock, not under it.
+        if (m_searchDebounce->isActive()) {
+            m_searchDebounce->stop();
+            m_searchDeferred = true;
+            emit searchChanged();
+        }
+    } else if (wasLocked && m_searchDeferred) {
+        m_searchDeferred = false;
+        startSearch();
     }
 }
 
@@ -2467,6 +2477,22 @@ bool MailController::searchBusy() const
 
 void MailController::setSearchQuery(const QString& query)
 {
+    // The field is disabled under the PIN overlay; this is the backstop for
+    // any other way in. The retained query is not edited before unlock.
+    if (m_appLocked) // no search edit while locked
+        return;
+    applySearchQuery(query);
+}
+
+// Not gated on the lock: forgetting the query and its hits discloses nothing,
+// and a pairing change while locked must still drop the old account's results.
+void MailController::clearSearch()
+{
+    applySearchQuery(QString());
+}
+
+void MailController::applySearchQuery(const QString& query)
+{
     if (query == m_searchQuery)
         return;
     m_searchQuery = query;
@@ -2478,11 +2504,6 @@ void MailController::setSearchQuery(const QString& query)
         resetSearchResults();
     }
     emit searchChanged();
-}
-
-void MailController::clearSearch()
-{
-    setSearchQuery(QString());
 }
 
 void MailController::resetSearchResults()
@@ -2498,6 +2519,12 @@ void MailController::startSearch()
 {
     if (!searchActive())
         return;
+    // Debounce, folder switch or a queued follow-up firing under the PIN
+    // overlay: no request until unlock, which runs it then.
+    if (m_appLocked) { // no search request while locked
+        m_searchDeferred = true;
+        return;
+    }
     // One request at a time; the newest query follows when it lands.
     if (m_searchInFlight) {
         m_searchPending = true;
@@ -2563,6 +2590,9 @@ std::optional<Email> MailController::lookupEmail(const QString& folder, const QS
 
 void MailController::loadSearchBody(const QString& folder, const QString& messageId)
 {
+    // EmailDetail asks again on unlock.
+    if (m_appLocked) // no search body fetch while locked
+        return;
     if (m_mailRepository.cachedEmail(folder, messageId).has_value())
         return;
     const std::optional<Email> hit = lookupEmail(folder, messageId);

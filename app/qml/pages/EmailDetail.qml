@@ -121,8 +121,12 @@ Item {
     Connections {
         target: AppLock
         function onLockedChanged() {
-            if (!AppLock.locked)
-                Qt.callLater(root.markOpenedRead)
+            if (AppLock.locked)
+                return
+            Qt.callLater(root.markOpenedRead)
+            // MailController fetches no search body while locked.
+            if (root.email.bodyPending)
+                MailApp.loadSearchBody(root.folder, root.messageId)
         }
     }
 
@@ -473,7 +477,7 @@ Item {
                 icon: "document-edit"
                 tooltip: i18n("Edit draft")
                 visible: root.folder === "Drafts" && root.hasProtectedMessage && root.email.pgpState === 1
-                enabled: !MailApp.isBusy
+                enabled: !MailApp.isBusy && !AppLock.locked
                 onClicked: {
                     const draft = MailApp.reopenDecryptedDraft(MailApp.decryptedToken)
                     if (draft.token) root.draftRequested(draft)
@@ -485,7 +489,7 @@ Item {
                 icon: "document-edit"
                 tooltip: i18n("Edit draft")
                 visible: root.folder === "Drafts" && root.email.pgpState === 0 && (!root.email.searchOnly || !!root.email.body)
-                enabled: !MailApp.isBusy
+                enabled: !MailApp.isBusy && !AppLock.locked
                 onClicked: {
                     const draft = MailApp.reopenDraft(root.folder, root.messageId)
                     if (draft.token) root.draftRequested(draft)

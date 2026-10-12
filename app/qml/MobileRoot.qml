@@ -570,6 +570,7 @@ Kirigami.ApplicationWindow {
                 }
                 IconButton {
                     objectName: "mobileSearchToggle"
+                    enabled: !AppLock.locked
                     implicitWidth: 44
                     implicitHeight: 44
                     icon: mobileSearchField.visible ? "edit-clear" : "edit-find"
@@ -594,33 +595,14 @@ Kirigami.ApplicationWindow {
                 }
             }
 
-            // Search (GET /api/mail/search): results replace the list while
-            // there is a query. Same contract as DesktopRoot's field.
-            ThemedTextField {
+            // Search (GET /api/mail/search): same component as DesktopRoot.
+            MailSearchField {
                 id: mobileSearchField
                 objectName: "mobileSearchField"
                 Layout.fillWidth: true
                 visible: false // the Search button opens it
                 placeholderText: i18n("Search %1", inboxPage.currentFolderDisplayName())
-                Connections {
-                    target: mobileSearchField.inputField
-                    function onTextEdited() { MailApp.setSearchQuery(mobileSearchField.text) }
-                }
-                Shortcut {
-                    sequence: "Esc"
-                    enabled: mobileSearchField.inputField.activeFocus
-                    onActivated: {
-                        MailApp.clearSearch()
-                        mobileSearchField.visible = false
-                    }
-                }
-                Connections {
-                    target: MailApp
-                    function onSearchChanged() {
-                        if (mobileSearchField.text !== MailApp.searchQuery)
-                            mobileSearchField.text = MailApp.searchQuery
-                    }
-                }
+                onDismissed: mobileSearchField.visible = false
             }
 
             Text {

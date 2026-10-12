@@ -97,6 +97,7 @@ private slots:
     void aFolderSwitchReRunsTheSearchThere();
     void aSearchOnlyHitIsMarkedReadThroughTheRelayInMemoryOnly();
     void aRefusedSearchOnlyMarkReadRollsBackTheRow();
+    void aLockedAppNeitherEditsNorSendsASearchUntilUnlocked();
 
     // Drafts (L7).
     void aReopenedDraftPrefillsComposeAndItsFirstSaveReplacesTheSource();
@@ -2990,6 +2991,48 @@ void MailControllerTest::aRefusedSearchOnlyMarkReadRollsBackTheRow()
                  .value(QStringLiteral("status")).toString(),
              QStringLiteral("unread"));
     QVERIFY(!f.emailDao.findById(QStringLiteral("INBOX"), QStringLiteral("s1")).has_value());
+}
+
+// The search field is disabled under the PIN overlay; this is the controller's
+// own refusal for anything else that reaches it. Nothing about the search
+// changes, and nothing goes to the relay, until unlock.
+void MailControllerTest::aLockedAppNeitherEditsNorSendsASearchUntilUnlocked()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", "{}"));
+    fake.setResponseForPath("/api/mail/search", searchReply("s1", "Found"));
+    fake.setResponseForPath("/api/mail/body", httpResponse(200, "OK", R"({"body":"<p>found</p>","bodyMode":"html"})"));
+    RefreshFixture f(fake.port());
+
+    f.controller.setSearchQuery(QStringLiteral("found"));
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.searchBusy(), 10000);
+    QCOMPARE(requestsMatching(fake, "GET /api/mail/search?"), 1);
+
+    // Typed just before the lock: its debounce does not fire under it.
+    f.controller.setSearchQuery(QStringLiteral("founder"));
+    f.controller.setAppLocked(true);
+    QVERIFY(!f.controller.searchBusy());
+
+    QSignalSpy changed(&f.controller, &MailController::searchChanged);
+    f.controller.setSearchQuery(QStringLiteral("other"));
+    QCOMPARE(f.controller.searchQuery(), QStringLiteral("founder"));
+    QCOMPARE(changed.count(), 0);
+
+    // A reader left open on a hit fetches no body.
+    f.controller.loadSearchBody(QStringLiteral("INBOX"), QStringLiteral("s1"));
+    // A folder switch re-runs an active search; not while locked.
+    f.controller.selectFolder(QStringLiteral("Archive"));
+    QTest::qWait(MailController::kSearchDebounceMs + 300);
+    QCOMPARE(requestsMatching(fake, "GET /api/mail/search?"), 1);
+    QCOMPARE(requestsMatching(fake, "GET /api/mail/body?"), 0);
+    QVERIFY(!f.controller.searchBusy());
+
+    // Unlock sends the held-back search, for the query and folder now current.
+    f.controller.setAppLocked(false);
+    QTRY_VERIFY_WITH_TIMEOUT(requestsMatching(fake, "GET /api/mail/search?") == 2 && !f.controller.searchBusy(), 10000);
+    f.executor.shutdown();
+    const QByteArray resumed = firstRequestMatching(fake, "q=founder&");
+    QVERIFY2(resumed.contains("mailbox=Archive"), resumed.constData());
+    QCOMPARE(requestsMatching(fake, "q=other"), 0);
 }
 
 void MailControllerTest::aReopenedDraftPrefillsComposeAndItsFirstSaveReplacesTheSource()

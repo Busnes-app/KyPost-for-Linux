@@ -272,11 +272,13 @@ public slots:
     Q_INVOKABLE void releaseDraft(const QString& token);
 
     // Debounced by kSearchDebounceMs. Text the relay would refuse (blank, or
-    // over its byte limit) clears the results instead of searching.
+    // over its byte limit) clears the results instead of searching. Ignored
+    // while the app is locked; a search the lock held back runs on unlock.
     Q_INVOKABLE void setSearchQuery(const QString& query);
     Q_INVOKABLE void clearSearch();
     // Fetches a search hit's body (GET /api/mail/body) into memory, then
-    // emits searchBodyLoaded. No-op for cached rows and loaded hits.
+    // emits searchBodyLoaded. No-op for cached rows, loaded hits, and while
+    // the app is locked.
     Q_INVOKABLE void loadSearchBody(const QString& folder, const QString& messageId);
 
 public:
@@ -587,6 +589,7 @@ private:
     std::optional<Email> lookupEmail(const QString& folder, const QString& messageId) const;
     QVariantMap emailMap(const Email& email) const;
     void startSearch();
+    void applySearchQuery(const QString& query); // setSearchQuery minus the lock check
     void resetSearchResults();
     // Source draft of a reopened session, captured when a save/send is
     // dispatched and settled when it finishes (ok: delete it; else forget).
@@ -756,6 +759,7 @@ private:
     quint64 m_searchGeneration = 0;
     bool m_searchInFlight = false;
     bool m_searchPending = false;
+    bool m_searchDeferred = false; // a search the lock held back; sent on unlock
     int m_busyDepth = 0;
     // A refresh is out on the executor thread. Coalescing state, NOT a
     // re-entrancy guard: the request cannot re-enter this object any more.

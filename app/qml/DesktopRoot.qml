@@ -266,9 +266,15 @@ Kirigami.ApplicationWindow {
     // Small, non-exhaustive set per the task-39 brief ("don't feel obligated
     // to replicate Mac's full shortcut set") -- refresh-current-section and
     // new-compose only. Ctrl+Shift+C is Mac's own Compose shortcut, added
-    // alongside the more standard Ctrl+N rather than instead of it.
+    // alongside the more standard Ctrl+N rather than instead of it. Find
+    // lives in MailSearchField.
+    //
+    // All of them are off while locked. A window shortcut fires whatever has
+    // focus, so the PIN overlay does not stop them: Ctrl+N would replace an
+    // open composition and put focus in the editor underneath it.
     Shortcut {
         sequence: "Ctrl+R"
+        enabled: !AppLock.locked
         onActivated: {
             if (root.currentSection === "mail")
                 MailApp.refresh()
@@ -278,15 +284,12 @@ Kirigami.ApplicationWindow {
     }
     Shortcut {
         sequence: "Ctrl+N"
+        enabled: !AppLock.locked
         onActivated: root.openCompose("", "", "")
     }
     Shortcut {
-        sequences: [StandardKey.Find]
-        enabled: root.currentSection === "mail"
-        onActivated: mailSearchField.inputField.forceActiveFocus()
-    }
-    Shortcut {
         sequence: "Ctrl+Shift+C"
+        enabled: !AppLock.locked
         onActivated: root.openCompose("", "", "")
     }
 
@@ -1058,29 +1061,12 @@ Kirigami.ApplicationWindow {
                     }
 
                     // ---- search (GET /api/mail/search) ----------------------
-                    // Results replace the list while there is a query;
-                    // Escape or emptying the field returns to the folder.
-                    ThemedTextField {
+                    MailSearchField {
                         id: mailSearchField
                         objectName: "mailSearchField"
                         Layout.fillWidth: true
+                        findShortcutEnabled: root.currentSection === "mail"
                         placeholderText: i18n("Search %1", root.folderDisplayName(root.currentFolder))
-                        Connections {
-                            target: mailSearchField.inputField
-                            function onTextEdited() { MailApp.setSearchQuery(mailSearchField.text) }
-                        }
-                        Shortcut {
-                            sequence: "Esc"
-                            enabled: mailSearchField.inputField.activeFocus
-                            onActivated: MailApp.clearSearch()
-                        }
-                        Connections {
-                            target: MailApp
-                            function onSearchChanged() {
-                                if (mailSearchField.text !== MailApp.searchQuery)
-                                    mailSearchField.text = MailApp.searchQuery
-                            }
-                        }
                     }
 
                     // ---- keyword pill row ---------------------------------
