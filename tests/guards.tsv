@@ -353,7 +353,7 @@ core/pgp/PgpSendPlanner.cpp	        ? ownKeyFingerprint(message.from, homeDirect
 app/mail/MailController.cpp	    if (token == m_draftToken && m_pairingStore.stillCurrent(m_draftIdentity))	    if (token == m_draftToken)	MailDecryptionTest:reopenedDraftPreservesRecipientsAndMemoryAttachments
 app/mail/MailController.cpp	        releaseDraft(m_draftToken);	        /* neutralized restored-draft lock revocation */	MailDecryptionTest:reopenedDraftPreservesRecipientsAndMemoryAttachments
 app/mail/MailController.cpp	            if (restored && !client) {	            if (false) {	MailDecryptionTest:reopenedDraftPreservesRecipientsAndMemoryAttachments
-app/mail/MailController.cpp	    if (!draftToken.isEmpty())	    if (false)	MailDecryptionTest:reopenedDraftPreservesRecipientsAndMemoryAttachments
+app/mail/MailController.cpp	    if (!draftToken.isEmpty() && (draftToken != m_draftToken || m_draftEncrypted))	    if (false)	MailDecryptionTest:reopenedDraftPreservesRecipientsAndMemoryAttachments
 app/qml/components/RichBodyEditor.qml	            + JSON.stringify(html) + "; clean(template.content); document.body.replaceChildren(template.content); })();"	            + JSON.stringify(html) + "; document.body.replaceChildren(template.content); })();"	ProtectedImageHandlerTest:restoredDraftHtmlIsCleanedBeforeEnteringTheEditor
 
 # Explicit v3 framing, size admission and authenticated plaintext release.

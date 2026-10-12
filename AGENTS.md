@@ -223,13 +223,19 @@ Added 2026-07-25 (parity work with `kypost-android`):
   The reader's Move is disabled when its message is not in `currentFolder`,
   because every action names `currentFolder` as the source mailbox.
 
-- **Search (plan item L6, 2026-10-11).** Search results live in
+- **Search and drafts (plan items L6/L7, 2026-10-11).** Search results live in
   `MailController`'s `searchModel`/`m_searchResults`, never the cache, and are
   scoped to the account that searched (guard in `tests/guards.tsv`); a reply
   for a superseded query, folder or pairing is dropped by generation. Unsynced
-  hits get their body from `GET /api/mail/body` into memory. `HttpClient`
-  percent-encodes every query key and value: `addQueryItem` alone sent `+`
-  bare (Go reads a space) and passed `%XX` through.
+  hits get their body from `GET /api/mail/body` into memory. A draft session
+  is plaintext (`reopenDraft`) or encrypted (`reopenDecryptedDraft`); only an
+  encrypted one forces encrypted save/send. Its source is deleted after the
+  first successful save or send (`settleDraftReplacement`), except a plaintext
+  source holding attachments the session did not reopen. Never reopen a
+  search hit with an empty body: without PGP flags it may be an encrypted
+  draft, and the replacement would delete it. `HttpClient` percent-encodes
+  every query key and value: `addQueryItem` alone sent `+` bare (Go reads a
+  space) and passed `%XX` through.
 
 - **Biometric unlock and window-content protection are non-goals** — no
   portable Linux equivalent (no `FLAG_SECURE` analogue on Wayland).
@@ -1024,9 +1030,10 @@ worse than no comment: the next reader stops looking.
   in `forgetDecrypted` also releases retained draft attachments when their
   identity is stale, even after the reader has closed; test the retained state,
   not access-filtered getters. Same-account reader navigation preserves it.
-  One restored draft is held at a time. Saving uses APPEND, so the UI
-  explicitly says it edits a copy. Restored HTML enters an inert template and
-  passes the editor allowlist before insertion into the live editable page.
+  One restored draft is held at a time. Saving uses APPEND; since plan L7 the
+  first successful save or send deletes the source (see §4 "Search and
+  drafts"). Restored HTML enters an inert template and passes the editor
+  allowlist before insertion into the live editable page.
 
 - **V3 crypto and ring import are preparation, not enrollment readiness.**
   `DeviceEnrollmentCrypto::openKeyringEnvelope` authenticates v3 into

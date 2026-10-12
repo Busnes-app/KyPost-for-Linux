@@ -11,6 +11,7 @@
 
 #include <QDateTime>
 #include <QDesktopServices>
+#include <QHash>
 #include <QObject>
 #include <QSet>
 #include <QString>
@@ -263,6 +264,11 @@ public slots:
     // decrypted message for whoever picks the machine up next.
     Q_INVOKABLE void forgetDecrypted();
     Q_INVOKABLE QVariantMap reopenDecryptedDraft(const QString& token);
+    // Plaintext counterpart for a Drafts row (cached, or a search hit whose
+    // body is loaded). Same session shape, so Compose treats both alike.
+    // Saving or sending through the session deletes the source draft once the
+    // new copy has landed; see settleDraftReplacement().
+    Q_INVOKABLE QVariantMap reopenDraft(const QString& folder, const QString& messageId);
     Q_INVOKABLE void releaseDraft(const QString& token);
 
     // Debounced by kSearchDebounceMs. Text the relay would refuse (blank, or
@@ -582,6 +588,18 @@ private:
     QVariantMap emailMap(const Email& email) const;
     void startSearch();
     void resetSearchResults();
+    // Source draft of a reopened session, captured when a save/send is
+    // dispatched and settled when it finishes (ok: delete it; else forget).
+    struct DraftReplacement
+    {
+        PairingIdentity identity;
+        QString messageId;
+        QString token;
+        bool encrypted = false;
+    };
+    void captureDraftReplacement(quint64 token, const QString& draftToken);
+    void settleDraftReplacement(quint64 token, bool ok);
+    QHash<quint64, DraftReplacement> m_draftReplacements;
     void applyFilter(); // recomputes m_model from m_currentFolderEmails + m_selectedKeyword
     // Re-reads the current folder's cache into the model. Shared by
     // selectFolderInternal() and the refresh completion.
@@ -804,6 +822,9 @@ private:
     PairingIdentity m_draftIdentity;
     QString m_draftToken;
     QVector<MimeAttachment> m_draftAttachments;
+    // Only an encrypted session forces encrypted sending and saving.
+    bool m_draftEncrypted = false;
+    QString m_draftSourceId; // Drafts message the session replaces; empty once replaced
     QString m_decryptedFolder;
     quint64 m_decryptGeneration = 0;
     bool m_appLocked = false;

@@ -26,9 +26,18 @@ TestCase {
         verify(read("qrc:/qml/DesktopRoot.qml").indexOf("sequences: [StandardKey.Find]") !== -1)
     }
 
-    function test_reader_loads_search_bodies() {
+    function test_reader_loads_search_bodies_and_reopens_plaintext_drafts() {
         var text = read("qrc:/qml/pages/EmailDetail.qml")
         verify(text.indexOf("MailApp.loadSearchBody(root.folder, root.messageId)") !== -1)
         verify(text.indexOf("function onSearchBodyLoaded(folder, messageId)") !== -1)
+        verify(text.indexOf("const draft = MailApp.reopenDraft(root.folder, root.messageId)") !== -1)
+        // A search hit with no readable body may be an encrypted draft.
+        verify(text.indexOf('root.folder === "Drafts" && root.email.pgpState === 0 && (!root.email.searchOnly || !!root.email.body)') !== -1)
+    }
+
+    function test_compose_no_longer_claims_saving_makes_a_copy() {
+        var text = read("qrc:/qml/pages/Compose.qml")
+        verify(text.indexOf("Saving creates another draft. Inline images") === -1)
+        verify(text.indexOf("The first save or send replaces the original draft") !== -1)
     }
 }

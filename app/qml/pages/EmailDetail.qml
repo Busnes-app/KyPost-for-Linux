@@ -481,6 +481,18 @@ Item {
             }
 
             IconButton {
+                objectName: "editDraft"
+                icon: "document-edit"
+                tooltip: i18n("Edit draft")
+                visible: root.folder === "Drafts" && root.email.pgpState === 0 && (!root.email.searchOnly || !!root.email.body)
+                enabled: !MailApp.isBusy
+                onClicked: {
+                    const draft = MailApp.reopenDraft(root.folder, root.messageId)
+                    if (draft.token) root.draftRequested(draft)
+                }
+            }
+
+            IconButton {
                 icon: "mail-reply-sender"
                 tooltip: i18n("Reply")
                 variant: "primary"

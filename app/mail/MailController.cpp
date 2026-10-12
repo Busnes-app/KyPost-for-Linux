@@ -41,6 +41,7 @@
 #include <QHash>
 #include <QDateTime>
 #include <QTimer>
+#include <QTextDocument>
 #include <QFileInfo>
 #include <QMimeDatabase>
 #include <QMimeType>
@@ -867,6 +868,8 @@ quint64 MailController::saveDraftInternal(const QString& to, const QString& cc, 
         return 0;
     const PairingIdentity requestedBy = identityOf(*pairing);
 
+    // A stale token stays "restored": readAttachments refuses it below.
+    const bool restored = !draftToken.isEmpty() && (draftToken != m_draftToken || m_draftEncrypted);
     QVector<MailAttachmentUpload> attachments;
     if (!readAttachments(attachmentFilePaths, attachments, draftToken))
         return 0;
@@ -878,12 +881,13 @@ quint64 MailController::saveDraftInternal(const QString& to, const QString& cc, 
         PgpEncryptStatus encryption = PgpEncryptStatus::Encrypted;
     };
     const quint64 token = m_nextPendingSendToken++;
+    captureDraftReplacement(token, draftToken);
     const QString date = QDateTime::currentDateTime().toString(Qt::RFC2822Date);
     m_draftInFlight = true;
     pushBusy();
     m_executor.run(
         this,
-        [serverBaseUrl, auth, to, cc, bcc, subject, body, attachments, date, restored = !draftToken.isEmpty()](HttpClient& http) {
+        [serverBaseUrl, auth, to, cc, bcc, subject, body, attachments, date, restored](HttpClient& http) {
             Outcome out;
             const auto identity = PgpBootstrapClient(http).fetch(serverBaseUrl, auth);
             const bool client = identity.protection == QStringLiteral("client");
@@ -934,10 +938,12 @@ quint64 MailController::saveDraftInternal(const QString& to, const QString& cc, 
             m_draftInFlight = false;
             popBusy();
             if (!m_pairingStore.stillCurrent(requestedBy)) {
+                settleDraftReplacement(token, false);
                 emit draftSaveCompleted(token, false);
                 return;
             }
             const auto& result = outcome.saved;
+            settleDraftReplacement(token, outcome.failure == Failure::None && !result.error.has_value() && result.ok);
             if (outcome.failure != Failure::None || result.error.has_value() || !result.ok) {
                 if (outcome.failure == Failure::CustodyUnknown)
                     setLastError(i18n("Could not check this account's draft protection. Nothing was uploaded. Try again."));
@@ -980,7 +986,8 @@ quint64 MailController::sendMail(const QString& to, const QString& cc, const QSt
     // to return without honoring that, leaving a previous refusal's payload
     // alive past the composition that made it.
     m_pendingSend = {};
-    if (!draftToken.isEmpty())
+    // A stale token goes the encrypted way too, where readAttachments refuses it.
+    if (!draftToken.isEmpty() && (draftToken != m_draftToken || m_draftEncrypted))
         return sendClientEncrypted(to, cc, bcc, subject, body, attachmentFilePaths, draftToken);
 
     QUrl serverBaseUrl;
@@ -994,6 +1001,7 @@ quint64 MailController::sendMail(const QString& to, const QString& cc, const QSt
 
     const QString sendMode = QStringLiteral("html");
     const quint64 sendToken = m_nextPendingSendToken++;
+    captureDraftReplacement(sendToken, draftToken);
 
     // Field order matters -- PendingSend is aggregate-initialized. Eleven
     // fields: valid, to, cc, bcc, subject, body, mode, attachments, sign,
@@ -1031,6 +1039,7 @@ void MailController::finishSend(quint64 sendToken, const SendMailResult& result)
         emit sendCompleted(sendToken, false);
         return;
     }
+    settleDraftReplacement(sendToken, result.ok && !result.clientSideNeeded);
     if (result.clientSideNeeded) {
         // Categorical: no re-send from this client can fix it.
         m_pendingSend = {};
@@ -1111,6 +1120,7 @@ quint64 MailController::confirmPickupFallbackSend(quint64 token)
         },
         [this, sendToken](const SendMailResult& result) {
             popBusy();
+            settleDraftReplacement(sendToken, result.ok);
             if (!result.ok) {
                 // Same detail-or-localized-fallback shape as every other
                 // failure in this class: a 200 carrying {"ok":false} leaves
@@ -1134,6 +1144,7 @@ quint64 MailController::confirmPickupFallbackSend(quint64 token)
 // for a confirm that may never come.
 void MailController::discardPendingSend()
 {
+    settleDraftReplacement(m_pendingSend.token, false);
     m_pendingSend = {};
 }
 
@@ -1985,6 +1996,7 @@ quint64 MailController::sendClientEncrypted(const QString& to, const QString& cc
                                    RelayAuth{ pairing->deviceId, pairing->deviceSecret } };
     const PairingIdentity identity = identityOf(*pairing);
     const quint64 sendToken = m_nextPendingSendToken++;
+    captureDraftReplacement(sendToken, draftToken);
     // Stamped here, on the thread that knows when the user pressed Send --
     // not inside the worker, where pinentry may have been open for minutes.
     const QString date = QDateTime::currentDateTime().toString(Qt::RFC2822Date);
@@ -2002,6 +2014,7 @@ quint64 MailController::sendClientEncrypted(const QString& to, const QString& cc
             // Reporting this send's outcome into the new account's compose
             // screen would be the stale-reply defect again, on a screen where
             // it reads as "your message was sent".
+            settleDraftReplacement(sendToken, outcome.ok && m_pairingStore.stillCurrent(identity));
             if (!m_pairingStore.stillCurrent(identity)) {
                 setLastError(QString());
                 emit sendCompleted(sendToken, false);
@@ -2186,6 +2199,8 @@ void MailController::releaseDraft(const QString& token)
     m_draftToken.clear();
     m_draftIdentity = {};
     m_draftAttachments.clear();
+    m_draftEncrypted = false;
+    m_draftSourceId.clear();
 }
 
 QVariantMap MailController::reopenDecryptedDraft(const QString& token)
@@ -2199,6 +2214,8 @@ QVariantMap MailController::reopenDecryptedDraft(const QString& token)
     m_draftToken = QUuid::createUuid().toString(QUuid::WithoutBraces);
     m_draftIdentity = m_decryptedIdentity;
     m_draftAttachments = m_decryptedAttachments;
+    m_draftEncrypted = true;
+    m_draftSourceId = m_decryptedMessageId;
     QStringList paths;
     QVariantMap names;
     for (qsizetype i = 0; i < m_draftAttachments.size(); ++i) {
@@ -2214,7 +2231,8 @@ QVariantMap MailController::reopenDecryptedDraft(const QString& token)
             {QStringLiteral("bcc"), m_decryptedBcc},
             {QStringLiteral("subject"), m_decryptedSubject.isEmpty() ? email->subject : m_decryptedSubject},
             {QStringLiteral("body"), m_decryptedHtml.isEmpty() ? m_decryptedPlain.toHtmlEscaped().replace(QLatin1Char('\n'), QStringLiteral("<br>")) : m_decryptedHtml},
-            {QStringLiteral("paths"), paths}, {QStringLiteral("names"), names}};
+            {QStringLiteral("paths"), paths}, {QStringLiteral("names"), names},
+            {QStringLiteral("encrypted"), true}};
 }
 
 void MailController::setAppLocked(bool locked)
@@ -2576,5 +2594,104 @@ void MailController::loadSearchBody(const QString& folder, const QString& messag
                 row->bodyMode = result.bodyMode.isEmpty() ? std::nullopt : std::optional<QString>(result.bodyMode);
             }
             emit searchBodyLoaded(folder, messageId);
+        });
+}
+
+// ---- reopened drafts ---------------------------------------------------------
+
+QVariantMap MailController::reopenDraft(const QString& folder, const QString& messageId)
+{
+    const QString drafts = standardFolderWireName(StandardFolder::Drafts);
+    if (m_appLocked || folder != drafts)
+        return {};
+    const std::optional<Email> email = lookupEmail(folder, messageId);
+    // Encrypted drafts go through reopenDecryptedDraft(); never reopen them as plaintext.
+    if (!email.has_value() || !email->body.has_value() || email->pgpEncrypted
+        || pgpMessageStateOf(*email) != PgpMessageState::None)
+        return {};
+    // A search hit has no PGP flags: an empty body may be an encrypted draft,
+    // which a replacing save would then delete unread.
+    if (email->body->isEmpty() && !m_mailRepository.cachedEmail(folder, messageId).has_value())
+        return {};
+    const PairingIdentity identity = m_pairingStore.currentIdentity();
+    if (!m_pairingStore.stillCurrent(identity))
+        return {};
+
+    releaseDraft(m_draftToken);
+    m_draftToken = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    m_draftIdentity = identity;
+    m_draftEncrypted = false;
+    m_draftSourceId = messageId;
+
+    const QString mode = email->bodyMode.value_or(QString());
+    const bool isHtml = mode == QStringLiteral("html") || (mode.isEmpty() && Qt::mightBeRichText(*email->body));
+    return {{QStringLiteral("token"), m_draftToken},
+            {QStringLiteral("to"), email->sentTo},
+            {QStringLiteral("cc"), email->cc},
+            {QStringLiteral("bcc"), email->bcc},
+            {QStringLiteral("subject"), email->subject},
+            {QStringLiteral("body"), isHtml ? *email->body
+                                            : email->body->toHtmlEscaped().replace(QLatin1Char('\n'), QStringLiteral("<br>"))},
+            {QStringLiteral("paths"), QStringList()},
+            {QStringLiteral("names"), QVariantMap()},
+            {QStringLiteral("encrypted"), false},
+            {QStringLiteral("sourceHasAttachments"), email->hasAttachments}};
+}
+
+void MailController::captureDraftReplacement(quint64 token, const QString& draftToken)
+{
+    if (draftToken.isEmpty() || draftToken != m_draftToken || m_draftSourceId.isEmpty())
+        return;
+    m_draftReplacements.insert(token, { m_draftIdentity, m_draftSourceId, draftToken, m_draftEncrypted });
+}
+
+// The relay's draft save is an APPEND with no id to replace, so the source is
+// removed with the ordinary delete action once the new copy has landed. A
+// plaintext source is kept if it holds attachments: the session never
+// reopened them, and deleting it would lose them.
+void MailController::settleDraftReplacement(quint64 token, bool ok)
+{
+    const DraftReplacement replacement = m_draftReplacements.take(token);
+    if (!ok || replacement.messageId.isEmpty() || !m_pairingStore.stillCurrent(replacement.identity))
+        return;
+    if (replacement.token == m_draftToken)
+        m_draftSourceId.clear(); // later saves from this session append new copies
+    const std::optional<DevicePairing> pairing = m_pairingStore.load();
+    if (!pairing.has_value())
+        return;
+    const RelayEndpoint endpoint{ QUrl(pairing->serverBaseUrl), RelayAuth{ pairing->deviceId, pairing->deviceSecret } };
+    const QString drafts = standardFolderWireName(StandardFolder::Drafts);
+
+    enum class Outcome { Deleted, KeptForAttachments, Failed };
+    m_executor.run(
+        this,
+        [endpoint, drafts, replacement](HttpClient& http) {
+            RelayMailSource source(http);
+            if (!replacement.encrypted) {
+                const ListAttachmentsResult listed =
+                    source.listAttachments(endpoint.serverBaseUrl, endpoint.auth, drafts, replacement.messageId);
+                if (listed.error.has_value())
+                    return Outcome::Failed;
+                if (!listed.attachments.isEmpty())
+                    return Outcome::KeptForAttachments;
+            }
+            const ActionResult result = source.performAction(endpoint.serverBaseUrl, endpoint.auth,
+                                                             QStringLiteral("delete"), { replacement.messageId },
+                                                             drafts, std::nullopt);
+            return result.error.has_value() || !result.ok || !result.failed.isEmpty() ? Outcome::Failed
+                                                                                       : Outcome::Deleted;
+        },
+        [this, replacement, drafts](Outcome outcome) {
+            if (!m_pairingStore.stillCurrent(replacement.identity))
+                return;
+            if (outcome == Outcome::KeptForAttachments) {
+                setLastError(i18n("The original draft has attachments that were not reopened, so it was kept in Drafts."));
+            } else if (outcome == Outcome::Failed) {
+                setLastError(i18n("The original draft could not be removed from Drafts."));
+            } else if (m_currentFolder == drafts) {
+                m_currentFolderEmails.removeIf([&](const Email& email) { return email.messageId == replacement.messageId; });
+                applyFilter();
+                refreshInternal(false);
+            }
         });
 }
