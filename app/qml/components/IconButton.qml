@@ -1,5 +1,5 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
+import QtQuick
+import QtQuick.Controls
 import org.kde.kirigami 2.20 as Kirigami
 import com.kysecurity.mail 1.0
 

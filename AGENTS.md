@@ -1144,6 +1144,12 @@ worse than no comment: the next reader stops looking.
   legitimately takes ~25 s and is not hung, and no `QEventLoop` timer can
   shorten that window because the thread is not processing events during it.
   `SecureStoreKeychain` bounds it; see AGENTS.md §6f.
+- **Never put a version on a Qt QML import.** Qt shares a type's property
+  cache across files, so one `import QtQuick 2.15` file with a DragHandler made
+  Kirigami's DrawerHandle (needs `DragAxis.activeValue`, 6.5) fail to compile
+  in 14 of 20 mobile launches ("Type Kirigami.GlobalDrawer unavailable"),
+  host and Flatpak runtime alike, depending on load order. Measured
+  2026-10-11; `QmlPropertyLint` gate 3 now rejects versioned Qt imports.
 - **CI Pipline Failes** Before commiting any change check the CI pipline code.
   EVERY Push to main not ment to fix the CI pipeline has broken the CI pipeline.
 

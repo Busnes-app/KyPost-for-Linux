@@ -1,5 +1,5 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
+import QtQuick
+import QtQuick.Controls
 import com.kysecurity.mail 1.0
 
 // Themed replacement for the default platform ScrollBar -- thin capsule thumb
