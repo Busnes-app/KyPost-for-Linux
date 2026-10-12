@@ -8,6 +8,15 @@
 
 class HttpClient;
 
+// The RFC 8291 public key (65-byte uncompressed P-256 point) and 16-byte auth
+// secret, raw. Sent as `p256dh`/`auth`; the relay validates them
+// (processor/webpush_keys.go) and encrypts every UnifiedPush payload to them.
+struct WebPushSubscription
+{
+    QByteArray p256dh;
+    QByteArray auth;
+};
+
 // Response shape from `POST /api/notifications/native/register`, verified
 // against the Go backend's handleNotificationNativeRegister (see Task 14
 // brief for line references). pullEndpoint is populated on the client side
@@ -90,6 +99,9 @@ struct NativeRegistrationResult
 // platform ("linux") and transport ("unifiedpush") are hardcoded inside
 // register() rather than taken as parameters: this client only ever builds
 // for one platform/transport pair, so there is nothing for a caller to vary.
+//
+// `pushKeys` is mandatory. A registration without them is one the relay
+// serves in cleartext, so a malformed pair fails here without a request.
 class NativeRegistrationClient
 {
 public:
@@ -97,7 +109,8 @@ public:
 
     NativeRegistrationResult registerDevice(const QUrl& registrationEndpoint, const QString& subscriberId,
                                              const QString& pairingToken, const QString& deviceToken,
-                                             const QString& deviceId, const QString& deviceName) const;
+                                             const QString& deviceId, const QString& deviceName,
+                                             const WebPushSubscription& pushKeys) const;
 
 private:
     HttpClient& m_httpClient;

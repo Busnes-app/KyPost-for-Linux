@@ -3,6 +3,7 @@
 #include "net/HttpClient.h"
 #include "net/NativeRegistrationClient.h"
 #include "security/CredentialCipher.h"
+#include "security/WebPushCrypto.h"
 
 #include <QByteArray>
 #include <QString>
@@ -110,6 +111,13 @@ public:
         // called; report this outcome instead.
         std::optional<RegistrationOutcome> refusedOutcome() const { return m_refusedOutcome; }
 
+        // The fresh Web Push keys this attempt registers, for sendRegistration().
+        // Copy it out BEFORE moving the attempt into a completion handler.
+        WebPushSubscription pushSubscription() const
+        {
+            return { m_pushKeys.publicKey, m_pushKeys.authSecret.bytes() };
+        }
+
     private:
         friend class DeviceRegistrationService;
         PairAttempt() = default;
@@ -117,6 +125,9 @@ public:
         CertificatePinSink* m_pinSink = nullptr;
         HttpClient::CertificatePinState m_savedPin;
         CredentialCipher::SessionKey m_sealingKey;
+        // Every registration sends new keys and stores them only on success,
+        // so the stored keys are always the ones the relay last accepted.
+        WebPushCrypto::Keys m_pushKeys;
         std::optional<RegistrationOutcome> m_refusedOutcome;
         bool m_restorePin = false;
     };
@@ -127,7 +138,8 @@ public:
     // nothing but the HttpClient it is handed. Static for that reason --
     // there is no `this` to accidentally reach through.
     static NativeRegistrationResult sendRegistration(HttpClient& httpClient, const PairingParams& params,
-                                                      const QString& deviceToken);
+                                                      const QString& deviceToken,
+                                                      const WebPushSubscription& pushKeys);
 
     // Phase 3, back on the calling thread. Persists, installs the new pin,
     // writes the delivery settings, and consumes the attempt.

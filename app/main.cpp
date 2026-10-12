@@ -1326,14 +1326,13 @@ int main(int argc, char* argv[])
     // to route a native-pair link to.
     routeDeepLink(app.arguments(), pairingControllerForDeepLinks);
 
-    // There is deliberately no MFA controller here, and this note is what
-    // stops one being added back. Settled 2026-08-23, deleted 2026-08-24:
-    // Linux cannot do MFA push. The relay excludes the unifiedpush transport
-    // on purpose -- a challenge carries sign-in metadata (IP, user agent, the
-    // match digits) and UnifiedPush delivers through an unencrypted public
-    // broker -- and platform "linux" maps onto that transport, so no
-    // challenge ever reaches this device. That filter is a privacy control,
-    // not an oversight to wait out; see AGENTS.md section 4.
+    // There is no MFA controller here. Settled 2026-08-23, deleted
+    // 2026-08-24, when the relay excluded every unifiedpush device because
+    // the payload crossed a public broker in the clear. Since 2026-10-11 this
+    // client registers RFC 8291 keys, which makes it eligible
+    // (MFATransportEligible), so challenges now arrive encrypted and
+    // PushPayloadParser drops them until an approval UI exists. See AGENTS.md
+    // section 4.
     //
     // The controller, its client and its model survived here for a while as
     // dead-but-compiled code, which is worse than absent: it read as finished,
@@ -1341,7 +1340,7 @@ int main(int argc, char* argv[])
     // means reading the pairing and firing an authenticated POST, so the next
     // maintainer to "just wire it up" would have exposed sign-in metadata to
     // a public broker without ever learning why it was unplugged. Git has the
-    // implementation if the transport ever gains RFC 8291 payload encryption.
+    // implementation.
 
     // Task 48: KLocalization::setupLocalizedContext() above makes i18n()/
     // i18nc()/i18np()/i18ncp() (and their xi18n* KUIT counterparts) callable
@@ -1478,6 +1477,8 @@ int main(int argc, char* argv[])
             return;
         }
         deferredReregistrationEndpointPending = false;
+        if (result.outcome == RegistrationOutcome::Success)
+            pairingController.refreshFromStore(); // new deviceId and push keys
         if (result.outcome == RegistrationOutcome::Unauthorized) {
             qWarning("main: re-registration was rejected (401) -- the pairing token has expired, "
                      "push delivery is now broken until the user pairs again");
@@ -1524,10 +1525,11 @@ int main(int argc, char* argv[])
         // The attempt is MOVED into the completion handler so it survives the
         // gap. Dropping it here would run its destructor, restoring the
         // certificate pin while the registration was still in flight.
+        const WebPushSubscription pushKeys = attempt.pushSubscription();
         networkExecutor.run(
             &pairingController,
-            [params = *params, endpoint](HttpClient& http) {
-                return DeviceRegistrationService::sendRegistration(http, params, endpoint);
+            [params = *params, endpoint, pushKeys](HttpClient& http) {
+                return DeviceRegistrationService::sendRegistration(http, params, endpoint, pushKeys);
             },
             [&deviceRegistrationService, reportReregistration, params = *params, endpoint,
              attempt = std::move(attempt)](const NativeRegistrationResult& result) mutable {
@@ -1594,8 +1596,15 @@ int main(int argc, char* argv[])
     // required identity key, so persistence is skipped for a keyless
     // result; the notification is still shown either way.
     QObject::connect(&pushConnector, &UnifiedPushConnector::messageReceived, &pushConnector,
-                      [&pushRepository, &notificationDispatcher](const QByteArray& message) {
-                          const std::optional<PushNotification> payload = PushPayloadParser::parse(message);
+                      [&pairingStore, &pushRepository, &notificationDispatcher](const QByteArray& message) {
+                          // Never falls back to parsing the raw bytes: see openPushMessage().
+                          const std::optional<QByteArray> opened = pairingStore.openPushMessage(message);
+                          if (!opened.has_value()) {
+                              qWarning() << "main: dropped a push that did not decrypt under this pairing's keys,"
+                                         << message.size() << "bytes";
+                              return;
+                          }
+                          const std::optional<PushNotification> payload = PushPayloadParser::parse(*opened);
                           if (!payload.has_value()) {
                               qWarning() << "main: UnifiedPushConnector::messageReceived: failed to parse push"
                                             " payload,"

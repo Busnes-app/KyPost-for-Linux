@@ -37,6 +37,11 @@ std::optional<PushNotification> parse(const QByteArray& rawBody)
     // absent field) -- no separate "data missing" check needed.
     const QJsonObject root = doc.object();
     const QJsonObject data = root.value(QStringLiteral("data")).toObject();
+    // Sign-in challenges reach this device once it registers push keys
+    // (MFATransportEligible), but there is no approval UI here yet. Its
+    // "Tap to approve" text would be a false promise, so it is not shown.
+    if (data.value(QStringLiteral("type")).toString() == QLatin1String("mfa_challenge"))
+        return std::nullopt;
 
     PushNotification notification;
     notification.messageId = data.value(QStringLiteral("messageId")).toString();

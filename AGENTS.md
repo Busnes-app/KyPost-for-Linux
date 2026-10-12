@@ -188,6 +188,15 @@ Added 2026-07-25 (parity work with `kypost-android`):
   is end-to-end encryption of the push payload itself (RFC 8291 is what web
   push uses); that is a UnifiedPush-ecosystem change, not a KyPost one.
 
+  **Update 2026-10-11:** this client now registers RFC 8291 keys (`p256dh`/
+  `auth`) and the relay encrypts to them, so `MFATransportEligible` admits
+  it and challenges do arrive. `PushPayloadParser` drops `mfa_challenge`
+  until the approval UI (plan item L1) lands. Keys live in the secret store
+  via `PairingStore`; never use KUnifiedPush's `contentEncryption*()`, which
+  writes the private key to a plain QSettings file (see
+  `UnifiedPushConnector.h`). Once keys are stored, a push that does not
+  decrypt is dropped, never parsed as cleartext.
+
   `MfaApproval.qml` was deleted for this reason on 2026-07-25, and
   `MfaController`, `MfaResponseClient` and `MfaChallenge` followed on
   2026-08-24. They were dead -- nothing constructs a challenge for them to

@@ -18,6 +18,10 @@ constexpr auto kDeviceSecretKey = "pairing.deviceSecret";
 // by code that reads kDeviceSecretKey directly.
 constexpr auto kSealedDeviceSecretKey = "pairing.deviceSecretSealed";
 constexpr auto kCertificatePinKey = "pairing.certificateSpkiSha256";
+// hex(private 32 | public 65 | auth 16), the DatabaseKeyStore encoding.
+constexpr auto kPushKeysKey = "pairing.webPushKeys";
+constexpr int kPushKeysBytes =
+    WebPushCrypto::kPrivateKeyBytes + WebPushCrypto::kPublicKeyBytes + WebPushCrypto::kAuthBytes;
 
 // Reads a field, distinguishing "the store answered, there is nothing there"
 // (empty) from "the store could not be consulted" (`failed` set, and the
@@ -274,6 +278,7 @@ bool PairingStore::clear()
     // credential blob behind that a later pairing could never open.
     ok = m_secureStore.remove(QLatin1String(kSealedDeviceSecretKey)) && ok;
     ok = m_secureStore.remove(QLatin1String(kCertificatePinKey)) && ok;
+    ok = m_secureStore.remove(QLatin1String(kPushKeysKey)) && ok;
     // The gate flag lives in AppLockStore but is meaningless without a
     // pairing to protect, and leaving it set is what let the next pairing
     // write its secret in plaintext while the UI still reported the gate as
@@ -285,6 +290,53 @@ bool PairingStore::clear()
     // must not have its key resurrected on that save()'s way out.
     ++m_lockEpoch;
     return ok;
+}
+
+bool PairingStore::savePushKeys(const WebPushCrypto::Keys& keys)
+{
+    SecureBytes raw(keys.privateKey.bytes() + keys.publicKey + keys.authSecret.bytes());
+    if (raw.bytes().size() != kPushKeysBytes)
+        return false;
+    SecureBytes hex(raw.bytes().toHex());
+    return m_secureStore.set(QLatin1String(kPushKeysKey), QString::fromLatin1(hex.bytes()));
+}
+
+PairingStore::PushKeysStatus PairingStore::loadPushKeys(WebPushCrypto::Keys* out) const
+{
+    const SecureStore::ReadResult stored = m_secureStore.read(QLatin1String(kPushKeysKey));
+    if (stored.failed())
+        return PushKeysStatus::Unreadable;
+    if (!stored.found())
+        return PushKeysStatus::Absent;
+    SecureBytes raw(QByteArray::fromHex(stored.value.toLatin1()));
+    if (raw.bytes().size() != kPushKeysBytes)
+        return PushKeysStatus::Corrupt;
+    if (out) {
+        out->privateKey = SecureBytes(raw.bytes().left(WebPushCrypto::kPrivateKeyBytes));
+        out->publicKey = raw.bytes().mid(WebPushCrypto::kPrivateKeyBytes, WebPushCrypto::kPublicKeyBytes);
+        out->authSecret = SecureBytes(raw.bytes().right(WebPushCrypto::kAuthBytes));
+    }
+    return PushKeysStatus::Found;
+}
+
+bool PairingStore::hasPushKeys() const
+{
+    return loadPushKeys(nullptr) == PushKeysStatus::Found;
+}
+
+std::optional<QByteArray> PairingStore::openPushMessage(const QByteArray& message) const
+{
+    WebPushCrypto::Keys keys;
+    switch (loadPushKeys(&keys)) {
+    case PushKeysStatus::Found:
+        return WebPushCrypto::decrypt(keys, message);
+    case PushKeysStatus::Absent:
+        return message;
+    case PushKeysStatus::Unreadable:
+    case PushKeysStatus::Corrupt:
+        break;
+    }
+    return std::nullopt;
 }
 
 bool PairingStore::isPaired() const

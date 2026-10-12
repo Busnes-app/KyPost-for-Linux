@@ -20,6 +20,15 @@
 // these to the distributor-tier arrival and re-registration paths). The
 // endpointChanged host-only qDebug() line from Task 10 is preserved in the
 // new emitting lambda rather than dropped.
+//
+// Never call Connector::contentEncryptionPublicKey()/AuthSecret(). Checked
+// against the KUnifiedPush 26.04.3 source this Flatpak builds: the first call
+// generates a key pair and writes the PRIVATE key and auth secret into the
+// plain QSettings file above, and once keys exist a message that fails to
+// decrypt is emitted raw, indistinguishable from a decrypted one. Without
+// keys it passes every message through untouched, so RFC 8291 is done in
+// core/security/WebPushCrypto with keys in the secret store, and
+// PairingStore::openPushMessage() decides what is accepted.
 class UnifiedPushConnector : public QObject
 {
     Q_OBJECT

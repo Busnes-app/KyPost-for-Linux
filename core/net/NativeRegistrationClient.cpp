@@ -29,8 +29,19 @@ NativeRegistrationClient::NativeRegistrationClient(HttpClient& httpClient)
 
 NativeRegistrationResult NativeRegistrationClient::registerDevice(
     const QUrl& registrationEndpoint, const QString& subscriberId, const QString& pairingToken,
-    const QString& deviceToken, const QString& deviceId, const QString& deviceName) const
+    const QString& deviceToken, const QString& deviceId, const QString& deviceName,
+    const WebPushSubscription& pushKeys) const
 {
+    if (pushKeys.p256dh.size() != 65 || pushKeys.auth.size() != 16) {
+        NativeRegistrationResult refused;
+        refused.detail = QStringLiteral("No push encryption keys to register.");
+        return refused;
+    }
+
+    const auto b64url = [](const QByteArray& raw) {
+        return QString::fromLatin1(raw.toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals));
+    };
+
     QJsonObject body;
     body[QStringLiteral("subscriberId")] = subscriberId;
     body[QStringLiteral("pairingToken")] = pairingToken;
@@ -41,6 +52,8 @@ NativeRegistrationResult NativeRegistrationClient::registerDevice(
         body[QStringLiteral("deviceName")] = deviceName;
     body[QStringLiteral("platform")] = QStringLiteral("linux");
     body[QStringLiteral("transport")] = QStringLiteral("unifiedpush");
+    body[QStringLiteral("p256dh")] = b64url(pushKeys.p256dh);
+    body[QStringLiteral("auth")] = b64url(pushKeys.auth);
 
     // No query-param auth on this endpoint, unlike every other Relay
     // endpoint in this batch — every credential rides in the JSON body.

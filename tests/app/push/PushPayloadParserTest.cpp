@@ -14,6 +14,7 @@ private slots:
     void emptyKeywordsStringProducesEmptyStringList();
     void malformedKeywordsWithExtraCommasDropsEmpties();
     void malformedJsonFailsGracefully();
+    void signInChallengeIsNotShownAsANotification();
 };
 
 void PushPayloadParserTest::fullValidPayloadRoundTripsEveryField()
@@ -108,6 +109,15 @@ void PushPayloadParserTest::malformedKeywordsWithExtraCommasDropsEmpties()
 
     QVERIFY(result.has_value());
     QCOMPARE(result->keywords, QStringList({ QStringLiteral("work"), QStringLiteral("urgent") }));
+}
+
+void PushPayloadParserTest::signInChallengeIsNotShownAsANotification()
+{
+    // push_mfa_handlers.go's envelope. Displayable, so only the type check drops it.
+    const QByteArray body = R"({"title":"Approve sign-in","body":"Tap to approve or deny a sign-in to your account.",)"
+                             R"("data":{"type":"mfa_challenge","challengeId":"c-1","issuedAt":"1","matchDigits":"42"}})";
+
+    QVERIFY(!PushPayloadParser::parse(body).has_value());
 }
 
 void PushPayloadParserTest::malformedJsonFailsGracefully()

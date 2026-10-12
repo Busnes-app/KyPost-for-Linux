@@ -48,6 +48,8 @@ kypost_add_test(CredentialCipherTest core/security/CredentialCipherTest.cpp)
 target_link_libraries(CredentialCipherTest PRIVATE OpenSSL::Crypto)
 kypost_add_test(AppLockStoreTest core/security/AppLockStoreTest.cpp)
 kypost_add_test(DatabaseKeyStoreTest core/security/DatabaseKeyStoreTest.cpp)
+# RFC 8291 push payload decryption: the RFC vector, tampering, size caps.
+kypost_add_test(WebPushCryptoTest core/security/WebPushCryptoTest.cpp)
 # PinPolicy: what counts as an acceptable PIN. Enforced in C++ because
 # the PIN is the key-encryption key for the relay device secret whenever
 # the credential gate is on, and QML is not a security boundary.
