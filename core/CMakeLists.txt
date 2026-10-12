@@ -90,6 +90,8 @@ add_library(kypostcore STATIC
   security/PrivatePath.h
   security/CredentialSealer.h
   security/SecureBytes.h
+  security/WebPushCrypto.cpp
+  security/WebPushCrypto.h
   stores/SettingsStore.cpp
   stores/SettingsStore.h
   stores/CursorStore.cpp
