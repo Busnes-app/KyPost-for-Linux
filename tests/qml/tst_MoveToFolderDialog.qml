@@ -111,7 +111,9 @@ TestCase {
         dialog.choose("Archive")
         compare(chosenSpy.count, 0)
 
+        // After unlock, a freshly opened picker moves again.
         AppLock.locked = false
+        dialog.open(["m-1"], "INBOX", testCase.folders)
         dialog.choose("Archive")
         compare(chosenSpy.count, 1)
     }
