@@ -759,6 +759,10 @@ Kirigami.ApplicationWindow {
                                     font.weight: model.unread ? Font.Bold : Font.Medium
                                     elide: Text.ElideRight
                                 }
+                                StatusBadge {
+                                    visible: !!model.woken
+                                    text: i18nc("@label mail list badge, message returned from snooze", "Snoozed")
+                                }
                                 Text {
                                     textFormat: Text.PlainText
                                     text: inboxPage.formatTimestamp(model.atUtc)

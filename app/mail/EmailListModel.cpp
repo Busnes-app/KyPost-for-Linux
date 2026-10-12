@@ -59,6 +59,8 @@ QVariant EmailListModel::data(const QModelIndex& index, int role) const
         return pgpRowMarkerAccessibleName(pgpMessageStateOf(email));
     case UnreadRole:
         return email.isUnread();
+    case WokenRole:
+        return email.wokenAt.has_value();
     case AccessibleNameRole:
         return email.isUnread() ? i18nc("@info:accessible mail list row", "Unread, from %1: %2", email.sender, email.subject)
                                 : i18nc("@info:accessible mail list row", "From %1: %2", email.sender, email.subject);
@@ -88,6 +90,7 @@ QHash<int, QByteArray> EmailListModel::roleNames() const
         { PgpMarkerRole, "pgpMarker" },
         { PgpMarkerAccessibleNameRole, "pgpMarkerAccessibleName" },
         { UnreadRole, "unread" },
+        { WokenRole, "woken" },
         { AccessibleNameRole, "accessibleName" },
     };
 }

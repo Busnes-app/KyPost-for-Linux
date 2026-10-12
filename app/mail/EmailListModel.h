@@ -42,6 +42,8 @@ public:
         PgpMarkerRole,
         PgpMarkerAccessibleNameRole,
         UnreadRole,
+        // Back from a snooze; the row shows a "Snoozed" badge.
+        WokenRole,
         // Row summary for assistive technology; says "unread" when it is.
         AccessibleNameRole,
     };

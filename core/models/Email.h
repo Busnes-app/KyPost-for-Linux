@@ -33,6 +33,9 @@ struct Email
     QStringList keywords;
     QString status; // wire value: "read" or "unread"
     QString atUtc;
+    // When a snoozed message returned to INBOX (same format as atUtc). The
+    // list sorts by wokenAt ?? atUtc; the displayed date stays atUtc.
+    std::optional<QString> wokenAt;
     bool hasAttachments = false;
     QString sourceMode;
 

@@ -80,6 +80,7 @@ void RelayMailSourceTest::fetchInboxMapsTwoTabsWithAtUtcPassthroughAndOptionalFi
             "bodyMode": "plain",
             "status": "unread",
             "atUtc": "2026-07-01T12:00:00Z",
+            "wokenAt": "2026-07-05T09:00:00Z",
             "hasAttachments": true,
             "label": "important",
             "keywords": ["Primary", "$Phishing"],
@@ -148,6 +149,7 @@ void RelayMailSourceTest::fetchInboxMapsTwoTabsWithAtUtcPassthroughAndOptionalFi
     // atUtc is a direct pass-through of the wire key of the same name -- no
     // casing translation, assert it is unchanged.
     QCOMPARE(item1.email.atUtc, QStringLiteral("2026-07-01T12:00:00Z"));
+    QCOMPARE(item1.email.wokenAt, std::optional<QString>(QStringLiteral("2026-07-05T09:00:00Z")));
     QCOMPARE(item1.email.hasAttachments, true);
     QCOMPARE(item1.email.label, QStringLiteral("important"));
     // Keywords carry the server's real IMAP keywords, including the $Phishing
@@ -173,6 +175,8 @@ void RelayMailSourceTest::fetchInboxMapsTwoTabsWithAtUtcPassthroughAndOptionalFi
     // Absent bodyMode stays absent -- "the server did not say" is a distinct
     // state from "plain", and only it falls back to the sniff.
     QVERIFY(!item2.email.bodyMode.has_value());
+    // Absent wokenAt is "not woken", and on an updated row clears the pin.
+    QVERIFY(!item2.email.wokenAt.has_value());
     QVERIFY(item2.detail.isEmpty());
     QVERIFY(!item2.changeType.has_value());
 }

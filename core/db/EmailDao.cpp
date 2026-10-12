@@ -42,6 +42,7 @@ Email emailFromQuery(const QSqlQuery& query)
     email.keywords = decodeKeywords(query.value(QStringLiteral("keywords_json")).toString());
     email.status = query.value(QStringLiteral("status")).toString();
     email.atUtc = query.value(QStringLiteral("at_utc")).toString();
+    email.wokenAt = variantToOptionalString(query.value(QStringLiteral("woken_at")));
     email.hasAttachments = query.value(QStringLiteral("has_attachments")).toInt() != 0;
     email.sourceMode = query.value(QStringLiteral("source_mode")).toString();
     email.pgpSigned = query.value(QStringLiteral("pgp_signed")).toInt() != 0;
@@ -70,9 +71,10 @@ bool EmailDao::insertOrReplace(const Email& email)
     query.prepare(QStringLiteral(
         "INSERT OR REPLACE INTO emails "
         "(message_id, folder, sender, sent_to, cc, bcc, subject, preview, body, body_mode, label, "
-        "keywords_json, status, at_utc, has_attachments, source_mode, pgp_encrypted, pgp_signed, pgp_decrypt_error) "
+        "keywords_json, status, at_utc, woken_at, has_attachments, source_mode, pgp_encrypted, pgp_signed, "
+        "pgp_decrypt_error) "
         "VALUES (:message_id, :folder, :sender, :sent_to, :cc, :bcc, :subject, :preview, :body, "
-        ":body_mode, :label, :keywords_json, :status, :at_utc, :has_attachments, :source_mode, "
+        ":body_mode, :label, :keywords_json, :status, :at_utc, :woken_at, :has_attachments, :source_mode, "
         ":pgp_encrypted, :pgp_signed, :pgp_decrypt_error)"));
     query.bindValue(QStringLiteral(":message_id"), email.messageId);
     // A default-constructed QString is NULL to Qt's SQL layer, not ''. Since
@@ -94,6 +96,7 @@ bool EmailDao::insertOrReplace(const Email& email)
     query.bindValue(QStringLiteral(":keywords_json"), encodeKeywords(email.keywords));
     query.bindValue(QStringLiteral(":status"), email.status);
     query.bindValue(QStringLiteral(":at_utc"), email.atUtc);
+    query.bindValue(QStringLiteral(":woken_at"), optionalStringToVariant(email.wokenAt));
     query.bindValue(QStringLiteral(":has_attachments"), email.hasAttachments ? 1 : 0);
     query.bindValue(QStringLiteral(":source_mode"), email.sourceMode);
     query.bindValue(QStringLiteral(":pgp_encrypted"), email.pgpEncrypted ? 1 : 0);
@@ -149,7 +152,10 @@ QStringList EmailDao::foldersContaining(const QString& messageId) const
 QVector<Email> EmailDao::findByFolder(const QString& folder) const
 {
     QSqlQuery query(m_db);
-    query.prepare(QStringLiteral("SELECT * FROM emails WHERE folder = :folder"));
+    // The list order. A woken snooze sorts as if it arrived when it woke.
+    // Both are fixed-width RFC 3339 UTC, so text order is time order.
+    query.prepare(QStringLiteral(
+        "SELECT * FROM emails WHERE folder = :folder ORDER BY COALESCE(woken_at, at_utc) DESC"));
     query.bindValue(QStringLiteral(":folder"), folder);
     if (!query.exec())
         return {};

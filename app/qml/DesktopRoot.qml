@@ -1197,15 +1197,25 @@ Kirigami.ApplicationWindow {
                                     Layout.fillWidth: true
                                     spacing: 2
 
-                                    Text {
+                                    // No date column on desktop, so the badge sits by the sender.
+                                    RowLayout {
                                         Layout.fillWidth: true
-                                        textFormat: Text.PlainText
-                                        text: model.sender
-                                        color: Theme.inkStrong
-                                        font.family: Theme.fontUi
-                                        font.pixelSize: 13
-                                        font.weight: model.unread ? Font.Bold : Font.Medium
-                                        elide: Text.ElideRight
+                                        spacing: 6
+
+                                        Text {
+                                            Layout.fillWidth: true
+                                            textFormat: Text.PlainText
+                                            text: model.sender
+                                            color: Theme.inkStrong
+                                            font.family: Theme.fontUi
+                                            font.pixelSize: 13
+                                            font.weight: model.unread ? Font.Bold : Font.Medium
+                                            elide: Text.ElideRight
+                                        }
+                                        StatusBadge {
+                                            visible: !!model.woken
+                                            text: i18nc("@label mail list badge, message returned from snooze", "Snoozed")
+                                        }
                                     }
                                     // Subject preceded by the OpenPGP marker, when there is
                                     // one. Both the glyph and its spoken equivalent come from

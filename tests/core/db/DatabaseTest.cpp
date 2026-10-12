@@ -32,13 +32,10 @@ void DatabaseTest::opensInMemoryAndAppliesSchema()
     QSqlQuery versionQuery(db.handle());
     QVERIFY(versionQuery.exec(QStringLiteral("PRAGMA user_version")));
     QVERIFY(versionQuery.next());
-    // 7 migrations on disk (001_initial, 002_native_contact_links,
-    // 003_extended_contact_fields, 004_contact_self_and_merged,
-    // 005_email_pgp_state, 006_emails_folder_scoped_key,
-    // 007_emails_body_mode) -- bumping this when a migration is added is how
-    // this test proves the loop in Database::open() actually walks
-    // version+1..N end-to-end.
-    QCOMPARE(versionQuery.value(0).toInt(), 8);
+    // 9 migrations on disk (001_initial .. 009_emails_woken_at) -- bumping
+    // this when a migration is added is how this test proves the loop in
+    // Database::open() actually walks version+1..N end-to-end.
+    QCOMPARE(versionQuery.value(0).toInt(), 9);
 
     QSqlQuery tablesQuery(db.handle());
     QVERIFY(tablesQuery.exec(
@@ -73,6 +70,13 @@ void DatabaseTest::opensInMemoryAndAppliesSchema()
     QVERIFY(columns.contains(QStringLiteral("department")));
     QVERIFY(columns.contains(QStringLiteral("custom_fields_json")));
     QVERIFY(columns.contains(QStringLiteral("pronouns")));
+
+    QSqlQuery emailColumns(db.handle());
+    QVERIFY(emailColumns.exec(QStringLiteral("PRAGMA table_info(emails)")));
+    QStringList emailColumnNames;
+    while (emailColumns.next())
+        emailColumnNames.append(emailColumns.value(QStringLiteral("name")).toString());
+    QVERIFY(emailColumnNames.contains(QStringLiteral("woken_at")));
 }
 
 void DatabaseTest::openIsIdempotentOnRealFile()
@@ -87,7 +91,7 @@ void DatabaseTest::openIsIdempotentOnRealFile()
         QSqlQuery query(db1.handle());
         QVERIFY(query.exec(QStringLiteral("PRAGMA user_version")));
         QVERIFY(query.next());
-        QCOMPARE(query.value(0).toInt(), 8);
+        QCOMPARE(query.value(0).toInt(), 9);
     }
     {
         Database db2;
@@ -95,7 +99,7 @@ void DatabaseTest::openIsIdempotentOnRealFile()
         QSqlQuery query(db2.handle());
         QVERIFY(query.exec(QStringLiteral("PRAGMA user_version")));
         QVERIFY(query.next());
-        QCOMPARE(query.value(0).toInt(), 8);
+        QCOMPARE(query.value(0).toInt(), 9);
     }
 }
 
@@ -269,7 +273,7 @@ void DatabaseTest::migrationIsAtomicSoAFailureLeavesNoHalfAppliedSchema()
     QSqlQuery versionQuery(db.handle());
     QVERIFY(versionQuery.exec(QStringLiteral("PRAGMA user_version")));
     QVERIFY(versionQuery.next());
-    QCOMPARE(versionQuery.value(0).toInt(), 8);
+    QCOMPARE(versionQuery.value(0).toInt(), 9);
 }
 
 
@@ -361,7 +365,7 @@ void DatabaseTest::migration006RekeysAnExistingProfileWithoutLosingCachedMail()
     QSqlQuery version(db.handle());
     QVERIFY(version.exec(QStringLiteral("PRAGMA user_version")));
     QVERIFY(version.next());
-    QCOMPARE(version.value(0).toInt(), 8);
+    QCOMPARE(version.value(0).toInt(), 9);
 
     // Nothing was dropped on the way across, values included.
     EmailDao dao(db.handle());
@@ -371,6 +375,8 @@ void DatabaseTest::migration006RekeysAnExistingProfileWithoutLosingCachedMail()
     QCOMPARE(kept->subject, QStringLiteral("Kept"));
     QCOMPARE(*kept->body, QStringLiteral("body text"));
     QCOMPARE(kept->pgpEncrypted, true);
+    // 009 adds woken_at as NULL: cached mail is not pinned by the upgrade.
+    QVERIFY(!kept->wokenAt.has_value());
     // The NULL folder became '', which is a key SQLite can actually match.
     // Note the empty-but-not-null QString: QString() binds as SQL NULL, and
     // `folder = NULL` matches nothing, ever.
