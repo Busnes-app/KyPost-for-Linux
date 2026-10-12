@@ -26,6 +26,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QSignalSpy>
@@ -65,6 +66,13 @@ private slots:
     void overlappingRefreshesCollapseToOneFollowUpRequest();
     void aFolderSwitchDuringARefreshIsStillFetched();
     void archiveEmailsReportsCompletionAndDropsTheRowOptimistically();
+    void moveEmailsSendsTheTargetMailboxAndDropsTheRow();
+    void aRefusedMoveKeepsTheRowAndReportsWhy();
+    void aMoveThatLandsAfterAFolderSwitchLeavesTheNewFolderAlone();
+    void refreshFoldersWalksTheArchiveTree();
+    void refreshFoldersStopsAtTheDepthCap();
+    void mailFoldersShowsNoDeeperThanTheCap();
+    void aLockedAppSendsNoFolderMutation();
     void aRefreshThatOutlivesItsAccountWritesNothingAndReportsNoError();
     void anAttachmentThatOutlivesItsAccountIsNeverWrittenOrOpened();
     void aPgpComposeAnswerThatOutlivesItsAccountIsNotCached();
@@ -78,6 +86,7 @@ private slots:
     void aRefusedMarkReadRollsBackSilently();
     void aRefusedMarkUnreadRollsBackAndSaysSo();
     void aReadStateReplyForAReplacedAccountRollsNothingBack();
+    void aLockedAppChangesNoReadStateUntilUnlocked();
 
 private:
     static void savePairing(PairingStore& pairingStore, quint16 port);
@@ -2469,6 +2478,236 @@ void MailControllerTest::aReadStateReplyForAReplacedAccountRollsNothingBack()
     f.executor.shutdown();
     QVERIFY2(fake.receivedRequest().contains("/api/inbox/actions"), fake.receivedRequest().constData());
     QCOMPARE(cachedStatus(f.emailDao, "m1"), QStringLiteral("unread"));
+}
+
+// A reader opened behind the PIN overlay (a notification tap on a cached
+// message) calls markRead before anyone has unlocked. Nothing may reach the
+// relay, or the cache, until the app is unlocked.
+void MailControllerTest::aLockedAppChangesNoReadStateUntilUnlocked()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", kTwoMessageInbox));
+    RefreshFixture f(fake.port());
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    QVERIFY(f.emailDao.updateStatus(QStringLiteral("INBOX"), QStringLiteral("m2"), QStringLiteral("read")));
+    auto* model = qobject_cast<EmailListModel*>(f.controller.emailModel());
+
+    fake.setResponse(readStateReply("read", true));
+    const int requestsBefore = fake.receivedRequests().size();
+    QSignalSpy stateSpy(&f.controller, &MailController::readStateChanged);
+
+    f.controller.setAppLocked(true);
+    f.controller.markRead(QStringLiteral("INBOX"), { QStringLiteral("m1") });
+    f.controller.markUnread(QStringLiteral("INBOX"), { QStringLiteral("m2") });
+    QCOMPARE(stateSpy.count(), 0);
+    QCOMPARE(cachedStatus(f.emailDao, "m1"), QStringLiteral("unread"));
+    QCOMPARE(cachedStatus(f.emailDao, "m2"), QStringLiteral("read"));
+    QCOMPARE(model->emailAt(0).status, QStringLiteral("unread"));
+    // Give a dispatched request every chance to arrive before saying none did.
+    QTest::qWait(300);
+    QCOMPARE(fake.receivedRequests().size(), requestsBefore);
+
+    f.controller.setAppLocked(false);
+    f.controller.markRead(QStringLiteral("INBOX"), { QStringLiteral("m1") });
+    QCOMPARE(cachedStatus(f.emailDao, "m1"), QStringLiteral("read"));
+    QTRY_VERIFY_WITH_TIMEOUT(fake.receivedRequests().size() > requestsBefore, 10000);
+    f.executor.shutdown();
+    QVERIFY2(fake.receivedRequest().contains("\"action\":\"read\""), fake.receivedRequest().constData());
+}
+
+namespace {
+QJsonObject jsonBodyOf(const QByteArray& request)
+{
+    const int headerEnd = request.indexOf("\r\n\r\n");
+    return headerEnd < 0 ? QJsonObject() : QJsonDocument::fromJson(request.mid(headerEnd + 4)).object();
+}
+
+QByteArray folderListing(const char* parent, const char* foldersJson)
+{
+    return httpResponse(200, "OK",
+                        QByteArray(R"({"parent":")") + parent + R"(","folders":)" + foldersJson + "}");
+}
+} // namespace
+
+// The relay's field is `targetMailbox` (server_inbox.go handleInboxActions);
+// a wrong name is a 400 "targetMailbox is required for move action".
+void MailControllerTest::moveEmailsSendsTheTargetMailboxAndDropsTheRow()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", kTwoMessageInbox));
+    RefreshFixture f(fake.port());
+
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    auto* model = qobject_cast<EmailListModel*>(f.controller.emailModel());
+    QCOMPARE(model->rowCount(), 2);
+
+    fake.setResponse(httpResponse(
+        200, "OK", R"({"ok":true,"action":"move","processed":1,"failed":[],"targetMailbox":"Archive/Projects"})"));
+
+    QSignalSpy doneSpy(&f.controller, &MailController::actionCompleted);
+    f.controller.moveEmails({ QStringLiteral("m1") }, QStringLiteral("Archive/Projects"));
+    QVERIFY(f.controller.isBusy());
+    QTRY_VERIFY_WITH_TIMEOUT(doneSpy.count() == 1, 10000);
+    f.executor.shutdown();
+
+    QCOMPARE(doneSpy.at(0).at(0).toString(), QStringLiteral("move"));
+    QCOMPARE(doneSpy.at(0).at(1).toStringList(), QStringList{ QStringLiteral("m1") });
+    QCOMPARE(doneSpy.at(0).at(2).toBool(), true);
+
+    QVERIFY(fake.receivedRequests().last().startsWith("POST /api/inbox/actions "));
+    const QJsonObject body = jsonBodyOf(fake.receivedRequests().last());
+    QCOMPARE(body.value(QStringLiteral("action")).toString(), QStringLiteral("move"));
+    QCOMPARE(body.value(QStringLiteral("mailbox")).toString(), QStringLiteral("INBOX"));
+    QCOMPARE(body.value(QStringLiteral("targetMailbox")).toString(), QStringLiteral("Archive/Projects"));
+    QCOMPARE(body.value(QStringLiteral("messageIds")).toArray(), QJsonArray{ QStringLiteral("m1") });
+
+    QCOMPARE(model->rowCount(), 1);
+    QCOMPARE(model->emailAt(0).messageId, QStringLiteral("m2"));
+}
+
+void MailControllerTest::aRefusedMoveKeepsTheRowAndReportsWhy()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", kTwoMessageInbox));
+    RefreshFixture f(fake.port());
+
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    auto* model = qobject_cast<EmailListModel*>(f.controller.emailModel());
+    QCOMPARE(model->rowCount(), 2);
+
+    fake.setResponse(httpResponse(400, "Bad Request", "invalid mailbox name"));
+
+    QSignalSpy doneSpy(&f.controller, &MailController::actionCompleted);
+    f.controller.moveEmails({ QStringLiteral("m1") }, QStringLiteral("Archive/Projects"));
+    QTRY_VERIFY_WITH_TIMEOUT(doneSpy.count() == 1, 10000);
+    f.executor.shutdown();
+
+    QCOMPARE(doneSpy.at(0).at(2).toBool(), false);
+    QVERIFY(!f.controller.isBusy());
+    QVERIFY(!f.controller.lastError().isEmpty());
+    QCOMPARE(model->rowCount(), 2);
+}
+
+// Ids repeat across mailboxes, so after switching to the move's target the
+// moved copy shares its id with the row being removed. The reply must not
+// hide it from the folder now on screen.
+void MailControllerTest::aMoveThatLandsAfterAFolderSwitchLeavesTheNewFolderAlone()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", kTwoMessageInbox));
+    fake.setResponseForPath("/api/inbox/actions", httpResponse(
+        200, "OK", R"({"ok":true,"action":"move","processed":1,"failed":[],"targetMailbox":"Archive"})"));
+    RefreshFixture f(fake.port());
+    auto* model = qobject_cast<EmailListModel*>(f.controller.emailModel());
+
+    // Seed both caches so the switch shows rows synchronously.
+    f.controller.selectFolder(QStringLiteral("Archive"));
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    f.controller.selectFolder(QStringLiteral("INBOX"));
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    QCOMPARE(model->rowCount(), 2);
+
+    int rowsWhenDone = -1;
+    connect(&f.controller, &MailController::actionCompleted, &f.controller,
+            [&] { rowsWhenDone = model->rowCount(); });
+    f.controller.moveEmails({ QStringLiteral("m1") }, QStringLiteral("Archive"));
+    f.controller.selectFolder(QStringLiteral("Archive"));
+    QCOMPARE(model->rowCount(), 2);
+
+    QTRY_VERIFY_WITH_TIMEOUT(rowsWhenDone != -1, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    f.executor.shutdown();
+    QCOMPARE(rowsWhenDone, 2);
+}
+
+void MailControllerTest::refreshFoldersWalksTheArchiveTree()
+{
+    FakeRelayServer fake(folderListing("", "[]"));
+    fake.setResponseForPath("parent=Archive/a/b ",
+                            folderListing("Archive/a/b", "[]"));
+    fake.setResponseForPath("parent=Archive/a ",
+                            folderListing("Archive/a", R"([{"path":"Archive/a/b","deletable":true}])"));
+    fake.setResponseForPath("parent=Archive ",
+                            folderListing("Archive", R"([{"path":"Archive/a","deletable":true}])"));
+    RefreshFixture f(fake.port());
+
+    QSignalSpy changedSpy(&f.controller, &MailController::foldersChanged);
+    f.controller.refreshFolders();
+    f.controller.refreshFolders(); // coalesced: a walk is already running
+    QTRY_VERIFY_WITH_TIMEOUT(changedSpy.count() == 1, 10000);
+    f.executor.shutdown();
+    QCOMPARE(changedSpy.count(), 1);
+    QCOMPARE(fake.connectionCount(), 3);
+
+    QStringList paths;
+    QList<int> depths;
+    for (const QVariant& v : f.controller.mailFolders()) {
+        const QVariantMap m = v.toMap();
+        paths << m.value(QStringLiteral("wireName")).toString();
+        depths << m.value(QStringLiteral("depth")).toInt();
+    }
+    const qsizetype archive = paths.indexOf(QStringLiteral("Archive"));
+    QVERIFY(archive >= 0);
+    QCOMPARE(paths.mid(archive), (QStringList{ QStringLiteral("Archive"), QStringLiteral("Archive/a"), QStringLiteral("Archive/a/b") }));
+    QCOMPARE(depths.mid(archive), (QList<int>{ 0, 1, 2 }));
+}
+
+// A relay that answers every listing with a child must not walk forever.
+void MailControllerTest::refreshFoldersStopsAtTheDepthCap()
+{
+    FakeRelayServer fake(folderListing("Archive", R"([{"path":"Archive/loop","deletable":true}])"));
+    RefreshFixture f(fake.port());
+
+    QSignalSpy changedSpy(&f.controller, &MailController::foldersChanged);
+    f.controller.refreshFolders();
+    // Emitted only once nothing is in flight, so the walk has ended.
+    QTRY_VERIFY_WITH_TIMEOUT(changedSpy.count() == 1, 10000);
+    f.executor.shutdown();
+    QCOMPARE(fake.connectionCount(), MailController::kMaxFolderDepth);
+}
+
+void MailControllerTest::mailFoldersShowsNoDeeperThanTheCap()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", "{}"));
+    RefreshFixture f(fake.port());
+
+    QString parent = QStringLiteral("Archive");
+    for (int level = 1; level <= MailController::kMaxFolderDepth + 2; ++level) {
+        const QString path = parent + QStringLiteral("/l%1").arg(level);
+        QVERIFY(f.folderDao.insertOrReplace(path, parent, true, QStringLiteral("relay")));
+        parent = path;
+    }
+
+    int deepest = 0;
+    for (const QVariant& v : f.controller.mailFolders())
+        deepest = qMax(deepest, v.toMap().value(QStringLiteral("depth")).toInt());
+    QCOMPARE(deepest, MailController::kMaxFolderDepth);
+}
+
+// A create/rename prompt can be left open when the app locks. Whatever still
+// reaches the controller from it must send nothing until unlock, and must not
+// report back either: an error under the PIN overlay would leak the attempt.
+void MailControllerTest::aLockedAppSendsNoFolderMutation()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true,"parent":"Archive","folder":"Archive/New"})"));
+    RefreshFixture f(fake.port());
+    QSignalSpy completedSpy(&f.controller, &MailController::folderMutationCompleted);
+
+    f.controller.setAppLocked(true);
+    f.controller.createFolder(QStringLiteral("Archive"), QStringLiteral("New"));
+    f.controller.renameFolder(QStringLiteral("Archive/Old"), QStringLiteral("New"));
+    f.controller.deleteFolder(QStringLiteral("Archive/Old"));
+    QVERIFY(!f.controller.isBusy());
+    // Give a dispatched request every chance to arrive before saying none did.
+    QTest::qWait(300);
+    QCOMPARE(fake.connectionCount(), 0);
+    QCOMPARE(completedSpy.count(), 0);
+
+    f.controller.setAppLocked(false);
+    f.controller.createFolder(QStringLiteral("Archive"), QStringLiteral("New"));
+    QTRY_VERIFY_WITH_TIMEOUT(completedSpy.count() == 1, 10000);
+    f.executor.shutdown();
+    QVERIFY(fake.connectionCount() > 0);
+    QVERIFY2(fake.receivedRequests().first().startsWith("POST "), fake.receivedRequests().first().constData());
 }
 
 QTEST_GUILESS_MAIN(MailControllerTest)

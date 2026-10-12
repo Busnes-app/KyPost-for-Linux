@@ -116,32 +116,6 @@ Kirigami.ApplicationWindow {
         MailApp.selectFolder(wireName)
     }
 
-    // ---- folder management -------------------------------------------
-    // One reusable prompt for create/rename and one confirm for delete,
-    // rather than three near-identical Dialogs. `folderPromptMode` decides
-    // which MailApp call the accept button makes.
-    function promptCreateFolder(parentWireName) {
-        folderPrompt.mode = "create"
-        folderPrompt.targetFolder = parentWireName
-        folderPrompt.headingText = i18n("New folder in %1", root.folderDisplayName(parentWireName))
-        folderPrompt.nameText = ""
-        folderPrompt.open()
-    }
-
-    function promptRenameFolder(wireName, displayName) {
-        folderPrompt.mode = "rename"
-        folderPrompt.targetFolder = wireName
-        folderPrompt.headingText = i18n("Rename folder")
-        folderPrompt.nameText = displayName
-        folderPrompt.open()
-    }
-
-    function promptDeleteFolder(wireName, displayName) {
-        folderDeleteConfirm.targetFolder = wireName
-        folderDeleteConfirm.displayName = displayName
-        folderDeleteConfirm.open()
-    }
-
     function selectContactsSection() {
         root.currentSection = "contacts"
         root.selectedContactUid = ""
@@ -358,175 +332,6 @@ Kirigami.ApplicationWindow {
     // which server is asking and let the user accept or reject before
     // Pairing.confirmPendingPair() makes any network call. See
     // PairingController::pairFromDeepLink's doc comment for the full gate.
-    // Create/rename prompt. Deliberately one Popup with a mode flag: the two
-    // flows differ only in the heading and which MailApp call runs.
-    Popup {
-        id: folderPrompt
-        property string mode: "create"
-        property string targetFolder: ""
-        property string headingText: ""
-        property alias nameText: folderPromptField.text
-
-        modal: true
-        focus: true
-        closePolicy: Popup.CloseOnEscape
-        x: (root.width - width) / 2
-        y: (root.height - height) / 2
-        width: Math.min(380, root.width - 32)
-        padding: 20
-
-        background: Rectangle {
-            color: Theme.panel
-            radius: Theme.shapeSheet
-            border.width: 1
-            border.color: Theme.line
-        }
-
-        // ThemedTextField is a Rectangle wrapper, not a TextField -- focus
-        // and the Return key both belong to its inner `inputField`.
-        onOpened: folderPromptField.inputField.forceActiveFocus()
-
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 12
-
-            Text {
-                Layout.fillWidth: true
-                textFormat: Text.PlainText
-                text: folderPrompt.headingText
-                color: Theme.inkStrong
-                font.family: Theme.fontUi
-                font.pixelSize: 14
-                font.bold: true
-                wrapMode: Text.WordWrap
-            }
-
-            ThemedTextField {
-                id: folderPromptField
-                Layout.fillWidth: true
-                placeholderText: i18n("Folder name")
-            }
-
-            // ThemedTextField exposes only text/placeholderText/inputField --
-            // it has no `accepted` signal of its own, so Return has to be
-            // taken from the inner TextField it wraps.
-            Connections {
-                target: folderPromptField.inputField
-                function onAccepted() { folderPrompt.submit() }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                Item { Layout.fillWidth: true }
-                GhostButton {
-                    text: i18n("Cancel")
-                    onClicked: folderPrompt.close()
-                }
-                PrimaryButton {
-                    text: folderPrompt.mode === "create" ? i18n("Create") : i18n("Rename")
-                    enabled: folderPromptField.text.trim().length > 0 && !MailApp.isBusy
-                    onClicked: folderPrompt.submit()
-                }
-            }
-        }
-
-        function submit() {
-            const name = folderPromptField.text.trim()
-            if (name.length === 0)
-                return
-            if (folderPrompt.mode === "create")
-                MailApp.createFolder(folderPrompt.targetFolder, name)
-            else
-                MailApp.renameFolder(folderPrompt.targetFolder, name)
-        }
-
-        // Stay open on failure so the typed name isn't lost; MailApp has
-        // already put the reason in lastError, which the sidebar's error Text
-        // below binds to. Only reached while this popup is open, because
-        // nothing else can start a folder mutation: both dialogs are modal.
-        Connections {
-            target: MailApp
-            enabled: folderPrompt.opened
-            function onFolderMutationCompleted(ok) {
-                if (ok)
-                    folderPrompt.close()
-            }
-        }
-    }
-
-    Popup {
-        id: folderDeleteConfirm
-        property string targetFolder: ""
-        property string displayName: ""
-
-        modal: true
-        focus: true
-        closePolicy: Popup.CloseOnEscape
-        x: (root.width - width) / 2
-        y: (root.height - height) / 2
-        width: Math.min(380, root.width - 32)
-        padding: 20
-
-        background: Rectangle {
-            color: Theme.panel
-            radius: Theme.shapeSheet
-            border.width: 1
-            border.color: Theme.line
-        }
-
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 12
-
-            Text {
-                Layout.fillWidth: true
-                textFormat: Text.PlainText
-                text: i18n("Delete “%1”?", folderDeleteConfirm.displayName)
-                color: Theme.inkStrong
-                font.family: Theme.fontUi
-                font.pixelSize: 14
-                font.bold: true
-                wrapMode: Text.WordWrap
-            }
-
-            Text {
-                Layout.fillWidth: true
-                text: i18n("The folder and any messages in it are removed from the server. This cannot be undone.")
-                color: Theme.ink
-                font.family: Theme.fontUi
-                font.pixelSize: 12
-                wrapMode: Text.WordWrap
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                Item { Layout.fillWidth: true }
-                GhostButton {
-                    text: i18n("Cancel")
-                    onClicked: folderDeleteConfirm.close()
-                }
-                DangerButton {
-                    text: i18n("Delete")
-                    enabled: !MailApp.isBusy
-                    onClicked: MailApp.deleteFolder(folderDeleteConfirm.targetFolder)
-                }
-            }
-        }
-
-        // Same shape as folderPrompt's above -- stay open on failure so the
-        // reason in lastError is read next to the thing that failed.
-        Connections {
-            target: MailApp
-            enabled: folderDeleteConfirm.opened
-            function onFolderMutationCompleted(ok) {
-                if (ok)
-                    folderDeleteConfirm.close()
-            }
-        }
-    }
-
     Popup {
         id: pairingConfirmPopup
         modal: true
@@ -1106,7 +911,7 @@ Kirigami.ApplicationWindow {
 
                                 MenuItem {
                                     text: i18n("New Subfolder…")
-                                    onTriggered: root.promptCreateFolder(modelData.wireName)
+                                    onTriggered: folderDialog.openCreate(modelData.wireName, modelData.displayName)
                                 }
                                 MenuItem {
                                     // deletable is the server's verdict
@@ -1115,12 +920,12 @@ Kirigami.ApplicationWindow {
                                     // what the backend will reject.
                                     text: i18n("Rename…")
                                     enabled: modelData.deletable === true
-                                    onTriggered: root.promptRenameFolder(modelData.wireName, modelData.displayName)
+                                    onTriggered: folderDialog.openRename(modelData.wireName, modelData.displayName)
                                 }
                                 MenuItem {
                                     text: i18n("Delete Folder…")
                                     enabled: modelData.deletable === true
-                                    onTriggered: root.promptDeleteFolder(modelData.wireName, modelData.displayName)
+                                    onTriggered: folderDialog.openDelete(modelData.wireName, modelData.displayName)
                                 }
                             }
                         }
@@ -1450,6 +1255,11 @@ Kirigami.ApplicationWindow {
                                                               : MailApp.markUnread(model.folder, [model.messageId])
                                 }
                                 MenuItem {
+                                    text: i18n("Move to…")
+                                    enabled: !MailApp.isBusy
+                                    onTriggered: moveDialog.open([model.messageId], model.folder, MailApp.mailFolders())
+                                }
+                                MenuItem {
                                     text: i18n("Delete")
                                     // Fire and forget -- the detail pane is
                                     // closed by root's own onActionCompleted
@@ -1645,8 +1455,6 @@ Kirigami.ApplicationWindow {
             settingsSheet.close();
             pgpMyQrCodeSheet.close();
             pgpScanContactKeySheet.close();
-            folderPrompt.close();
-            folderDeleteConfirm.close();
         }
     }
 
@@ -1660,6 +1468,32 @@ Kirigami.ApplicationWindow {
         z: 900
         onChosen: function (messageId, folder) {
             root.selectEmail(messageId, folder)
+        }
+    }
+
+    // The list's "Move to…". The reader pane hosts its own (EmailDetail.qml),
+    // so a pop-out window's picker opens in that window.
+    MoveToFolderDialog {
+        id: moveDialog
+        anchors.fill: parent
+        z: 900
+        onChosen: function (messageIds, folder) {
+            MailApp.moveEmails(messageIds, folder)
+        }
+    }
+
+    FolderDialog {
+        id: folderDialog
+        anchors.fill: parent
+        z: 900
+        busy: MailApp.isBusy
+        onCreateRequested: function (parent, name) { MailApp.createFolder(parent, name) }
+        onRenameRequested: function (folder, name) { MailApp.renameFolder(folder, name) }
+        onDeleteRequested: function (folder) { MailApp.deleteFolder(folder) }
+
+        Connections {
+            target: MailApp
+            function onFolderMutationCompleted(ok) { folderDialog.finished(ok, MailApp.lastError) }
         }
     }
 

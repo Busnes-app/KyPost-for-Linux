@@ -113,6 +113,9 @@ class MailController : public QObject
     Q_PROPERTY(QStringList pgpKeylessRecipients READ pgpKeylessRecipients NOTIFY pgpKeylessRecipientsChanged)
 
 public:
+    // Deepest subfolder level mailFolders() shows and refreshFolders() lists.
+    static constexpr int kMaxFolderDepth = 4;
+
     MailController(MailRepository& mailRepository, RelayMailSource& relayMailSource,
                     KeywordRepository& keywordRepository, PairingStore& pairingStore,
                     FolderRepository& folderRepository, SettingsStore& settingsStore,
@@ -173,7 +176,8 @@ public slots:
     // change still in flight are skipped, so a repeat call sends nothing.
     // markRead is incidental to opening a message and fails silently (the row
     // simply turns unread again); markUnread is the user's request and
-    // reports failure through lastError.
+    // reports failure through lastError. Both do nothing while the app is
+    // locked; EmailDetail marks an opened message read once it is unlocked.
     void markRead(const QString& folder, const QStringList& messageIds);
     void markUnread(const QString& folder, const QStringList& messageIds);
     // mode is hardcoded "html" -- Compose.qml's RichBodyEditor is the sole
@@ -319,16 +323,17 @@ public slots:
     // connection.
     Q_INVOKABLE QVariantList mailFolders() const;
 
-    // Fetches subfolders for the parents worth expanding and emits
-    // foldersChanged(). Currently just Archive, matching Android's folder
-    // picker -- the other five standard mailboxes have no subfolder UI.
+    // Fetches Archive's subfolder tree, one listing per folder down to
+    // kMaxFolderDepth, and emits foldersChanged() once the walk is done.
+    // A call while a walk is running is dropped.
     Q_INVOKABLE void refreshFolders();
 
     // Each dispatches and returns; the outcome arrives as
     // folderMutationCompleted(), and foldersChanged() is emitted first on
     // success. The backend refuses to rename or delete a built-in mailbox or
     // any top-level folder, so entries with deletable == false must not offer
-    // the action.
+    // the action. All three do nothing, and report nothing, while the app is
+    // locked.
     Q_INVOKABLE void createFolder(const QString& parent, const QString& name);
     Q_INVOKABLE void renameFolder(const QString& folder, const QString& name);
     Q_INVOKABLE void deleteFolder(const QString& folder);
@@ -610,9 +615,12 @@ private:
     // Shared body of archiveEmails/deleteEmails/markSpam/moveEmails.
     void performActionCommon(const QStringList& messageIds, const QString& action,
                               const std::optional<QString>& targetMailbox);
-    void finishAction(const QString& action, const QStringList& messageIds, const ActionResult& result);
+    void finishAction(const QString& action, const QStringList& messageIds, const QString& mailbox,
+                      const ActionResult& result);
     void setReadState(const QString& folder, const QStringList& messageIds, bool read);
     void applyCachedStatus(const QString& folder, const QString& messageId, const QString& status);
+    void listFolderTree(const RelayRequestPlan& plan, const QString& parent, int depth);
+    int m_folderListsInFlight = 0;
     // Shared body of createFolder/renameFolder/deleteFolder -- see the .cpp.
     void runFolderMutation(const QString& failureMessage,
                             std::function<FolderRepository::FolderMutationFetch(HttpClient&, const RelayEndpoint&)> work,
