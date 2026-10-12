@@ -14,6 +14,37 @@ Item {
 
     readonly property bool canAnswer: Mfa.hasChallenge && !Mfa.inFlight && !AppLock.locked
 
+    // The challenge on screen when the current press began. A tap answers
+    // that challenge or nothing: if it was replaced or expired while the
+    // finger was down, the press is void, even when the replacement shows
+    // the same numbers.
+    property string gestureChallengeId: ""
+
+    function beginGesture() {
+        root.gestureChallengeId = Mfa.hasChallenge && Mfa.secondsRemaining > 0 ? Mfa.challengeId : ""
+    }
+
+    function stillShown(id) {
+        return id !== "" && Mfa.hasChallenge && Mfa.challengeId === id && Mfa.secondsRemaining > 0
+    }
+
+    // Returns the challenge the finished gesture may answer, or "".
+    function endGesture() {
+        const id = root.gestureChallengeId
+        root.gestureChallengeId = ""
+        return root.stillShown(id) ? id : ""
+    }
+
+    // Cancel as soon as the challenge changes, so a later return to the same
+    // ID cannot revive a press that was voided.
+    Connections {
+        target: Mfa
+        function onChanged() {
+            if (root.gestureChallengeId !== "" && !root.stillShown(root.gestureChallengeId))
+                root.gestureChallengeId = ""
+        }
+    }
+
     Rectangle {
         anchors.fill: parent
         color: Theme.bg
@@ -171,7 +202,12 @@ Item {
                     implicitWidth: 72
                     text: modelData
                     enabled: root.canAnswer
-                    onClicked: Mfa.approve(Mfa.challengeId, modelData)
+                    onPressStarted: root.beginGesture()
+                    onClicked: {
+                        const id = root.endGesture()
+                        if (id !== "")
+                            Mfa.approve(id, modelData)
+                    }
                 }
             }
         }
@@ -182,7 +218,12 @@ Item {
             visible: Mfa.hasChallenge
             text: i18n("Deny, this was not me")
             enabled: root.canAnswer
-            onClicked: Mfa.deny(Mfa.challengeId)
+            onPressStarted: root.beginGesture()
+            onClicked: {
+                const id = root.endGesture()
+                if (id !== "")
+                    Mfa.deny(id)
+            }
         }
 
         Text {

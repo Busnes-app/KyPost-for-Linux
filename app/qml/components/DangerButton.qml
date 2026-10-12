@@ -15,6 +15,9 @@ Rectangle {
     // shadowing a property already defined on the base type.
     property string text: ""
     signal clicked()
+    // Emitted when a press begins, before clicked() on release. For callers
+    // that must pin down what the gesture was aimed at when it started.
+    signal pressStarted()
 
     // Padding/font-size values below aren't specified by STYLE_GUIDE.md (it
     // only pins colors/radii, which come from Theme); picked to match
@@ -54,6 +57,7 @@ Rectangle {
     TapHandler {
         id: tapHandler
         enabled: root.enabled
+        onPressedChanged: if (pressed) root.pressStarted()
         onTapped: root.clicked()
     }
 }

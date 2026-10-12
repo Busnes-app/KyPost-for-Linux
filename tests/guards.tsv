@@ -404,6 +404,8 @@ app/pairing/MfaController.cpp	    if (approve && !target->choices.contains(digit
 # The answer is bound to the challenge on screen. Neutralised, it goes to whatever is pending now.
 app/pairing/MfaController.cpp	        requestedId.isEmpty() ? std::nullopt : m_tracker.pending(requestedId, now());	        m_tracker.allPending(now()).isEmpty() ? std::nullopt : std::make_optional(m_tracker.allPending(now()).first());	MfaControllerTest:approvalExpiredUnderTheFingerGoesNowhere
 app/qml/pages/MfaApproval.qml	    readonly property bool canAnswer: Mfa.hasChallenge && !Mfa.inFlight && !AppLock.locked	    readonly property bool canAnswer: Mfa.hasChallenge && !Mfa.inFlight	QmlTests:MfaApproval::test_locked_app_cannot_answer
+# A press answers the challenge it started on. Neutralised, a held tap answers the replacement.
+app/qml/pages/MfaApproval.qml	        return root.stillShown(id) ? id : ""	        return Mfa.challengeId	QmlTests:MfaApproval::test_replacement_during_held_choice_gets_no_decision
 
 # --- a push opened for a replaced pairing is never recorded or shown -------
 #

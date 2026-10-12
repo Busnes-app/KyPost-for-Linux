@@ -5,7 +5,8 @@ import "qrc:/qml/pages" as Pages
 
 // The approval page must not single out the right number, must send exactly
 // the number tapped, must render sign-in context as plain text, and must not
-// answer while the app is locked.
+// answer while the app is locked. A press answers the challenge it started
+// on, or nothing.
 TestCase {
     id: testCase
     name: "MfaApproval"
@@ -27,6 +28,7 @@ TestCase {
         Mfa.ipAddress = "203.0.113.9"
         Mfa.userAgent = "Firefox"
         Mfa.inFlight = false
+        Mfa.secondsRemaining = 300
         Mfa.lastApproved = ""
         Mfa.denyCount = 0
         Mfa.lastAnsweredId = ""
@@ -103,5 +105,64 @@ TestCase {
         mouseClick(deny)
         compare(Mfa.lastApproved, "")
         compare(Mfa.denyCount, 0)
+    }
+
+    readonly property string replacementId: "fedcba9876543210fedcba9876543210fedcba9876543210"
+
+    function test_replacement_during_held_choice_gets_no_decision() {
+        const page = createPage()
+        const buttons = collect(page, "mfaChoice", [])
+        mousePress(buttons[0])
+        // The shown challenge expires under the finger and a pending one with
+        // the same numbers takes its place.
+        Mfa.challengeId = testCase.replacementId
+        Mfa.choices = ["42", "07", "93"]
+        const after = collect(page, "mfaChoice", [])
+        verify(after[0] === buttons[0], "unchanged choices keep the pressed button alive")
+        mouseRelease(buttons[0])
+        compare(Mfa.lastApproved, "", "the replacement must not receive the held tap")
+        compare(Mfa.lastAnsweredId, "")
+    }
+
+    function test_replacement_during_held_deny_gets_no_decision() {
+        const page = createPage()
+        const deny = collect(page, "mfaDeny", [])[0]
+        mousePress(deny)
+        Mfa.challengeId = testCase.replacementId
+        mouseRelease(deny)
+        compare(Mfa.denyCount, 0, "the replacement must not receive the held deny")
+        compare(Mfa.lastAnsweredId, "")
+    }
+
+    function test_expiry_during_held_gesture_gets_no_decision() {
+        const page = createPage()
+        const buttons = collect(page, "mfaChoice", [])
+        mousePress(buttons[1])
+        Mfa.secondsRemaining = 0
+        mouseRelease(buttons[1])
+        compare(Mfa.lastApproved, "")
+        compare(Mfa.lastAnsweredId, "")
+    }
+
+    function test_voided_press_stays_void_if_challenge_returns() {
+        const page = createPage()
+        const original = Mfa.challengeId
+        const deny = collect(page, "mfaDeny", [])[0]
+        mousePress(deny)
+        Mfa.challengeId = testCase.replacementId
+        Mfa.challengeId = original
+        mouseRelease(deny)
+        compare(Mfa.denyCount, 0)
+    }
+
+    function test_new_press_after_replacement_answers_replacement() {
+        const page = createPage()
+        const buttons = collect(page, "mfaChoice", [])
+        mousePress(buttons[0])
+        Mfa.challengeId = testCase.replacementId
+        mouseRelease(buttons[0])
+        mouseClick(buttons[0])
+        compare(Mfa.lastApproved, "42")
+        compare(Mfa.lastAnsweredId, testCase.replacementId, "a fresh press after the swap answers what is shown")
     }
 }
