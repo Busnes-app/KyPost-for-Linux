@@ -179,6 +179,8 @@ find_package(KF6Notifications REQUIRED)
 target_sources(kypost PRIVATE
   push/NotificationDispatcher.cpp
   push/NotificationDispatcher.h
+  push/PushArrival.cpp
+  push/PushArrival.h
   push/PushPayloadParser.cpp
   push/PushPayloadParser.h
 )
