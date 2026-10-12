@@ -18,6 +18,7 @@ private slots:
     void findUniqueByIdRefusesAnIdCachedInMoreThanOneFolder();
     void foldersContainingNamesEveryMailboxHoldingTheId();
     void replaceFolderSnapshotWipesOnlyTargetFolderAndInsertsGivenEmails();
+    void updateStatusTouchesOnlyThatFolderCopy();
 
 private:
     Database m_db;
@@ -291,6 +292,29 @@ void EmailDaoTest::insertOrReplaceStoresAnUnsetFolderAsEmptyRatherThanFailing()
     // Still an upsert, not an append: the key resolved to ('', id) both times.
     QVERIFY(dao.insertOrReplace(noFolder));
     QCOMPARE(dao.findAll().size(), 1);
+}
+
+// Read state is per mailbox copy, like every other row field since 006.
+void EmailDaoTest::updateStatusTouchesOnlyThatFolderCopy()
+{
+    EmailDao dao(m_db.handle());
+
+    Email inboxCopy;
+    inboxCopy.messageId = QStringLiteral("msg-shared");
+    inboxCopy.folder = QStringLiteral("INBOX");
+    inboxCopy.status = QStringLiteral("unread");
+    QVERIFY(dao.insertOrReplace(inboxCopy));
+    Email archiveCopy = inboxCopy;
+    archiveCopy.folder = QStringLiteral("Archive");
+    QVERIFY(dao.insertOrReplace(archiveCopy));
+
+    QVERIFY(dao.updateStatus(QStringLiteral("INBOX"), QStringLiteral("msg-shared"), QStringLiteral("read")));
+    QCOMPARE(dao.findById(QStringLiteral("INBOX"), QStringLiteral("msg-shared"))->status, QStringLiteral("read"));
+    QCOMPARE(dao.findById(QStringLiteral("Archive"), QStringLiteral("msg-shared"))->status, QStringLiteral("unread"));
+
+    // No row, no claim of success.
+    QVERIFY(!dao.updateStatus(QStringLiteral("INBOX"), QStringLiteral("no-such-id"), QStringLiteral("read")));
+    QCOMPARE(dao.findAll().size(), 2);
 }
 
 QTEST_GUILESS_MAIN(EmailDaoTest)

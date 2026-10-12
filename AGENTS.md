@@ -205,6 +205,14 @@ Added 2026-07-25 (parity work with `kypost-android`):
   reintroduce them. If UnifiedPush ever gains RFC 8291 payload encryption and
   the relay drops the filter, recover the implementation from git rather than
   keeping a stub warm against a change nobody is waiting for.
+
+- **Read state (plan item L3, 2026-10-11).** Unread is exactly `status ==
+  "unread"` (`Email::isUnread`). `MailController::markRead/markUnread` write
+  the cache and list first and roll back on refusal; the rollback is skipped
+  when the pairing changed (guard in `tests/guards.tsv`) or a refresh already
+  replaced the status. They do not touch `isBusy`, so opening a message never
+  greys out the toolbar; a per-message in-flight set coalesces repeats instead.
+
 - **Biometric unlock and window-content protection are non-goals** — no
   portable Linux equivalent (no `FLAG_SECURE` analogue on Wayland).
 

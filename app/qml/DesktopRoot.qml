@@ -1318,6 +1318,8 @@ Kirigami.ApplicationWindow {
                             radius: Theme.shapeButton
                             readonly property bool isSelected: root.detailMode === "email"
                                 && root.selectedMessageId === model.messageId
+                            Accessible.role: Accessible.ListItem
+                            Accessible.name: model.accessibleName
                             color: isSelected ? Theme.accentSoft
                                 : (emailTap.pressed ? Theme.panel : (emailHover.hovered ? Theme.bg : "transparent"))
 
@@ -1346,6 +1348,15 @@ Kirigami.ApplicationWindow {
                                 anchors.margins: 10
                                 spacing: 10
 
+                                // Unread dot; transparent rather than hidden so
+                                // read and unread rows stay aligned.
+                                Rectangle {
+                                    implicitWidth: 8
+                                    implicitHeight: 8
+                                    radius: 4
+                                    color: Theme.accent
+                                    opacity: model.unread ? 1 : 0
+                                }
                                 Avatar {
                                     initials: emailRow.initialsForSender(model.sender)
                                     size: 32
@@ -1361,7 +1372,7 @@ Kirigami.ApplicationWindow {
                                         color: Theme.inkStrong
                                         font.family: Theme.fontUi
                                         font.pixelSize: 13
-                                        font.weight: Font.Medium
+                                        font.weight: model.unread ? Font.Bold : Font.Medium
                                         elide: Text.ElideRight
                                     }
                                     // Subject preceded by the OpenPGP marker, when there is
@@ -1392,6 +1403,7 @@ Kirigami.ApplicationWindow {
                                             color: Theme.inkStrong
                                             font.family: Theme.fontUi
                                             font.pixelSize: 13
+                                            font.weight: model.unread ? Font.Bold : Font.Normal
                                             elide: Text.ElideRight
                                         }
                                     }
@@ -1432,6 +1444,11 @@ Kirigami.ApplicationWindow {
 
                             Menu {
                                 id: emailContextMenu
+                                MenuItem {
+                                    text: model.unread ? i18n("Mark as Read") : i18n("Mark as Unread")
+                                    onTriggered: model.unread ? MailApp.markRead(model.folder, [model.messageId])
+                                                              : MailApp.markUnread(model.folder, [model.messageId])
+                                }
                                 MenuItem {
                                     text: i18n("Delete")
                                     // Fire and forget -- the detail pane is

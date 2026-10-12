@@ -623,12 +623,8 @@ Kirigami.ApplicationWindow {
             }
 
             // ---- email list -----------------------------------------------
-            // No unread/read visual weight: Email.status (core/models/
-            // Email.h) has no documented enumeration of values anywhere in
-            // core/ and nothing in the seeded/test data conventions implies
-            // one either -- per the task-38 brief's own instruction, this
-            // skips inventing an "unread" signal rather than guessing at
-            // one that doesn't exist in the current schema.
+            // Unread rows: bold sender/subject and an accent dot, as on
+            // desktop. Opening marks read; the reader's toolbar marks unread.
             EmptyState {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -661,6 +657,7 @@ Kirigami.ApplicationWindow {
                 delegate: SwipeDelegate {
                     id: emailRow
                     width: emailListView.width
+                    Accessible.name: model.accessibleName
 
                     // Guards against a double-fire if a user manages to
                     // trigger two click events on the same revealed action
@@ -686,6 +683,15 @@ Kirigami.ApplicationWindow {
                     contentItem: RowLayout {
                         spacing: 12
 
+                        // Unread dot; transparent rather than hidden so read
+                        // and unread rows stay aligned.
+                        Rectangle {
+                            implicitWidth: 8
+                            implicitHeight: 8
+                            radius: 4
+                            color: Theme.accent
+                            opacity: model.unread ? 1 : 0
+                        }
                         Avatar {
                             initials: inboxPage.initialsForSender(model.sender)
                             size: 40
@@ -705,7 +711,7 @@ Kirigami.ApplicationWindow {
                                     color: Theme.inkStrong
                                     font.family: Theme.fontUi
                                     font.pixelSize: 14
-                                    font.weight: Font.Medium
+                                    font.weight: model.unread ? Font.Bold : Font.Medium
                                     elide: Text.ElideRight
                                 }
                                 Text {
@@ -744,6 +750,7 @@ Kirigami.ApplicationWindow {
                                     color: Theme.inkStrong
                                     font.family: Theme.fontUi
                                     font.pixelSize: 13
+                                    font.weight: model.unread ? Font.Bold : Font.Normal
                                     elide: Text.ElideRight
                                 }
                             }

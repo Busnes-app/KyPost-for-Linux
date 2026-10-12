@@ -91,15 +91,28 @@ Item {
     readonly property bool decryptedIsHtml: root.decrypted.isHtml
     readonly property string decryptedBody: root.decrypted.body
 
+    // Mirrors the cache; updated by MailApp.readStateChanged.
+    property bool unread: false
+
     onMessageIdChanged: {
         // The reader has moved on, so the held plaintext is no longer
         // anybody's business. Dropped rather than merely hidden.
         MailApp.forgetDecrypted()
         reload()
+        Qt.callLater(root.markOpenedRead)
     }
     onFolderChanged: {
         MailApp.forgetDecrypted()
         reload()
+        Qt.callLater(root.markOpenedRead)
+    }
+
+    // Opening marks read; reload() alone does not, so a "Mark as unread"
+    // sticks while the message stays on screen. Deferred so a selection that
+    // changes messageId and folder together is seen as one consistent pair.
+    function markOpenedRead() {
+        if (root.unread && root.email.messageId === root.messageId && root.email.folder === root.folder)
+            MailApp.markRead(root.folder, [root.messageId])
     }
 
     // MailApp is a singleton and the plaintext arrives asynchronously, so the
@@ -114,7 +127,10 @@ Item {
             webViewLoader.applyContent()
         }
     }
-    Component.onCompleted: reload()
+    Component.onCompleted: {
+        reload()
+        Qt.callLater(root.markOpenedRead)
+    }
     Component.onDestruction: MailApp.forgetDecrypted()
 
     // Archive/Junk/Delete dispatch and return; the answer arrives here.
@@ -141,6 +157,11 @@ Item {
         // this instance has since navigated away from -- otherwise a slow
         // list would repopulate the chips with the previous mail's
         // attachments after the user had already moved on.
+        function onReadStateChanged(folder, messageId, unread) {
+            if (folder === root.folder && messageId === root.messageId)
+                root.unread = unread
+        }
+
         function onAttachmentsListed(mailbox, messageId, attachments) {
             if (mailbox === root.folder && messageId === root.messageId)
                 root.attachments = attachments
@@ -177,10 +198,12 @@ Item {
         root.imagesLoaded = false
         if (root.messageId === "") {
             root.email = {}
+            root.unread = false
             root.attachments = []
             return
         }
         root.email = MailApp.findByMessageId(root.messageId, root.folder)
+        root.unread = root.email.status === "unread"
         // Cleared, then refilled by onAttachmentsListed below. The list is
         // fetched off-thread now, so it cannot be assigned here -- and
         // leaving the previous message's attachments up while the new
@@ -475,6 +498,14 @@ Item {
                         + "\n\n" + root.email.preview
                     root.composeRequested("", subject, body)
                 }
+            }
+            IconButton {
+                objectName: "toggleRead"
+                icon: root.unread ? "mail-mark-read" : "mail-mark-unread"
+                tooltip: root.unread ? i18n("Mark as read") : i18n("Mark as unread")
+                visible: root.email.messageId !== undefined
+                onClicked: root.unread ? MailApp.markRead(root.folder, [root.messageId])
+                                       : MailApp.markUnread(root.folder, [root.messageId])
             }
             IconButton {
                 icon: "mail-archive"

@@ -10,6 +10,7 @@
 
 #include <QDesktopServices>
 #include <QObject>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QVariantList>
@@ -167,6 +168,14 @@ public slots:
     void deleteEmails(const QStringList& messageIds);
     void markSpam(const QStringList& messageIds);
     void moveEmails(const QStringList& messageIds, const QString& targetFolder);
+    // Optimistic: the cache and list change now, and roll back if the relay
+    // refuses. Messages already in the requested state, unknown, or with a
+    // change still in flight are skipped, so a repeat call sends nothing.
+    // markRead is incidental to opening a message and fails silently (the row
+    // simply turns unread again); markUnread is the user's request and
+    // reports failure through lastError.
+    void markRead(const QString& folder, const QStringList& messageIds);
+    void markUnread(const QString& folder, const QStringList& messageIds);
     // mode is hardcoded "html" -- Compose.qml's RichBodyEditor is the sole
     // caller and always produces sanitized HTML (see
     // docs/superpowers/specs/2026-07-18-html-compose-design.md). Reads each
@@ -426,6 +435,8 @@ signals:
     // failures in `failed` -- those are in lastError, and the action itself
     // did happen for the rest.
     void actionCompleted(const QString& action, const QStringList& messageIds, bool ok);
+    // A message's cached read state changed: optimistically or by rollback.
+    void readStateChanged(const QString& folder, const QString& messageId, bool unread);
     // Outcome of createFolder/renameFolder/deleteFolder. Unlike
     // actionCompleted there is nothing to disambiguate with: the folder
     // dialogs are modal and singular, so "which one was mine" cannot arise.
@@ -600,6 +611,8 @@ private:
     void performActionCommon(const QStringList& messageIds, const QString& action,
                               const std::optional<QString>& targetMailbox);
     void finishAction(const QString& action, const QStringList& messageIds, const ActionResult& result);
+    void setReadState(const QString& folder, const QStringList& messageIds, bool read);
+    void applyCachedStatus(const QString& folder, const QString& messageId, const QString& status);
     // Shared body of createFolder/renameFolder/deleteFolder -- see the .cpp.
     void runFolderMutation(const QString& failureMessage,
                             std::function<FolderRepository::FolderMutationFetch(HttpClient&, const RelayEndpoint&)> work,
@@ -654,6 +667,7 @@ private:
     NetworkExecutor& m_executor;
     EmailListModel* m_model; // owned, parented to this
     QVector<Email> m_currentFolderEmails; // last cachedEmails(currentFolder) result, pre-keyword-filter
+    QSet<QString> m_readStateInFlight; // folder + '\n' + messageId
     QString m_currentFolder = QStringLiteral("INBOX");
     QString m_selectedKeyword;
     int m_busyDepth = 0;

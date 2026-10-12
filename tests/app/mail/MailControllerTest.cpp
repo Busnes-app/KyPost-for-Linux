@@ -74,6 +74,10 @@ private slots:
     void aNotificationForUncachedMailRefreshesBeforeAnsweringIt();
     void aNotificationForCachedMailAnswersWithoutARequest();
     void aNotificationForMailThatCannotBeFoundSaysSoRatherThanOpeningNothing();
+    void markReadIsOptimisticAndCoalescesRepeats();
+    void aRefusedMarkReadRollsBackSilently();
+    void aRefusedMarkUnreadRollsBackAndSaysSo();
+    void aReadStateReplyForAReplacedAccountRollsNothingBack();
 
 private:
     static void savePairing(PairingStore& pairingStore, quint16 port);
@@ -2331,6 +2335,141 @@ void MailControllerTest::aNotificationForMailThatCannotBeFoundSaysSoRatherThanOp
              "a message that could not be found was reported as nothing at all");
 }
 
+
+
+namespace {
+
+QByteArray readStateReply(const char* action, bool ok)
+{
+    return httpResponse(200, "OK",
+                        ok ? QByteArray(R"({"ok":true,"action":")") + action
+                                + R"(","processed":1,"failed":[],"targetMailbox":""})"
+                           : QByteArray(R"({"ok":false,"action":")") + action
+                                + R"(","processed":0,"failed":[{"messageId":"m1","error":"imap said no"}],"targetMailbox":""})");
+}
+
+QString cachedStatus(EmailDao& dao, const char* id)
+{
+    const std::optional<Email> email = dao.findById(QStringLiteral("INBOX"), QString::fromLatin1(id));
+    return email.has_value() ? email->status : QStringLiteral("<missing>");
+}
+
+} // namespace
+
+void MailControllerTest::markReadIsOptimisticAndCoalescesRepeats()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", kTwoMessageInbox));
+    RefreshFixture f(fake.port());
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    auto* model = qobject_cast<EmailListModel*>(f.controller.emailModel());
+    QCOMPARE(model->emailAt(0).status, QStringLiteral("unread"));
+
+    fake.setResponse(readStateReply("read", true));
+    const int requestsBefore = fake.receivedRequests().size();
+    QSignalSpy stateSpy(&f.controller, &MailController::readStateChanged);
+    QSignalSpy resetSpy(model, &QAbstractItemModel::modelReset);
+
+    f.controller.markRead(QStringLiteral("INBOX"), { QStringLiteral("m1") });
+
+    // Before any reply: cache, list and signal already say read.
+    QCOMPARE(cachedStatus(f.emailDao, "m1"), QStringLiteral("read"));
+    QCOMPARE(model->emailAt(0).status, QStringLiteral("read"));
+    QCOMPARE(stateSpy.count(), 1);
+    QCOMPARE(stateSpy.at(0).at(2).toBool(), false);
+    QCOMPARE(resetSpy.count(), 0);
+    QVERIFY(!f.controller.isBusy()); // opening a message must not grey out the toolbar
+
+    // Already read (and still in flight): nothing more is sent.
+    f.controller.markRead(QStringLiteral("INBOX"), { QStringLiteral("m1") });
+    QTRY_VERIFY_WITH_TIMEOUT(fake.receivedRequests().size() > requestsBefore, 10000);
+    QVERIFY2(fake.receivedRequest().contains("\"action\":\"read\""), fake.receivedRequest().constData());
+    QVERIFY2(fake.receivedRequest().contains("\"mailbox\":\"INBOX\""), fake.receivedRequest().constData());
+
+    // Once the reply lands the message is no longer in flight, so the
+    // opposite change goes through; until then it is refused.
+    fake.setResponse(readStateReply("unread", true));
+    QTRY_VERIFY_WITH_TIMEOUT((f.controller.markUnread(QStringLiteral("INBOX"), { QStringLiteral("m1") }),
+                              stateSpy.count() == 2),
+                             10000);
+    QCOMPARE(cachedStatus(f.emailDao, "m1"), QStringLiteral("unread"));
+    QCOMPARE(cachedStatus(f.emailDao, "m2"), QStringLiteral("unread"));
+    f.executor.shutdown();
+    QVERIFY(f.controller.lastError().isEmpty());
+}
+
+void MailControllerTest::aRefusedMarkReadRollsBackSilently()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", kTwoMessageInbox));
+    RefreshFixture f(fake.port());
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    auto* model = qobject_cast<EmailListModel*>(f.controller.emailModel());
+
+    fake.setResponse(httpResponse(502, "Bad Gateway", "upstream down"));
+    QSignalSpy stateSpy(&f.controller, &MailController::readStateChanged);
+    f.controller.markRead(QStringLiteral("INBOX"), { QStringLiteral("m1") });
+    QCOMPARE(cachedStatus(f.emailDao, "m1"), QStringLiteral("read"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(stateSpy.count() == 2, 10000);
+    f.executor.shutdown();
+    QCOMPARE(stateSpy.at(1).at(2).toBool(), true);
+    QCOMPARE(cachedStatus(f.emailDao, "m1"), QStringLiteral("unread"));
+    QCOMPARE(model->emailAt(0).status, QStringLiteral("unread"));
+    // Incidental to opening the message: no error banner for it.
+    QVERIFY(f.controller.lastError().isEmpty());
+}
+
+void MailControllerTest::aRefusedMarkUnreadRollsBackAndSaysSo()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", kTwoMessageInbox));
+    RefreshFixture f(fake.port());
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    QVERIFY(f.emailDao.updateStatus(QStringLiteral("INBOX"), QStringLiteral("m1"), QStringLiteral("read")));
+
+    // ok:false with a per-message failure, the relay's partial-failure shape.
+    fake.setResponse(readStateReply("unread", false));
+    QSignalSpy stateSpy(&f.controller, &MailController::readStateChanged);
+    f.controller.markUnread(QStringLiteral("INBOX"), { QStringLiteral("m1") });
+    QCOMPARE(cachedStatus(f.emailDao, "m1"), QStringLiteral("unread"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(stateSpy.count() == 2, 10000);
+    f.executor.shutdown();
+    QCOMPARE(cachedStatus(f.emailDao, "m1"), QStringLiteral("read"));
+    QVERIFY(!f.controller.lastError().isEmpty());
+}
+
+// The relay's refusal arrives after another account was paired. Its cache is
+// not ours to roll back: message ids are per-mailbox UIDs and collide across
+// accounts.
+void MailControllerTest::aReadStateReplyForAReplacedAccountRollsNothingBack()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", kTwoMessageInbox));
+    RefreshFixture f(fake.port());
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    QVERIFY(f.emailDao.updateStatus(QStringLiteral("INBOX"), QStringLiteral("m1"), QStringLiteral("read")));
+
+    fake.setResponseForPath("/api/inbox/actions", readStateReply("unread", false));
+    fake.setResponse(httpResponse(500, "Internal Server Error", "{}"));
+    f.controller.markUnread(QStringLiteral("INBOX"), { QStringLiteral("m1") });
+
+    DevicePairing replacement;
+    replacement.subscriberId = QStringLiteral("sub-2");
+    replacement.deviceId = QStringLiteral("dev-2");
+    replacement.deviceSecret = QStringLiteral("secret-2");
+    replacement.serverBaseUrl = QStringLiteral("http://127.0.0.1:%1").arg(fake.port());
+    QVERIFY(f.pairingStore.save(replacement));
+
+    // One executor thread: this refresh (which fails, writing nothing)
+    // completes only after the action's reply has been handled.
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    f.executor.shutdown();
+    QVERIFY2(fake.receivedRequest().contains("/api/inbox/actions"), fake.receivedRequest().constData());
+    QCOMPARE(cachedStatus(f.emailDao, "m1"), QStringLiteral("unread"));
+}
+
 QTEST_GUILESS_MAIN(MailControllerTest)
 #include "MailControllerTest.moc"
-
