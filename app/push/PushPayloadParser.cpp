@@ -25,7 +25,7 @@ QStringList splitKeywords(const QString& commaJoined)
 
 } // namespace
 
-std::optional<PushNotification> parse(const QByteArray& rawBody)
+std::optional<PushNotification> parse(const QByteArray& rawBody, bool decrypted)
 {
     QJsonParseError parseError{};
     const QJsonDocument doc = QJsonDocument::fromJson(rawBody, &parseError);
@@ -39,8 +39,11 @@ std::optional<PushNotification> parse(const QByteArray& rawBody)
     const QJsonObject data = root.value(QStringLiteral("data")).toObject();
     PushNotification notification;
     // A sign-in challenge is never mail: a valid one goes to the approval
-    // page, a malformed one is dropped rather than shown.
+    // page, a malformed one is dropped rather than shown. The relay only
+    // sends one to a device with push keys, so a cleartext one is forged.
     if (MfaChallenge::isChallengeType(data)) {
+        if (!decrypted)
+            return std::nullopt;
         notification.mfaChallenge = MfaChallenge::fromPushData(data);
         if (!notification.mfaChallenge.has_value())
             return std::nullopt;

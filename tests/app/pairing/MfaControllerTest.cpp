@@ -2,12 +2,18 @@
 
 #include "domain/DevicePairing.h"
 #include "domain/PairingStore.h"
+#include "net/HttpClient.h"
 #include "net/NetworkExecutor.h"
+#include "net/PushNotificationClient.h"
+#include "net/RelayAuth.h"
+#include "push/PushPayloadParser.h"
+#include "security/WebPushCrypto.h"
 #include "stores/SecureStoreFile.h"
 
 #include "../../core/net/FakeRelayServer.h"
 
 #include <QJsonObject>
+#include <QNetworkAccessManager>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -38,6 +44,27 @@ MfaChallenge laterChallengeWithSameNumbers()
     c.issuedAtMs = kNow + 60 * 1000;
     c.ipAddress = QStringLiteral("198.51.100.77");
     return c;
+}
+
+// The challenge as push_mfa_handlers.go sends it; idDigit fills the id.
+QByteArray challengeJson(char idDigit)
+{
+    return R"({"data":{"type":"mfa_challenge","challengeId":")" + QByteArray(48, idDigit)
+        + R"(","issuedAt":"1760000000000","matchDigits":"07","decoyDigits":"42,93"}})";
+}
+
+// main.cpp's two arrival paths, ending where its deliver() calls receive().
+bool deliver(MfaController& controller, const std::optional<PushNotification>& payload)
+{
+    return payload && payload->mfaChallenge && controller.receive(*payload->mfaChallenge);
+}
+
+std::optional<PushNotification> overUnifiedPush(const PairingStore& store, const QByteArray& message)
+{
+    const std::optional<PairingStore::OpenedPush> opened = store.openPushMessage(message);
+    if (!opened)
+        return std::nullopt;
+    return PushPayloadParser::parse(opened->payload, opened->decrypted);
 }
 
 // One paired controller against a fake relay, with a clock the test moves.
@@ -92,6 +119,7 @@ private slots:
     void denyExpiredUnderTheFingerGoesNowhere();
     void answerNamesTheShownChallenge();
     void pairingChangeDropsChallenges();
+    void cleartextPushCannotRaiseAChallenge();
 };
 
 void MfaControllerTest::receiveOffersTheThreeNumbers()
@@ -298,6 +326,35 @@ void MfaControllerTest::pairingChangeDropsChallenges()
     h.controller.clear();
     QVERIFY(!h.controller.hasChallenge());
     QVERIFY(!h.controller.isOpen());
+}
+
+void MfaControllerTest::cleartextPushCannotRaiseAChallenge()
+{
+    const QByteArray pullBody =
+        R"({"deliveryMode":"pull","cursor":1,"notifications":[{"seq":1,)" + challengeJson('b').mid(1) + "]}";
+    Harness h(httpResponse(200, "OK", pullBody));
+    QVERIFY(h.saved);
+
+    // Keyless pairing: whoever can publish to its push topic can send this.
+    QVERIFY(!h.pairingStore.hasPushKeys());
+    QVERIFY(!deliver(h.controller, overUnifiedPush(h.pairingStore, challengeJson('a'))));
+    QVERIFY(!h.controller.hasChallenge());
+
+    // The pull path is device-authenticated, so it is believed.
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    const PullResult pulled = PushNotificationClient(http).pull(
+        QUrl(QStringLiteral("http://127.0.0.1:%1/api/notifications/native/pull").arg(h.fake.port())),
+        RelayAuth{ QStringLiteral("dev-1"), QStringLiteral("secret-1") }, 0);
+    QCOMPARE(pulled.notifications.size(), 1);
+    QVERIFY(deliver(h.controller, pulled.notifications.first().notification));
+
+    // Once keys exist, a push that decrypted under them is believed too.
+    std::optional<WebPushCrypto::Keys> keys = WebPushCrypto::generate();
+    QVERIFY(keys && h.pairingStore.savePushKeys(*keys));
+    const QByteArray sealed = WebPushCrypto::encrypt(keys->publicKey, keys->authSecret.bytes(), challengeJson('c'));
+    QVERIFY(deliver(h.controller, overUnifiedPush(h.pairingStore, sealed)));
+    QCOMPARE(h.controller.pendingCount(), 2);
 }
 
 QTEST_GUILESS_MAIN(MfaControllerTest)

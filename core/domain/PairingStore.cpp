@@ -324,14 +324,16 @@ bool PairingStore::hasPushKeys() const
     return loadPushKeys(nullptr) == PushKeysStatus::Found;
 }
 
-std::optional<QByteArray> PairingStore::openPushMessage(const QByteArray& message) const
+std::optional<PairingStore::OpenedPush> PairingStore::openPushMessage(const QByteArray& message) const
 {
     WebPushCrypto::Keys keys;
     switch (loadPushKeys(&keys)) {
     case PushKeysStatus::Found:
-        return WebPushCrypto::decrypt(keys, message);
+        if (std::optional<QByteArray> plain = WebPushCrypto::decrypt(keys, message))
+            return OpenedPush{ std::move(*plain), true };
+        return std::nullopt;
     case PushKeysStatus::Absent:
-        return message;
+        return OpenedPush{ message, false };
     case PushKeysStatus::Unreadable:
     case PushKeysStatus::Corrupt:
         break;

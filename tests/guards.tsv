@@ -385,7 +385,7 @@ core/pgp/OpenPgpEncryptor.cpp	        || !usableKey(signer, signerFingerprint, t
 core/pgp/OpenPgpEncryptor.cpp	            || !usableKey(key, fingerprint, false)) {	            || key == nullptr) {	OpenPgpEncryptorTest:keyPatternsAreNotFingerprints
 
 # --- RFC 8291 push payloads: once keys exist, only ciphertext for them is read --
-core/domain/PairingStore.cpp	        return WebPushCrypto::decrypt(keys, message);	        return message;	PairingStoreTest:pushMessagesNeedTheStoredKeysOnceThereAreAny
+core/domain/PairingStore.cpp	        return std::nullopt;	        return OpenedPush{ message, false };	PairingStoreTest:pushMessagesNeedTheStoredKeysOnceThereAreAny
 core/domain/PairingStore.cpp	        return PushKeysStatus::Unreadable;	        return PushKeysStatus::Absent;	PairingStoreTest:unreadableOrCorruptPushKeysDropEverything
 core/domain/DeviceRegistrationService.cpp	    if (!m_pairingStore.savePushKeys(attempt.m_pushKeys) || !m_pairingStore.save(pairing, attempt.m_sealingKey)) {	    if (!m_pairingStore.save(pairing, attempt.m_sealingKey)) {	DeviceRegistrationServiceTest:successfulPairPersistsPairingAndSettings
 core/net/NativeRegistrationClient.cpp	    if (pushKeys.p256dh.size() != 65 || pushKeys.auth.size() != 16) {	    if (false) {	NativeRegistrationClientTest:missingPushKeysAreRefusedWithoutARequest
@@ -395,6 +395,10 @@ core/security/WebPushCrypto.cpp	    if (rs < quint32(kTagBytes + 2) || quint32(r
 # --- sign-in approval: never mail, never answered locked, only offered numbers --
 app/push/PushPayloadParser.cpp	    if (MfaChallenge::isChallengeType(data)) {	    if (false) {	PushPayloadParserTest:signInChallengeIsRoutedNotShownAsMail
 app/push/PushPayloadParser.cpp	        if (!notification.mfaChallenge.has_value())	        if (false)	PushPayloadParserTest:malformedSignInChallengeIsDroppedNotShownAsMail
+# A keyless pairing reads cleartext pushes, and anyone who can publish to its
+# topic can write one: a sign-in challenge is believed only if it decrypted.
+app/push/PushPayloadParser.cpp	        if (!decrypted)	        if (false)	MfaControllerTest:cleartextPushCannotRaiseAChallenge
+core/domain/PairingStore.cpp	        return OpenedPush{ message, false };	        return OpenedPush{ message, true };	MfaControllerTest:cleartextPushCannotRaiseAChallenge
 core/net/PushNotificationClient.cpp	            if (!entry.notification.mfaChallenge.has_value())	            if (false)	PushNotificationClientTest:signInChallengesAreRoutedAndMalformedOnesDropped
 core/domain/PushRepository.cpp	        if (!item.notification.mfaChallenge.has_value())	        if (true)	PushRepositoryTest:pulledSignInChallengesAreDeliveredButNotStoredAsHistory
 core/domain/MfaChallengeTracker.cpp	    if (challenge.issuedAtMs > nowMs + kMaxFutureSkewMs)	    if (false)	MfaChallengeTrackerTest:farFutureIssuedAtIsRefused

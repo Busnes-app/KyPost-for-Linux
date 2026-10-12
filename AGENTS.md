@@ -187,7 +187,12 @@ Added 2026-07-25 (parity work with `kypost-android`):
   Approval (plan item L1, 2026-10-11): `MfaChallenge::fromPushData` validates
   the data map strictly and both arrival paths (`PushPayloadParser`,
   `PushNotificationClient`) route a valid challenge to `MfaController`, never
-  to mail history or a mail notification; a malformed one is dropped.
+  to mail history or a mail notification; a malformed one is dropped. Over
+  UnifiedPush a challenge counts only if it decrypted
+  (`PairingStore::OpenedPush::decrypted`): a keyless pairing still reads
+  cleartext mail pushes, but the relay never sends it a challenge, so a
+  cleartext one is forged by whoever can publish to the topic. The pull
+  path is device-authenticated and needs no such check.
   `MfaChallengeTracker` keeps them in memory only, dedupes by id (answered
   ids too), expires them at min(issuedAt, arrival) + 5 min, refuses an
   issuedAt more than 2 min ahead, and caps pending at 8. The notification

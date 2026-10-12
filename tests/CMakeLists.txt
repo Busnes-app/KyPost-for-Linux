@@ -316,11 +316,12 @@ kypost_add_app_test(WindowActivationTest
 # whole package build down with it, which is exactly how it was found.
 set_tests_properties(WindowActivationTest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
-# Sign-in approval: lock gate, tapped digits, expiry.
+# Sign-in approval: lock gate, tapped digits, expiry, which paths may raise one.
 kypost_add_app_test(MfaControllerTest
   SOURCES
     app/pairing/MfaControllerTest.cpp
     ${CMAKE_SOURCE_DIR}/app/pairing/MfaController.cpp
+    ${CMAKE_SOURCE_DIR}/app/push/PushPayloadParser.cpp
   LIBS KF6::I18n
 )
 
