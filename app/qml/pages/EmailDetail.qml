@@ -138,6 +138,13 @@ Item {
             webViewLoader.applyContent()
         }
     }
+    // root.email is a copy of the cached row. An account replacement purges
+    // the cache, so re-read it: the message is gone, and with it the previous
+    // account's sender, subject and body.
+    Connections {
+        target: Pairing
+        function onPairingChanged() { root.reload() }
+    }
     Component.onCompleted: {
         reload()
         Qt.callLater(root.markOpenedRead)

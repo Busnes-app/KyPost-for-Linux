@@ -31,6 +31,18 @@ Item {
 
     Component.onCompleted: root.doRefresh()
 
+    // The code is the previous account's after a pairing change, and a failed
+    // refresh never replaces it (myQrDataChanged fires on success only), so
+    // drop it before asking again. DesktopRoot keeps this page alive in a sheet.
+    Connections {
+        target: Pairing
+        function onPairingChanged() {
+            refreshTimer.stop()
+            root.qrDataUrl = ""
+            root.doRefresh()
+        }
+    }
+
     Connections {
         target: PgpQr
         function onMyQrDataChanged() {

@@ -154,6 +154,21 @@ Item {
     Component.onCompleted: loadContact()
     onUidChanged: loadContact()
 
+    // contact and availableGroups are copies. An account replacement purges
+    // both from the cache, so re-read them; an edit in progress belonged to
+    // the previous account and is dropped back to the (now empty) view.
+    Connections {
+        target: Pairing
+        function onPairingChanged() {
+            if (root.uid !== "") {
+                root.contact = ContactsApp.contactAt(root.uid)
+                root.mode = "view"
+            } else {
+                root.availableGroups = ContactsApp.allGroups()
+            }
+        }
+    }
+
     // ---- state transitions ------------------------------------------
 
     function loadContact() {

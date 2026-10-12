@@ -12,9 +12,32 @@ ColumnLayout {
     property bool pushEncrypted: false
     property date lastSyncAt: new Date(NaN)
     property string lastError: ""
-    property var history: [] // MailController::notificationHistory()
+    // Notification history is a copy, not a binding: the host answers
+    // historyWanted by assigning MailController::notificationHistory(). A copy
+    // goes stale, so it is dropped and re-asked for whenever the pane is shown
+    // and whenever the pairing changes. Account replacement purges the table
+    // on disk, but this component outlives it on the desktop (Settings sits in
+    // a persistent sheet), and the previous account's subjects stayed on
+    // screen under the new pairing.
+    property bool active: false
+    property var history: []
 
     signal openRequested(string messageId)
+    signal historyWanted()
+
+    function reloadHistory() {
+        root.history = [] // cleared first, so no previous-account row survives a reload that supplies nothing
+        if (root.active)
+            root.historyWanted()
+    }
+
+    onActiveChanged: reloadHistory()
+    Component.onCompleted: reloadHistory()
+
+    Connections {
+        target: Pairing
+        function onPairingChanged() { root.reloadHistory() }
+    }
 
     spacing: 6
 

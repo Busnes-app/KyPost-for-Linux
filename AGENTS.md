@@ -1162,6 +1162,14 @@ worse than no comment: the next reader stops looking.
   paints the page and its ToolBar-style header; the default mobile breadcrumb
   bar has no theme hook, hence `globalToolBar.style: ToolBar` in MobileRoot.
   The GlobalDrawer still uses the platform palette. `tst_MobileFit` guards it.
+- **A copy of account data in QML must be re-read on `Pairing.pairingChanged`.**
+  An account replacement purges the cache on disk, but a list or map copied
+  out of a controller (`notificationHistory()`, `mailFolders()`,
+  `allKeywordSettings()`, `findByMessageId()`, `contactAt()`, the PGP QR code)
+  lives as long as its component, and DesktopRoot keeps Settings, the sidebar
+  and the detail pane alive. Notification history showed the previous
+  account's subjects that way (found 2026-10-12). Clear the copy, then re-read
+  it; `tst_ConnectionStatus` guards the history.
 - **CI Pipline Failes** Before commiting any change check the CI pipline code.
   EVERY Push to main not ment to fix the CI pipeline has broken the CI pipeline.
 

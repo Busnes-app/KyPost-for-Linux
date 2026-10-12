@@ -899,6 +899,14 @@ Kirigami.ApplicationWindow {
                             mobileFolderRepeater.model = MailApp.mailFolders()
                         }
                     }
+                    // Same as DesktopRoot's sidebar: re-read after an account
+                    // replacement purges the previous account's folders.
+                    Connections {
+                        target: Pairing
+                        function onPairingChanged() {
+                            mobileFolderRepeater.model = MailApp.mailFolders()
+                        }
+                    }
 
                     delegate: Rectangle {
                         Layout.fillWidth: true

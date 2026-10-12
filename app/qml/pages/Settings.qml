@@ -95,6 +95,21 @@ Item {
 
     Component.onCompleted: refreshKeywordSettings()
 
+    // Called by a host that keeps this component alive between showings
+    // (DesktopRoot's sheet), so copies taken earlier are not shown again.
+    function refreshSnapshots() {
+        refreshKeywordSettings()
+        connectionStatus.reloadHistory()
+    }
+
+    // The keyword list is a copy of the INBOX cache, which an account
+    // replacement purges. Pairing happens from inside this component, so
+    // without this the previous account's keywords stayed listed.
+    Connections {
+        target: Pairing
+        function onPairingChanged() { root.refreshKeywordSettings() }
+    }
+
     onCurrentPaneChanged: {
         if (currentPane === 6)
             securityFlickable.contentY = 0
@@ -249,14 +264,17 @@ Item {
                         }
 
                         ConnectionStatus {
+                            id: connectionStatus
                             Layout.fillWidth: true
                             distributorActive: Pairing.distributorActive
                             pushServerHost: Pairing.pushServerHost
                             pushEncrypted: Pairing.pushEncrypted
                             lastSyncAt: MailApp.lastSyncAt
                             lastError: MailApp.lastError
-                            // Re-read each time the pane is opened.
-                            history: root.currentPane === 0 ? MailApp.notificationHistory() : []
+                            // Re-read when the pane is shown, the sheet opens or the
+                            // pairing changes; see ConnectionStatus.
+                            active: root.currentPane === 0
+                            onHistoryWanted: connectionStatus.history = MailApp.notificationHistory()
                             onOpenRequested: (messageId) => {
                                 root.closed()
                                 MailApp.openEmailRequested(messageId)

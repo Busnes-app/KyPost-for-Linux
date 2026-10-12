@@ -298,7 +298,7 @@ Kirigami.ApplicationWindow {
     Kirigami.OverlaySheet {
         id: settingsSheet
         modal: true
-        onOpened: settingsPane.refreshKeywordSettings()
+        onOpened: settingsPane.refreshSnapshots()
 
         background: Rectangle {
             color: Theme.panel
@@ -852,6 +852,14 @@ Kirigami.ApplicationWindow {
                         Connections {
                             target: MailApp
                             function onFoldersChanged() {
+                                folderRepeater.model = MailApp.mailFolders()
+                            }
+                        }
+                        // Custom folder names belong to an account; a replacement
+                        // purges them from the cache but not from this copy.
+                        Connections {
+                            target: Pairing
+                            function onPairingChanged() {
                                 folderRepeater.model = MailApp.mailFolders()
                             }
                         }

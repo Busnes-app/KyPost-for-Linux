@@ -1,14 +1,35 @@
 import QtQuick
 import QtTest
+import com.kysecurity.mail 1.0
 
 Item {
+    id: host
     width: 400
     height: 600
+
+    // Stands in for Settings: answers historyWanted with whatever the
+    // database would hold for the current account.
+    property var accountHistory: []
+    property bool answers: true
 
     Loader {
         id: loader
         width: 400
         source: "qrc:/qml/components/ConnectionStatus.qml"
+    }
+
+    Connections {
+        target: loader.item
+        function onHistoryWanted() {
+            if (host.answers)
+                loader.item.history = host.accountHistory
+        }
+    }
+
+    SignalSpy {
+        id: wantedSpy
+        target: loader.item
+        signalName: "historyWanted"
     }
 
     SignalSpy {
@@ -33,6 +54,9 @@ Item {
 
         function init() {
             var s = loader.item
+            host.answers = true
+            host.accountHistory = []
+            s.active = false
             s.distributorActive = false
             s.pushServerHost = ""
             s.pushEncrypted = false
@@ -40,6 +64,66 @@ Item {
             s.lastError = ""
             s.history = []
             openSpy.clear()
+            wantedSpy.clear()
+        }
+
+        function previousAccount() {
+            return [{ "messageId": "old1", "receivedAt": new Date(2026, 9, 11, 7, 5),
+                      "sender": "a@old.example", "subject": "Previous account subject" }]
+        }
+
+        // Settings -> Connection stays selected across the replacement, so
+        // nothing about the pane changes; only the pairing does.
+        function test_replacing_the_account_clears_history_while_shown() {
+            var s = loader.item
+            host.accountHistory = previousAccount()
+            s.active = true
+            var list = findChild(s, "historyList")
+            compare(list.count, 1)
+            compare(list.itemAt(0).text, "Oct 11, 07:05  Previous account subject")
+
+            host.accountHistory = [] // the replacement purged the table
+            Pairing.pairingChanged()
+            verify(s.active)
+            compare(list.count, 0)
+            verify(findChild(s, "historyEmpty").visible)
+        }
+
+        function test_the_new_accounts_history_replaces_the_old() {
+            var s = loader.item
+            host.accountHistory = previousAccount()
+            s.active = true
+            host.accountHistory = [{ "messageId": "new1", "receivedAt": new Date(2026, 9, 12, 8, 0),
+                                     "sender": "b@new.example", "subject": "New account subject" }]
+            Pairing.pairingChanged()
+            var list = findChild(s, "historyList")
+            compare(list.count, 1)
+            compare(list.itemAt(0).text, "Oct 12, 08:00  New account subject")
+        }
+
+        // The clear does not depend on the reload: a host that supplies
+        // nothing still leaves no previous-account row behind.
+        function test_a_pairing_change_clears_history_even_without_a_reload() {
+            var s = loader.item
+            host.accountHistory = previousAccount()
+            s.active = true
+            compare(findChild(s, "historyList").count, 1)
+            host.answers = false
+            Pairing.pairingChanged()
+            compare(findChild(s, "historyList").count, 0)
+        }
+
+        function test_history_is_read_only_while_shown() {
+            var s = loader.item
+            host.accountHistory = previousAccount()
+            Pairing.pairingChanged()
+            compare(wantedSpy.count, 0)
+            compare(findChild(s, "historyList").count, 0)
+            s.active = true
+            compare(wantedSpy.count, 1)
+            compare(findChild(s, "historyList").count, 1)
+            s.active = false
+            compare(findChild(s, "historyList").count, 0)
         }
 
         function test_polling_is_named_as_polling() {
