@@ -72,6 +72,7 @@ private slots:
     void refreshFoldersWalksTheArchiveTree();
     void refreshFoldersStopsAtTheDepthCap();
     void mailFoldersShowsNoDeeperThanTheCap();
+    void aLockedAppSendsNoFolderMutation();
     void aRefreshThatOutlivesItsAccountWritesNothingAndReportsNoError();
     void anAttachmentThatOutlivesItsAccountIsNeverWrittenOrOpened();
     void aPgpComposeAnswerThatOutlivesItsAccountIsNotCached();
@@ -2680,6 +2681,33 @@ void MailControllerTest::mailFoldersShowsNoDeeperThanTheCap()
     for (const QVariant& v : f.controller.mailFolders())
         deepest = qMax(deepest, v.toMap().value(QStringLiteral("depth")).toInt());
     QCOMPARE(deepest, MailController::kMaxFolderDepth);
+}
+
+// A create/rename prompt can be left open when the app locks. Whatever still
+// reaches the controller from it must send nothing until unlock, and must not
+// report back either: an error under the PIN overlay would leak the attempt.
+void MailControllerTest::aLockedAppSendsNoFolderMutation()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true,"parent":"Archive","folder":"Archive/New"})"));
+    RefreshFixture f(fake.port());
+    QSignalSpy completedSpy(&f.controller, &MailController::folderMutationCompleted);
+
+    f.controller.setAppLocked(true);
+    f.controller.createFolder(QStringLiteral("Archive"), QStringLiteral("New"));
+    f.controller.renameFolder(QStringLiteral("Archive/Old"), QStringLiteral("New"));
+    f.controller.deleteFolder(QStringLiteral("Archive/Old"));
+    QVERIFY(!f.controller.isBusy());
+    // Give a dispatched request every chance to arrive before saying none did.
+    QTest::qWait(300);
+    QCOMPARE(fake.connectionCount(), 0);
+    QCOMPARE(completedSpy.count(), 0);
+
+    f.controller.setAppLocked(false);
+    f.controller.createFolder(QStringLiteral("Archive"), QStringLiteral("New"));
+    QTRY_VERIFY_WITH_TIMEOUT(completedSpy.count() == 1, 10000);
+    f.executor.shutdown();
+    QVERIFY(fake.connectionCount() > 0);
+    QVERIFY2(fake.receivedRequests().first().startsWith("POST "), fake.receivedRequests().first().constData());
 }
 
 QTEST_GUILESS_MAIN(MailControllerTest)

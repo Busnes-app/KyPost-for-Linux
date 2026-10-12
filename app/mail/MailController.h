@@ -332,7 +332,8 @@ public slots:
     // folderMutationCompleted(), and foldersChanged() is emitted first on
     // success. The backend refuses to rename or delete a built-in mailbox or
     // any top-level folder, so entries with deletable == false must not offer
-    // the action.
+    // the action. All three do nothing, and report nothing, while the app is
+    // locked.
     Q_INVOKABLE void createFolder(const QString& parent, const QString& name);
     Q_INVOKABLE void renameFolder(const QString& folder, const QString& name);
     Q_INVOKABLE void deleteFolder(const QString& folder);

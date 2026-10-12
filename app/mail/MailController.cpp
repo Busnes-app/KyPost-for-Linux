@@ -704,6 +704,11 @@ void MailController::runFolderMutation(const QString& failureMessage,
                                                                                              const RelayEndpoint&)> work,
                                         std::function<void(const QString& resultingFolder)> onApplied)
 {
+    // A server write: a folder dialog left open under the PIN overlay must not
+    // create, rename or delete anything before unlock. FolderDialog closes on
+    // lock; this is the backstop for any other caller.
+    if (m_appLocked) // no folder mutation while locked
+        return;
     const std::optional<RelayRequestPlan> plan = m_folderRepository.planRequest();
     if (!plan.has_value()) {
         setLastError(i18n("Not paired"));

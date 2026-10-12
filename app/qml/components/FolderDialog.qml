@@ -11,7 +11,8 @@ import com.kysecurity.mail 1.0
 // server refuses built-in and top-level mailboxes); this file does not
 // second-guess that, it just never deletes without the explicit button.
 //
-// An overlay Item, not a Popup: z-order alone keeps it under the lock gate.
+// An overlay Item, not a Popup: z-order alone keeps it under the lock gate,
+// and it closes itself when the app locks (see the AppLock connection).
 Item {
     id: root
 
@@ -59,7 +60,7 @@ Item {
     }
 
     function submit() {
-        if (!root.isOpen || root.busy)
+        if (!root.isOpen || root.busy || AppLock.locked)
             return
         if (root.mode === "delete") {
             root.deleteRequested(root.targetFolder)
@@ -81,6 +82,17 @@ Item {
             root.close()
         else
             root.errorText = reason
+    }
+
+    // The lock gate hides this dialog but would not take keyboard focus from
+    // it, so a prompt left open keeps accepting Return underneath. Locking
+    // closes it, typed name and all; MailController refuses the call anyway.
+    Connections {
+        target: AppLock
+        function onLockedChanged() {
+            if (AppLock.locked)
+                root.close()
+        }
     }
 
     visible: root.isOpen

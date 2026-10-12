@@ -23,6 +23,7 @@ TestCase {
     SignalSpy { id: deleteSpy; target: dialog; signalName: "deleteRequested" }
 
     function init() {
+        AppLock.locked = false
         dialog.close()
         dialog.busy = false
         createSpy.clear()
@@ -118,5 +119,25 @@ TestCase {
         dialog.close()
         dialog.openRename("Archive/Projects", "Projects")
         verify(!child("folderDialogError").visible)
+    }
+
+    // A prompt left open when the app locks sits under the PIN overlay with
+    // keyboard focus. Locking must close it, and Return must send nothing.
+    function test_locking_closes_the_prompt_and_return_sends_nothing() {
+        dialog.openRename("Archive/Old", "Old")
+        dialog.nameText = "New"
+        AppLock.locked = true
+        verify(!dialog.isOpen)
+        keyClick(Qt.Key_Return)
+        dialog.submit()
+        compare(renameSpy.count, 0)
+
+        // Reopened under the lock (a host that ignored isOpen): still nothing.
+        dialog.openCreate("Archive", "Archive")
+        dialog.nameText = "Projects"
+        keyClick(Qt.Key_Return)
+        dialog.submit()
+        compare(createSpy.count, 0)
+        AppLock.locked = false
     }
 }
