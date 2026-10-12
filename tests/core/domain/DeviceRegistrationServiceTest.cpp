@@ -191,8 +191,10 @@ void DeviceRegistrationServiceTest::successfulPairPersistsPairingAndSettings()
     QCOMPARE(p256dh.size(), WebPushCrypto::kPublicKeyBytes);
     QCOMPARE(auth.size(), WebPushCrypto::kAuthBytes);
     QVERIFY(verifyPairingStore.hasPushKeys());
-    QCOMPARE(verifyPairingStore.openPushMessage(WebPushCrypto::encrypt(p256dh, auth, "{}")),
-             std::optional<QByteArray>("{}"));
+    const std::optional<PairingStore::OpenedPush> opened =
+        verifyPairingStore.openPushMessage(WebPushCrypto::encrypt(p256dh, auth, "{}"));
+    QVERIFY(opened.has_value() && opened->decrypted);
+    QCOMPARE(opened->payload, QByteArray("{}"));
 }
 
 void DeviceRegistrationServiceTest::pullEndpointFromDifferentOriginThanServerIsRejected()
@@ -260,9 +262,10 @@ void DeviceRegistrationServiceTest::unauthorizedPairLeavesStoresUntouched()
     QCOMPARE(result.outcome, RegistrationOutcome::Unauthorized);
     QVERIFY(!pairingStore.load().has_value());
     QVERIFY(settingsStore.deliveryMode().isEmpty());
-    QCOMPARE(pairingStore.openPushMessage(
-                 WebPushCrypto::encrypt(previousKeys->publicKey, previousKeys->authSecret.bytes(), "{}")),
-             std::optional<QByteArray>("{}"));
+    const std::optional<PairingStore::OpenedPush> opened = pairingStore.openPushMessage(
+        WebPushCrypto::encrypt(previousKeys->publicKey, previousKeys->authSecret.bytes(), "{}"));
+    QVERIFY(opened.has_value() && opened->decrypted);
+    QCOMPARE(opened->payload, QByteArray("{}"));
 }
 
 void DeviceRegistrationServiceTest::reregisterIfPairedSendsStoredCredentialsAndUpdatesDeviceId()

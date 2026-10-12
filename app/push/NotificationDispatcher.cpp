@@ -119,3 +119,14 @@ void NotificationDispatcher::notify(const PushNotification& payload)
 
     notification->sendEvent();
 }
+
+void NotificationDispatcher::notifySignInRequest()
+{
+    auto* notification = new KNotification(QStringLiteral("signInRequest"));
+    notification->setTitle(i18n("Approve sign-in"));
+    notification->setText(i18n("Open KyPost to approve or deny a sign-in to your account."));
+    notification->setUrgency(KNotification::HighUrgency);
+    KNotificationAction* viewAction = notification->addDefaultAction(i18n("View"));
+    connect(viewAction, &KNotificationAction::activated, this, &NotificationDispatcher::signInViewRequested);
+    notification->sendEvent();
+}

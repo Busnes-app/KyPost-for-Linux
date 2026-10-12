@@ -6,6 +6,8 @@ add_library(kypostcore STATIC
   models/StandardFolder.h
   models/KeywordSettings.h
   models/PushNotification.h
+  models/MfaChallenge.cpp
+  models/MfaChallenge.h
   models/Group.h
   models/MailFolder.h
   domain/DevicePairing.h
@@ -40,6 +42,8 @@ add_library(kypostcore STATIC
   domain/ContactPhotoRepository.h
   domain/PushRepository.cpp
   domain/PushRepository.h
+  domain/MfaChallengeTracker.cpp
+  domain/MfaChallengeTracker.h
   domain/TransportStateMachine.cpp
   domain/TransportStateMachine.h
   domain/PairingStoreCredentialSealer.cpp
@@ -116,6 +120,8 @@ add_library(kypostcore STATIC
   net/PushNotificationClient.h
   net/DeregisterClient.cpp
   net/DeregisterClient.h
+  net/MfaResponseClient.cpp
+  net/MfaResponseClient.h
   net/ContactSyncClient.cpp
   net/ContactSyncClient.h
   net/FolderClient.cpp

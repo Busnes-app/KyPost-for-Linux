@@ -112,6 +112,14 @@ public:
     // A store that cannot be read answers false.
     bool hasPushKeys() const;
 
+    struct OpenedPush
+    {
+        QByteArray payload;
+        // False for a keyless pairing's cleartext, which anyone who can
+        // publish to the push topic could have written.
+        bool decrypted = false;
+    };
+
     // Turns a raw UnifiedPush message into the payload to parse, or nullopt
     // to drop it.
     //
@@ -119,8 +127,9 @@ public:
     // cleartext, ciphertext for other keys and tampered bytes are all
     // dropped, never parsed. A pairing made before keys existed has none, and
     // the relay sends it cleartext (native_sender.go), so that is passed
-    // through. An unreadable or corrupt key entry drops everything.
-    std::optional<QByteArray> openPushMessage(const QByteArray& message) const;
+    // through with decrypted false. An unreadable or corrupt key entry drops
+    // everything.
+    std::optional<OpenedPush> openPushMessage(const QByteArray& message) const;
 
     // --- credential PIN gate -------------------------------------------
     // Backs Settings > Security's "Require unlock to receive push/MFA".

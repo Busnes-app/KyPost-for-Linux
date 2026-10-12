@@ -25,7 +25,7 @@ QStringList splitKeywords(const QString& commaJoined)
 
 } // namespace
 
-std::optional<PushNotification> parse(const QByteArray& rawBody)
+std::optional<PushNotification> parse(const QByteArray& rawBody, bool decrypted)
 {
     QJsonParseError parseError{};
     const QJsonDocument doc = QJsonDocument::fromJson(rawBody, &parseError);
@@ -37,13 +37,19 @@ std::optional<PushNotification> parse(const QByteArray& rawBody)
     // absent field) -- no separate "data missing" check needed.
     const QJsonObject root = doc.object();
     const QJsonObject data = root.value(QStringLiteral("data")).toObject();
-    // Sign-in challenges reach this device once it registers push keys
-    // (MFATransportEligible), but there is no approval UI here yet. Its
-    // "Tap to approve" text would be a false promise, so it is not shown.
-    if (data.value(QStringLiteral("type")).toString() == QLatin1String("mfa_challenge"))
-        return std::nullopt;
-
     PushNotification notification;
+    // A sign-in challenge is never mail: a valid one goes to the approval
+    // page, a malformed one is dropped rather than shown. The relay only
+    // sends one to a device with push keys, so a cleartext one is forged.
+    if (MfaChallenge::isChallengeType(data)) {
+        if (!decrypted)
+            return std::nullopt;
+        notification.mfaChallenge = MfaChallenge::fromPushData(data);
+        if (!notification.mfaChallenge.has_value())
+            return std::nullopt;
+        return notification;
+    }
+
     notification.messageId = data.value(QStringLiteral("messageId")).toString();
     notification.sender = data.value(QStringLiteral("sender")).toString();
     notification.subject = data.value(QStringLiteral("subject")).toString();

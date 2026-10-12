@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QColor>
+#include <QDateTime>
+#include <QStringList>
 #include <QObject>
 #include <QQmlEngine>
 #include <QString>
@@ -183,8 +185,71 @@ private:
         QStringLiteral("https://github.com/Busness-app/KyPost-for-Linux/releases");
 };
 
+// Records what the approval page asked for; the C++ behind it has its own tests.
+class FakeMfa : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(bool open MEMBER m_open NOTIFY changed)
+    Q_PROPERTY(bool hasChallenge MEMBER m_hasChallenge NOTIFY changed)
+    Q_PROPERTY(QString challengeId MEMBER m_challengeId NOTIFY changed)
+    Q_PROPERTY(QDateTime issuedAt MEMBER m_issuedAt NOTIFY changed)
+    Q_PROPERTY(QString ipAddress MEMBER m_ipAddress NOTIFY changed)
+    Q_PROPERTY(QString userAgent MEMBER m_userAgent NOTIFY changed)
+    Q_PROPERTY(QStringList choices MEMBER m_choices NOTIFY changed)
+    Q_PROPERTY(int secondsRemaining MEMBER m_secondsRemaining NOTIFY changed)
+    Q_PROPERTY(int pendingCount MEMBER m_pendingCount NOTIFY changed)
+    Q_PROPERTY(bool inFlight MEMBER m_inFlight NOTIFY changed)
+    Q_PROPERTY(QString resultMessage MEMBER m_resultMessage NOTIFY changed)
+    Q_PROPERTY(bool resultIsError MEMBER m_resultIsError NOTIFY changed)
+    Q_PROPERTY(QString lastApproved MEMBER m_lastApproved NOTIFY changed)
+    Q_PROPERTY(int denyCount MEMBER m_denyCount NOTIFY changed)
+    Q_PROPERTY(QString lastAnsweredId MEMBER m_lastAnsweredId NOTIFY changed)
+
+public:
+    using QObject::QObject;
+
+    Q_INVOKABLE void show() { m_open = true; emit changed(); emit showRequested(); }
+    Q_INVOKABLE void close() { m_open = false; emit changed(); }
+    Q_INVOKABLE void approve(const QString& challengeId, const QString& digits)
+    {
+        m_lastAnsweredId = challengeId;
+        m_lastApproved = digits;
+        emit changed();
+    }
+    Q_INVOKABLE void deny(const QString& challengeId)
+    {
+        m_lastAnsweredId = challengeId;
+        ++m_denyCount;
+        emit changed();
+    }
+
+signals:
+    void changed();
+    void showRequested();
+
+private:
+    bool m_open = false;
+    bool m_hasChallenge = false;
+    QString m_challengeId;
+    QDateTime m_issuedAt;
+    QString m_ipAddress;
+    QString m_userAgent;
+    QStringList m_choices;
+    int m_secondsRemaining = 0;
+    int m_pendingCount = 0;
+    bool m_inFlight = false;
+    QString m_resultMessage;
+    bool m_resultIsError = false;
+    QString m_lastApproved;
+    int m_denyCount = 0;
+    QString m_lastAnsweredId;
+};
+
 inline void registerFakeSingletons(QQmlEngine*)
 {
+    qmlRegisterSingletonType<FakeMfa>(
+        "com.kysecurity.mail", 1, 0, "Mfa",
+        [](QQmlEngine*, QJSEngine*) -> QObject* { return new FakeMfa; });
     qmlRegisterSingletonType<FakeAppLock>(
         "com.kysecurity.mail", 1, 0, "AppLock",
         [](QQmlEngine*, QJSEngine*) -> QObject* { return new FakeAppLock; });

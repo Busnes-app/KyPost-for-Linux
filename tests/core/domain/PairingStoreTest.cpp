@@ -406,7 +406,10 @@ void PairingStoreTest::pushMessagesNeedTheStoredKeysOnceThereAreAny()
     QVERIFY(pairingStore.hasPushKeys());
 
     const QByteArray sealed = WebPushCrypto::encrypt(keys.publicKey, keys.authSecret.bytes(), kPushJson);
-    QCOMPARE(pairingStore.openPushMessage(sealed), std::optional<QByteArray>(kPushJson));
+    const std::optional<PairingStore::OpenedPush> opened = pairingStore.openPushMessage(sealed);
+    QVERIFY(opened.has_value());
+    QCOMPARE(opened->payload, kPushJson);
+    QVERIFY(opened->decrypted);
 
     // A forger who knows only the endpoint, a relay still holding old keys,
     // and a broker flipping one byte: none of them is ever parsed.
@@ -429,7 +432,10 @@ void PairingStoreTest::aPairingWithoutPushKeysStillReadsCleartext()
     QVERIFY(pairingStore.save(samplePairing()));
 
     QVERIFY(!pairingStore.hasPushKeys());
-    QCOMPARE(pairingStore.openPushMessage(kPushJson), std::optional<QByteArray>(kPushJson));
+    const std::optional<PairingStore::OpenedPush> opened = pairingStore.openPushMessage(kPushJson);
+    QVERIFY(opened.has_value());
+    QCOMPARE(opened->payload, kPushJson);
+    QVERIFY(!opened->decrypted);
 }
 
 void PairingStoreTest::unreadableOrCorruptPushKeysDropEverything()

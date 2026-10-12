@@ -104,10 +104,15 @@ public:
     static QString displayTitle(const PushNotification& payload, bool contentHidden);
     static QString displayText(const PushNotification& payload, bool contentHidden);
 
+    // Fixed copy only: the IP address and user agent belong on the approval
+    // page, behind the app lock, never on a surface the lock cannot cover.
+    void notifySignInRequest();
+
 signals:
     // Emitted when the user activates the notification's default ("View")
     // action.
     void openRequested(const QString& messageId);
+    void signInViewRequested();
 
 private:
     bool m_contentHidden = false;

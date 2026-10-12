@@ -1,7 +1,10 @@
 #pragma once
 
+#include "models/MfaChallenge.h"
+
 #include <QString>
 #include <QStringList>
+#include <optional>
 
 // Fields from the backend's verified `buildNativePushData` envelope
 // (backend/internal/processor/poller.go): the push `data` object carries
@@ -19,6 +22,9 @@ struct PushNotification
     QString title;
     QString body;
     QString url;
+    // Set for a data.type "mfa_challenge" push, which is routed to the
+    // approval page and never shown or stored as mail.
+    std::optional<MfaChallenge> mfaChallenge;
 
     bool operator==(const PushNotification&) const = default;
 };

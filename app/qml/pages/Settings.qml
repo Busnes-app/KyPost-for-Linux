@@ -1035,7 +1035,7 @@ Item {
                             anchors.right: parent.right
                             anchors.verticalCenter: parent.verticalCenter
                             anchors.margins: 12
-                            text: i18n("This pairing predates push encryption: notifications send the sender and subject through a relay server (UnifiedPush/ntfy) in the clear, even with the settings above enabled. Pair this device again to encrypt them, or ask your server admin to switch it to Pull mode.")
+                            text: i18n("This pairing predates push encryption: notifications send the sender and subject through a relay server (UnifiedPush/ntfy) in the clear, even with the settings above enabled. Pair this device again to encrypt them, or ask your server admin to switch it to Pull mode. Sign-in approvals reach this device only after it is paired again.")
                             color: Theme.ink
                             font.family: Theme.fontUi
                             font.pixelSize: 12

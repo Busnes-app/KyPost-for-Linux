@@ -21,7 +21,7 @@ Outcome handle(const QByteArray& message, const PairingStore& pairingStore, Push
     }
 
     // Never falls back to parsing the raw bytes: see openPushMessage().
-    const std::optional<QByteArray> opened = pairingStore.openPushMessage(message);
+    const std::optional<PairingStore::OpenedPush> opened = pairingStore.openPushMessage(message);
     if (!opened.has_value()) {
         qWarning() << "PushArrival: dropped a push that did not decrypt under this pairing's keys," << message.size()
                    << "bytes";
@@ -33,7 +33,7 @@ Outcome handle(const QByteArray& message, const PairingStore& pairingStore, Push
         return Outcome::PairingChanged;
     }
 
-    const std::optional<PushNotification> payload = PushPayloadParser::parse(*opened);
+    const std::optional<PushNotification> payload = PushPayloadParser::parse(opened->payload, opened->decrypted);
     if (!payload.has_value()) {
         qWarning() << "PushArrival: failed to parse push payload," << message.size() << "bytes";
         return Outcome::Unparseable;

@@ -43,10 +43,12 @@
 // real mail identity.
 namespace PushPayloadParser {
 
-// Returns std::nullopt for a data.type "mfa_challenge" push, on malformed
-// JSON, a non-object top level, or a
-// payload with neither a real data.messageId nor any displayable title
-// (checked after the data/outer title fallback described above).
-std::optional<PushNotification> parse(const QByteArray& rawBody);
+// A data.type "mfa_challenge" push comes back with only mfaChallenge set, or
+// std::nullopt if the challenge is malformed or the push was not `decrypted`
+// (PairingStore::OpenedPush). Otherwise std::nullopt on malformed JSON, a
+// non-object top level, or a payload with neither a real data.messageId nor
+// any displayable title (checked after the data/outer title fallback
+// described above).
+std::optional<PushNotification> parse(const QByteArray& rawBody, bool decrypted);
 
 } // namespace PushPayloadParser

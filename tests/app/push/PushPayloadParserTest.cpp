@@ -14,7 +14,8 @@ private slots:
     void emptyKeywordsStringProducesEmptyStringList();
     void malformedKeywordsWithExtraCommasDropsEmpties();
     void malformedJsonFailsGracefully();
-    void signInChallengeIsNotShownAsANotification();
+    void signInChallengeIsRoutedNotShownAsMail();
+    void malformedSignInChallengeIsDroppedNotShownAsMail();
 };
 
 void PushPayloadParserTest::fullValidPayloadRoundTripsEveryField()
@@ -24,7 +25,7 @@ void PushPayloadParserTest::fullValidPayloadRoundTripsEveryField()
                              R"("senderName":"Alice","emailSubject":"Hello there","Keywords":"work,urgent",)"
                              R"("title":"Alice","body":"Hello there","url":"/read"}})";
 
-    const std::optional<PushNotification> result = PushPayloadParser::parse(body);
+    const std::optional<PushNotification> result = PushPayloadParser::parse(body, false);
 
     QVERIFY(result.has_value());
     QCOMPARE(result->messageId, QStringLiteral("msg-1"));
@@ -45,7 +46,7 @@ void PushPayloadParserTest::completelyEmptyPayloadFailsGracefully()
     // the one case that must still be rejected.
     const QByteArray body = R"({})";
 
-    const std::optional<PushNotification> result = PushPayloadParser::parse(body);
+    const std::optional<PushNotification> result = PushPayloadParser::parse(body, false);
 
     QVERIFY(!result.has_value());
 }
@@ -62,7 +63,7 @@ void PushPayloadParserTest::missingMessageIdStillProducesNotificationWhenTitleIs
                              R"("senderName":"Alice","emailSubject":"Hello there","Keywords":"work,urgent",)"
                              R"("title":"Alice","body":"Hello there","url":"/read"}})";
 
-    const std::optional<PushNotification> result = PushPayloadParser::parse(body);
+    const std::optional<PushNotification> result = PushPayloadParser::parse(body, false);
 
     QVERIFY(result.has_value());
     QVERIFY(result->messageId.isEmpty());
@@ -82,7 +83,7 @@ void PushPayloadParserTest::genericTestNotificationShapeFallsBackToOuterTitleAnd
                              R"("body":"Push delivery is working across all subscribed devices.",)"
                              R"("data":{"url":"/notifications"}})";
 
-    const std::optional<PushNotification> result = PushPayloadParser::parse(body);
+    const std::optional<PushNotification> result = PushPayloadParser::parse(body, false);
 
     QVERIFY(result.has_value());
     QVERIFY(result->messageId.isEmpty());
@@ -95,7 +96,7 @@ void PushPayloadParserTest::emptyKeywordsStringProducesEmptyStringList()
 {
     const QByteArray body = R"({"data":{"messageId":"msg-1","Keywords":""}})";
 
-    const std::optional<PushNotification> result = PushPayloadParser::parse(body);
+    const std::optional<PushNotification> result = PushPayloadParser::parse(body, false);
 
     QVERIFY(result.has_value());
     QVERIFY(result->keywords.isEmpty());
@@ -105,26 +106,43 @@ void PushPayloadParserTest::malformedKeywordsWithExtraCommasDropsEmpties()
 {
     const QByteArray body = R"({"data":{"messageId":"msg-1","Keywords":"work,,urgent,"}})";
 
-    const std::optional<PushNotification> result = PushPayloadParser::parse(body);
+    const std::optional<PushNotification> result = PushPayloadParser::parse(body, false);
 
     QVERIFY(result.has_value());
     QCOMPARE(result->keywords, QStringList({ QStringLiteral("work"), QStringLiteral("urgent") }));
 }
 
-void PushPayloadParserTest::signInChallengeIsNotShownAsANotification()
+// push_mfa_handlers.go's envelope. Displayable, so only the type check keeps
+// it out of the mail path.
+void PushPayloadParserTest::signInChallengeIsRoutedNotShownAsMail()
 {
-    // push_mfa_handlers.go's envelope. Displayable, so only the type check drops it.
+    const QByteArray body = R"({"title":"Approve sign-in","body":"Tap to approve or deny a sign-in to your account.",)"
+                             R"("data":{"type":"mfa_challenge","challengeId":"0123456789abcdef0123456789abcdef0123456789abcdef",)"
+                             R"("issuedAt":"1760000000000","matchDigits":"42","decoyDigits":"07,93","ipAddress":"203.0.113.9"}})";
+
+    const std::optional<PushNotification> result = PushPayloadParser::parse(body, true);
+    QVERIFY(result.has_value());
+    QVERIFY(result->mfaChallenge.has_value());
+    QCOMPARE(result->mfaChallenge->matchDigits, QStringLiteral("42"));
+    QCOMPARE(result->mfaChallenge->ipAddress, QStringLiteral("203.0.113.9"));
+    QVERIFY(result->title.isEmpty());
+    QVERIFY(result->body.isEmpty());
+    QVERIFY(result->messageId.isEmpty());
+}
+
+void PushPayloadParserTest::malformedSignInChallengeIsDroppedNotShownAsMail()
+{
     const QByteArray body = R"({"title":"Approve sign-in","body":"Tap to approve or deny a sign-in to your account.",)"
                              R"("data":{"type":"mfa_challenge","challengeId":"c-1","issuedAt":"1","matchDigits":"42"}})";
 
-    QVERIFY(!PushPayloadParser::parse(body).has_value());
+    QVERIFY(!PushPayloadParser::parse(body, true).has_value());
 }
 
 void PushPayloadParserTest::malformedJsonFailsGracefully()
 {
     const QByteArray body = "{not valid json";
 
-    const std::optional<PushNotification> result = PushPayloadParser::parse(body);
+    const std::optional<PushNotification> result = PushPayloadParser::parse(body, false);
 
     QVERIFY(!result.has_value());
 }

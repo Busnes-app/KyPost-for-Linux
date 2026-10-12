@@ -36,6 +36,7 @@ private slots:
     void markReadDelegatesToPushDao();
     void nothingIsDeliveredWhenThePullBatchCannotBeStored();
     void nothingIsDeliveredWhenTheCursorCannotBePersisted();
+    void pulledSignInChallengesAreDeliveredButNotStoredAsHistory();
 
 private:
     static void savePairing(PairingStore& pairingStore, const QString& serverBaseUrl);
@@ -520,6 +521,43 @@ void PushRepositoryTest::nothingIsDeliveredWhenTheCursorCannotBePersisted()
 
     QVERIFY2(repository.pullOnce().isEmpty(),
              "notifications were delivered against a cursor the next launch will not have");
+}
+
+void PushRepositoryTest::pulledSignInChallengesAreDeliveredButNotStoredAsHistory()
+{
+    const QByteArray body = R"({"deliveryMode":"pull","cursor":7,"notifications":[)"
+                             R"({"seq":6,"title":"Approve sign-in","body":"Tap",)"
+                             R"("data":{"type":"mfa_challenge","challengeId":"0123456789abcdef0123456789abcdef0123456789abcdef",)"
+                             R"("issuedAt":"1760000000000","matchDigits":"42","decoyDigits":"07,93"}},)"
+                             R"({"seq":7,"title":"New","body":"New body","data":{"messageId":"msg-new"}}]})";
+    FakeRelayServer fake(httpResponse(200, "OK", body));
+
+    Database db;
+    QVERIFY(db.open(QStringLiteral(":memory:")));
+    PushDao pushDao(db.handle());
+    QTemporaryDir cursorDir;
+    QVERIFY(cursorDir.isValid());
+    CursorStore cursorStore(cursorDir.filePath(QStringLiteral("cursors.ini")));
+    QTemporaryDir secureDir;
+    QVERIFY(secureDir.isValid());
+    SecureStoreFile secureStore(secureDir.path());
+    PairingStore pairingStore(secureStore);
+    savePairing(pairingStore, QStringLiteral("http://127.0.0.1:%1").arg(fake.port()));
+    QTemporaryDir settingsDir;
+    QVERIFY(settingsDir.isValid());
+    SettingsStore settingsStore(settingsDir.filePath(QStringLiteral("settings.ini")));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    PushNotificationClient client(http);
+    PushRepository repository(pushDao, cursorStore, client, pairingStore, settingsStore);
+
+    const QVector<PushNotification> delivered = repository.pullOnce();
+
+    QCOMPARE(delivered.size(), 2);
+    QVERIFY(delivered.at(0).mfaChallenge.has_value());
+    QCOMPARE(repository.history().size(), 1);
+    QCOMPARE(repository.history().first().messageId, QStringLiteral("msg-new"));
+    QCOMPARE(cursorStore.notificationCursor(), qint64(7));
 }
 
 QTEST_GUILESS_MAIN(PushRepositoryTest)
