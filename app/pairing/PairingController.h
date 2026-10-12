@@ -128,6 +128,9 @@ class PairingController : public QObject
     // that tier on 2026-07-26 -- see core/domain/TransportStateMachine.h.)
     Q_PROPERTY(QString deliveryMode READ deliveryMode NOTIFY pairingChanged)     // "push" | "pull" | "" (never registered)
     Q_PROPERTY(QString transport READ transport NOTIFY pairingChanged)          // server-normalized transport name, "" if never registered
+    // Whether this pairing registered RFC 8291 keys, so pushes cross the
+    // distributor's broker encrypted. False for pairings made before keys existed.
+    Q_PROPERTY(bool pushEncrypted READ pushEncrypted NOTIFY pairingChanged)
 
 public:
     // The pairing state machine, as a type rather than five string literals
@@ -149,6 +152,7 @@ public:
                        QObject* parent = nullptr);
 
     bool isPaired() const;
+    bool pushEncrypted() const { return m_pushEncrypted; }
     QString pairedServerHost() const;
     QString deviceId() const;
     State state() const;
@@ -337,6 +341,7 @@ private:
     State m_state = State::Idle;
     QString m_pairingError;
     bool m_isPaired = false;
+    bool m_pushEncrypted = false;
     QString m_pairedServerHost;
     QString m_deviceId;
     QByteArray m_observedSpki; // raw SPKI SHA-256 from the failed handshake

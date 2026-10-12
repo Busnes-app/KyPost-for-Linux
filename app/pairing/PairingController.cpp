@@ -313,11 +313,14 @@ void PairingController::refreshFromStore()
     const bool nowPaired = pairing.has_value();
     const QString host = nowPaired ? QUrl(pairing->serverBaseUrl).host(QUrl::FullyEncoded) : QString();
     const QString deviceId = nowPaired ? pairing->deviceId : QString();
+    const bool pushEncrypted = nowPaired && m_pairingStore.hasPushKeys();
 
-    if (nowPaired == m_isPaired && host == m_pairedServerHost && deviceId == m_deviceId)
+    if (nowPaired == m_isPaired && host == m_pairedServerHost && deviceId == m_deviceId
+        && pushEncrypted == m_pushEncrypted)
         return;
 
     m_isPaired = nowPaired;
+    m_pushEncrypted = pushEncrypted;
     m_pairedServerHost = host;
     m_deviceId = deviceId;
     emit pairingChanged();
@@ -663,11 +666,14 @@ void PairingController::reconnectToServer()
         return;
     }
 
+    // Copied out before `attempt` is moved: argument evaluation order is
+    // unspecified, and a moved-from attempt has no keys to send.
+    const WebPushSubscription pushKeys = attempt.pushSubscription();
     m_inNetworkCall = true;
     m_executor.run(
         this,
-        [params, deviceToken = m_deviceToken](HttpClient& http) {
-            return DeviceRegistrationService::sendRegistration(http, params, deviceToken);
+        [params, deviceToken = m_deviceToken, pushKeys](HttpClient& http) {
+            return DeviceRegistrationService::sendRegistration(http, params, deviceToken, pushKeys);
         },
         [this, params, attempt = std::move(attempt)](const NativeRegistrationResult& result) mutable {
             m_inNetworkCall = false;
@@ -752,10 +758,13 @@ void PairingController::pairFromParsedParams(PairingParams params)
     // The attempt is moved into the completion handler so it survives the
     // gap. If it were dropped here instead, its destructor would restore the
     // pin while the registration was still in flight.
+    // Copied out before `attempt` is moved: argument evaluation order is
+    // unspecified, and a moved-from attempt has no keys to send.
+    const WebPushSubscription pushKeys = attempt.pushSubscription();
     m_executor.run(
         this,
-        [params, deviceToken = m_deviceToken](HttpClient& http) {
-            return DeviceRegistrationService::sendRegistration(http, params, deviceToken);
+        [params, deviceToken = m_deviceToken, pushKeys](HttpClient& http) {
+            return DeviceRegistrationService::sendRegistration(http, params, deviceToken, pushKeys);
         },
         [this, params, attempt = std::move(attempt)](const NativeRegistrationResult& result) mutable {
             m_inNetworkCall = false;

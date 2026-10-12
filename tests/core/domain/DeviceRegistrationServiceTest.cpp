@@ -12,6 +12,7 @@
 #include "stores/SecureStore.h"
 
 #include <QHash>
+#include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QTemporaryDir>
 #include <QTest>
@@ -179,6 +180,19 @@ void DeviceRegistrationServiceTest::successfulPairPersistsPairingAndSettings()
     QCOMPARE(settingsStore.deliveryMode(), QStringLiteral("pull"));
     QCOMPARE(settingsStore.pullEndpoint(), QStringLiteral("http://relay.example:9443/custom/pull"));
     QCOMPARE(settingsStore.transport(), QStringLiteral("unifiedpush"));
+
+    // The keys that went over the wire are the ones stored: a payload the
+    // relay encrypts to them opens, as UnifiedPushSender would produce it.
+    const QJsonObject sent = fake.receivedJsonBody();
+    const QByteArray p256dh = QByteArray::fromBase64(sent.value(QStringLiteral("p256dh")).toString().toLatin1(),
+                                                     QByteArray::Base64UrlEncoding);
+    const QByteArray auth = QByteArray::fromBase64(sent.value(QStringLiteral("auth")).toString().toLatin1(),
+                                                   QByteArray::Base64UrlEncoding);
+    QCOMPARE(p256dh.size(), WebPushCrypto::kPublicKeyBytes);
+    QCOMPARE(auth.size(), WebPushCrypto::kAuthBytes);
+    QVERIFY(verifyPairingStore.hasPushKeys());
+    QCOMPARE(verifyPairingStore.openPushMessage(WebPushCrypto::encrypt(p256dh, auth, "{}")),
+             std::optional<QByteArray>("{}"));
 }
 
 void DeviceRegistrationServiceTest::pullEndpointFromDifferentOriginThanServerIsRejected()
@@ -236,12 +250,19 @@ void DeviceRegistrationServiceTest::unauthorizedPairLeavesStoresUntouched()
     HttpClientPinSink pinSink(http);
     DeviceRegistrationService service(client, pairingStore, settingsStore, pinSink);
 
+    // Keys the relay already encrypts to must survive a refused registration.
+    std::optional<WebPushCrypto::Keys> previousKeys = WebPushCrypto::generate();
+    QVERIFY(previousKeys && pairingStore.savePushKeys(*previousKeys));
+
     const NativeRegistrationResult result =
         service.pair(sampleParams(fake.port()), QStringLiteral("https://push.example/endpoint"));
 
     QCOMPARE(result.outcome, RegistrationOutcome::Unauthorized);
     QVERIFY(!pairingStore.load().has_value());
     QVERIFY(settingsStore.deliveryMode().isEmpty());
+    QCOMPARE(pairingStore.openPushMessage(
+                 WebPushCrypto::encrypt(previousKeys->publicKey, previousKeys->authSecret.bytes(), "{}")),
+             std::optional<QByteArray>("{}"));
 }
 
 void DeviceRegistrationServiceTest::reregisterIfPairedSendsStoredCredentialsAndUpdatesDeviceId()

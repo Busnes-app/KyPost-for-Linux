@@ -9,6 +9,16 @@
 #include <QNetworkAccessManager>
 #include <QTest>
 
+namespace {
+
+// The client checks only the lengths; the relay validates the point.
+WebPushSubscription keys()
+{
+    return { QByteArray(65, '\x04'), QByteArray(16, 'a') };
+}
+
+} // namespace
+
 class NativeRegistrationClientTest : public QObject
 {
     Q_OBJECT
@@ -22,6 +32,7 @@ private slots:
     void noQueryParamsOnRequestUrl();
     void unusableCredentialInA200IsRefused_data();
     void unusableCredentialInA200IsRefused();
+    void missingPushKeysAreRefusedWithoutARequest();
 };
 
 void NativeRegistrationClientTest::successParsesResponseAndSendsExpectedBody()
@@ -39,7 +50,7 @@ void NativeRegistrationClientTest::successParsesResponseAndSendsExpectedBody()
     const NativeRegistrationResult result =
         client.registerDevice(endpoint, QStringLiteral("sub-1"), QStringLiteral("pair-tok"),
                                QStringLiteral("https://push.example/endpoint"), QStringLiteral("device-1"),
-                               QStringLiteral("My Desktop"));
+                               QStringLiteral("My Desktop"), keys());
 
     QCOMPARE(result.outcome, RegistrationOutcome::Success);
     QVERIFY(result.response.ok);
@@ -60,6 +71,9 @@ void NativeRegistrationClientTest::successParsesResponseAndSendsExpectedBody()
     QCOMPARE(sent.value(QStringLiteral("deviceName")).toString(), QStringLiteral("My Desktop"));
     QCOMPARE(sent.value(QStringLiteral("platform")).toString(), QStringLiteral("linux"));
     QCOMPARE(sent.value(QStringLiteral("transport")).toString(), QStringLiteral("unifiedpush"));
+    // Base64url without padding, the encoding webpush-go and webpush_keys.go accept.
+    QCOMPARE(sent.value(QStringLiteral("p256dh")).toString(), QString(QStringLiteral("BAQE").repeated(21) + QStringLiteral("BAQ")));
+    QCOMPARE(sent.value(QStringLiteral("auth")).toString(), QStringLiteral("YWFhYWFhYWFhYWFhYWFhYQ"));
 
     QVERIFY(fake.receivedRequest().contains("Content-Type: application/json"));
 }
@@ -76,7 +90,7 @@ void NativeRegistrationClientTest::successOmitsOptionalFieldsWhenNotProvided()
     const QUrl endpoint(QStringLiteral("http://127.0.0.1:%1/api/notifications/native/register").arg(fake.port()));
     const NativeRegistrationResult result = client.registerDevice(
         endpoint, QStringLiteral("sub-1"), QStringLiteral("pair-tok"), QStringLiteral("https://push.example/endpoint"),
-        QString(), QString());
+        QString(), QString(), keys());
 
     QCOMPARE(result.outcome, RegistrationOutcome::Success);
 
@@ -99,7 +113,7 @@ void NativeRegistrationClientTest::successDerivesPullEndpointWhenServerOmitsIt()
     const QUrl endpoint(QStringLiteral("http://127.0.0.1:%1/api/notifications/native/register").arg(fake.port()));
     const NativeRegistrationResult result = client.registerDevice(
         endpoint, QStringLiteral("sub-1"), QStringLiteral("pair-tok"), QStringLiteral("https://push.example/endpoint"),
-        QString(), QString());
+        QString(), QString(), keys());
 
     QCOMPARE(result.outcome, RegistrationOutcome::Success);
     QCOMPARE(result.response.pullEndpoint,
@@ -138,7 +152,7 @@ void NativeRegistrationClientTest::unusableCredentialInA200IsRefused()
     const QUrl endpoint(QStringLiteral("http://127.0.0.1:%1/api/notifications/native/register").arg(fake.port()));
     const NativeRegistrationResult result = client.registerDevice(
         endpoint, QStringLiteral("sub-1"), QStringLiteral("pair-tok"), QStringLiteral("https://push.example/endpoint"),
-        QString(), QString());
+        QString(), QString(), keys());
 
     QCOMPARE(result.outcome, RegistrationOutcome::Failure);
     QVERIFY(!result.detail.isEmpty());
@@ -157,7 +171,7 @@ void NativeRegistrationClientTest::unauthorizedFrom401()
     const QUrl endpoint(QStringLiteral("http://127.0.0.1:%1/api/notifications/native/register").arg(fake.port()));
     const NativeRegistrationResult result = client.registerDevice(
         endpoint, QStringLiteral("sub-1"), QStringLiteral("pair-tok"), QStringLiteral("https://push.example/endpoint"),
-        QString(), QString());
+        QString(), QString(), keys());
 
     QCOMPARE(result.outcome, RegistrationOutcome::Unauthorized);
 }
@@ -172,7 +186,7 @@ void NativeRegistrationClientTest::backendMisconfiguredFrom503()
     const QUrl endpoint(QStringLiteral("http://127.0.0.1:%1/api/notifications/native/register").arg(fake.port()));
     const NativeRegistrationResult result = client.registerDevice(
         endpoint, QStringLiteral("sub-1"), QStringLiteral("pair-tok"), QStringLiteral("https://push.example/endpoint"),
-        QString(), QString());
+        QString(), QString(), keys());
 
     QCOMPARE(result.outcome, RegistrationOutcome::BackendMisconfigured);
 }
@@ -186,12 +200,29 @@ void NativeRegistrationClientTest::noQueryParamsOnRequestUrl()
 
     const QUrl endpoint(QStringLiteral("http://127.0.0.1:%1/api/notifications/native/register").arg(fake.port()));
     client.registerDevice(endpoint, QStringLiteral("sub-1"), QStringLiteral("pair-tok"),
-                           QStringLiteral("https://push.example/endpoint"), QString(), QString());
+                           QStringLiteral("https://push.example/endpoint"), QString(), QString(), keys());
 
     // Unlike every other Relay endpoint in this batch, native/register takes
     // no query-param auth — sub must not be appended to the URL.
     QVERIFY(fake.receivedRequest().contains("POST /api/notifications/native/register HTTP/1.1"));
     QVERIFY(!fake.receivedRequest().contains("?"));
+}
+
+void NativeRegistrationClientTest::missingPushKeysAreRefusedWithoutARequest()
+{
+    // Registering without keys is what makes the relay send cleartext.
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true,"deviceId":"d","deviceSecret":"s"})"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    NativeRegistrationClient client(http);
+
+    const QUrl endpoint(QStringLiteral("http://127.0.0.1:%1/api/notifications/native/register").arg(fake.port()));
+    const NativeRegistrationResult result =
+        client.registerDevice(endpoint, QStringLiteral("sub-1"), QStringLiteral("pair-tok"),
+                               QStringLiteral("https://push.example/endpoint"), QString(), QString(), {});
+
+    QCOMPARE(result.outcome, RegistrationOutcome::Failure);
+    QCOMPARE(fake.connectionCount(), 0);
 }
 
 QTEST_GUILESS_MAIN(NativeRegistrationClientTest)

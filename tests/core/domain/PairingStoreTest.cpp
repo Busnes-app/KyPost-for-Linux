@@ -109,6 +109,12 @@ private slots:
     // Review-finding regression.
     void aFailedReadOfAnyFieldFailsTheWholeLoad();
 
+    // RFC 8291 push keys.
+    void pushMessagesNeedTheStoredKeysOnceThereAreAny();
+    void aPairingWithoutPushKeysStillReadsCleartext();
+    void unreadableOrCorruptPushKeysDropEverything();
+    void clearRemovesThePushKeys();
+
 private:
     static DevicePairing samplePairing();
 };
@@ -372,6 +378,90 @@ void PairingStoreTest::aFailedReadOfAnyFieldFailsTheWholeLoad()
     PairingStore pairingStore(healthy);
     QVERIFY(pairingStore.save(samplePairing()));
     QCOMPARE(pairingStore.loadChecked().status, PairingStore::LoadStatus::Loaded);
+}
+
+namespace {
+
+const QByteArray kPushJson = R"({"title":"t","data":{"messageId":"m-1"}})";
+
+WebPushCrypto::Keys freshKeys()
+{
+    std::optional<WebPushCrypto::Keys> keys = WebPushCrypto::generate();
+    if (!keys)
+        qFatal("key generation failed");
+    return std::move(*keys);
+}
+
+} // namespace
+
+void PairingStoreTest::pushMessagesNeedTheStoredKeysOnceThereAreAny()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    SecureStoreFile secureStore(dir.path());
+    PairingStore pairingStore(secureStore);
+    QVERIFY(pairingStore.save(samplePairing()));
+    const WebPushCrypto::Keys keys = freshKeys();
+    QVERIFY(pairingStore.savePushKeys(keys));
+    QVERIFY(pairingStore.hasPushKeys());
+
+    const QByteArray sealed = WebPushCrypto::encrypt(keys.publicKey, keys.authSecret.bytes(), kPushJson);
+    QCOMPARE(pairingStore.openPushMessage(sealed), std::optional<QByteArray>(kPushJson));
+
+    // A forger who knows only the endpoint, a relay still holding old keys,
+    // and a broker flipping one byte: none of them is ever parsed.
+    QVERIFY(!pairingStore.openPushMessage(kPushJson).has_value());
+    const WebPushCrypto::Keys other = freshKeys();
+    QVERIFY(!pairingStore.openPushMessage(WebPushCrypto::encrypt(other.publicKey, other.authSecret.bytes(), kPushJson))
+                 .has_value());
+    QByteArray tampered = sealed;
+    tampered[tampered.size() - 1] = char(tampered.at(tampered.size() - 1) ^ 1);
+    QVERIFY(!pairingStore.openPushMessage(tampered).has_value());
+}
+
+void PairingStoreTest::aPairingWithoutPushKeysStillReadsCleartext()
+{
+    // Paired before keys existed: the relay sends this device cleartext.
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    SecureStoreFile secureStore(dir.path());
+    PairingStore pairingStore(secureStore);
+    QVERIFY(pairingStore.save(samplePairing()));
+
+    QVERIFY(!pairingStore.hasPushKeys());
+    QCOMPARE(pairingStore.openPushMessage(kPushJson), std::optional<QByteArray>(kPushJson));
+}
+
+void PairingStoreTest::unreadableOrCorruptPushKeysDropEverything()
+{
+    // Unreadable is not "no keys": reading it as Absent would accept cleartext.
+    PartiallyReadableSecureStore unreadable(QStringLiteral("pairing.webPushKeys"));
+    PairingStore unreadableStore(unreadable);
+    QVERIFY(!unreadableStore.hasPushKeys());
+    QVERIFY(!unreadableStore.openPushMessage(kPushJson).has_value());
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    SecureStoreFile secureStore(dir.path());
+    PairingStore pairingStore(secureStore);
+    QVERIFY(secureStore.set(QStringLiteral("pairing.webPushKeys"), QStringLiteral("abcd")));
+    QVERIFY(!pairingStore.hasPushKeys());
+    QVERIFY(!pairingStore.openPushMessage(kPushJson).has_value());
+}
+
+void PairingStoreTest::clearRemovesThePushKeys()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    SecureStoreFile secureStore(dir.path());
+    PairingStore pairingStore(secureStore);
+    QVERIFY(pairingStore.save(samplePairing()));
+    QVERIFY(pairingStore.savePushKeys(freshKeys()));
+    QVERIFY(secureStore.contains(QStringLiteral("pairing.webPushKeys")));
+
+    QVERIFY(pairingStore.clear());
+
+    QVERIFY(!secureStore.contains(QStringLiteral("pairing.webPushKeys")));
 }
 
 QTEST_GUILESS_MAIN(PairingStoreTest)

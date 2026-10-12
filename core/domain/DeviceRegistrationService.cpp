@@ -69,6 +69,7 @@ DeviceRegistrationService::PairAttempt::operator=(PairAttempt&& other) noexcept
     m_pinSink = other.m_pinSink;
     m_savedPin = other.m_savedPin;
     m_sealingKey = other.m_sealingKey;
+    m_pushKeys = std::move(other.m_pushKeys);
     m_refusedOutcome = other.m_refusedOutcome;
     m_restorePin = other.m_restorePin;
     // The moved-from attempt must not also restore.
@@ -96,6 +97,13 @@ DeviceRegistrationService::PairAttempt DeviceRegistrationService::beginPair(cons
         attempt.m_refusedOutcome = RegistrationOutcome::CredentialsLocked;
         return attempt;
     }
+
+    std::optional<WebPushCrypto::Keys> pushKeys = WebPushCrypto::generate();
+    if (!pushKeys) {
+        attempt.m_refusedOutcome = RegistrationOutcome::Failure;
+        return attempt;
+    }
+    attempt.m_pushKeys = std::move(*pushKeys);
 
     // Captured BEFORE the request. Re-reading it afterwards is a TOCTOU: the
     // app can lock while the request is out, dropping the session key.
@@ -129,14 +137,15 @@ DeviceRegistrationService::PairAttempt DeviceRegistrationService::beginPair(cons
 
 NativeRegistrationResult DeviceRegistrationService::sendRegistration(HttpClient& httpClient,
                                                                        const PairingParams& params,
-                                                                       const QString& deviceToken)
+                                                                       const QString& deviceToken,
+                                                                       const WebPushSubscription& pushKeys)
 {
     // Constructed here rather than held as a member: NativeRegistrationClient
     // is a stateless wrapper over an HttpClient reference, and on the async
     // path that HttpClient belongs to the executor thread.
     NativeRegistrationClient client(httpClient);
     return client.registerDevice(QUrl(params.registrationUrl), params.subscriberId, params.pairingToken,
-                                  deviceToken, QString(), params.deviceName);
+                                  deviceToken, QString(), params.deviceName, pushKeys);
 }
 
 NativeRegistrationResult DeviceRegistrationService::finishPair(PairAttempt attempt, const PairingParams& params,
@@ -192,7 +201,9 @@ NativeRegistrationResult DeviceRegistrationService::finishPair(PairAttempt attem
     // whenever no Secret Service provider is running, which is not exotic on
     // Linux. Ignoring it meant the server minted and burned a one-shot
     // deviceSecret, nothing reached disk, and the UI still reported "paired".
-    if (!m_pairingStore.save(pairing, attempt.m_sealingKey)) {
+    // The relay now encrypts to these keys, so losing them is as fatal to
+    // push as losing the secret is to everything else.
+    if (!m_pairingStore.savePushKeys(attempt.m_pushKeys) || !m_pairingStore.save(pairing, attempt.m_sealingKey)) {
         NativeRegistrationResult persistFailed = result;
         // The outcome carries the fact; app/ carries the sentence. This used
         // to set an English `detail`, which PairingController rendered
@@ -260,7 +271,7 @@ NativeRegistrationResult DeviceRegistrationService::pair(const PairingParams& pa
 
     const NativeRegistrationResult result = m_client.registerDevice(
         QUrl(params.registrationUrl), params.subscriberId, params.pairingToken, deviceToken, QString(),
-        params.deviceName);
+        params.deviceName, attempt.pushSubscription());
 
     return finishPair(std::move(attempt), params, result);
 }

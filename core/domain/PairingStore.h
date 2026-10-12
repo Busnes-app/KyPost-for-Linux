@@ -2,7 +2,9 @@
 
 #include "domain/DevicePairing.h"
 #include "security/CredentialCipher.h"
+#include "security/WebPushCrypto.h"
 
+#include <QByteArray>
 #include <QString>
 
 #include <optional>
@@ -79,7 +81,8 @@ public:
     // rotates the secret server-side.
     bool save(const DevicePairing& pairing);
 
-    // Removes all eight keys, including any sealed device-secret blob.
+    // Removes all eight keys, including any sealed device-secret blob and
+    // the Web Push keys.
     // Returns false if any individual removal failed -- the caller is the
     // wipe-on-repeated-PIN-failure path, for which "the credential is still
     // on disk" is the difference between a wipe and the appearance of one.
@@ -98,6 +101,26 @@ public:
     // pairing means no account to file anything under, so there is no reply
     // whose cache write is correct here.
     bool stillCurrent(const PairingIdentity& identity) const;
+
+    // --- Web Push (RFC 8291) keys --------------------------------------
+    // The key pair and auth secret the relay encrypts UnifiedPush payloads
+    // to. One SecureStore value, so a write cannot leave half a key, and
+    // removed by clear() with the rest of the record.
+    bool savePushKeys(const WebPushCrypto::Keys& keys);
+
+    // True when this pairing registered keys, so the relay encrypts to them.
+    // A store that cannot be read answers false.
+    bool hasPushKeys() const;
+
+    // Turns a raw UnifiedPush message into the payload to parse, or nullopt
+    // to drop it.
+    //
+    // With keys stored, only a payload that decrypts under them is accepted:
+    // cleartext, ciphertext for other keys and tampered bytes are all
+    // dropped, never parsed. A pairing made before keys existed has none, and
+    // the relay sends it cleartext (native_sender.go), so that is passed
+    // through. An unreadable or corrupt key entry drops everything.
+    std::optional<QByteArray> openPushMessage(const QByteArray& message) const;
 
     // --- credential PIN gate -------------------------------------------
     // Backs Settings > Security's "Require unlock to receive push/MFA".
@@ -181,6 +204,10 @@ private:
     // True per the authoritative applock.credentialPinGateEnabled flag, not
     // per the presence of a sealed blob.
     bool credentialGateEnabled() const;
+
+    enum class PushKeysStatus { Found, Absent, Unreadable, Corrupt };
+    PushKeysStatus loadPushKeys(WebPushCrypto::Keys* out) const;
+
     bool saveUnderCurrentKey(const DevicePairing& pairing);
 
     // Writes `secret` the way the current gate state requires: re-sealed
