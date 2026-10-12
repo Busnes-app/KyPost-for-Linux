@@ -909,8 +909,27 @@ Kirigami.ApplicationWindow {
                                 MailApp.selectFolder(modelData.wireName)
                                 folderPopup.close()
                             }
+                            onLongPressed: {
+                                folderPopup.close()
+                                root.openFolderActions(modelData)
+                            }
                         }
                     }
+                }
+
+                GhostButton {
+                    Layout.fillWidth: true
+                    text: i18n("New folder…")
+                    onClicked: {
+                        folderPopup.close()
+                        folderDialog.openCreate("Archive", Format.folderDisplayName(MailApp.mailFolders(), "Archive"))
+                    }
+                }
+
+                MutedHint {
+                    Layout.fillWidth: true
+                    text: i18n("Press and hold a folder for more actions.")
+                    wrapMode: Text.WordWrap
                 }
             }
         }
@@ -982,6 +1001,7 @@ Kirigami.ApplicationWindow {
             if (!AppLock.locked)
                 return;
             folderPopup.close();
+            folderActionsMenu.close();
         }
     }
 
@@ -1011,6 +1031,50 @@ Kirigami.ApplicationWindow {
         z: 900
         onChosen: function (messageId, folder) {
             root.selectEmail(messageId, folder)
+        }
+    }
+
+    // Same guards as DesktopRoot's folder menu: rename and delete only where
+    // the server reports deletable.
+    function openFolderActions(folder) {
+        folderActionsMenu.folder = folder
+        folderActionsMenu.open()
+    }
+
+    Menu {
+        id: folderActionsMenu
+        property var folder: ({})
+        x: (root.width - width) / 2
+        y: (root.height - height) / 2
+
+        MenuItem {
+            text: i18n("New Subfolder…")
+            onTriggered: folderDialog.openCreate(folderActionsMenu.folder.wireName, folderActionsMenu.folder.displayName)
+        }
+        MenuItem {
+            text: i18n("Rename…")
+            enabled: folderActionsMenu.folder.deletable === true
+            onTriggered: folderDialog.openRename(folderActionsMenu.folder.wireName, folderActionsMenu.folder.displayName)
+        }
+        MenuItem {
+            text: i18n("Delete Folder…")
+            enabled: folderActionsMenu.folder.deletable === true
+            onTriggered: folderDialog.openDelete(folderActionsMenu.folder.wireName, folderActionsMenu.folder.displayName)
+        }
+    }
+
+    FolderDialog {
+        id: folderDialog
+        anchors.fill: parent
+        z: 900
+        busy: MailApp.isBusy
+        onCreateRequested: function (parent, name) { MailApp.createFolder(parent, name) }
+        onRenameRequested: function (folder, name) { MailApp.renameFolder(folder, name) }
+        onDeleteRequested: function (folder) { MailApp.deleteFolder(folder) }
+
+        Connections {
+            target: MailApp
+            function onFolderMutationCompleted(ok) { folderDialog.finished(ok, MailApp.lastError) }
         }
     }
 

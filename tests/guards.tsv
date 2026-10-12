@@ -423,3 +423,10 @@ app/push/PushArrival.cpp	    if (owner.isEmpty()) {	    if (false) {	PushArrival
 #
 # Message ids are per-mailbox UIDs and collide across accounts.
 app/mail/MailController.cpp	            if (!m_pairingStore.stillCurrent(owner))	            if (false)	MailControllerTest:aReadStateReplyForAReplacedAccountRollsNothingBack
+
+# --- a locked app sends no read-state or folder change ---------------------
+#
+# A reader or a folder prompt can sit behind the PIN overlay; both write to the
+# server.
+app/mail/MailController.cpp	    if (m_appLocked || messageIds.isEmpty())	    if (messageIds.isEmpty())	MailControllerTest:aLockedAppChangesNoReadStateUntilUnlocked
+app/mail/MailController.cpp	    if (m_appLocked) // no folder mutation while locked	    if (false) // no folder mutation while locked	MailControllerTest:aLockedAppSendsNoFolderMutation
