@@ -629,10 +629,8 @@ Kirigami.ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 visible: emailListView.count === 0
-                // "tap Refresh", not "pull to refresh" -- this screen uses
-                // the visible-Refresh-button fallback (see the header
-                // above), not an actual pull gesture; see task-38-report.md
-                // for why.
+                // "tap Refresh": the pull gesture lives on the list, which
+                // is hidden while it is empty.
                 text: i18n("No emails yet — tap Refresh.")
             }
 
@@ -645,6 +643,12 @@ Kirigami.ApplicationWindow {
                 spacing: 4
                 model: MailApp.emailModel
                 ScrollBar.vertical: ThemedScrollBar {}
+                // Pull-to-refresh: drag past the top and release. Same refresh
+                // as the button.
+                onDragEnded: {
+                    if (verticalOvershoot < -Kirigami.Units.gridUnit * 4)
+                        MailApp.refresh()
+                }
                 // Recycling isn't worth the correctness hazard here: a
                 // reused SwipeDelegate would keep its `actionTriggered`
                 // guard (see below) across whichever new model row it gets
