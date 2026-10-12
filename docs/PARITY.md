@@ -5,9 +5,9 @@ acceptance checklist for parity work. The plan document predates several
 locked decisions and still describes a dual-Qt/Ubuntu-Touch target; where the
 two disagree, this file and `AGENTS.md` win.
 
-The Android behaviour contract is `~/busness.app/kypost-android/app/AGENTS.md`.
+The Android behaviour contract is `~/git/busnes.app/kypost-android/app/AGENTS.md`.
 The wire contract is the backend Go source
-(`~/busness.app/kypost-server/backend/internal/api/`), never a guess.
+(`~/git/busnes.app/kypost-server/backend/internal/api/`), never a guess.
 
 ## How to read a row
 

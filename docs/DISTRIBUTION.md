@@ -35,7 +35,7 @@ working `flatpak update`.
 
 ```sh
 flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-flatpak remote-add --if-not-exists kypost https://busness-app.github.io/KyPost-for-Linux/kypost.flatpakrepo
+flatpak remote-add --if-not-exists kypost https://busnes-app.github.io/KyPost-for-Linux/kypost.flatpakrepo
 flatpak install kypost com.kysecurity.mail
 ```
 
@@ -87,16 +87,16 @@ This creates the `gh-pages` branch. It must exist before step 3.
 Settings → Pages → Source: *Deploy from a branch* → `gh-pages` / `/ (root)`. Or:
 
 ```sh
-gh api -X POST repos/Busness-app/KyPost-for-Linux/pages \
+gh api -X POST repos/Busnes-app/KyPost-for-Linux/pages \
   -f 'source[branch]=gh-pages' -f 'source[path]=/'
 ```
 
 Then verify:
 
 ```sh
-curl -fsS https://busness-app.github.io/KyPost-for-Linux/kypost.flatpakrepo
+curl -fsS https://busnes-app.github.io/KyPost-for-Linux/kypost.flatpakrepo
 flatpak remote-add --user --if-not-exists kypost-test \
-  https://busness-app.github.io/KyPost-for-Linux/kypost.flatpakrepo
+  https://busnes-app.github.io/KyPost-for-Linux/kypost.flatpakrepo
 flatpak install --user kypost-test com.kysecurity.mail
 ```
 

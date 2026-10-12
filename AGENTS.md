@@ -10,9 +10,9 @@ Plasma primary, packaged as a Flatpak) and **KDE Mobile** (Plasma Mobile,
 same Flatpak, mobile UI root). **Ubuntu Touch (Lomiri) support is
 deferred** — Qt5 is EOL and this codebase no longer builds against it; see
 Section 4 for the re-check trigger. It is the fourth sibling client after
-the Android app (`~/busness.app/kypost-android`) and the SwiftUI macOS/iOS
-app (`~/busness.app/kypost-for-Mac`); the relay is
-`~/busness.app/kypost-server`. **This file and `docs/PARITY.md` describe
+the Android app (`~/git/busnes.app/kypost-android`) and the SwiftUI macOS/iOS
+app (`~/git/busnes.app/kypost-for-Mac`); the relay is
+`~/git/busnes.app/kypost-server`. **This file and `docs/PARITY.md` describe
 what exists today.** `Linux_QT_Client_Plan.md` at the repo root is the
 original architectural design record and is worth reading for the
 reasoning, but it predates the Qt5-drop, the parity matrix and the

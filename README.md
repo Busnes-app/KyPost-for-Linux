@@ -73,14 +73,14 @@ KyPost has its own signed Flatpak remote:
 
 ```sh
 flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-flatpak remote-add --if-not-exists kypost https://busness-app.github.io/KyPost-for-Linux/kypost.flatpakrepo
+flatpak remote-add --if-not-exists kypost https://busnes-app.github.io/KyPost-for-Linux/kypost.flatpakrepo
 flatpak install kypost com.kysecurity.mail
 ```
 
 The normal `flatpak update` command then installs new versions. The Flathub remote supplies the
 `org.kde.Platform//6.11` runtime. KyPost itself is not on Flathub and never will be. Flathub bans
 applications that use AI, and the KyPost backend uses AI. Each
-[release](https://github.com/Busness-app/KyPost-for-Linux/releases) also attaches a
+[release](https://github.com/Busnes-app/KyPost-for-Linux/releases) also attaches a
 single-file `.flatpak` bundle, but a bundle gives you no automatic updates. For more
 information, see [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md).
 
