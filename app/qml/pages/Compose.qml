@@ -387,7 +387,12 @@ Item {
             Layout.fillWidth: true
             visible: !!root.restoredDraft.token
             textFormat: Text.PlainText
-            text: i18n("Editing a copy. Saving creates another draft. Inline images remain attached files; the editor keeps basic text formatting.")
+            // Mirrors MailController::settleDraftReplacement.
+            text: root.restoredDraft.sourceHasAttachments
+                ? i18n("The saved draft's attachments are not reopened here, so the original stays in Drafts. Saving creates another draft.")
+                : root.restoredDraft.encrypted
+                    ? i18n("The first save or send replaces the original draft; later saves add new copies. Inline images remain attached files; the editor keeps basic text formatting.")
+                    : i18n("The first save or send replaces the original draft; later saves add new copies.")
             color: Theme.ink
             wrapMode: Text.WordWrap
         }

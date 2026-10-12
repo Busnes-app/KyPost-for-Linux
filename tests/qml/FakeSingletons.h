@@ -248,8 +248,50 @@ private:
     QString m_lastAnsweredId;
 };
 
+// Only MailSearchField's surface. Counts what reaches it, so a test can say a
+// locked field sent nothing; the real controller's own refusal is tested in C++.
+class FakeMailApp : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(QString searchQuery MEMBER m_searchQuery NOTIFY searchChanged)
+    Q_PROPERTY(int searchEdits MEMBER m_searchEdits NOTIFY searchChanged)
+    Q_PROPERTY(int searchClears MEMBER m_searchClears NOTIFY searchChanged)
+
+public:
+    Q_INVOKABLE void setSearchQuery(const QString& query)
+    {
+        ++m_searchEdits;
+        m_searchQuery = query;
+        emit searchChanged();
+    }
+    Q_INVOKABLE void clearSearch()
+    {
+        ++m_searchClears;
+        m_searchQuery.clear();
+        emit searchChanged();
+    }
+    Q_INVOKABLE void resetSearchCounts()
+    {
+        m_searchQuery.clear();
+        m_searchEdits = 0;
+        m_searchClears = 0;
+        emit searchChanged();
+    }
+
+signals:
+    void searchChanged();
+
+private:
+    QString m_searchQuery;
+    int m_searchEdits = 0;
+    int m_searchClears = 0;
+};
+
 inline void registerFakeSingletons(QQmlEngine*)
 {
+    qmlRegisterSingletonType<FakeMailApp>(
+        "com.kysecurity.mail", 1, 0, "MailApp",
+        [](QQmlEngine*, QJSEngine*) -> QObject* { return new FakeMailApp; });
     qmlRegisterSingletonType<FakeMfa>(
         "com.kysecurity.mail", 1, 0, "Mfa",
         [](QQmlEngine*, QJSEngine*) -> QObject* { return new FakeMfa; });

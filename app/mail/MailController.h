@@ -11,6 +11,7 @@
 
 #include <QDateTime>
 #include <QDesktopServices>
+#include <QHash>
 #include <QObject>
 #include <QSet>
 #include <QString>
@@ -22,6 +23,7 @@
 #include <optional>
 
 class QFile;
+class QTimer;
 
 class SettingsStore;
 class RelayMailSource;
@@ -66,6 +68,17 @@ class MailController : public QObject
     Q_PROPERTY(QString selectedKeyword READ selectedKeyword NOTIFY selectedKeywordChanged)
     Q_PROPERTY(QVariantList keywordTabs READ keywordTabs NOTIFY keywordTabsChanged)
     Q_PROPERTY(bool isBusy READ isBusy NOTIFY isBusyChanged)
+
+    // --- Server search (GET /api/mail/search) ---------------------------
+    // Results live in searchModel and in memory only: never in the cache, so
+    // folder sync cursors and Hostile Location Protection are unaffected.
+    // Scope is the current folder; the relay searches one mailbox per call.
+    Q_PROPERTY(QObject* searchModel READ searchModel CONSTANT)
+    Q_PROPERTY(QString searchQuery READ searchQuery NOTIFY searchChanged)
+    // True while the query has text worth sending; the lists show searchModel.
+    Q_PROPERTY(bool searchActive READ searchActive NOTIFY searchChanged)
+    // Debounce pending or request out.
+    Q_PROPERTY(bool searchBusy READ searchBusy NOTIFY searchChanged)
 
     // --- Client-side OpenPGP decryption ---------------------------------
     //
@@ -132,6 +145,11 @@ public:
     QVariantList keywordTabs() const; // [{name, count}, ...] -- "All" NOT included, see Task 38
     bool isBusy() const;
     QString lastError() const; // "" when none
+    QObject* searchModel() const { return m_searchModel; }
+    QString searchQuery() const { return m_searchQuery; }
+    bool searchActive() const;
+    bool searchBusy() const;
+    static constexpr int kSearchDebounceMs = 300;
     bool decryptBusy() const { return m_decryptInFlight; }
     // Protected fields answer as though nothing is held once the account has been
     // replaced. See decryptedStillOurs().
@@ -176,7 +194,7 @@ public slots:
     void markSpam(const QStringList& messageIds);
     void moveEmails(const QStringList& messageIds, const QString& targetFolder);
     // Optimistic: the cache and list change now, and roll back if the relay
-    // refuses. Messages already in the requested state, unknown, or with a
+    // refuses. An unsynced search hit changes in memory only. Messages already in the requested state, unknown, or with a
     // change still in flight are skipped, so a repeat call sends nothing.
     // markRead is incidental to opening a message and fails silently (the row
     // simply turns unread again); markUnread is the user's request and
@@ -246,7 +264,22 @@ public slots:
     // decrypted message for whoever picks the machine up next.
     Q_INVOKABLE void forgetDecrypted();
     Q_INVOKABLE QVariantMap reopenDecryptedDraft(const QString& token);
+    // Plaintext counterpart for a Drafts row (cached, or a search hit whose
+    // body is loaded). Same session shape, so Compose treats both alike.
+    // Saving or sending through the session deletes the source draft once the
+    // new copy has landed; see settleDraftReplacement().
+    Q_INVOKABLE QVariantMap reopenDraft(const QString& folder, const QString& messageId);
     Q_INVOKABLE void releaseDraft(const QString& token);
+
+    // Debounced by kSearchDebounceMs. Text the relay would refuse (blank, or
+    // over its byte limit) clears the results instead of searching. Ignored
+    // while the app is locked; a search the lock held back runs on unlock.
+    Q_INVOKABLE void setSearchQuery(const QString& query);
+    Q_INVOKABLE void clearSearch();
+    // Fetches a search hit's body (GET /api/mail/body) into memory, then
+    // emits searchBodyLoaded. No-op for cached rows, loaded hits, and while
+    // the app is locked.
+    Q_INVOKABLE void loadSearchBody(const QString& folder, const QString& messageId);
 
 public:
     // What sendClientEncrypted() does off-thread, as one value so the GUI
@@ -433,6 +466,8 @@ public slots:
 signals:
     void currentFolderChanged();
     void selectedKeywordChanged();
+    void searchChanged();
+    void searchBodyLoaded(const QString& folder, const QString& messageId);
     void keywordTabsChanged();
     void isBusyChanged();
     void lastErrorChanged();
@@ -550,6 +585,24 @@ signals:
 
 private:
     friend class MailDecryptionTest; // Inspect retained plaintext, not access-filtered getters.
+    // Cache first; then a search hit, if the search still belongs to this account.
+    std::optional<Email> lookupEmail(const QString& folder, const QString& messageId) const;
+    QVariantMap emailMap(const Email& email) const;
+    void startSearch();
+    void applySearchQuery(const QString& query); // setSearchQuery minus the lock check
+    void resetSearchResults();
+    // Source draft of a reopened session, captured when a save/send is
+    // dispatched and settled when it finishes (ok: delete it; else forget).
+    struct DraftReplacement
+    {
+        PairingIdentity identity;
+        QString messageId;
+        QString token;
+        bool encrypted = false;
+    };
+    void captureDraftReplacement(quint64 token, const QString& draftToken);
+    void settleDraftReplacement(quint64 token, bool ok);
+    QHash<quint64, DraftReplacement> m_draftReplacements;
     void applyFilter(); // recomputes m_model from m_currentFolderEmails + m_selectedKeyword
     // Re-reads the current folder's cache into the model. Shared by
     // selectFolderInternal() and the refresh completion.
@@ -633,7 +686,7 @@ private:
     void finishAction(const QString& action, const QStringList& messageIds, const QString& mailbox,
                       const ActionResult& result);
     void setReadState(const QString& folder, const QStringList& messageIds, bool read);
-    void applyCachedStatus(const QString& folder, const QString& messageId, const QString& status);
+    void applyStatus(const QString& folder, const QString& messageId, const QString& status);
     void listFolderTree(const RelayRequestPlan& plan, const QString& parent, int depth);
     int m_folderListsInFlight = 0;
     // Shared body of createFolder/renameFolder/deleteFolder -- see the .cpp.
@@ -693,6 +746,20 @@ private:
     QSet<QString> m_readStateInFlight; // folder + '\n' + messageId
     QString m_currentFolder = QStringLiteral("INBOX");
     QString m_selectedKeyword;
+
+    EmailListModel* m_searchModel; // owned, parented to this
+    QTimer* m_searchDebounce;      // owned, parented to this
+    QString m_searchQuery;
+    QString m_searchFolder;         // mailbox the held results came from
+    PairingIdentity m_searchIdentity;
+    QVector<Email> m_searchResults; // body nullopt until loadSearchBody lands
+    QSet<QString> m_searchBodyInFlight;
+    QSet<QString> m_searchBodyFailed;
+    // Bumped by every query or folder change; a reply from an older one is dropped.
+    quint64 m_searchGeneration = 0;
+    bool m_searchInFlight = false;
+    bool m_searchPending = false;
+    bool m_searchDeferred = false; // a search the lock held back; sent on unlock
     int m_busyDepth = 0;
     // A refresh is out on the executor thread. Coalescing state, NOT a
     // re-entrancy guard: the request cannot re-enter this object any more.
@@ -759,6 +826,9 @@ private:
     PairingIdentity m_draftIdentity;
     QString m_draftToken;
     QVector<MimeAttachment> m_draftAttachments;
+    // Only an encrypted session forces encrypted sending and saving.
+    bool m_draftEncrypted = false;
+    QString m_draftSourceId; // Drafts message the session replaces; empty once replaced
     QString m_decryptedFolder;
     quint64 m_decryptGeneration = 0;
     bool m_appLocked = false;

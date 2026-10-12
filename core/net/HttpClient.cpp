@@ -288,9 +288,12 @@ QUrl HttpClient::urlWithQuery(const QUrl& url, const QList<QPair<QString, QStrin
     if (query.isEmpty())
         return url;
 
+    // Values are literal text. addQueryItem() alone leaves "+" bare (servers
+    // decode it as a space) and passes "%XX" through as already-encoded.
+    const auto encode = [](const QString& text) { return QString::fromLatin1(QUrl::toPercentEncoding(text)); };
     QUrlQuery urlQuery(url);
     for (const auto& item : query)
-        urlQuery.addQueryItem(item.first, item.second);
+        urlQuery.addQueryItem(encode(item.first), encode(item.second));
 
     QUrl result = url;
     result.setQuery(urlQuery);

@@ -176,6 +176,27 @@ struct DownloadAttachmentResult
     QString filename;
 };
 
+// GET /api/mail/search: {results: [inboxEmail...]}. Metadata only -- the
+// handler sets no body, preview, attachment or PGP fields. Each row's folder
+// is the mailbox searched; the relay searches exactly one.
+struct MailSearchResult
+{
+    std::optional<NetworkError> error;
+    QString detail;
+    QVector<Email> results;
+};
+
+// GET /api/mail/body: {body, bodyMode} for one message. Empty body with empty
+// mode is the server's "no readable body here" (a PGP envelope, or a mail with
+// attachments only); see clientBody in the relay's imap adapter.
+struct MailBodyResult
+{
+    std::optional<NetworkError> error;
+    QString detail;
+    QString body;
+    QString bodyMode;
+};
+
 // Inbox fetch, inbox action, mail send, and attachment list/download calls
 // against the Relay backend's /api/inbox, /api/inbox/actions, /api/mail/
 // send, /api/mail/attachments, and /api/mail/attachment endpoints. sub/hash
@@ -237,6 +258,21 @@ public:
 
     DownloadAttachmentResult downloadAttachment(const QUrl& serverBaseUrl, const RelayAuth& auth,
                                                  const QString& mailbox, const QString& messageId, int index) const;
+
+    // Relay bounds (handleMailSearch, mailbox.Client.SearchMessages): q must
+    // have a non-space character and at most 4096 bytes; limit is capped at
+    // 200. Out-of-range queries are refused here without a request.
+    static constexpr int kMaxSearchResults = 200;
+    static constexpr int kMaxSearchQueryBytes = 4096;
+    static bool isSearchableQuery(const QString& query);
+
+    // field "all" (subject, sender and body text). Rows past
+    // kMaxSearchResults are dropped even if the relay sends more.
+    MailSearchResult searchMail(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& query,
+                                 const QString& mailbox) const;
+
+    MailBodyResult fetchBody(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& mailbox,
+                              const QString& messageId) const;
 
 private:
     HttpClient& m_httpClient;

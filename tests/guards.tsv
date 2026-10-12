@@ -353,7 +353,7 @@ core/pgp/PgpSendPlanner.cpp	        ? ownKeyFingerprint(message.from, homeDirect
 app/mail/MailController.cpp	    if (token == m_draftToken && m_pairingStore.stillCurrent(m_draftIdentity))	    if (token == m_draftToken)	MailDecryptionTest:reopenedDraftPreservesRecipientsAndMemoryAttachments
 app/mail/MailController.cpp	        releaseDraft(m_draftToken);	        /* neutralized restored-draft lock revocation */	MailDecryptionTest:reopenedDraftPreservesRecipientsAndMemoryAttachments
 app/mail/MailController.cpp	            if (restored && !client) {	            if (false) {	MailDecryptionTest:reopenedDraftPreservesRecipientsAndMemoryAttachments
-app/mail/MailController.cpp	    if (!draftToken.isEmpty())	    if (false)	MailDecryptionTest:reopenedDraftPreservesRecipientsAndMemoryAttachments
+app/mail/MailController.cpp	    if (!draftToken.isEmpty() && (draftToken != m_draftToken || m_draftEncrypted))	    if (false)	MailDecryptionTest:reopenedDraftPreservesRecipientsAndMemoryAttachments
 app/qml/components/RichBodyEditor.qml	            + JSON.stringify(html) + "; clean(template.content); document.body.replaceChildren(template.content); })();"	            + JSON.stringify(html) + "; document.body.replaceChildren(template.content); })();"	ProtectedImageHandlerTest:restoredDraftHtmlIsCleanedBeforeEnteringTheEditor
 
 # Explicit v3 framing, size admission and authenticated plaintext release.
@@ -443,3 +443,21 @@ app/qml/components/MoveToFolderDialog.qml	        if (!root.isOpen || AppLock.lo
 # show the previous account's subjects after a replacement.
 app/qml/components/ConnectionStatus.qml	        function onPairingChanged() { root.reloadHistory() }	        function onPairingChanged() { }	QmlTests:ConnectionStatus::test_replacing_the_account_clears_history_while_shown
 app/qml/components/ConnectionStatus.qml	        root.history = [] // cleared first, so no previous-account row survives a reload that supplies nothing	        // not cleared	QmlTests:ConnectionStatus::test_a_pairing_change_clears_history_even_without_a_reload
+
+# --- a locked app neither edits nor sends a search --------------------------
+#
+# Find is a window shortcut and fired under the PIN overlay, putting the
+# keyboard in the search field: the retained query could be edited, copied and
+# searched for before unlock. The field is disabled and the PIN field takes
+# focus; the controller refuses anything else that reaches it.
+app/mail/MailController.cpp	    if (m_appLocked) // no search edit while locked	    if (false) // no search edit while locked	MailControllerTest:aLockedAppNeitherEditsNorSendsASearchUntilUnlocked
+app/mail/MailController.cpp	    if (m_appLocked) { // no search request while locked	    if (false) { // no search request while locked	MailControllerTest:aLockedAppNeitherEditsNorSendsASearchUntilUnlocked
+app/mail/MailController.cpp	    if (m_appLocked) // no search body fetch while locked	    if (false) // no search body fetch while locked	MailControllerTest:aLockedAppNeitherEditsNorSendsASearchUntilUnlocked
+app/qml/components/MailSearchField.qml	    enabled: !AppLock.locked	    enabled: true	QmlTests:SearchLock::test_locked_search_takes_no_focus_edit_or_request
+app/qml/components/MailSearchField.qml	        enabled: field.findShortcutEnabled && !AppLock.locked	        enabled: field.findShortcutEnabled	QmlTests:SearchLock::test_locked_search_takes_no_focus_edit_or_request
+app/qml/pages/Unlock.qml	                inputField.forceActiveFocus()	                /* neutralized PIN focus */	QmlTests:SearchLock::test_locked_search_takes_no_focus_edit_or_request
+
+# --- search hits belong to the account that searched -------------------------
+#
+# Held in memory beside the cache; a replaced pairing must not open them.
+app/mail/MailController.cpp	    if (folder != m_searchFolder || !m_pairingStore.stillCurrent(m_searchIdentity))	    if (folder != m_searchFolder)	MailControllerTest:aSearchHitOpensFromMemoryAndNeverReachesTheCache

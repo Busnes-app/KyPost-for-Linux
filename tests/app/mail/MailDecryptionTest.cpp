@@ -351,12 +351,25 @@ void MailDecryptionTest::reopenedDraftPreservesRecipientsAndMemoryAttachments()
                                {"suggestedUserIDs", QJsonArray{"test@example.com"}}};
     fake.setResponse(httpResponse(200, "OK", QJsonDocument(bootstrap).toJson()));
     fake.setResponseForPath("/api/mail/draft", httpResponse(200, "OK", R"({"ok":true})"));
+    fake.setResponseForPath("/api/inbox/actions",
+        httpResponse(200, "OK", R"({"ok":true,"action":"delete","processed":1,"failed":[],"targetMailbox":""})"));
+    const auto requestTo = [&fake](const QByteArray& start) {
+        for (const QByteArray& r : fake.receivedRequests())
+            if (r.startsWith(start))
+                return r;
+        return QByteArray();
+    };
     QSignalSpy saved(h.controller.get(), &MailController::draftSaveCompleted);
     QVERIFY(h.controller->saveDraft(seed.value("to").toString(), seed.value("cc").toString(), seed.value("bcc").toString(),
         message.subject, message.body, paths, session) != 0);
     QTRY_COMPARE_WITH_TIMEOUT(saved.size(), 1, 15000);
     QVERIFY2(saved.last()[1].toBool(), qPrintable(h.controller->lastError()));
-    const auto request = fake.receivedRequests().last();
+    const auto request = requestTo("POST /api/mail/draft");
+    // The source draft is replaced once the encrypted copy has landed. Its
+    // attachments travelled inside the ciphertext, so no listing is needed.
+    QTRY_VERIFY_WITH_TIMEOUT(!requestTo("POST /api/inbox/actions").isEmpty(), 15000);
+    QVERIFY(requestTo("POST /api/inbox/actions").contains("\"messageIds\":[\"5\"]"));
+    QVERIFY(requestTo("GET /api/mail/attachments").isEmpty());
     QVERIFY(!request.contains("restored-private"));
     QVERIFY(!request.contains("private.bin"));
     const auto json = QJsonDocument::fromJson(request.mid(request.indexOf("\r\n\r\n") + 4)).object();
@@ -386,7 +399,7 @@ void MailDecryptionTest::reopenedDraftPreservesRecipientsAndMemoryAttachments()
                                   message.body, paths, false, false, session) != 0);
     QTRY_COMPARE_WITH_TIMEOUT(sent.size(), 1, 15000);
     QVERIFY2(sent.last()[1].toBool(), qPrintable(h.controller->lastError()));
-    const auto deliveryRequest = fake.receivedRequests().last();
+    const auto deliveryRequest = requestTo("POST /api/mail/send-pgp");
     QVERIFY(deliveryRequest.startsWith("POST /api/mail/send-pgp"));
     QVERIFY(!deliveryRequest.contains("restored-private"));
     const auto deliveryJson = QJsonDocument::fromJson(deliveryRequest.mid(deliveryRequest.indexOf("\r\n\r\n") + 4)).object();

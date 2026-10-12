@@ -7,6 +7,8 @@
 #include <QJsonObject>
 #include <QJsonValue>
 
+#include <algorithm>
+
 namespace {
 
 // Maps one wire inbox item -- {messageId, sender, sentTo, cc, bcc, subject,
@@ -443,5 +445,95 @@ DownloadAttachmentResult RelayMailSource::downloadAttachment(const QUrl& serverB
         else if (header.first.compare(QStringLiteral("Content-Disposition"), Qt::CaseInsensitive) == 0)
             out.filename = filenameFromContentDisposition(header.second);
     }
+    return out;
+}
+
+bool RelayMailSource::isSearchableQuery(const QString& query)
+{
+    return !query.trimmed().isEmpty() && query.toUtf8().size() <= kMaxSearchQueryBytes;
+}
+
+MailSearchResult RelayMailSource::searchMail(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& query,
+                                              const QString& mailbox) const
+{
+    MailSearchResult out;
+    if (!isSearchableQuery(query)) {
+        out.error = NetworkError::InvalidUrl; // no request could be built
+        out.detail = QStringLiteral("Search query is empty or too long");
+        return out;
+    }
+
+    const QList<QPair<QString, QString>> params = {
+        { QStringLiteral("q"), query },
+        { QStringLiteral("field"), QStringLiteral("all") },
+        { QStringLiteral("mailbox"), mailbox },
+        { QStringLiteral("limit"), QString::number(kMaxSearchResults) },
+    };
+    const HttpClient::HttpResult result = m_httpClient.get(
+        joinUrlPath(serverBaseUrl, QStringLiteral("api/mail/search")), params, auth.headerItems());
+
+    if (result.error.has_value()) {
+        out.error = result.error;
+        out.detail = !result.detail.isEmpty()
+            ? result.detail
+            : QStringLiteral("Search failed with status %1").arg(result.statusCode);
+        return out;
+    }
+
+    QString errorString;
+    const std::optional<QJsonObject> decoded = decodeJsonObject(result.body, &errorString);
+    if (!decoded.has_value()) {
+        out.error = NetworkError::Decoding;
+        out.detail = QStringLiteral("Failed to decode search response: %1").arg(errorString);
+        return out;
+    }
+
+    const QJsonArray rows = decoded->value(QStringLiteral("results")).toArray();
+    out.results.reserve(std::min<qsizetype>(rows.size(), kMaxSearchResults));
+    for (const QJsonValue& value : rows) {
+        if (out.results.size() == kMaxSearchResults)
+            break;
+        Email email = inboxItemFromJson(value.toObject()).email;
+        if (email.messageId.isEmpty())
+            continue;
+        email.body.reset(); // never on the wire here; absent means "not fetched"
+        email.bodyMode.reset();
+        email.folder = mailbox;
+        out.results.append(email);
+    }
+    return out;
+}
+
+MailBodyResult RelayMailSource::fetchBody(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& mailbox,
+                                           const QString& messageId) const
+{
+    const QList<QPair<QString, QString>> params = {
+        { QStringLiteral("mailbox"), mailbox },
+        { QStringLiteral("messageId"), messageId },
+    };
+    // One message, bounded like one attachment: the relay refuses mail above
+    // its own in-memory limit, which is below this.
+    const HttpClient::HttpResult result = m_httpClient.get(
+        joinUrlPath(serverBaseUrl, QStringLiteral("api/mail/body")), params, auth.headerItems(), {},
+        HttpClient::kMaxAttachmentResponseBytes);
+
+    MailBodyResult out;
+    if (result.error.has_value()) {
+        out.error = result.error;
+        out.detail = !result.detail.isEmpty()
+            ? result.detail
+            : QStringLiteral("Message fetch failed with status %1").arg(result.statusCode);
+        return out;
+    }
+
+    QString errorString;
+    const std::optional<QJsonObject> decoded = decodeJsonObject(result.body, &errorString);
+    if (!decoded.has_value()) {
+        out.error = NetworkError::Decoding;
+        out.detail = QStringLiteral("Failed to decode message response: %1").arg(errorString);
+        return out;
+    }
+    out.body = decoded->value(QStringLiteral("body")).toString();
+    out.bodyMode = decoded->value(QStringLiteral("bodyMode")).toString();
     return out;
 }

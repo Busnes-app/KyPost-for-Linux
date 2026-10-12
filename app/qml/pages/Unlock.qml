@@ -104,6 +104,7 @@ Item {
 
         ThemedTextField {
             id: pinField
+            objectName: "pinField"
             Layout.fillWidth: true
             enabled: !root.lockedOut && !AppLock.storeUnavailable
             placeholderText: i18n("PIN")
@@ -114,6 +115,9 @@ Item {
             Component.onCompleted: {
                 inputField.echoMode = TextInput.Password
                 inputField.inputMethodHints = Qt.ImhDigitsOnly
+                // Keys typed after the lock land here, never in whatever had
+                // focus underneath.
+                inputField.forceActiveFocus()
             }
         }
 

@@ -266,9 +266,15 @@ Kirigami.ApplicationWindow {
     // Small, non-exhaustive set per the task-39 brief ("don't feel obligated
     // to replicate Mac's full shortcut set") -- refresh-current-section and
     // new-compose only. Ctrl+Shift+C is Mac's own Compose shortcut, added
-    // alongside the more standard Ctrl+N rather than instead of it.
+    // alongside the more standard Ctrl+N rather than instead of it. Find
+    // lives in MailSearchField.
+    //
+    // All of them are off while locked. A window shortcut fires whatever has
+    // focus, so the PIN overlay does not stop them: Ctrl+N would replace an
+    // open composition and put focus in the editor underneath it.
     Shortcut {
         sequence: "Ctrl+R"
+        enabled: !AppLock.locked
         onActivated: {
             if (root.currentSection === "mail")
                 MailApp.refresh()
@@ -278,10 +284,12 @@ Kirigami.ApplicationWindow {
     }
     Shortcut {
         sequence: "Ctrl+N"
+        enabled: !AppLock.locked
         onActivated: root.openCompose("", "", "")
     }
     Shortcut {
         sequence: "Ctrl+Shift+C"
+        enabled: !AppLock.locked
         onActivated: root.openCompose("", "", "")
     }
 
@@ -1052,6 +1060,15 @@ Kirigami.ApplicationWindow {
                         }
                     }
 
+                    // ---- search (GET /api/mail/search) ----------------------
+                    MailSearchField {
+                        id: mailSearchField
+                        objectName: "mailSearchField"
+                        Layout.fillWidth: true
+                        findShortcutEnabled: root.currentSection === "mail"
+                        placeholderText: i18n("Search %1", root.folderDisplayName(root.currentFolder))
+                    }
+
                     // ---- keyword pill row ---------------------------------
                     // Ported from MobileRoot.qml's keyword pill row: "All" is
                     // hardcoded first and always present (not part of
@@ -1062,6 +1079,7 @@ Kirigami.ApplicationWindow {
                     // header as keywords accumulate.
                     Flickable {
                         Layout.fillWidth: true
+                        visible: !MailApp.searchActive // keywords filter the folder, not search results
                         // +10 reserves dedicated space below the pills for
                         // the horizontal scrollbar thumb (4px thick + a
                         // little breathing room) -- an overlay scrollbar
@@ -1111,7 +1129,8 @@ Kirigami.ApplicationWindow {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         visible: emailListView.count === 0
-                        text: i18n("No emails yet — tap Refresh.")
+                        text: !MailApp.searchActive ? i18n("No emails yet — tap Refresh.")
+                            : MailApp.searchBusy ? i18n("Searching…") : i18n("No matches in this folder.")
                     }
 
                     ListView {
@@ -1121,7 +1140,7 @@ Kirigami.ApplicationWindow {
                         visible: count > 0
                         clip: true
                         spacing: 4
-                        model: MailApp.emailModel
+                        model: MailApp.searchActive ? MailApp.searchModel : MailApp.emailModel
                         ScrollBar.vertical: ThemedScrollBar {}
 
                         delegate: Rectangle {

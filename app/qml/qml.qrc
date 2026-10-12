@@ -19,6 +19,7 @@
     <file>components/MutedHint.qml</file>
     <file>components/UpdateNotice.qml</file>
     <file>components/ThemedTextField.qml</file>
+    <file>components/MailSearchField.qml</file>
     <file>components/RepeaterField.qml</file>
     <file>components/TokenField.qml</file>
     <file>components/AutocompleteDropdown.qml</file>
