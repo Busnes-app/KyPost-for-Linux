@@ -1155,6 +1155,13 @@ worse than no comment: the next reader stops looking.
   in 14 of 20 mobile launches ("Type Kirigami.GlobalDrawer unavailable"),
   host and Flatpak runtime alike, depending on load order. Measured
   2026-10-11; `QmlPropertyLint` gate 3 now rejects versioned Qt imports.
+- **Mobile pages must be `ThemedPage`, not `Kirigami.Page`.** Kirigami paints
+  pages and title bars from the platform palette, and a Window-level
+  `Kirigami.Theme` override does not reach items, so the app's light-on-dark
+  text landed on light grey (found 2026-10-12). `components/ThemedPage.qml`
+  paints the page and its ToolBar-style header; the default mobile breadcrumb
+  bar has no theme hook, hence `globalToolBar.style: ToolBar` in MobileRoot.
+  The GlobalDrawer still uses the platform palette. `tst_MobileFit` guards it.
 - **CI Pipline Failes** Before commiting any change check the CI pipline code.
   EVERY Push to main not ment to fix the CI pipeline has broken the CI pipeline.
 

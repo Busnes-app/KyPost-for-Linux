@@ -22,6 +22,12 @@ Kirigami.ApplicationWindow {
     visible: true
     title: "KyPost" // product name -- not translated, same as Firefox/Thunderbird's own names
 
+    color: Theme.bg // under the pages, as on DesktopRoot
+    // Per-page title bars, which ThemedPage can paint; the default mobile
+    // breadcrumb bar belongs to PageRow and has no theme hook.
+    pageStack.globalToolBar.style: Kirigami.ApplicationHeaderStyle.ToolBar
+    pageStack.globalToolBar.showNavigationButtons: Kirigami.ApplicationHeaderStyle.ShowBackButton
+
     // ---- bottom tab bar selection state --------------------------------
     // "inbox" | "contacts" -- Compose is action-only and deliberately never
     // written here (see footer below / task-38 brief's exact semantics).
@@ -238,7 +244,7 @@ Kirigami.ApplicationWindow {
 
     Component {
         id: emailDetailPageComponent
-        Kirigami.Page {
+        ThemedPage {
             id: emailDetailPage
             objectName: "emailDetailPage"
             title: i18nc("page title for viewing a single email message", "Email")
@@ -269,7 +275,7 @@ Kirigami.ApplicationWindow {
 
     Component {
         id: composePageComponent
-        Kirigami.Page {
+        ThemedPage {
             id: composePage
             objectName: "composePage"
             title: i18n("Compose")
@@ -291,7 +297,7 @@ Kirigami.ApplicationWindow {
 
     Component {
         id: contactsListPageComponent
-        Kirigami.Page {
+        ThemedPage {
             id: contactsListPage
             objectName: "contactsListPage"
             title: i18n("Contacts")
@@ -313,7 +319,7 @@ Kirigami.ApplicationWindow {
 
     Component {
         id: contactDetailPageComponent
-        Kirigami.Page {
+        ThemedPage {
             id: contactDetailPage
             objectName: "contactDetailPage"
             title: i18n("Contact")
@@ -338,7 +344,7 @@ Kirigami.ApplicationWindow {
 
     Component {
         id: pgpMyQrCodePageComponent
-        Kirigami.Page {
+        ThemedPage {
             objectName: "pgpMyQrCodePage"
             title: i18n("My PGP QR Code")
 
@@ -351,7 +357,7 @@ Kirigami.ApplicationWindow {
 
     Component {
         id: pgpScanContactKeyPageComponent
-        Kirigami.Page {
+        ThemedPage {
             id: pgpScanContactKeyPage
             objectName: "pgpScanContactKeyPage"
             title: i18n("Scan Contact Key")
@@ -388,7 +394,7 @@ Kirigami.ApplicationWindow {
 
     Component {
         id: pairingPageComponent
-        Kirigami.Page {
+        ThemedPage {
             id: pairingPage
             objectName: "pairingPage"
             title: i18n("Pair Device")
@@ -407,7 +413,7 @@ Kirigami.ApplicationWindow {
     // same as those.
     Component {
         id: settingsPageComponent
-        Kirigami.Page {
+        ThemedPage {
             id: settingsPage
             property int initialPane: 5
             objectName: "settingsPage"
@@ -494,7 +500,7 @@ Kirigami.ApplicationWindow {
     }
 
     // ---- Inbox: pageStack.initialPage -----------------------------------
-    pageStack.initialPage: Kirigami.Page {
+    pageStack.initialPage: ThemedPage {
         id: inboxPage
         objectName: "inboxPage"
         title: i18n("Inbox")
@@ -544,23 +550,29 @@ Kirigami.ApplicationWindow {
             spacing: 10
 
             // ---- folder picker + refresh header -----------------------
+            // The folder button takes what is left and elides; text buttons
+            // here overflowed a 360 px phone and widened the whole page.
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
 
                 GhostButton {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
                     text: i18n("Folder: %1", inboxPage.currentFolderDisplayName())
                     onClicked: folderPopup.open()
                 }
-                Item { Layout.fillWidth: true }
                 BusyIndicator {
                     running: MailApp.isBusy
                     visible: MailApp.isBusy
                     implicitWidth: 28
                     implicitHeight: 28
                 }
-                GhostButton {
-                    text: i18n("Refresh")
+                IconButton {
+                    implicitWidth: 44
+                    implicitHeight: 44
+                    icon: "view-refresh"
+                    tooltip: i18n("Refresh")
                     enabled: !MailApp.isBusy
                     onClicked: MailApp.refresh()
                 }

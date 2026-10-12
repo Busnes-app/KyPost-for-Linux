@@ -68,6 +68,11 @@ Rectangle {
         onTapped: root.clicked()
     }
 
+    // Icon-only, so the tooltip is the only name a screen reader can speak.
+    Accessible.role: Accessible.Button
+    Accessible.name: root.tooltip
+    Accessible.onPressAction: if (root.enabled) root.clicked()
+
     ToolTip.visible: root.tooltip !== "" && hoverHandler.hovered
     ToolTip.text: root.tooltip
     ToolTip.delay: 500

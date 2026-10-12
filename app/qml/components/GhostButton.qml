@@ -43,6 +43,8 @@ Rectangle {
     Text {
         id: label
         anchors.centerIn: parent
+        width: Math.min(implicitWidth, root.width - root.horizontalPadding * 2)
+        elide: Text.ElideRight
         textFormat: Text.PlainText
         text: root.text
         color: Theme.inkStrong

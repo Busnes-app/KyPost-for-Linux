@@ -192,6 +192,8 @@ int main(int argc, char* argv[])
     app.setApplicationName(QStringLiteral("mail"));
     app.setOrganizationDomain(QStringLiteral("kysecurity.com"));
     app.setDesktopFileName(QStringLiteral("com.kysecurity.mail"));
+    // Icon-only buttons need named icons outside a KDE session too.
+    QIcon::setFallbackThemeName(QStringLiteral("breeze"));
     app.setWindowIcon(QIcon::fromTheme(QStringLiteral("com.kysecurity.mail")));
 
     // Task 48: KI18n translation domain. Per KLocalizedString::
