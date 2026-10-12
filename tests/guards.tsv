@@ -443,3 +443,8 @@ app/qml/components/MoveToFolderDialog.qml	        if (!root.isOpen || AppLock.lo
 # show the previous account's subjects after a replacement.
 app/qml/components/ConnectionStatus.qml	        function onPairingChanged() { root.reloadHistory() }	        function onPairingChanged() { }	QmlTests:ConnectionStatus::test_replacing_the_account_clears_history_while_shown
 app/qml/components/ConnectionStatus.qml	        root.history = [] // cleared first, so no previous-account row survives a reload that supplies nothing	        // not cleared	QmlTests:ConnectionStatus::test_a_pairing_change_clears_history_even_without_a_reload
+
+# --- search hits belong to the account that searched -------------------------
+#
+# Held in memory beside the cache; a replaced pairing must not open them.
+app/mail/MailController.cpp	    if (folder != m_searchFolder || !m_pairingStore.stillCurrent(m_searchIdentity))	    if (folder != m_searchFolder)	MailControllerTest:aSearchHitOpensFromMemoryAndNeverReachesTheCache

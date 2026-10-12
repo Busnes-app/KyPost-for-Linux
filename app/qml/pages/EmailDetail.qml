@@ -180,6 +180,11 @@ Item {
                 root.unread = unread
         }
 
+        function onSearchBodyLoaded(folder, messageId) {
+            if (folder === root.folder && messageId === root.messageId)
+                root.reload()
+        }
+
         function onAttachmentsListed(mailbox, messageId, attachments) {
             if (mailbox === root.folder && messageId === root.messageId)
                 root.attachments = attachments
@@ -222,13 +227,18 @@ Item {
         }
         root.email = MailApp.findByMessageId(root.messageId, root.folder)
         root.unread = root.email.status === "unread"
+        // A search hit this device has not synced: its body arrives later
+        // through onSearchBodyLoaded.
+        if (root.email.bodyPending)
+            MailApp.loadSearchBody(root.folder, root.messageId)
         // Cleared, then refilled by onAttachmentsListed below. The list is
         // fetched off-thread now, so it cannot be assigned here -- and
         // leaving the previous message's attachments up while the new
         // message's are in flight would offer downloads that belong to the
         // mail the user just navigated away from.
         root.attachments = []
-        if (root.email && root.email.hasAttachments && root.email.pgpState !== 1)
+        // Search rows carry no attachment hint, so ask.
+        if (root.email && (root.email.hasAttachments || root.email.searchOnly) && root.email.pgpState !== 1)
             MailApp.listAttachments(root.folder, root.messageId)
         webViewLoader.applyContent()
     }
@@ -583,6 +593,15 @@ Item {
             textFormat: Text.PlainText
             text: i18n("That link uses an address type KyPost will not open (%1:). It was blocked.",
                        root.blockedLinkScheme)
+        }
+
+        MutedHint {
+            objectName: "bodyNotice"
+            Layout.fillWidth: true
+            visible: !!root.email.bodyNotice
+            wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
+            text: root.email.bodyNotice || ""
         }
 
         Text {

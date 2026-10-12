@@ -281,6 +281,11 @@ Kirigami.ApplicationWindow {
         onActivated: root.openCompose("", "", "")
     }
     Shortcut {
+        sequences: [StandardKey.Find]
+        enabled: root.currentSection === "mail"
+        onActivated: mailSearchField.inputField.forceActiveFocus()
+    }
+    Shortcut {
         sequence: "Ctrl+Shift+C"
         onActivated: root.openCompose("", "", "")
     }
@@ -1052,6 +1057,32 @@ Kirigami.ApplicationWindow {
                         }
                     }
 
+                    // ---- search (GET /api/mail/search) ----------------------
+                    // Results replace the list while there is a query;
+                    // Escape or emptying the field returns to the folder.
+                    ThemedTextField {
+                        id: mailSearchField
+                        objectName: "mailSearchField"
+                        Layout.fillWidth: true
+                        placeholderText: i18n("Search %1", root.folderDisplayName(root.currentFolder))
+                        Connections {
+                            target: mailSearchField.inputField
+                            function onTextEdited() { MailApp.setSearchQuery(mailSearchField.text) }
+                        }
+                        Shortcut {
+                            sequence: "Esc"
+                            enabled: mailSearchField.inputField.activeFocus
+                            onActivated: MailApp.clearSearch()
+                        }
+                        Connections {
+                            target: MailApp
+                            function onSearchChanged() {
+                                if (mailSearchField.text !== MailApp.searchQuery)
+                                    mailSearchField.text = MailApp.searchQuery
+                            }
+                        }
+                    }
+
                     // ---- keyword pill row ---------------------------------
                     // Ported from MobileRoot.qml's keyword pill row: "All" is
                     // hardcoded first and always present (not part of
@@ -1062,6 +1093,7 @@ Kirigami.ApplicationWindow {
                     // header as keywords accumulate.
                     Flickable {
                         Layout.fillWidth: true
+                        visible: !MailApp.searchActive // keywords filter the folder, not search results
                         // +10 reserves dedicated space below the pills for
                         // the horizontal scrollbar thumb (4px thick + a
                         // little breathing room) -- an overlay scrollbar
@@ -1111,7 +1143,8 @@ Kirigami.ApplicationWindow {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         visible: emailListView.count === 0
-                        text: i18n("No emails yet — tap Refresh.")
+                        text: !MailApp.searchActive ? i18n("No emails yet — tap Refresh.")
+                            : MailApp.searchBusy ? i18n("Searching…") : i18n("No matches in this folder.")
                     }
 
                     ListView {
@@ -1121,7 +1154,7 @@ Kirigami.ApplicationWindow {
                         visible: count > 0
                         clip: true
                         spacing: 4
-                        model: MailApp.emailModel
+                        model: MailApp.searchActive ? MailApp.searchModel : MailApp.emailModel
                         ScrollBar.vertical: ThemedScrollBar {}
 
                         delegate: Rectangle {

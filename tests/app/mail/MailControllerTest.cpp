@@ -90,6 +90,12 @@ private slots:
     void aReadStateReplyForAReplacedAccountRollsNothingBack();
     void aLockedAppChangesNoReadStateUntilUnlocked();
 
+    // Server search (L6).
+    void searchIsDebouncedAndSendsOnlyTheLastQuery();
+    void aStaleSearchReplyIsNeverShown();
+    void aSearchHitOpensFromMemoryAndNeverReachesTheCache();
+    void aFolderSwitchReRunsTheSearchThere();
+
 private:
     static void savePairing(PairingStore& pairingStore, quint16 port);
     // downloadAttachment() dispatches and returns; the answer arrives as
@@ -2642,9 +2648,9 @@ void MailControllerTest::aMoveThatLandsAfterAFolderSwitchLeavesTheNewFolderAlone
 void MailControllerTest::refreshFoldersWalksTheArchiveTree()
 {
     FakeRelayServer fake(folderListing("", "[]"));
-    fake.setResponseForPath("parent=Archive/a/b ",
+    fake.setResponseForPath("parent=Archive%2Fa%2Fb ",
                             folderListing("Archive/a/b", "[]"));
-    fake.setResponseForPath("parent=Archive/a ",
+    fake.setResponseForPath("parent=Archive%2Fa ",
                             folderListing("Archive/a", R"([{"path":"Archive/a/b","deletable":true}])"));
     fake.setResponseForPath("parent=Archive ",
                             folderListing("Archive", R"([{"path":"Archive/a","deletable":true}])"));
@@ -2762,6 +2768,136 @@ void MailControllerTest::aLockedAppSendsNoMailboxAction()
     QCOMPARE(doneSpy.at(0).at(2).toBool(), true);
     QVERIFY(fake.connectionCount() > 0);
     QVERIFY2(fake.receivedRequests().last().contains("\"archive\""), fake.receivedRequests().last().constData());
+}
+
+namespace {
+
+QByteArray searchReply(const char* id, const char* subject)
+{
+    return httpResponse(200, "OK", QByteArray(R"({"results":[{"messageId":")") + id
+                                       + R"(","sender":"x@example.com","subject":")" + subject
+                                       + R"(","status":"read","atUtc":"2026-07-03T00:00:00Z"}]})");
+}
+
+int requestsMatching(const FakeRelayServer& fake, const QByteArray& needle)
+{
+    int count = 0;
+    for (const QByteArray& request : fake.receivedRequests())
+        count += request.contains(needle) ? 1 : 0;
+    return count;
+}
+
+} // namespace
+
+void MailControllerTest::searchIsDebouncedAndSendsOnlyTheLastQuery()
+{
+    FakeRelayServer fake(searchReply("s1", "Invoice"));
+    RefreshFixture f(fake.port());
+    auto* results = qobject_cast<EmailListModel*>(f.controller.searchModel());
+
+    f.controller.setSearchQuery(QStringLiteral("i"));
+    f.controller.setSearchQuery(QStringLiteral("in"));
+    f.controller.setSearchQuery(QStringLiteral("inv"));
+    QVERIFY(f.controller.searchActive());
+    QVERIFY(f.controller.searchBusy()); // set synchronously, before any request
+    QCOMPARE(fake.connectionCount(), 0);
+
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.searchBusy(), 10000);
+    QCOMPARE(fake.receivedRequests().size(), 1);
+    QVERIFY2(fake.receivedRequest().contains("GET /api/mail/search?q=inv&"), fake.receivedRequest().constData());
+    QVERIFY(fake.receivedRequest().contains("mailbox=INBOX"));
+    QCOMPARE(results->rowCount(), 1);
+    QCOMPARE(results->emailAt(0).folder, QStringLiteral("INBOX"));
+
+    // Text the relay would refuse clears the results and sends nothing.
+    f.controller.setSearchQuery(QStringLiteral("   "));
+    QVERIFY(!f.controller.searchActive());
+    QVERIFY(!f.controller.searchBusy());
+    QCOMPARE(results->rowCount(), 0);
+    QTest::qWait(MailController::kSearchDebounceMs + 100);
+    QCOMPARE(fake.receivedRequests().size(), 1);
+}
+
+// The query changes while the first request is already out. Its reply must
+// not be painted, even briefly, under the newer query.
+void MailControllerTest::aStaleSearchReplyIsNeverShown()
+{
+    FakeRelayServer fake(httpResponse(500, "Internal Server Error", "unexpected"));
+    fake.setResponseForPath("q=first", searchReply("old", "Stale"));
+    fake.setResponseForPath("q=second", searchReply("new", "Fresh"));
+    RefreshFixture f(fake.port());
+    auto* results = qobject_cast<EmailListModel*>(f.controller.searchModel());
+
+    QStringList shown;
+    connect(results, &QAbstractItemModel::modelReset, &f.controller, [&] {
+        for (int row = 0; row < results->rowCount(); ++row)
+            shown << results->emailAt(row).subject;
+    });
+
+    f.controller.setSearchQuery(QStringLiteral("first"));
+    // The next searchChanged is startSearch() marking the request in flight.
+    bool switched = false;
+    connect(&f.controller, &MailController::searchChanged, &f.controller, [&] {
+        if (!switched) {
+            switched = true;
+            f.controller.setSearchQuery(QStringLiteral("second"));
+        }
+    });
+
+    QTRY_VERIFY_WITH_TIMEOUT(requestsMatching(fake, "q=second") == 1 && !f.controller.searchBusy(), 10000);
+    f.executor.shutdown();
+    QCOMPARE(requestsMatching(fake, "q=first"), 1); // it really went out and came back
+    QCOMPARE(shown, QStringList{ QStringLiteral("Fresh") });
+    QVERIFY(f.controller.lastError().isEmpty());
+}
+
+void MailControllerTest::aSearchHitOpensFromMemoryAndNeverReachesTheCache()
+{
+    FakeRelayServer fake(searchReply("s1", "Found"));
+    fake.setResponseForPath("/api/mail/body", httpResponse(200, "OK", R"({"body":"<p>found</p>","bodyMode":"html"})"));
+    RefreshFixture f(fake.port());
+
+    f.controller.setSearchQuery(QStringLiteral("found"));
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.searchBusy(), 10000);
+
+    QVariantMap email = f.controller.findByMessageId(QStringLiteral("s1"), QStringLiteral("INBOX"));
+    QCOMPARE(email.value(QStringLiteral("subject")).toString(), QStringLiteral("Found"));
+    QVERIFY(email.value(QStringLiteral("searchOnly")).toBool());
+    QVERIFY(email.value(QStringLiteral("bodyPending")).toBool());
+
+    QSignalSpy loaded(&f.controller, &MailController::searchBodyLoaded);
+    f.controller.loadSearchBody(QStringLiteral("INBOX"), QStringLiteral("s1"));
+    f.controller.loadSearchBody(QStringLiteral("INBOX"), QStringLiteral("s1")); // coalesced
+    QTRY_VERIFY_WITH_TIMEOUT(loaded.count() == 1, 10000);
+    QCOMPARE(requestsMatching(fake, "GET /api/mail/body?"), 1);
+
+    email = f.controller.findByMessageId(QStringLiteral("s1"), QStringLiteral("INBOX"));
+    QCOMPARE(email.value(QStringLiteral("body")).toString(), QStringLiteral("<p>found</p>"));
+    QCOMPARE(email.value(QStringLiteral("bodyMode")).toString(), QStringLiteral("html"));
+    QVERIFY(!email.value(QStringLiteral("bodyPending")).toBool());
+    QVERIFY(!f.emailDao.findById(QStringLiteral("INBOX"), QStringLiteral("s1")).has_value());
+
+    // Another account's search hits are not this account's mail.
+    QVERIFY(f.pairingStore.clear());
+    QVERIFY(f.controller.findByMessageId(QStringLiteral("s1"), QStringLiteral("INBOX")).isEmpty());
+    f.executor.shutdown();
+}
+
+void MailControllerTest::aFolderSwitchReRunsTheSearchThere()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", "{}"));
+    fake.setResponseForPath("/api/mail/search", searchReply("a1", "Archived"));
+    RefreshFixture f(fake.port());
+    auto* results = qobject_cast<EmailListModel*>(f.controller.searchModel());
+
+    f.controller.setSearchQuery(QStringLiteral("x"));
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.searchBusy(), 10000);
+    f.controller.selectFolder(QStringLiteral("Archive"));
+    QTRY_VERIFY_WITH_TIMEOUT(requestsMatching(fake, "GET /api/mail/search?") == 2 && !f.controller.searchBusy(), 10000);
+    f.executor.shutdown();
+    QCOMPARE(requestsMatching(fake, "mailbox=Archive&limit=200"), 1);
+    QCOMPARE(results->rowCount(), 1);
+    QCOMPARE(results->emailAt(0).folder, QStringLiteral("Archive"));
 }
 
 QTEST_GUILESS_MAIN(MailControllerTest)

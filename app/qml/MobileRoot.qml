@@ -569,12 +569,57 @@ Kirigami.ApplicationWindow {
                     implicitHeight: 28
                 }
                 IconButton {
+                    objectName: "mobileSearchToggle"
+                    implicitWidth: 44
+                    implicitHeight: 44
+                    icon: mobileSearchField.visible ? "edit-clear" : "edit-find"
+                    tooltip: mobileSearchField.visible ? i18n("Close search") : i18n("Search")
+                    onClicked: {
+                        if (mobileSearchField.visible) {
+                            MailApp.clearSearch()
+                            mobileSearchField.visible = false
+                        } else {
+                            mobileSearchField.visible = true
+                            mobileSearchField.inputField.forceActiveFocus()
+                        }
+                    }
+                }
+                IconButton {
                     implicitWidth: 44
                     implicitHeight: 44
                     icon: "view-refresh"
                     tooltip: i18n("Refresh")
                     enabled: !MailApp.isBusy
                     onClicked: MailApp.refresh()
+                }
+            }
+
+            // Search (GET /api/mail/search): results replace the list while
+            // there is a query. Same contract as DesktopRoot's field.
+            ThemedTextField {
+                id: mobileSearchField
+                objectName: "mobileSearchField"
+                Layout.fillWidth: true
+                visible: false // the Search button opens it
+                placeholderText: i18n("Search %1", inboxPage.currentFolderDisplayName())
+                Connections {
+                    target: mobileSearchField.inputField
+                    function onTextEdited() { MailApp.setSearchQuery(mobileSearchField.text) }
+                }
+                Shortcut {
+                    sequence: "Esc"
+                    enabled: mobileSearchField.inputField.activeFocus
+                    onActivated: {
+                        MailApp.clearSearch()
+                        mobileSearchField.visible = false
+                    }
+                }
+                Connections {
+                    target: MailApp
+                    function onSearchChanged() {
+                        if (mobileSearchField.text !== MailApp.searchQuery)
+                            mobileSearchField.text = MailApp.searchQuery
+                    }
                 }
             }
 
@@ -599,6 +644,7 @@ Kirigami.ApplicationWindow {
             // keywords accumulate.
             Flickable {
                 Layout.fillWidth: true
+                visible: !MailApp.searchActive // keywords filter the folder, not search results
                 // +10 reserves dedicated space below the pills for the
                 // horizontal scrollbar thumb, so it doesn't sit on top of
                 // the pills themselves.
@@ -643,7 +689,8 @@ Kirigami.ApplicationWindow {
                 visible: emailListView.count === 0
                 // "tap Refresh": the pull gesture lives on the list, which
                 // is hidden while it is empty.
-                text: i18n("No emails yet — tap Refresh.")
+                text: !MailApp.searchActive ? i18n("No emails yet — tap Refresh.")
+                    : MailApp.searchBusy ? i18n("Searching…") : i18n("No matches in this folder.")
             }
 
             ListView {
@@ -653,7 +700,7 @@ Kirigami.ApplicationWindow {
                 visible: count > 0
                 clip: true
                 spacing: 4
-                model: MailApp.emailModel
+                model: MailApp.searchActive ? MailApp.searchModel : MailApp.emailModel
                 ScrollBar.vertical: ThemedScrollBar {}
                 // Pull-to-refresh: drag past the top and release. Same refresh
                 // as the button.

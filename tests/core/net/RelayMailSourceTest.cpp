@@ -7,6 +7,7 @@
 #include "FakeRelayServer.h"
 
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QTest>
@@ -39,6 +40,12 @@ private slots:
 
     void downloadAttachmentReturnsRawBytesAndParsesFilenameFromContentDisposition();
     void downloadAttachmentMapsNotFoundFrom404();
+
+    void searchMailSendsTheRelayContractAndMapsMetadataRows();
+    void searchMailDropsRowsPastTheCap();
+    void searchMailRefusesUnsearchableQueriesWithoutARequest();
+    void searchMailPassesHttpErrorsThrough();
+    void fetchBodyReturnsBodyAndMode();
 };
 
 void RelayMailSourceTest::oversizedEncryptedDraftNeverPosts()
@@ -627,6 +634,111 @@ void RelayMailSourceTest::sendMailMalformed409BodyDoesNotCrashTheDecode()
     QCOMPARE(result.pickupFallbackNeeded, false);
     QCOMPARE(result.clientSideNeeded, false);
     QVERIFY(!result.detail.isEmpty());
+}
+
+void RelayMailSourceTest::searchMailSendsTheRelayContractAndMapsMetadataRows()
+{
+    const QByteArray body = R"({"results":[
+        {"messageId":"7","sender":"a@example.com","sentTo":"b@example.com","subject":"Invoice",
+         "status":"unread","atUtc":"2026-01-02T03:04:05Z","label":"Work","keywords":["Work"],"body":"ignored"},
+        {"sender":"no id"}
+    ]})";
+    FakeRelayServer fake(httpResponse(200, "OK", body));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+    const QUrl base(QStringLiteral("http://127.0.0.1:%1").arg(fake.port()));
+    const RelayAuth auth{ QStringLiteral("device-1"), QStringLiteral("secret-1") };
+
+    const MailSearchResult result = source.searchMail(base, auth, QStringLiteral("C++ 100%25 a&b=c"), QStringLiteral("Archive/2025"));
+
+    QVERIFY(!result.error.has_value());
+    QCOMPARE(result.results.size(), 1);
+    const Email& hit = result.results.at(0);
+    QCOMPARE(hit.messageId, QStringLiteral("7"));
+    QCOMPARE(hit.folder, QStringLiteral("Archive/2025"));
+    QCOMPARE(hit.subject, QStringLiteral("Invoice"));
+    QCOMPARE(hit.status, QStringLiteral("unread"));
+    QCOMPARE(hit.keywords, QStringList{ QStringLiteral("Work") });
+    QVERIFY(!hit.body.has_value()); // search never carries a body; absent means "not fetched"
+
+    const QByteArray request = fake.receivedRequest();
+    QVERIFY2(request.startsWith("GET /api/mail/search?"), request.constData());
+    // Go decodes "+" as a space and "%25" as "%"; both must reach it literally.
+    QVERIFY2(request.contains("q=C%2B%2B%20100%2525%20a%26b%3Dc&"), request.constData());
+    QVERIFY(request.contains("field=all"));
+    QVERIFY(request.contains("mailbox=Archive%2F2025"));
+    QVERIFY(request.contains("limit=200"));
+    QVERIFY(request.contains("X-Kypost-Device-Id: device-1"));
+    QVERIFY(request.contains("X-Kypost-Device-Secret: secret-1"));
+    QVERIFY(!request.contains("secret-1&"));
+}
+
+void RelayMailSourceTest::searchMailDropsRowsPastTheCap()
+{
+    QJsonArray rows;
+    for (int i = 0; i < RelayMailSource::kMaxSearchResults + 5; ++i)
+        rows.append(QJsonObject{ { QStringLiteral("messageId"), QString::number(i) } });
+    FakeRelayServer fake(httpResponse(200, "OK", QJsonDocument(QJsonObject{ { QStringLiteral("results"), rows } }).toJson()));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+    const MailSearchResult result = source.searchMail(QUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port())),
+                                                      {}, QStringLiteral("x"), QStringLiteral("INBOX"));
+    QVERIFY(!result.error.has_value());
+    QCOMPARE(result.results.size(), RelayMailSource::kMaxSearchResults);
+}
+
+void RelayMailSourceTest::searchMailRefusesUnsearchableQueriesWithoutARequest()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"results":[]})"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+    const QUrl base(QStringLiteral("http://127.0.0.1:%1").arg(fake.port()));
+
+    QVERIFY(!RelayMailSource::isSearchableQuery(QStringLiteral("  \t")));
+    QVERIFY(RelayMailSource::isSearchableQuery(QStringLiteral("a")));
+    // The relay's limit is bytes, so a multi-byte character counts for more.
+    QVERIFY(RelayMailSource::isSearchableQuery(QString(RelayMailSource::kMaxSearchQueryBytes, QLatin1Char('a'))));
+    QVERIFY(!RelayMailSource::isSearchableQuery(QString(RelayMailSource::kMaxSearchQueryBytes / 2 + 1, QChar(0x00e9))));
+
+    QVERIFY(source.searchMail(base, {}, QStringLiteral(" "), QStringLiteral("INBOX")).error.has_value());
+    QVERIFY(source.searchMail(base, {}, QString(RelayMailSource::kMaxSearchQueryBytes + 1, QLatin1Char('a')),
+                              QStringLiteral("INBOX")).error.has_value());
+    QCOMPARE(fake.connectionCount(), 0);
+}
+
+void RelayMailSourceTest::searchMailPassesHttpErrorsThrough()
+{
+    FakeRelayServer fake(httpResponse(503, "Service Unavailable", "search failed: imap down", "text/plain"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+    const MailSearchResult result = source.searchMail(QUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port())),
+                                                      {}, QStringLiteral("x"), QStringLiteral("INBOX"));
+    QCOMPARE(result.error, std::optional<NetworkError>(NetworkError::ServiceUnavailable));
+    QVERIFY(result.results.isEmpty());
+    QVERIFY(!result.detail.isEmpty());
+}
+
+void RelayMailSourceTest::fetchBodyReturnsBodyAndMode()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"body":"<p>hi</p>","bodyMode":"html"})"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+    const MailBodyResult result = source.fetchBody(QUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port())),
+                                                   { QStringLiteral("d"), QStringLiteral("s") },
+                                                   QStringLiteral("INBOX"), QStringLiteral("9"));
+    QVERIFY(!result.error.has_value());
+    QCOMPARE(result.body, QStringLiteral("<p>hi</p>"));
+    QCOMPARE(result.bodyMode, QStringLiteral("html"));
+    const QByteArray request = fake.receivedRequest();
+    QVERIFY2(request.startsWith("GET /api/mail/body?"), request.constData());
+    QVERIFY(request.contains("mailbox=INBOX"));
+    QVERIFY(request.contains("messageId=9"));
+    QVERIFY(request.contains("X-Kypost-Device-Secret: s"));
 }
 
 QTEST_GUILESS_MAIN(RelayMailSourceTest)

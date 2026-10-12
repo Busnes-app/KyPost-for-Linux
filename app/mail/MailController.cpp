@@ -87,7 +87,12 @@ MailController::MailController(MailRepository& mailRepository, RelayMailSource& 
     , m_pgpRecipientChecker(pgpRecipientChecker)
     , m_executor(networkExecutor)
     , m_model(new EmailListModel(this))
+    , m_searchModel(new EmailListModel(this))
+    , m_searchDebounce(new QTimer(this))
 {
+    m_searchDebounce->setSingleShot(true);
+    m_searchDebounce->setInterval(kSearchDebounceMs);
+    connect(m_searchDebounce, &QTimer::timeout, this, &MailController::startSearch);
 }
 
 QObject* MailController::emailModel() const
@@ -249,6 +254,13 @@ void MailController::selectFolderInternal(const QString& wireFolder)
     }
     reloadCurrentFolder();
     refreshInternal(false);
+    if (searchActive() && m_searchFolder != m_currentFolder) {
+        ++m_searchGeneration;
+        resetSearchResults();
+        m_searchDebounce->stop();
+        startSearch();
+        emit searchChanged();
+    }
 }
 
 void MailController::reloadCurrentFolder()
@@ -449,6 +461,12 @@ void MailController::finishAction(const QString& action, const QStringList& mess
         emit keywordTabsChanged();
         applyFilter();
     }
+    if (m_searchFolder == mailbox) {
+        m_searchResults.removeIf([&](const Email& email) {
+            return messageIds.contains(email.messageId) && !failedIds.contains(email.messageId);
+        });
+        m_searchModel->setEmails(m_searchResults);
+    }
 
     if (!result.failed.isEmpty()) {
         QStringList details;
@@ -505,6 +523,13 @@ void MailController::applyCachedStatus(const QString& folder, const QString& mes
         }
     }
     m_model->setStatus(folder, messageId, status);
+    if (folder == m_searchFolder) {
+        for (Email& email : m_searchResults) {
+            if (email.messageId == messageId)
+                email.status = status;
+        }
+        m_searchModel->setStatus(folder, messageId, status);
+    }
     emit readStateChanged(folder, messageId, status == QLatin1String("unread"));
 }
 
@@ -1700,43 +1725,67 @@ QVariantMap MailController::findByMessageId(const QString& messageId, const QStr
     // explicitly; notification callers without one retain the unique-ID rule.
     const std::optional<Email> email = folder.isEmpty()
         ? m_mailRepository.findCachedEmail(messageId)
-        : m_mailRepository.cachedEmail(folder, messageId);
+        : lookupEmail(folder, messageId);
     if (!email.has_value())
         return {};
+    QVariantMap map = emailMap(*email);
+    if (folder.isEmpty() || m_mailRepository.cachedEmail(folder, messageId).has_value())
+        return map;
 
+    // A search hit this device has not synced. Its body is fetched on demand
+    // and held in memory only.
+    map[QStringLiteral("searchOnly")] = true;
+    const QString key = folder + QLatin1Char('\n') + messageId;
+    if (m_searchBodyFailed.contains(key)) {
+        map[QStringLiteral("bodyNotice")] = i18n("This message could not be loaded. Search again to retry.");
+    } else if (!email->body.has_value()) {
+        map[QStringLiteral("bodyPending")] = true;
+        map[QStringLiteral("bodyNotice")] = i18n("Loading message…");
+    } else if (email->body->isEmpty()) {
+        // Without the list's PGP flags an empty body cannot be told apart:
+        // say so and offer webmail rather than show a blank message.
+        map[QStringLiteral("bodyNotice")] =
+            i18n("KyPost cannot show this message's text here. It may be encrypted; open it in webmail.");
+        map[QStringLiteral("webmailUrl")] = webmailReadUrl(webmailBaseUrl(), folder, messageId).toString();
+    }
+    return map;
+}
+
+QVariantMap MailController::emailMap(const Email& email) const
+{
     QVariantMap map;
-    map[QStringLiteral("messageId")] = email->messageId;
-    map[QStringLiteral("folder")] = email->folder;
-    map[QStringLiteral("sender")] = email->sender;
-    map[QStringLiteral("sentTo")] = email->sentTo;
-    map[QStringLiteral("cc")] = email->cc;
-    map[QStringLiteral("bcc")] = email->bcc;
-    map[QStringLiteral("subject")] = email->subject;
-    map[QStringLiteral("preview")] = email->preview;
-    map[QStringLiteral("body")] = email->body.value_or(QString());
+    map[QStringLiteral("messageId")] = email.messageId;
+    map[QStringLiteral("folder")] = email.folder;
+    map[QStringLiteral("sender")] = email.sender;
+    map[QStringLiteral("sentTo")] = email.sentTo;
+    map[QStringLiteral("cc")] = email.cc;
+    map[QStringLiteral("bcc")] = email.bcc;
+    map[QStringLiteral("subject")] = email.subject;
+    map[QStringLiteral("preview")] = email.preview;
+    map[QStringLiteral("body")] = email.body.value_or(QString());
     // Empty string when the server did not say. QML's emailBodyIsHtml() reads
     // "" as "fall back to the sniff", which is the same answer the absent
     // optional means -- see Format.emailBodyIsHtml.
-    map[QStringLiteral("bodyMode")] = email->bodyMode.value_or(QString());
-    map[QStringLiteral("label")] = email->label;
-    map[QStringLiteral("keywords")] = QVariant::fromValue(email->keywords);
-    map[QStringLiteral("status")] = email->status;
-    map[QStringLiteral("atUtc")] = email->atUtc;
-    map[QStringLiteral("hasAttachments")] = email->hasAttachments;
-    map[QStringLiteral("sourceMode")] = email->sourceMode;
+    map[QStringLiteral("bodyMode")] = email.bodyMode.value_or(QString());
+    map[QStringLiteral("label")] = email.label;
+    map[QStringLiteral("keywords")] = QVariant::fromValue(email.keywords);
+    map[QStringLiteral("status")] = email.status;
+    map[QStringLiteral("atUtc")] = email.atUtc;
+    map[QStringLiteral("hasAttachments")] = email.hasAttachments;
+    map[QStringLiteral("sourceMode")] = email.sourceMode;
 
     // Everything EmailDetail.qml needs to render the PGP banner without
     // re-deriving the rule. `pgpState` is the raw enum value so QML can
     // switch on it; the two strings are the localized copy for that state.
-    const PgpMessageState pgpState = pgpMessageStateOf(*email);
+    const PgpMessageState pgpState = pgpMessageStateOf(email);
     map[QStringLiteral("pgpState")] = static_cast<int>(pgpState);
     map[QStringLiteral("pgpBannerTitle")] = pgpBannerTitle(pgpState);
-    map[QStringLiteral("pgpBannerBody")] = pgpBannerBody(pgpState, email->pgpDecryptError);
+    map[QStringLiteral("pgpBannerBody")] = pgpBannerBody(pgpState, email.pgpDecryptError);
     // Empty unless the message is unreadable here AND the pairing has a
     // usable https base URL, so QML can just test for emptiness rather than
     // duplicating the safety rules.
     map[QStringLiteral("webmailUrl")] = pgpState == PgpMessageState::ClientProtected
-        ? webmailReadUrl(webmailBaseUrl(), email->folder, email->messageId).toString()
+        ? webmailReadUrl(webmailBaseUrl(), email.folder, email.messageId).toString()
         : QString();
     // Whether to offer decryption on this row at all. Webmail stays offered
     // either way: a key kept on another machine is a perfectly ordinary
@@ -2381,4 +2430,151 @@ QVariantList MailController::standardFolders() const
         list.append(entry);
     }
     return list;
+}
+
+// ---- server search ---------------------------------------------------------
+
+bool MailController::searchActive() const
+{
+    return RelayMailSource::isSearchableQuery(m_searchQuery);
+}
+
+bool MailController::searchBusy() const
+{
+    return m_searchDebounce->isActive() || m_searchInFlight;
+}
+
+void MailController::setSearchQuery(const QString& query)
+{
+    if (query == m_searchQuery)
+        return;
+    m_searchQuery = query;
+    ++m_searchGeneration;
+    if (searchActive()) {
+        m_searchDebounce->start();
+    } else {
+        m_searchDebounce->stop();
+        resetSearchResults();
+    }
+    emit searchChanged();
+}
+
+void MailController::clearSearch()
+{
+    setSearchQuery(QString());
+}
+
+void MailController::resetSearchResults()
+{
+    m_searchResults.clear();
+    m_searchFolder.clear();
+    m_searchIdentity = {};
+    m_searchBodyFailed.clear();
+    m_searchModel->setEmails({});
+}
+
+void MailController::startSearch()
+{
+    if (!searchActive())
+        return;
+    // One request at a time; the newest query follows when it lands.
+    if (m_searchInFlight) {
+        m_searchPending = true;
+        return;
+    }
+    QUrl serverBaseUrl;
+    RelayAuth auth;
+    if (!requirePairing(serverBaseUrl, auth)) {
+        resetSearchResults();
+        emit searchChanged();
+        return;
+    }
+    const PairingIdentity identity = m_pairingStore.currentIdentity();
+    const quint64 generation = m_searchGeneration;
+    const QString folder = m_currentFolder;
+    const QString query = m_searchQuery;
+
+    m_searchInFlight = true;
+    emit searchChanged();
+    m_executor.run(
+        this,
+        [serverBaseUrl, auth, query, folder](HttpClient& http) {
+            return RelayMailSource(http).searchMail(serverBaseUrl, auth, query, folder);
+        },
+        [this, generation, identity, folder](const MailSearchResult& result) {
+            m_searchInFlight = false;
+            if (generation == m_searchGeneration && m_pairingStore.stillCurrent(identity)) {
+                if (result.error.has_value()) {
+                    setLastError(result.detail.isEmpty() ? i18n("Search failed") : result.detail);
+                } else {
+                    // A synced copy carries the body and PGP flags search lacks.
+                    QVector<Email> hits;
+                    hits.reserve(result.results.size());
+                    for (const Email& hit : result.results)
+                        hits.append(m_mailRepository.cachedEmail(folder, hit.messageId).value_or(hit));
+                    m_searchResults = hits;
+                    m_searchFolder = folder;
+                    m_searchIdentity = identity;
+                    m_searchBodyFailed.clear();
+                    m_searchModel->setEmails(hits);
+                }
+            }
+            if (m_searchPending) {
+                m_searchPending = false;
+                startSearch();
+            }
+            emit searchChanged();
+        });
+}
+
+std::optional<Email> MailController::lookupEmail(const QString& folder, const QString& messageId) const
+{
+    if (std::optional<Email> cached = m_mailRepository.cachedEmail(folder, messageId))
+        return cached;
+    if (folder != m_searchFolder || !m_pairingStore.stillCurrent(m_searchIdentity))
+        return std::nullopt;
+    for (const Email& hit : m_searchResults) {
+        if (hit.messageId == messageId)
+            return hit;
+    }
+    return std::nullopt;
+}
+
+void MailController::loadSearchBody(const QString& folder, const QString& messageId)
+{
+    if (m_mailRepository.cachedEmail(folder, messageId).has_value())
+        return;
+    const std::optional<Email> hit = lookupEmail(folder, messageId);
+    const QString key = folder + QLatin1Char('\n') + messageId;
+    if (!hit.has_value() || hit->body.has_value() || m_searchBodyInFlight.contains(key)
+        || m_searchBodyFailed.contains(key))
+        return;
+    const std::optional<DevicePairing> pairing = m_pairingStore.load();
+    if (!pairing.has_value())
+        return;
+    const RelayEndpoint endpoint{ QUrl(pairing->serverBaseUrl), RelayAuth{ pairing->deviceId, pairing->deviceSecret } };
+    const PairingIdentity identity = m_searchIdentity;
+
+    m_searchBodyInFlight.insert(key);
+    m_executor.run(
+        this,
+        [endpoint, folder, messageId](HttpClient& http) {
+            return RelayMailSource(http).fetchBody(endpoint.serverBaseUrl, endpoint.auth, folder, messageId);
+        },
+        [this, folder, messageId, identity, key](const MailBodyResult& result) {
+            m_searchBodyInFlight.remove(key);
+            if (folder != m_searchFolder || identity != m_searchIdentity || !m_pairingStore.stillCurrent(identity))
+                return;
+            const auto row = std::find_if(m_searchResults.begin(), m_searchResults.end(),
+                                          [&](const Email& email) { return email.messageId == messageId; });
+            if (row == m_searchResults.end())
+                return;
+            if (result.error.has_value()) {
+                m_searchBodyFailed.insert(key);
+            } else {
+                row->body = result.body;
+                row->bodyMode = result.bodyMode.isEmpty() ? std::nullopt : std::optional<QString>(result.bodyMode);
+            }
+            emit searchBodyLoaded(folder, messageId);
+        });
 }

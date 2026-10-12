@@ -80,7 +80,8 @@ Carried forward verbatim (in substance) from `Linux_QT_Client_Plan.md`'s own
 "Locked decisions carried over" section:
 
 - **Relay-only.** No IMAP/SMTP anywhere. `mail.urlxl.com` is the sole
-  transport. Search is local-cache-only.
+  transport. Search used to be local-cache-only; since plan L6 (2026-10-11)
+  it is the relay's `GET /api/mail/search`, results held in memory only.
 - **Wire contracts come from the backend Go source**, plus `kypost-android`'s
   `RelayModels.kt`/`ContactSyncModels.kt` and `kypost-for-Mac`'s
   `Data/Networking/*` (relay-only, live-verified, test-locked clients).
@@ -221,6 +222,14 @@ Added 2026-07-25 (parity work with `kypost-android`):
   only if the acted-on mailbox is still current: ids repeat across mailboxes.
   The reader's Move is disabled when its message is not in `currentFolder`,
   because every action names `currentFolder` as the source mailbox.
+
+- **Search (plan item L6, 2026-10-11).** Search results live in
+  `MailController`'s `searchModel`/`m_searchResults`, never the cache, and are
+  scoped to the account that searched (guard in `tests/guards.tsv`); a reply
+  for a superseded query, folder or pairing is dropped by generation. Unsynced
+  hits get their body from `GET /api/mail/body` into memory. `HttpClient`
+  percent-encodes every query key and value: `addQueryItem` alone sent `+`
+  bare (Go reads a space) and passed `%XX` through.
 
 - **Biometric unlock and window-content protection are non-goals** — no
   portable Linux equivalent (no `FLAG_SECURE` analogue on Wayland).

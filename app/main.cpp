@@ -1229,7 +1229,10 @@ int main(int argc, char* argv[])
     // actually frees the memory rather than leaving it held for the life of
     // the process.
     QObject::connect(&pairingController, &PairingController::pairingChanged, &mailController,
-                     [&mailController]() { mailController.forgetDecrypted(); });
+                     [&mailController]() {
+                         mailController.forgetDecrypted();
+                         mailController.clearSearch(); // search hits are the previous account's mail
+                     });
 
     // Third leak of the same kind, and the one with the least excuse: a
     // decrypted OpenPGP message is held in MailController's memory and
