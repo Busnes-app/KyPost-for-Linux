@@ -32,6 +32,11 @@ bool MfaController::receive(const MfaChallenge& challenge)
     return true;
 }
 
+QString MfaController::challengeId() const
+{
+    return m_current ? m_current->challenge.challengeId : QString();
+}
+
 QDateTime MfaController::issuedAt() const
 {
     return m_current ? QDateTime::fromMSecsSinceEpoch(m_current->challenge.issuedAtMs) : QDateTime();
@@ -96,14 +101,14 @@ void MfaController::close()
     emit changed();
 }
 
-void MfaController::approve(const QString& digits)
+void MfaController::approve(const QString& challengeId, const QString& digits)
 {
-    respond(true, digits);
+    respond(challengeId, true, digits);
 }
 
-void MfaController::deny()
+void MfaController::deny(const QString& challengeId)
 {
-    respond(false, QString());
+    respond(challengeId, false, QString());
 }
 
 void MfaController::setAppLocked(bool locked)
@@ -126,7 +131,7 @@ void MfaController::setResult(const QString& message, bool isError)
     emit changed();
 }
 
-void MfaController::respond(bool approve, const QString& digits)
+void MfaController::respond(const QString& requestedId, bool approve, const QString& digits)
 {
     if (m_inFlight)
         return;
@@ -134,12 +139,19 @@ void MfaController::respond(bool approve, const QString& digits)
         setResult(i18n("Unlock KyPost to answer this sign-in request."), true);
         return;
     }
+    // Look up exactly the challenge the user was shown, never "whatever is
+    // current now": refresh() may already have replaced an expired one with
+    // another pending challenge, which can share the same numbers.
+    const std::optional<MfaChallengeTracker::Pending> target =
+        requestedId.isEmpty() ? std::nullopt : m_tracker.pending(requestedId, now());
     refresh();
-    if (!m_current) {
+    if (!target) {
         setResult(i18n("This sign-in request is no longer available. It expired or was already answered."), true);
         return;
     }
-    if (approve && !m_current->choices.contains(digits))
+    // Captured before anything below can re-enter the controller.
+    const QString challengeId = target->challenge.challengeId;
+    if (approve && !target->choices.contains(digits))
         return;
 
     const std::optional<DevicePairing> pairing = m_pairingStore.load();
@@ -149,7 +161,6 @@ void MfaController::respond(bool approve, const QString& digits)
     }
     const PairingIdentity identity = identityOf(*pairing);
     const RelayEndpoint endpoint{ QUrl(pairing->serverBaseUrl), { pairing->deviceId, pairing->deviceSecret } };
-    const QString challengeId = m_current->challenge.challengeId;
 
     m_inFlight = true;
     setResult(QString(), false);

@@ -22,6 +22,7 @@ class MfaController : public QObject
     Q_OBJECT
     Q_PROPERTY(bool open READ isOpen NOTIFY changed)
     Q_PROPERTY(bool hasChallenge READ hasChallenge NOTIFY changed)
+    Q_PROPERTY(QString challengeId READ challengeId NOTIFY changed)
     Q_PROPERTY(QDateTime issuedAt READ issuedAt NOTIFY changed)
     Q_PROPERTY(QString ipAddress READ ipAddress NOTIFY changed)
     Q_PROPERTY(QString userAgent READ userAgent NOTIFY changed)
@@ -44,6 +45,7 @@ public:
 
     bool isOpen() const { return m_open; }
     bool hasChallenge() const { return m_current.has_value(); }
+    QString challengeId() const;
     QDateTime issuedAt() const;
     QString ipAddress() const;
     QString userAgent() const;
@@ -56,9 +58,13 @@ public:
 
     Q_INVOKABLE void show();
     Q_INVOKABLE void close();
-    // digits must be one of choices(); it is sent as tapped, never corrected.
-    Q_INVOKABLE void approve(const QString& digits);
-    Q_INVOKABLE void deny();
+    // challengeId is the challenge the page displayed when the user tapped.
+    // The answer goes to that challenge or nowhere: if it expired or was
+    // evicted meanwhile, nothing is sent, even when another challenge is
+    // pending. digits must be one of that challenge's choices; it is sent as
+    // tapped, never corrected.
+    Q_INVOKABLE void approve(const QString& challengeId, const QString& digits);
+    Q_INVOKABLE void deny(const QString& challengeId);
 
     void setAppLocked(bool locked);
     // Pairing changed: every challenge belonged to the previous account.
@@ -73,7 +79,7 @@ signals:
     void showRequested();
 
 private:
-    void respond(bool approve, const QString& digits);
+    void respond(const QString& challengeId, bool approve, const QString& digits);
     void applyResult(const QString& challengeId, bool approve, const MfaResponseResult& result);
     void setResult(const QString& message, bool isError);
     qint64 now() const;

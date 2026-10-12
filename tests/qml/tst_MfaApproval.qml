@@ -22,12 +22,14 @@ TestCase {
     function init() {
         AppLock.locked = false
         Mfa.hasChallenge = true
+        Mfa.challengeId = "0123456789abcdef0123456789abcdef0123456789abcdef"
         Mfa.choices = ["42", "07", "93"]
         Mfa.ipAddress = "203.0.113.9"
         Mfa.userAgent = "Firefox"
         Mfa.inFlight = false
         Mfa.lastApproved = ""
         Mfa.denyCount = 0
+        Mfa.lastAnsweredId = ""
     }
 
     function cleanup() {
@@ -67,6 +69,7 @@ TestCase {
         const buttons = collect(page, "mfaChoice", [])
         mouseClick(buttons[2])
         compare(Mfa.lastApproved, "93")
+        compare(Mfa.lastAnsweredId, Mfa.challengeId, "the answer names the challenge on screen")
     }
 
     function test_deny() {
@@ -74,6 +77,7 @@ TestCase {
         mouseClick(collect(page, "mfaDeny", [])[0])
         compare(Mfa.denyCount, 1)
         compare(Mfa.lastApproved, "")
+        compare(Mfa.lastAnsweredId, Mfa.challengeId, "the answer names the challenge on screen")
     }
 
     function test_context_is_plain_text() {

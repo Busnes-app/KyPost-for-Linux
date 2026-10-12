@@ -191,6 +191,7 @@ class FakeMfa : public QObject
     Q_OBJECT
     Q_PROPERTY(bool open MEMBER m_open NOTIFY changed)
     Q_PROPERTY(bool hasChallenge MEMBER m_hasChallenge NOTIFY changed)
+    Q_PROPERTY(QString challengeId MEMBER m_challengeId NOTIFY changed)
     Q_PROPERTY(QDateTime issuedAt MEMBER m_issuedAt NOTIFY changed)
     Q_PROPERTY(QString ipAddress MEMBER m_ipAddress NOTIFY changed)
     Q_PROPERTY(QString userAgent MEMBER m_userAgent NOTIFY changed)
@@ -202,14 +203,25 @@ class FakeMfa : public QObject
     Q_PROPERTY(bool resultIsError MEMBER m_resultIsError NOTIFY changed)
     Q_PROPERTY(QString lastApproved MEMBER m_lastApproved NOTIFY changed)
     Q_PROPERTY(int denyCount MEMBER m_denyCount NOTIFY changed)
+    Q_PROPERTY(QString lastAnsweredId MEMBER m_lastAnsweredId NOTIFY changed)
 
 public:
     using QObject::QObject;
 
     Q_INVOKABLE void show() { m_open = true; emit changed(); emit showRequested(); }
     Q_INVOKABLE void close() { m_open = false; emit changed(); }
-    Q_INVOKABLE void approve(const QString& digits) { m_lastApproved = digits; emit changed(); }
-    Q_INVOKABLE void deny() { ++m_denyCount; emit changed(); }
+    Q_INVOKABLE void approve(const QString& challengeId, const QString& digits)
+    {
+        m_lastAnsweredId = challengeId;
+        m_lastApproved = digits;
+        emit changed();
+    }
+    Q_INVOKABLE void deny(const QString& challengeId)
+    {
+        m_lastAnsweredId = challengeId;
+        ++m_denyCount;
+        emit changed();
+    }
 
 signals:
     void changed();
@@ -218,6 +230,7 @@ signals:
 private:
     bool m_open = false;
     bool m_hasChallenge = false;
+    QString m_challengeId;
     QDateTime m_issuedAt;
     QString m_ipAddress;
     QString m_userAgent;
@@ -229,6 +242,7 @@ private:
     bool m_resultIsError = false;
     QString m_lastApproved;
     int m_denyCount = 0;
+    QString m_lastAnsweredId;
 };
 
 inline void registerFakeSingletons(QQmlEngine*)

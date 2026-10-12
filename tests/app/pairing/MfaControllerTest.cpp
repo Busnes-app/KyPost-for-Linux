@@ -29,6 +29,17 @@ MfaChallenge sampleChallenge()
     return c;
 }
 
+// A second request with the SAME numbers, issued and received a minute later,
+// so it outlives the first.
+MfaChallenge laterChallengeWithSameNumbers()
+{
+    MfaChallenge c = sampleChallenge();
+    c.challengeId = QStringLiteral("fedcba9876543210fedcba9876543210fedcba9876543210");
+    c.issuedAtMs = kNow + 60 * 1000;
+    c.ipAddress = QStringLiteral("198.51.100.77");
+    return c;
+}
+
 // One paired controller against a fake relay, with a clock the test moves.
 struct Harness
 {
@@ -77,6 +88,9 @@ private slots:
     void denySendsApproveFalse();
     void retryableFailureKeepsTheChallenge();
     void expiredChallengeDisappears();
+    void approvalExpiredUnderTheFingerGoesNowhere();
+    void denyExpiredUnderTheFingerGoesNowhere();
+    void answerNamesTheShownChallenge();
     void pairingChangeDropsChallenges();
 };
 
@@ -102,8 +116,8 @@ void MfaControllerTest::aLockedAppSendsNothing()
     QVERIFY(h.controller.receive(sampleChallenge()));
     h.controller.setAppLocked(true);
 
-    h.controller.approve(QStringLiteral("07"));
-    h.controller.deny();
+    h.controller.approve(h.controller.challengeId(), QStringLiteral("07"));
+    h.controller.deny(h.controller.challengeId());
 
     QVERIFY(!h.controller.inFlight());
     QVERIFY(h.controller.resultIsError());
@@ -118,7 +132,7 @@ void MfaControllerTest::approveSendsTheTappedNumberNotTheMatch()
     QVERIFY(h.saved);
     QVERIFY(h.controller.receive(sampleChallenge()));
 
-    h.controller.approve(QStringLiteral("93"));
+    h.controller.approve(h.controller.challengeId(), QStringLiteral("93"));
     QVERIFY(h.controller.inFlight());
     QTRY_VERIFY_WITH_TIMEOUT(!h.controller.inFlight(), 5000);
 
@@ -138,7 +152,7 @@ void MfaControllerTest::numbersNotOfferedAreIgnored()
     QVERIFY(h.saved);
     QVERIFY(h.controller.receive(sampleChallenge()));
 
-    h.controller.approve(QStringLiteral("55"));
+    h.controller.approve(h.controller.challengeId(), QStringLiteral("55"));
     QVERIFY(!h.controller.inFlight());
     QTest::qWait(200);
     QVERIFY(h.fake.receivedRequest().isEmpty());
@@ -150,7 +164,7 @@ void MfaControllerTest::approvedChallengeDisappears()
     QVERIFY(h.saved);
     QVERIFY(h.controller.receive(sampleChallenge()));
 
-    h.controller.approve(QStringLiteral("07"));
+    h.controller.approve(h.controller.challengeId(), QStringLiteral("07"));
     QTRY_VERIFY_WITH_TIMEOUT(!h.controller.inFlight(), 5000);
 
     QVERIFY(!h.controller.hasChallenge());
@@ -166,7 +180,7 @@ void MfaControllerTest::denySendsApproveFalse()
     QVERIFY(h.saved);
     QVERIFY(h.controller.receive(sampleChallenge()));
 
-    h.controller.deny();
+    h.controller.deny(h.controller.challengeId());
     QTRY_VERIFY_WITH_TIMEOUT(!h.controller.inFlight(), 5000);
 
     const QJsonObject sent = h.fake.receivedJsonBody();
@@ -182,7 +196,7 @@ void MfaControllerTest::retryableFailureKeepsTheChallenge()
     QVERIFY(h.saved);
     QVERIFY(h.controller.receive(sampleChallenge()));
 
-    h.controller.approve(QStringLiteral("07"));
+    h.controller.approve(h.controller.challengeId(), QStringLiteral("07"));
     QTRY_VERIFY_WITH_TIMEOUT(!h.controller.inFlight(), 5000);
 
     QVERIFY(h.controller.hasChallenge());
@@ -204,10 +218,73 @@ void MfaControllerTest::expiredChallengeDisappears()
     h.controller.refresh();
     QVERIFY(!h.controller.hasChallenge());
 
-    h.controller.approve(QStringLiteral("07"));
+    h.controller.approve(sampleChallenge().challengeId, QStringLiteral("07"));
     QVERIFY(!h.controller.inFlight());
     QTest::qWait(200);
     QVERIFY(h.fake.receivedRequest().isEmpty());
+}
+
+void MfaControllerTest::approvalExpiredUnderTheFingerGoesNowhere()
+{
+    Harness h(httpResponse(200, "OK", R"({"ok":true,"status":"approved"})"));
+    QVERIFY(h.saved);
+    QVERIFY(h.controller.receive(sampleChallenge()));
+    h.clock = kNow + 60 * 1000;
+    QVERIFY(h.controller.receive(laterChallengeWithSameNumbers()));
+    // The first one stays on screen; the second only raises the count.
+    const QString shown = h.controller.challengeId();
+    QCOMPARE(shown, sampleChallenge().challengeId);
+    QCOMPARE(h.controller.pendingCount(), 2);
+
+    // The shown request expires between render and tap. The timer has not
+    // fired, so the page still offers its numbers.
+    h.clock = kNow + MfaChallengeTracker::kLifetimeMs;
+    h.controller.approve(shown, QStringLiteral("07"));
+
+    // The tap must not be redirected to the other request, whose numbers match.
+    QVERIFY(!h.controller.inFlight());
+    QVERIFY(h.controller.resultIsError());
+    QTest::qWait(200);
+    QVERIFY(h.fake.receivedRequest().isEmpty());
+    // The other request is still there, for the user to look at first.
+    QCOMPARE(h.controller.challengeId(), laterChallengeWithSameNumbers().challengeId);
+}
+
+void MfaControllerTest::denyExpiredUnderTheFingerGoesNowhere()
+{
+    Harness h(httpResponse(200, "OK", R"({"ok":true,"status":"denied"})"));
+    QVERIFY(h.saved);
+    QVERIFY(h.controller.receive(sampleChallenge()));
+    h.clock = kNow + 60 * 1000;
+    QVERIFY(h.controller.receive(laterChallengeWithSameNumbers()));
+    const QString shown = h.controller.challengeId();
+
+    h.clock = kNow + MfaChallengeTracker::kLifetimeMs;
+    h.controller.deny(shown);
+
+    QVERIFY(!h.controller.inFlight());
+    QTest::qWait(200);
+    QVERIFY(h.fake.receivedRequest().isEmpty());
+    QVERIFY(h.controller.hasChallenge());
+}
+
+void MfaControllerTest::answerNamesTheShownChallenge()
+{
+    Harness h(httpResponse(200, "OK", R"({"ok":true,"status":"approved"})"));
+    QVERIFY(h.saved);
+    QVERIFY(h.controller.receive(sampleChallenge()));
+
+    // No ID, or an ID that is not pending, sends nothing.
+    h.controller.approve(QString(), QStringLiteral("07"));
+    h.controller.approve(laterChallengeWithSameNumbers().challengeId, QStringLiteral("07"));
+    QVERIFY(!h.controller.inFlight());
+    QTest::qWait(200);
+    QVERIFY(h.fake.receivedRequest().isEmpty());
+
+    h.controller.approve(h.controller.challengeId(), QStringLiteral("07"));
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller.inFlight(), 5000);
+    QCOMPARE(h.fake.receivedJsonBody().value(QStringLiteral("challengeId")).toString(),
+             sampleChallenge().challengeId);
 }
 
 void MfaControllerTest::pairingChangeDropsChallenges()

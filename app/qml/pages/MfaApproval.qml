@@ -171,7 +171,7 @@ Item {
                     implicitWidth: 72
                     text: modelData
                     enabled: root.canAnswer
-                    onClicked: Mfa.approve(modelData)
+                    onClicked: Mfa.approve(Mfa.challengeId, modelData)
                 }
             }
         }
@@ -182,7 +182,7 @@ Item {
             visible: Mfa.hasChallenge
             text: i18n("Deny, this was not me")
             enabled: root.canAnswer
-            onClicked: Mfa.deny()
+            onClicked: Mfa.deny(Mfa.challengeId)
         }
 
         Text {
