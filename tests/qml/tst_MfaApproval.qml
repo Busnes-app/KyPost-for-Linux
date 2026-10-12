@@ -1,5 +1,5 @@
-import QtQuick 2.15
-import QtTest 1.15
+import QtQuick
+import QtTest
 import com.kysecurity.mail 1.0
 import "qrc:/qml/pages" as Pages
 
