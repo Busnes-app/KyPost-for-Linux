@@ -381,10 +381,13 @@ void MailController::performActionCommon(const QStringList& messageIds, const QS
             RelayMailSource source(http);
             return source.performAction(serverBaseUrl, auth, action, messageIds, mailbox, targetMailbox);
         },
-        [this, action, messageIds](const ActionResult& result) { finishAction(action, messageIds, result); });
+        [this, action, messageIds, mailbox](const ActionResult& result) {
+            finishAction(action, messageIds, mailbox, result);
+        });
 }
 
-void MailController::finishAction(const QString& action, const QStringList& messageIds, const ActionResult& result)
+void MailController::finishAction(const QString& action, const QStringList& messageIds, const QString& mailbox,
+                                   const ActionResult& result)
 {
     popBusy();
 
@@ -406,14 +409,18 @@ void MailController::finishAction(const QString& action, const QStringList& mess
     for (const ActionFailure& failure : result.failed)
         failedIds.insert(failure.messageId);
 
-    m_currentFolderEmails.erase(std::remove_if(m_currentFolderEmails.begin(), m_currentFolderEmails.end(),
-                                                [&](const Email& email) {
-                                                    return messageIds.contains(email.messageId)
-                                                        && !failedIds.contains(email.messageId);
-                                                }),
-                                 m_currentFolderEmails.end());
-    emit keywordTabsChanged();
-    applyFilter();
+    // Only from the mailbox acted on. Ids repeat across mailboxes, so after a
+    // folder switch -- to a move's target, say -- they name other copies.
+    if (m_currentFolder == mailbox) {
+        m_currentFolderEmails.erase(std::remove_if(m_currentFolderEmails.begin(), m_currentFolderEmails.end(),
+                                                    [&](const Email& email) {
+                                                        return messageIds.contains(email.messageId)
+                                                            && !failedIds.contains(email.messageId);
+                                                    }),
+                                     m_currentFolderEmails.end());
+        emit keywordTabsChanged();
+        applyFilter();
+    }
 
     if (!result.failed.isEmpty()) {
         QStringList details;
@@ -619,49 +626,68 @@ QVariantList MailController::mailFolders() const
     };
 
     QVariantList list;
+    // Children come straight after their parent so the flat list reads as a
+    // tree once the delegate indents by `depth`. Walking down from the roots
+    // also hides rows orphaned by a rename or delete of their parent.
+    const std::function<void(const QString&, int)> appendChildren = [&](const QString& parent, int depth) {
+        if (depth > kMaxFolderDepth)
+            return;
+        for (const MailFolder& child : m_folderRepository.cachedFolders(parent)) {
+            list.append(entry(child.path, depth, child.deletable, /*isStandard=*/false));
+            appendChildren(child.path, depth + 1);
+        }
+    };
     for (StandardFolder folder : kFolders) {
         const QString wireName = standardFolderWireName(folder);
         // Standard mailboxes are never deletable -- the backend rejects it
         // outright (isBuiltinMailbox), so don't offer it.
         list.append(entry(wireName, 0, /*deletable=*/false, /*isStandard=*/true));
-
-        // Children come straight after their parent so the flat list reads
-        // as a tree once the delegate indents by `depth`.
-        for (const MailFolder& child : m_folderRepository.cachedFolders(wireName))
-            list.append(entry(child.path, 1, child.deletable, /*isStandard=*/false));
+        appendChildren(wireName, 1);
     }
     return list;
 }
 
 void MailController::refreshFolders()
 {
+    if (m_folderListsInFlight > 0)
+        return;
     const std::optional<RelayRequestPlan> plan = m_folderRepository.planRequest();
     if (!plan.has_value())
         return; // unpaired: an ordinary state at startup, not an error
 
-    // Only Archive today, matching Android's folder picker: the other five
+    // Only Archive's tree, matching Android's folder picker: the other five
     // standard mailboxes have no subfolder UI, so listing them would be five
     // extra round-trips for nothing to render.
-    const QString parent = standardFolderWireName(StandardFolder::Archive);
+    listFolderTree(*plan, standardFolderWireName(StandardFolder::Archive), 1);
+}
 
+// The relay lists one level per request, so the tree costs one listing per
+// folder. The depth cap bounds a server that keeps answering with children.
+void MailController::listFolderTree(const RelayRequestPlan& plan, const QString& parent, int depth)
+{
+    ++m_folderListsInFlight;
     m_executor.run(
         this,
-        [endpoint = plan->endpoint, parent](HttpClient& http) {
+        [endpoint = plan.endpoint, parent](HttpClient& http) {
             return FolderRepository::listWith(http, endpoint, parent);
         },
-        [this, plan = *plan, parent](const FolderListResult& result) {
+        [this, plan, parent, depth](const FolderListResult& result) {
+            --m_folderListsInFlight;
             const MailFetchOutcome outcome = m_folderRepository.applyList(plan, parent, result);
-            // A failure here is deliberately quiet: the sidebar still shows
-            // all six standard mailboxes, so the app stays fully usable and
-            // there is nothing for the user to act on. PairingChanged is not
-            // even that -- it is the correct outcome for a listing that
-            // belongs to an account this device no longer has, so it is not
-            // worth a log line either.
-            if (outcome.outcome != MailRepositoryOutcome::Success
-                && outcome.outcome != MailRepositoryOutcome::PairingChanged) {
+            if (outcome.outcome == MailRepositoryOutcome::Success) {
+                if (depth < kMaxFolderDepth) {
+                    for (const MailFolder& child : result.folders)
+                        listFolderTree(plan, child.path, depth + 1);
+                }
+            } else if (outcome.outcome != MailRepositoryOutcome::PairingChanged) {
+                // Deliberately quiet: the sidebar still shows all six
+                // standard mailboxes, so there is nothing for the user to act
+                // on. PairingChanged is the correct outcome for a listing
+                // that belongs to an account this device no longer has.
                 qWarning("Folder refresh failed: %s", qUtf8Printable(outcome.detail));
             }
-            emit foldersChanged();
+            if (m_folderListsInFlight == 0)
+                emit foldersChanged();
         });
 }
 

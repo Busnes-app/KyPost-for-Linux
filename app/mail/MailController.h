@@ -113,6 +113,9 @@ class MailController : public QObject
     Q_PROPERTY(QStringList pgpKeylessRecipients READ pgpKeylessRecipients NOTIFY pgpKeylessRecipientsChanged)
 
 public:
+    // Deepest subfolder level mailFolders() shows and refreshFolders() lists.
+    static constexpr int kMaxFolderDepth = 4;
+
     MailController(MailRepository& mailRepository, RelayMailSource& relayMailSource,
                     KeywordRepository& keywordRepository, PairingStore& pairingStore,
                     FolderRepository& folderRepository, SettingsStore& settingsStore,
@@ -319,9 +322,9 @@ public slots:
     // connection.
     Q_INVOKABLE QVariantList mailFolders() const;
 
-    // Fetches subfolders for the parents worth expanding and emits
-    // foldersChanged(). Currently just Archive, matching Android's folder
-    // picker -- the other five standard mailboxes have no subfolder UI.
+    // Fetches Archive's subfolder tree, one listing per folder down to
+    // kMaxFolderDepth, and emits foldersChanged() once the walk is done.
+    // A call while a walk is running is dropped.
     Q_INVOKABLE void refreshFolders();
 
     // Each dispatches and returns; the outcome arrives as
@@ -610,9 +613,12 @@ private:
     // Shared body of archiveEmails/deleteEmails/markSpam/moveEmails.
     void performActionCommon(const QStringList& messageIds, const QString& action,
                               const std::optional<QString>& targetMailbox);
-    void finishAction(const QString& action, const QStringList& messageIds, const ActionResult& result);
+    void finishAction(const QString& action, const QStringList& messageIds, const QString& mailbox,
+                      const ActionResult& result);
     void setReadState(const QString& folder, const QStringList& messageIds, bool read);
     void applyCachedStatus(const QString& folder, const QString& messageId, const QString& status);
+    void listFolderTree(const RelayRequestPlan& plan, const QString& parent, int depth);
+    int m_folderListsInFlight = 0;
     // Shared body of createFolder/renameFolder/deleteFolder -- see the .cpp.
     void runFolderMutation(const QString& failureMessage,
                             std::function<FolderRepository::FolderMutationFetch(HttpClient&, const RelayEndpoint&)> work,

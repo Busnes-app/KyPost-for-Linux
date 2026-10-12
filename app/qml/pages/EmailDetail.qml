@@ -31,7 +31,7 @@ Item {
 
     signal draftRequested(var draft)
     signal composeRequested(string to, string subject, string body)
-    signal actionCompleted(string action) // action: "archive" | "junk" | "delete"
+    signal actionCompleted(string action) // action: "archive" | "junk" | "delete" | "move"
     // Detach into a standalone top-level window (Desktop mode only -- see
     // the pop-out IconButton below, gated on General.isDesktopMode). The
     // host (DesktopRoot) owns the actual Window creation and is expected to
@@ -512,6 +512,15 @@ Item {
                 tooltip: i18n("Archive")
                 enabled: !MailApp.isBusy
                 onClicked: MailApp.archiveEmails([root.messageId])
+            }
+            IconButton {
+                objectName: "moveTo"
+                icon: "edit-move"
+                tooltip: i18n("Move to…")
+                // moveEmails acts on MailApp's current folder, so a pop-out
+                // left behind by a folder switch must not offer it.
+                enabled: !MailApp.isBusy && root.folder === MailApp.currentFolder
+                onClicked: moveDialog.open([root.messageId], root.folder, MailApp.mailFolders())
             }
             IconButton {
                 icon: "mail-mark-junk"
@@ -1022,5 +1031,16 @@ Item {
         id: attachmentStatusTimer
         interval: 3000
         onTriggered: root.attachmentStatus = ""
+    }
+
+    // Hosted here, not by the root, so a pop-out window's picker opens in
+    // that window. The move's outcome arrives as actionCompleted("move").
+    MoveToFolderDialog {
+        id: moveDialog
+        anchors.fill: parent
+        z: 900
+        onChosen: function (messageIds, folder) {
+            MailApp.moveEmails(messageIds, folder)
+        }
     }
 }

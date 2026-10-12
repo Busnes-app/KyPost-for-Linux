@@ -213,6 +213,14 @@ Added 2026-07-25 (parity work with `kypost-android`):
   replaced the status. They do not touch `isBusy`, so opening a message never
   greys out the toolbar; a per-message in-flight set coalesces repeats instead.
 
+- **Move and folder dialogs (plan items L4/L5, 2026-10-11).** `MoveToFolderDialog`
+  and `FolderDialog` are overlay Items under `components/`, not Popups, so the
+  lock gate covers them by z-order; they never call `MailApp` (the host does),
+  which is what lets `tests/qml` drive them. Archive/spam/delete/move drop rows
+  only if the acted-on mailbox is still current: ids repeat across mailboxes.
+  The reader's Move is disabled when its message is not in `currentFolder`,
+  because every action names `currentFolder` as the source mailbox.
+
 - **Biometric unlock and window-content protection are non-goals** — no
   portable Linux equivalent (no `FLAG_SECURE` analogue on Wayland).
 
