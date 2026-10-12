@@ -32,9 +32,22 @@ Item {
     }
 
     function choose(folder) {
+        if (!root.isOpen || AppLock.locked)
+            return
         const ids = root.messageIds
         root.close()
         root.chosen(ids, folder)
+    }
+
+    // Same as FolderDialog: the lock gate hides this picker but leaves it
+    // focused underneath, so locking closes it. MailController refuses the
+    // move anyway.
+    Connections {
+        target: AppLock
+        function onLockedChanged() {
+            if (AppLock.locked)
+                root.close()
+        }
     }
 
     visible: root.isOpen

@@ -32,8 +32,13 @@ TestCase {
     }
 
     function init() {
+        AppLock.locked = false
         dialog.close()
         chosenSpy.clear()
+    }
+
+    function cleanup() {
+        AppLock.locked = false
     }
 
     function targets() {
@@ -90,5 +95,24 @@ TestCase {
         verify(!dialog.isOpen)
 
         compare(chosenSpy.count, 0)
+    }
+
+    // A picker left open when the app locks sits under the PIN overlay. Locking
+    // closes it, and one opened under the lock anyway moves nothing.
+    function test_locking_closes_the_picker_and_moves_nothing() {
+        dialog.open(["m-1"], "INBOX", testCase.folders)
+        AppLock.locked = true
+        verify(!dialog.isOpen)
+
+        dialog.open(["m-1"], "INBOX", testCase.folders)
+        tryVerify(function () { return testCase.targets().length === 3 })
+        const target = testCase.targets()[0]
+        mouseClick(target, target.width / 2, target.height / 2)
+        dialog.choose("Archive")
+        compare(chosenSpy.count, 0)
+
+        AppLock.locked = false
+        dialog.choose("Archive")
+        compare(chosenSpy.count, 1)
     }
 }

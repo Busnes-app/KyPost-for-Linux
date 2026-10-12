@@ -380,6 +380,15 @@ void MailController::finishRefresh(const MailRefreshPlan& plan, const InboxFetch
 void MailController::performActionCommon(const QStringList& messageIds, const QString& action,
                                           const std::optional<QString>& targetMailbox)
 {
+    // A server write: a reader or a move picker left under the PIN overlay
+    // must not archive, delete, flag or move anything before unlock. The QML
+    // controls check the lock too; this is the backstop for every caller.
+    // Reported as a failure, with no error text, so a swipe row that latched
+    // on dispatch lets go again.
+    if (m_appLocked) { // no mailbox action while locked
+        emit actionCompleted(action, messageIds, false);
+        return;
+    }
     QUrl serverBaseUrl;
     RelayAuth auth;
     if (!requirePairing(serverBaseUrl, auth)) {

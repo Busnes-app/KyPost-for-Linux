@@ -74,6 +74,7 @@ private slots:
     void refreshFoldersStopsAtTheDepthCap();
     void mailFoldersShowsNoDeeperThanTheCap();
     void aLockedAppSendsNoFolderMutation();
+    void aLockedAppSendsNoMailboxAction();
     void aRefreshThatOutlivesItsAccountWritesNothingAndReportsNoError();
     void anAttachmentThatOutlivesItsAccountIsNeverWrittenOrOpened();
     void aPgpComposeAnswerThatOutlivesItsAccountIsNotCached();
@@ -2727,6 +2728,40 @@ void MailControllerTest::aLockedAppSendsNoFolderMutation()
     f.executor.shutdown();
     QVERIFY(fake.connectionCount() > 0);
     QVERIFY2(fake.receivedRequests().first().startsWith("POST "), fake.receivedRequests().first().constData());
+}
+
+// Archive, delete, spam and move reach the relay from a reader or a move
+// picker that can sit behind the PIN overlay. None of them may go out while
+// locked; each reports failure so a latched swipe row lets go.
+void MailControllerTest::aLockedAppSendsNoMailboxAction()
+{
+    FakeRelayServer fake(httpResponse(
+        200, "OK", R"({"ok":true,"action":"archive","processed":1,"failed":[],"targetMailbox":""})"));
+    RefreshFixture f(fake.port());
+    QSignalSpy doneSpy(&f.controller, &MailController::actionCompleted);
+
+    f.controller.setAppLocked(true);
+    f.controller.archiveEmails({ QStringLiteral("m1") });
+    f.controller.deleteEmails({ QStringLiteral("m1") });
+    f.controller.markSpam({ QStringLiteral("m1") });
+    f.controller.moveEmails({ QStringLiteral("m1") }, QStringLiteral("Archive"));
+    QVERIFY(!f.controller.isBusy());
+    // Give a dispatched request every chance to arrive before saying none did.
+    QTest::qWait(300);
+    QCOMPARE(fake.connectionCount(), 0);
+    QCOMPARE(doneSpy.count(), 4);
+    for (const QList<QVariant>& args : doneSpy)
+        QCOMPARE(args.at(2).toBool(), false);
+    QVERIFY(f.controller.lastError().isEmpty());
+
+    f.controller.setAppLocked(false);
+    doneSpy.clear();
+    f.controller.archiveEmails({ QStringLiteral("m1") });
+    QTRY_VERIFY_WITH_TIMEOUT(doneSpy.count() == 1, 10000);
+    f.executor.shutdown();
+    QCOMPARE(doneSpy.at(0).at(2).toBool(), true);
+    QVERIFY(fake.connectionCount() > 0);
+    QVERIFY2(fake.receivedRequests().last().contains("\"archive\""), fake.receivedRequests().last().constData());
 }
 
 QTEST_GUILESS_MAIN(MailControllerTest)

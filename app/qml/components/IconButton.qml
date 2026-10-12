@@ -71,7 +71,12 @@ Rectangle {
     // Icon-only, so the tooltip is the only name a screen reader can speak.
     Accessible.role: Accessible.Button
     Accessible.name: root.tooltip
-    Accessible.onPressAction: if (root.enabled) root.clicked()
+    // The PIN overlay stops pointer and key input from reaching a button
+    // behind it, but an accessibility action is delivered to the item
+    // directly. Without the lock check, a reader left open under the lock
+    // could still be archived or deleted that way. MailController refuses
+    // the mailbox write too; this keeps every other action shut as well.
+    Accessible.onPressAction: if (root.enabled && !AppLock.locked) root.clicked()
 
     ToolTip.visible: root.tooltip !== "" && hoverHandler.hovered
     ToolTip.text: root.tooltip
