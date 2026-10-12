@@ -515,7 +515,7 @@ void MailController::markUnread(const QString& folder, const QStringList& messag
     setReadState(folder, messageIds, false);
 }
 
-void MailController::applyCachedStatus(const QString& folder, const QString& messageId, const QString& status)
+void MailController::applyStatus(const QString& folder, const QString& messageId, const QString& status)
 {
     if (folder == m_currentFolder) {
         for (Email& email : m_currentFolderEmails) {
@@ -560,18 +560,20 @@ void MailController::setReadState(const QString& folder, const QStringList& mess
         const QString key = folder + QLatin1Char('\n') + id;
         if (m_readStateInFlight.contains(key) || changed.contains(id))
             continue;
-        const std::optional<Email> cached = m_mailRepository.cachedEmail(folder, id);
-        if (!cached.has_value() || cached->isUnread() != read)
+        // An unsynced search hit changes in memory only.
+        const bool cached = m_mailRepository.cachedEmail(folder, id).has_value();
+        const std::optional<Email> email = lookupEmail(folder, id);
+        if (!email.has_value() || email->isUnread() != read)
             continue;
-        if (!m_mailRepository.setCachedStatus(folder, id, target)) {
+        if (cached && !m_mailRepository.setCachedStatus(folder, id, target)) {
             if (!read)
                 setLastError(i18n("Could not save the change on this device."));
             continue;
         }
-        previous.insert(id, cached->status);
+        previous.insert(id, email->status);
         changed.append(id);
         m_readStateInFlight.insert(key);
-        applyCachedStatus(folder, id, target);
+        applyStatus(folder, id, target);
     }
     if (changed.isEmpty())
         return;
@@ -585,8 +587,8 @@ void MailController::setReadState(const QString& folder, const QStringList& mess
         [this, folder, target, changed, previous, read, owner](const ActionResult& result) {
             for (const QString& id : changed)
                 m_readStateInFlight.remove(folder + QLatin1Char('\n') + id);
-            // The pairing changed while this was out: the cache now belongs to
-            // another account, whose same-UID message a rollback would flip.
+            // The pairing changed while this was out: the cache and search now
+            // belong to another account, whose same-UID message a rollback would flip.
             if (!m_pairingStore.stillCurrent(owner))
                 return;
 
@@ -600,12 +602,13 @@ void MailController::setReadState(const QString& folder, const QStringList& mess
                 }
             }
             for (const QString& id : failed) {
-                // Changed since dispatch (a refresh wrote the relay's answer): keep it.
-                const std::optional<Email> cached = m_mailRepository.cachedEmail(folder, id);
-                if (!cached.has_value() || cached->status != target)
+                // Changed since dispatch (a refresh or search brought the relay's answer): keep it.
+                const std::optional<Email> email = lookupEmail(folder, id);
+                if (!email.has_value() || email->status != target)
                     continue;
-                if (m_mailRepository.setCachedStatus(folder, id, previous.value(id)))
-                    applyCachedStatus(folder, id, previous.value(id));
+                if (!m_mailRepository.cachedEmail(folder, id).has_value()
+                    || m_mailRepository.setCachedStatus(folder, id, previous.value(id)))
+                    applyStatus(folder, id, previous.value(id));
             }
             if (!read && !failed.isEmpty()) {
                 setLastError(result.detail.isEmpty() ? i18n("Could not mark the message as unread.")

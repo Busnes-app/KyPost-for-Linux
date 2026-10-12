@@ -95,6 +95,8 @@ private slots:
     void aStaleSearchReplyIsNeverShown();
     void aSearchHitOpensFromMemoryAndNeverReachesTheCache();
     void aFolderSwitchReRunsTheSearchThere();
+    void aSearchOnlyHitIsMarkedReadThroughTheRelayInMemoryOnly();
+    void aRefusedSearchOnlyMarkReadRollsBackTheRow();
 
     // Drafts (L7).
     void aReopenedDraftPrefillsComposeAndItsFirstSaveReplacesTheSource();
@@ -2778,11 +2780,11 @@ void MailControllerTest::aLockedAppSendsNoMailboxAction()
 
 namespace {
 
-QByteArray searchReply(const char* id, const char* subject)
+QByteArray searchReply(const char* id, const char* subject, const char* status = "read")
 {
     return httpResponse(200, "OK", QByteArray(R"({"results":[{"messageId":")") + id
                                        + R"(","sender":"x@example.com","subject":")" + subject
-                                       + R"(","status":"read","atUtc":"2026-07-03T00:00:00Z"}]})");
+                                       + R"(","status":")" + status + R"(","atUtc":"2026-07-03T00:00:00Z"}]})");
 }
 
 int requestsMatching(const FakeRelayServer& fake, const QByteArray& needle)
@@ -2929,6 +2931,65 @@ void MailControllerTest::aFolderSwitchReRunsTheSearchThere()
     QCOMPARE(requestsMatching(fake, "mailbox=Archive&limit=200"), 1);
     QCOMPARE(results->rowCount(), 1);
     QCOMPARE(results->emailAt(0).folder, QStringLiteral("Archive"));
+}
+
+void MailControllerTest::aSearchOnlyHitIsMarkedReadThroughTheRelayInMemoryOnly()
+{
+    FakeRelayServer fake(searchReply("s1", "Found", "unread"));
+    RefreshFixture f(fake.port());
+    auto* results = qobject_cast<EmailListModel*>(f.controller.searchModel());
+    f.controller.setSearchQuery(QStringLiteral("found"));
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.searchBusy(), 10000);
+    QVERIFY(f.controller.findByMessageId(QStringLiteral("s1"), QStringLiteral("INBOX"))
+                .value(QStringLiteral("searchOnly")).toBool());
+
+    fake.setResponseForPath("/api/inbox/actions", readStateReply("read", true));
+    QSignalSpy stateSpy(&f.controller, &MailController::readStateChanged);
+    f.controller.markRead(QStringLiteral("INBOX"), { QStringLiteral("s1") });
+
+    // Before any reply: the row and the reader already say read.
+    QCOMPARE(results->emailAt(0).status, QStringLiteral("read"));
+    QCOMPARE(stateSpy.count(), 1);
+    QCOMPARE(stateSpy.at(0).at(2).toBool(), false);
+
+    QTRY_VERIFY_WITH_TIMEOUT(requestsMatching(fake, "/api/inbox/actions") == 1, 10000);
+    const QJsonObject body = jsonBodyOf(firstRequestMatching(fake, "/api/inbox/actions"));
+    QCOMPARE(body.value(QStringLiteral("action")).toString(), QStringLiteral("read"));
+    QCOMPARE(body.value(QStringLiteral("mailbox")).toString(), QStringLiteral("INBOX"));
+
+    // The opposite change goes through once the first has landed.
+    fake.setResponseForPath("/api/inbox/actions", readStateReply("unread", true));
+    QTRY_VERIFY_WITH_TIMEOUT((f.controller.markUnread(QStringLiteral("INBOX"), { QStringLiteral("s1") }),
+                              stateSpy.count() == 2),
+                             10000);
+    QTRY_VERIFY_WITH_TIMEOUT(requestsMatching(fake, "/api/inbox/actions") == 2, 10000);
+    f.executor.shutdown();
+    QCOMPARE(results->emailAt(0).status, QStringLiteral("unread"));
+    QVERIFY(f.controller.lastError().isEmpty());
+    QVERIFY(!f.emailDao.findById(QStringLiteral("INBOX"), QStringLiteral("s1")).has_value());
+}
+
+void MailControllerTest::aRefusedSearchOnlyMarkReadRollsBackTheRow()
+{
+    FakeRelayServer fake(searchReply("s1", "Found", "unread"));
+    RefreshFixture f(fake.port());
+    auto* results = qobject_cast<EmailListModel*>(f.controller.searchModel());
+    f.controller.setSearchQuery(QStringLiteral("found"));
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.searchBusy(), 10000);
+
+    fake.setResponseForPath("/api/inbox/actions", httpResponse(502, "Bad Gateway", "upstream down"));
+    QSignalSpy stateSpy(&f.controller, &MailController::readStateChanged);
+    f.controller.markRead(QStringLiteral("INBOX"), { QStringLiteral("s1") });
+    QCOMPARE(results->emailAt(0).status, QStringLiteral("read"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(stateSpy.count() == 2, 10000);
+    f.executor.shutdown();
+    QCOMPARE(stateSpy.at(1).at(2).toBool(), true);
+    QCOMPARE(results->emailAt(0).status, QStringLiteral("unread"));
+    QCOMPARE(f.controller.findByMessageId(QStringLiteral("s1"), QStringLiteral("INBOX"))
+                 .value(QStringLiteral("status")).toString(),
+             QStringLiteral("unread"));
+    QVERIFY(!f.emailDao.findById(QStringLiteral("INBOX"), QStringLiteral("s1")).has_value());
 }
 
 void MailControllerTest::aReopenedDraftPrefillsComposeAndItsFirstSaveReplacesTheSource()

@@ -194,7 +194,7 @@ public slots:
     void markSpam(const QStringList& messageIds);
     void moveEmails(const QStringList& messageIds, const QString& targetFolder);
     // Optimistic: the cache and list change now, and roll back if the relay
-    // refuses. Messages already in the requested state, unknown, or with a
+    // refuses. An unsynced search hit changes in memory only. Messages already in the requested state, unknown, or with a
     // change still in flight are skipped, so a repeat call sends nothing.
     // markRead is incidental to opening a message and fails silently (the row
     // simply turns unread again); markUnread is the user's request and
@@ -683,7 +683,7 @@ private:
     void finishAction(const QString& action, const QStringList& messageIds, const QString& mailbox,
                       const ActionResult& result);
     void setReadState(const QString& folder, const QStringList& messageIds, bool read);
-    void applyCachedStatus(const QString& folder, const QString& messageId, const QString& status);
+    void applyStatus(const QString& folder, const QString& messageId, const QString& status);
     void listFolderTree(const RelayRequestPlan& plan, const QString& parent, int depth);
     int m_folderListsInFlight = 0;
     // Shared body of createFolder/renameFolder/deleteFolder -- see the .cpp.

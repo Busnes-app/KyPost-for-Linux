@@ -91,7 +91,7 @@ Item {
     readonly property bool decryptedIsHtml: root.decrypted.isHtml
     readonly property string decryptedBody: root.decrypted.body
 
-    // Mirrors the cache; updated by MailApp.readStateChanged.
+    // Mirrors the cache or search hit; updated by MailApp.readStateChanged.
     property bool unread: false
 
     onMessageIdChanged: {
