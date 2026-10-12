@@ -176,7 +176,8 @@ public slots:
     // change still in flight are skipped, so a repeat call sends nothing.
     // markRead is incidental to opening a message and fails silently (the row
     // simply turns unread again); markUnread is the user's request and
-    // reports failure through lastError.
+    // reports failure through lastError. Both do nothing while the app is
+    // locked; EmailDetail marks an opened message read once it is unlocked.
     void markRead(const QString& folder, const QStringList& messageIds);
     void markUnread(const QString& folder, const QStringList& messageIds);
     // mode is hardcoded "html" -- Compose.qml's RichBodyEditor is the sole

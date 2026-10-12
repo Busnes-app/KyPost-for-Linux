@@ -85,6 +85,7 @@ private slots:
     void aRefusedMarkReadRollsBackSilently();
     void aRefusedMarkUnreadRollsBackAndSaysSo();
     void aReadStateReplyForAReplacedAccountRollsNothingBack();
+    void aLockedAppChangesNoReadStateUntilUnlocked();
 
 private:
     static void savePairing(PairingStore& pairingStore, quint16 port);
@@ -2476,6 +2477,41 @@ void MailControllerTest::aReadStateReplyForAReplacedAccountRollsNothingBack()
     f.executor.shutdown();
     QVERIFY2(fake.receivedRequest().contains("/api/inbox/actions"), fake.receivedRequest().constData());
     QCOMPARE(cachedStatus(f.emailDao, "m1"), QStringLiteral("unread"));
+}
+
+// A reader opened behind the PIN overlay (a notification tap on a cached
+// message) calls markRead before anyone has unlocked. Nothing may reach the
+// relay, or the cache, until the app is unlocked.
+void MailControllerTest::aLockedAppChangesNoReadStateUntilUnlocked()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", kTwoMessageInbox));
+    RefreshFixture f(fake.port());
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    QVERIFY(f.emailDao.updateStatus(QStringLiteral("INBOX"), QStringLiteral("m2"), QStringLiteral("read")));
+    auto* model = qobject_cast<EmailListModel*>(f.controller.emailModel());
+
+    fake.setResponse(readStateReply("read", true));
+    const int requestsBefore = fake.receivedRequests().size();
+    QSignalSpy stateSpy(&f.controller, &MailController::readStateChanged);
+
+    f.controller.setAppLocked(true);
+    f.controller.markRead(QStringLiteral("INBOX"), { QStringLiteral("m1") });
+    f.controller.markUnread(QStringLiteral("INBOX"), { QStringLiteral("m2") });
+    QCOMPARE(stateSpy.count(), 0);
+    QCOMPARE(cachedStatus(f.emailDao, "m1"), QStringLiteral("unread"));
+    QCOMPARE(cachedStatus(f.emailDao, "m2"), QStringLiteral("read"));
+    QCOMPARE(model->emailAt(0).status, QStringLiteral("unread"));
+    // Give a dispatched request every chance to arrive before saying none did.
+    QTest::qWait(300);
+    QCOMPARE(fake.receivedRequests().size(), requestsBefore);
+
+    f.controller.setAppLocked(false);
+    f.controller.markRead(QStringLiteral("INBOX"), { QStringLiteral("m1") });
+    QCOMPARE(cachedStatus(f.emailDao, "m1"), QStringLiteral("read"));
+    QTRY_VERIFY_WITH_TIMEOUT(fake.receivedRequests().size() > requestsBefore, 10000);
+    f.executor.shutdown();
+    QVERIFY2(fake.receivedRequest().contains("\"action\":\"read\""), fake.receivedRequest().constData());
 }
 
 namespace {

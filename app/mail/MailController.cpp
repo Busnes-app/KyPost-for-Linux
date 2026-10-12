@@ -482,6 +482,10 @@ void MailController::applyCachedStatus(const QString& folder, const QString& mes
 
 void MailController::setReadState(const QString& folder, const QStringList& messageIds, bool read)
 {
+    // A server write like any other: a reader left open behind the PIN
+    // overlay (a notification tap, say) must not change it before unlock.
+    if (m_appLocked || messageIds.isEmpty())
+        return;
     const QString target = read ? QStringLiteral("read") : QStringLiteral("unread");
     QUrl serverBaseUrl;
     RelayAuth auth;

@@ -110,9 +110,20 @@ Item {
     // Opening marks read; reload() alone does not, so a "Mark as unread"
     // sticks while the message stays on screen. Deferred so a selection that
     // changes messageId and folder together is seen as one consistent pair.
+    // Not while locked: a reader opened behind the PIN overlay (a notification
+    // tap) marks its message read only once the overlay is gone.
     function markOpenedRead() {
+        if (AppLock.locked)
+            return
         if (root.unread && root.email.messageId === root.messageId && root.email.folder === root.folder)
             MailApp.markRead(root.folder, [root.messageId])
+    }
+    Connections {
+        target: AppLock
+        function onLockedChanged() {
+            if (!AppLock.locked)
+                Qt.callLater(root.markOpenedRead)
+        }
     }
 
     // MailApp is a singleton and the plaintext arrives asynchronously, so the
