@@ -411,11 +411,12 @@ app/qml/pages/MfaApproval.qml	    readonly property bool canAnswer: Mfa.hasChall
 # A press answers the challenge it started on. Neutralised, a held tap answers the replacement.
 app/qml/pages/MfaApproval.qml	        return root.stillShown(id) ? id : ""	        return Mfa.challengeId	QmlTests:MfaApproval::test_replacement_during_held_choice_gets_no_decision
 
-# --- a push opened for a replaced pairing is never recorded or shown -------
+# --- a push opened for a replaced pairing is never recorded, shown or pending --
 #
 # The key read can span an account replacement and return the previous
 # pairing's keys; the identity captured before it must still be current.
 app/push/PushArrival.cpp	    if (!pairingStore.stillCurrent(owner)) {	    if (false) {	PushArrivalTest:aPushOpenedForAReplacedPairingIsNeitherRecordedNorShown
+app/push/PushArrival.cpp	    if (!pairingStore.stillCurrent(owner)) {	    if (false) {	PushArrivalTest:aSignInChallengeOpenedForAReplacedPairingNeverBecomesPending
 app/push/PushArrival.cpp	    if (owner.isEmpty()) {	    if (false) {	PushArrivalTest:aPushWithNoPairingIsDroppedUnopened
 
 # --- a read-state rollback must not touch a replaced account's cache ------

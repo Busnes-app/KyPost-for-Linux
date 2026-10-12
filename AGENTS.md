@@ -192,7 +192,10 @@ Added 2026-07-25 (parity work with `kypost-android`):
   (`PairingStore::OpenedPush::decrypted`): a keyless pairing still reads
   cleartext mail pushes, but the relay never sends it a challenge, so a
   cleartext one is forged by whoever can publish to the topic. The pull
-  path is device-authenticated and needs no such check.
+  path is device-authenticated and needs no such check. A UnifiedPush
+  challenge also goes through `PushArrival::handle`'s ownership recheck like
+  any other push, so one opened with a replaced pairing's keys never becomes
+  pending (guard in `tests/guards.tsv`).
   `MfaChallengeTracker` keeps them in memory only, dedupes by id (answered
   ids too), expires them at min(issuedAt, arrival) + 5 min, refuses an
   issuedAt more than 2 min ahead, and caps pending at 8. The notification

@@ -7,7 +7,9 @@
 #include "domain/PushRepository.h"
 #include "models/PushNotification.h"
 #include "net/HttpClient.h"
+#include "net/NetworkExecutor.h"
 #include "net/PushNotificationClient.h"
+#include "pairing/MfaController.h"
 #include "security/WebPushCrypto.h"
 #include "stores/CursorStore.h"
 #include "stores/SecureStoreFile.h"
@@ -26,6 +28,12 @@ namespace {
 constexpr auto kPushKeysKey = "pairing.webPushKeys";
 const QByteArray kOldPushJson =
     R"({"title":"t","data":{"messageId":"old-1","senderName":"Previous","emailSubject":"Previous account"}})";
+
+// A sign-in challenge as push_mfa_handlers.go sends it, issued at kNow.
+constexpr qint64 kNow = 1760000000000;
+const QByteArray kOldChallengeJson =
+    R"({"data":{"type":"mfa_challenge","challengeId":")" + QByteArray(48, 'a')
+    + R"(","issuedAt":"1760000000000","matchDigits":"07","decoyDigits":"42,93"}})";
 
 WebPushCrypto::Keys freshKeys()
 {
@@ -125,6 +133,37 @@ struct Fixture
     }
 };
 
+// main.cpp's `deliver`: a challenge goes to the approval controller and
+// raises the sign-in notification only if the controller took it; anything
+// else is a mail notification.
+struct Delivery
+{
+    explicit Delivery(PairingStore& pairingStore)
+        : executor(3000)
+        , controller(executor, pairingStore, [] { return kNow; })
+    {
+    }
+    // NetworkExecutor's contract: receivers outlive shutdown().
+    ~Delivery() { executor.shutdown(); }
+
+    std::function<void(const PushNotification&)> callback()
+    {
+        return [this](const PushNotification& payload) {
+            if (payload.mfaChallenge.has_value()) {
+                if (controller.receive(*payload.mfaChallenge))
+                    ++signInNotifications;
+                return;
+            }
+            mail.append(payload);
+        };
+    }
+
+    NetworkExecutor executor;
+    MfaController controller;
+    QVector<PushNotification> mail;
+    int signInNotifications = 0;
+};
+
 } // namespace
 
 class PushArrivalTest : public QObject
@@ -135,6 +174,8 @@ private slots:
     void aPushForTheCurrentPairingIsRecordedAndShown();
     void aPushOpenedForAReplacedPairingIsNeitherRecordedNorShown();
     void aPushWithNoPairingIsDroppedUnopened();
+    void aSignInChallengeForTheCurrentPairingBecomesPending();
+    void aSignInChallengeOpenedForAReplacedPairingNeverBecomesPending();
 };
 
 // Control for the test below: the same path with no replacement delivers, so
@@ -211,6 +252,70 @@ void PushArrivalTest::aPushWithNoPairingIsDroppedUnopened()
     QCOMPARE(outcome, PushArrival::Outcome::NotPaired);
     QCOMPARE(f.secureStore->pushKeyReads(), 0);
     QVERIFY(shown.isEmpty());
+    QVERIFY(f.repository->history().isEmpty());
+}
+
+// Control for the test below, through the same deliver as main.cpp.
+void PushArrivalTest::aSignInChallengeForTheCurrentPairingBecomesPending()
+{
+    Fixture f;
+    QVERIFY(f.open());
+    QVERIFY(f.pairingStore->save(pairingFor(QStringLiteral("sub-old"), QStringLiteral("device-old"))));
+    const WebPushCrypto::Keys keys = freshKeys();
+    QVERIFY(f.pairingStore->savePushKeys(keys));
+    Delivery delivery(*f.pairingStore);
+
+    const PushArrival::Outcome outcome = PushArrival::handle(
+        WebPushCrypto::encrypt(keys.publicKey, keys.authSecret.bytes(), kOldChallengeJson), *f.pairingStore,
+        *f.repository, delivery.callback(), kNow);
+
+    QCOMPARE(outcome, PushArrival::Outcome::Delivered);
+    QVERIFY(delivery.controller.hasChallenge());
+    QCOMPARE(delivery.controller.challengeId(), QString::fromLatin1(QByteArray(48, 'a')));
+    QCOMPARE(delivery.signInNotifications, 1);
+    QVERIFY(delivery.mail.isEmpty());
+    QVERIFY(f.repository->history().isEmpty());
+}
+
+// As aPushOpenedForAReplacedPairingIsNeitherRecordedNorShown, but the push is
+// a sign-in challenge. Answering it would act for an account this device no
+// longer holds, so it must not become pending, raise a notification or be
+// stored.
+void PushArrivalTest::aSignInChallengeOpenedForAReplacedPairingNeverBecomesPending()
+{
+    Fixture f;
+    QVERIFY(f.open());
+    QVERIFY(f.pairingStore->save(pairingFor(QStringLiteral("sub-old"), QStringLiteral("device-old"))));
+    const WebPushCrypto::Keys oldKeys = freshKeys();
+    QVERIFY(f.pairingStore->savePushKeys(oldKeys));
+    Delivery delivery(*f.pairingStore);
+
+    const WebPushCrypto::Keys newKeys = freshKeys();
+    bool replaced = false;
+    f.secureStore->duringNextPushKeyRead([&] {
+        replaced = f.pairingStore->save(pairingFor(QStringLiteral("sub-new"), QStringLiteral("device-new")))
+                   && f.pairingStore->savePushKeys(newKeys);
+        // main.cpp clears the controller on pairingChanged, which lands here.
+        delivery.controller.clear();
+    });
+
+    const PushArrival::Outcome outcome = PushArrival::handle(
+        WebPushCrypto::encrypt(oldKeys.publicKey, oldKeys.authSecret.bytes(), kOldChallengeJson), *f.pairingStore,
+        *f.repository, delivery.callback(), kNow);
+
+    // The replacement landed mid-read and the read handed back the old keys.
+    QVERIFY(replaced);
+    QCOMPARE(f.pairingStore->currentIdentity().subscriberId, QStringLiteral("sub-new"));
+    QVERIFY(!f.pairingStore
+                 ->openPushMessage(
+                     WebPushCrypto::encrypt(oldKeys.publicKey, oldKeys.authSecret.bytes(), kOldChallengeJson))
+                 .has_value());
+
+    QCOMPARE(outcome, PushArrival::Outcome::PairingChanged);
+    QVERIFY(!delivery.controller.hasChallenge());
+    QCOMPARE(delivery.controller.pendingCount(), 0);
+    QCOMPARE(delivery.signInNotifications, 0);
+    QVERIFY(delivery.mail.isEmpty());
     QVERIFY(f.repository->history().isEmpty());
 }
 

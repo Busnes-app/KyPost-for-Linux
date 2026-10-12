@@ -382,11 +382,15 @@ kypost_add_app_test(PushPayloadParserTest
 # out of main.cpp so the check that a push still belongs to the current
 # pairing after its keys were read has a test. Same pure-app pattern as
 # PushPayloadParserTest; delivery is a callback, so no KNotification.
+# MfaController is linked so a sign-in challenge's path ends where main.cpp's
+# does: pending or not.
 kypost_add_app_test(PushArrivalTest
   SOURCES
     app/push/PushArrivalTest.cpp
     ${CMAKE_SOURCE_DIR}/app/push/PushArrival.cpp
     ${CMAKE_SOURCE_DIR}/app/push/PushPayloadParser.cpp
+    ${CMAKE_SOURCE_DIR}/app/pairing/MfaController.cpp
+  LIBS KF6::I18n
 )
 
 # NotificationDispatcherTest (review follow-up to Task 40): covers only the
