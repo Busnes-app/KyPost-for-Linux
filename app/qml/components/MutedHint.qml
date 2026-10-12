@@ -1,4 +1,4 @@
-import QtQuick 2.15
+import QtQuick
 import com.kysecurity.mail 1.0
 
 // Small muted single-line hint/status text, e.g. "No groups available".

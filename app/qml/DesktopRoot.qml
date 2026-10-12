@@ -1,7 +1,7 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
-import QtQuick.Layouts 1.15
-import QtQuick.Window 2.15
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import QtQuick.Window
 import org.kde.kirigami 2.20 as Kirigami
 import com.kysecurity.mail 1.0
 import "components"
@@ -298,7 +298,7 @@ Kirigami.ApplicationWindow {
     Kirigami.OverlaySheet {
         id: settingsSheet
         modal: true
-        onOpened: settingsPane.refreshKeywordSettings()
+        onOpened: settingsPane.refreshSnapshots()
 
         background: Rectangle {
             color: Theme.panel
@@ -852,6 +852,14 @@ Kirigami.ApplicationWindow {
                         Connections {
                             target: MailApp
                             function onFoldersChanged() {
+                                folderRepeater.model = MailApp.mailFolders()
+                            }
+                        }
+                        // Custom folder names belong to an account; a replacement
+                        // purges them from the cache but not from this copy.
+                        Connections {
+                            target: Pairing
+                            function onPairingChanged() {
                                 folderRepeater.model = MailApp.mailFolders()
                             }
                         }

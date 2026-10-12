@@ -1,5 +1,5 @@
-import QtQuick 2.15
-import QtQuick.Layouts 1.15
+import QtQuick
+import QtQuick.Layouts
 import com.kysecurity.mail 1.0
 import "../components"
 
@@ -30,6 +30,18 @@ Item {
     }
 
     Component.onCompleted: root.doRefresh()
+
+    // The code is the previous account's after a pairing change, and a failed
+    // refresh never replaces it (myQrDataChanged fires on success only), so
+    // drop it before asking again. DesktopRoot keeps this page alive in a sheet.
+    Connections {
+        target: Pairing
+        function onPairingChanged() {
+            refreshTimer.stop()
+            root.qrDataUrl = ""
+            root.doRefresh()
+        }
+    }
 
     Connections {
         target: PgpQr

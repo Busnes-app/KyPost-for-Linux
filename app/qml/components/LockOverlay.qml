@@ -1,4 +1,4 @@
-import QtQuick 2.15
+import QtQuick
 import com.kysecurity.mail 1.0
 
 // The app-lock PIN gate, as one drop-in item.

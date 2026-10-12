@@ -1,4 +1,4 @@
-import QtQuick 2.15
+import QtQuick
 import com.kysecurity.mail 1.0
 
 // The "an update exists" toast, plus the timing rule review found missing:

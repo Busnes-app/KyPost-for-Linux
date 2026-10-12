@@ -424,9 +424,22 @@ app/push/PushArrival.cpp	    if (owner.isEmpty()) {	    if (false) {	PushArrival
 # Message ids are per-mailbox UIDs and collide across accounts.
 app/mail/MailController.cpp	            if (!m_pairingStore.stillCurrent(owner))	            if (false)	MailControllerTest:aReadStateReplyForAReplacedAccountRollsNothingBack
 
-# --- a locked app sends no read-state or folder change ---------------------
+# --- a locked app sends no read-state, folder or mailbox change -----------
 #
 # A reader or a folder prompt can sit behind the PIN overlay; both write to the
 # server.
 app/mail/MailController.cpp	    if (m_appLocked || messageIds.isEmpty())	    if (messageIds.isEmpty())	MailControllerTest:aLockedAppChangesNoReadStateUntilUnlocked
 app/mail/MailController.cpp	    if (m_appLocked) // no folder mutation while locked	    if (false) // no folder mutation while locked	MailControllerTest:aLockedAppSendsNoFolderMutation
+app/mail/MailController.cpp	    if (m_appLocked) { // no mailbox action while locked	    if (false) { // no mailbox action while locked	MailControllerTest:aLockedAppSendsNoMailboxAction
+#
+# The PIN overlay blocks pointer and key input but not an accessibility
+# action, which goes to the button directly.
+app/qml/components/IconButton.qml	    Accessible.onPressAction: if (root.enabled && !AppLock.locked) root.clicked()	    Accessible.onPressAction: if (root.enabled) root.clicked()	QmlTests:IconButton::test_accessibility_press_is_refused_while_locked
+app/qml/components/MoveToFolderDialog.qml	        if (!root.isOpen || AppLock.locked)	        if (!root.isOpen)	QmlTests:MoveToFolderDialog::test_locking_closes_the_picker_and_moves_nothing
+
+# --- notification history does not outlive its account --------------------
+#
+# Settings stays alive in a desktop sheet, so its copy of the history would
+# show the previous account's subjects after a replacement.
+app/qml/components/ConnectionStatus.qml	        function onPairingChanged() { root.reloadHistory() }	        function onPairingChanged() { }	QmlTests:ConnectionStatus::test_replacing_the_account_clears_history_while_shown
+app/qml/components/ConnectionStatus.qml	        root.history = [] // cleared first, so no previous-account row survives a reload that supplies nothing	        // not cleared	QmlTests:ConnectionStatus::test_a_pairing_change_clears_history_even_without_a_reload

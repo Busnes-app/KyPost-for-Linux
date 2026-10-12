@@ -1,6 +1,6 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
-import QtQuick.Layouts 1.15
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
 import com.kysecurity.mail 1.0
 import "../components"
 import "../utils/format.js" as Format
@@ -153,6 +153,21 @@ Item {
 
     Component.onCompleted: loadContact()
     onUidChanged: loadContact()
+
+    // contact and availableGroups are copies. An account replacement purges
+    // both from the cache, so re-read them; an edit in progress belonged to
+    // the previous account and is dropped back to the (now empty) view.
+    Connections {
+        target: Pairing
+        function onPairingChanged() {
+            if (root.uid !== "") {
+                root.contact = ContactsApp.contactAt(root.uid)
+                root.mode = "view"
+            } else {
+                root.availableGroups = ContactsApp.allGroups()
+            }
+        }
+    }
 
     // ---- state transitions ------------------------------------------
 

@@ -1,4 +1,4 @@
-import QtQuick 2.15
+import QtQuick
 import com.kysecurity.mail 1.0
 
 // Compose autocomplete (ContactAutocomplete.md): a brief self-clearing

@@ -193,4 +193,20 @@ else
     echo "textFormat: every data-bound Text and Label declares a format that is safe for it"
 fi
 
+# ---- gate 3: Qt modules are imported without a version ------------------
+#
+# Qt shares a type's property cache across every file that uses it. One file
+# with `import QtQuick 2.15` and a DragHandler made Kirigami's DrawerHandle,
+# which needs DragAxis.activeValue (6.5), fail to compile in about half of
+# all mobile launches: "Type Kirigami.GlobalDrawer unavailable", depending on
+# which file the loader compiled first.
+versioned=$(grep -rnE '^\s*import Qt[A-Za-z.]* [0-9]' "$QML_DIR" --include='*.qml' || true)
+if [[ -n "$versioned" ]]; then
+    echo "versioned Qt import; drop the version:"
+    echo "$versioned"
+    status=1
+else
+    echo "imports: no versioned Qt module imports"
+fi
+
 exit $status

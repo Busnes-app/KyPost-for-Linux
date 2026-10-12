@@ -1,4 +1,4 @@
-import QtQuick 2.15
+import QtQuick
 import com.kysecurity.mail 1.0
 
 // STYLE_GUIDE.md §4 "Ghost/secondary button" (mirrors web's
@@ -43,6 +43,8 @@ Rectangle {
     Text {
         id: label
         anchors.centerIn: parent
+        width: Math.min(implicitWidth, root.width - root.horizontalPadding * 2)
+        elide: Text.ElideRight
         textFormat: Text.PlainText
         text: root.text
         color: Theme.inkStrong

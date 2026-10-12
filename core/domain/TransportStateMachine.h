@@ -2,10 +2,13 @@
 
 #include "models/PushNotification.h"
 
+#include <QDateTime>
 #include <QJsonObject>
 #include <QObject>
 #include <QTimer>
 #include <QVector>
+
+#include <functional>
 
 class PushRepository;
 
@@ -40,8 +43,13 @@ public:
     // pollIntervalMs is a constructor-overridable knob, defaulted to the plan
     // doc's real 90s cadence, so tests don't have to wait out 90 real seconds
     // to exercise the polling tier's timer-driven fetch path.
+    // now: the clock the push-silence backstop reads, injectable for tests.
     TransportStateMachine(PushRepository& pushRepository, QObject* parent = nullptr,
-                           int pollIntervalMs = 90000);
+                           int pollIntervalMs = 90000,
+                           std::function<qint64()> now = &QDateTime::currentMSecsSinceEpoch);
+
+    // Distributor silence after which one pull is made anyway, as Android.
+    static constexpr qint64 kPushSilenceMs = 3LL * 60 * 60 * 1000;
 
     // Called by app-layer code when the KUnifiedPush distributor path is
     // confirmed working (endpoint acquired, registered) or lost (no
@@ -51,12 +59,23 @@ public:
 
     TransportTier currentTier() const;
 
+    // A message arrived through the distributor.
+    void notePushReceived();
+
+    // Backstop for a distributor that stopped delivering: in the Distributor
+    // tier, once kPushSilenceMs pass with no push, pull once and emit
+    // pushSilenceBackstop. Runs on a timer and when the app comes forward.
+    // True if it pulled.
+    bool checkPushSilence();
+
 signals:
     void tierChanged(TransportTier tier);
-    // Emitted after each polling-tier PushRepository::pullOnce() call
+    // Emitted after each PushRepository::pullOnce() call, polling or backstop
     // (whether or not it returned anything) -- the UI wires this to a
     // "last checked at" indicator.
     void pollTick(QVector<PushNotification> delivered);
+    // The backstop pulled; mail may be stale too.
+    void pushSilenceBackstop();
 
 private slots:
     void onPollTimer();
@@ -66,6 +85,9 @@ private:
 
     PushRepository& m_pushRepository;
     QTimer m_pollTimer; // 90s interval, per the plan doc's stated cadence
+    QTimer m_silenceTimer; // Distributor tier only
+    std::function<qint64()> m_now;
+    qint64 m_lastHeardMs = 0; // last push, distributor registration, or backstop
     bool m_distributorAvailable = false;
     TransportTier m_tier = TransportTier::Polling;
 };

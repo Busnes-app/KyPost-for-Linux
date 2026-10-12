@@ -16,6 +16,7 @@
 
 #include <QNetworkAccessManager>
 #include <QSignalSpy>
+#include <QTimeZone>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -89,7 +90,40 @@ private slots:
     void distributorUnavailableReturnsToPolling();
     void enterTierIdempotencyEmitsTierChangedOnce();
     void pollTimerFetchesAndEmitsPollTick();
+    void backstopWaitsForThreeHoursOfSilence();
+    void backstopPullsOnceThenWaitsAgain();
+    void aPushRestartsTheSilence();
+    void backstopNeverRunsInPollingTier();
+    void backstopSkipsWhatPushDeliveredAndOldBacklog();
 };
+
+namespace {
+
+// Silence is measured from now(); tests move this instead of waiting hours.
+struct FakeClock
+{
+    qint64 ms = QDateTime::currentMSecsSinceEpoch();
+    std::function<qint64()> fn() { return [this]() { return ms; }; }
+    void advance(qint64 by) { ms += by; }
+};
+
+constexpr qint64 kSilence = TransportStateMachine::kPushSilenceMs;
+
+QByteArray pullBody(const QByteArray& items, int cursor)
+{
+    return R"({"deliveryMode":"push","cursor":)" + QByteArray::number(cursor)
+        + R"(,"notifications":[)" + items + "]}";
+}
+
+QByteArray pullItem(int seq, const QString& messageId, qint64 createdAtMs)
+{
+    return QStringLiteral(R"({"seq":%1,"title":"T","body":"B","createdAt":"%2","data":{"messageId":"%3"}})")
+        .arg(seq)
+        .arg(QDateTime::fromMSecsSinceEpoch(createdAtMs, QTimeZone::UTC).toString(Qt::ISODate), messageId)
+        .toUtf8();
+}
+
+} // namespace
 
 void TransportStateMachineTest::startsInPolling()
 {
@@ -180,6 +214,111 @@ void TransportStateMachineTest::pollTimerFetchesAndEmitsPollTick()
     QCOMPARE(delivered.size(), 1);
     QCOMPARE(delivered.first().messageId, QStringLiteral("msg-1"));
     QVERIFY(fake.receivedRequest().contains("GET"));
+}
+
+void TransportStateMachineTest::backstopWaitsForThreeHoursOfSilence()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", pullBody("", 0)));
+    RepoHarness repo;
+    repo.pair(fake.port());
+    FakeClock clock;
+    TransportStateMachine machine(repo.repository, nullptr, 90000, clock.fn());
+    QSignalSpy backstopSpy(&machine, &TransportStateMachine::pushSilenceBackstop);
+    machine.setDistributorAvailable(true);
+
+    clock.advance(kSilence - 1);
+    QVERIFY(!machine.checkPushSilence());
+    QCOMPARE(backstopSpy.size(), 0);
+    QVERIFY(fake.receivedRequest().isEmpty());
+}
+
+void TransportStateMachineTest::backstopPullsOnceThenWaitsAgain()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", pullBody("", 0)));
+    RepoHarness repo;
+    repo.pair(fake.port());
+    FakeClock clock;
+    TransportStateMachine machine(repo.repository, nullptr, 90000, clock.fn());
+    QSignalSpy pollSpy(&machine, &TransportStateMachine::pollTick);
+    QSignalSpy backstopSpy(&machine, &TransportStateMachine::pushSilenceBackstop);
+    machine.setDistributorAvailable(true);
+
+    clock.advance(kSilence);
+    QVERIFY(machine.checkPushSilence());
+    QCOMPARE(pollSpy.size(), 1);
+    QCOMPARE(backstopSpy.size(), 1);
+    QVERIFY(fake.receivedRequest().contains("GET /api/notifications/native/pull"));
+
+    // The backstop counts as hearing from the relay.
+    clock.advance(kSilence - 1);
+    QVERIFY(!machine.checkPushSilence());
+    clock.advance(1);
+    QVERIFY(machine.checkPushSilence());
+    QCOMPARE(backstopSpy.size(), 2);
+}
+
+void TransportStateMachineTest::aPushRestartsTheSilence()
+{
+    RepoHarness repo; // unpaired: a pull would be a no-op, the return value is the proof
+    FakeClock clock;
+    TransportStateMachine machine(repo.repository, nullptr, 90000, clock.fn());
+    machine.setDistributorAvailable(true);
+
+    clock.advance(2 * 60 * 60 * 1000);
+    machine.notePushReceived();
+    clock.advance(kSilence - 1);
+    QVERIFY(!machine.checkPushSilence());
+    clock.advance(1);
+    QVERIFY(machine.checkPushSilence());
+}
+
+void TransportStateMachineTest::backstopNeverRunsInPollingTier()
+{
+    RepoHarness repo;
+    FakeClock clock;
+    TransportStateMachine machine(repo.repository, nullptr, 90000, clock.fn());
+    QSignalSpy backstopSpy(&machine, &TransportStateMachine::pushSilenceBackstop);
+
+    clock.advance(10 * kSilence);
+    QVERIFY(!machine.checkPushSilence());
+
+    // Nor after the distributor goes away again.
+    machine.setDistributorAvailable(true);
+    machine.setDistributorAvailable(false);
+    clock.advance(10 * kSilence);
+    QVERIFY(!machine.checkPushSilence());
+    QCOMPARE(backstopSpy.size(), 0);
+}
+
+// A distributor-tier cursor is never advanced, so the backstop's first pull
+// returns the whole queue. Only what push missed, and is recent, may alert.
+void TransportStateMachineTest::backstopSkipsWhatPushDeliveredAndOldBacklog()
+{
+    FakeClock clock;
+    const qint64 at = clock.ms + kSilence;
+    FakeRelayServer fake(httpResponse(200, "OK", pullBody(
+        pullItem(1, QStringLiteral("too-old"), at - 2 * kSilence - 1) + ","
+            + pullItem(2, QStringLiteral("pushed"), at - 60000) + ","
+            + pullItem(3, QStringLiteral("missed"), at - 60000), 3)));
+    RepoHarness repo;
+    repo.pair(fake.port());
+    PushNotification pushed;
+    pushed.messageId = QStringLiteral("pushed");
+    QVERIFY(repo.repository.recordPushArrival(pushed, clock.ms).has_value());
+    QVERIFY(repo.pushDao.markConsumed(QStringLiteral("pushed")));
+
+    TransportStateMachine machine(repo.repository, nullptr, 90000, clock.fn());
+    QSignalSpy pollSpy(&machine, &TransportStateMachine::pollTick);
+    machine.setDistributorAvailable(true);
+    clock.advance(kSilence);
+    QVERIFY(machine.checkPushSilence());
+
+    const auto delivered = pollSpy.at(0).at(0).value<QVector<PushNotification>>();
+    QCOMPARE(delivered.size(), 1);
+    QCOMPARE(delivered.first().messageId, QStringLiteral("missed"));
+    QVERIFY(!repo.pushDao.findById(QStringLiteral("too-old")).has_value());
+    QVERIFY(repo.pushDao.findById(QStringLiteral("pushed"))->consumed); // not overwritten
+    QCOMPARE(repo.cursorStore.notificationCursor(), qint64(3));
 }
 
 QTEST_GUILESS_MAIN(TransportStateMachineTest)

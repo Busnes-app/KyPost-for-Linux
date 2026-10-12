@@ -170,6 +170,23 @@ void MailController::setLastError(const QString& error)
     emit lastErrorChanged();
 }
 
+QVariantList MailController::notificationHistory() const
+{
+    QVariantList rows;
+    if (!m_notificationHistory)
+        return rows;
+    for (const PushRecord& record : m_notificationHistory()) {
+        const std::optional<Email> email = m_mailRepository.findCachedEmail(record.messageId);
+        rows.append(QVariantMap{
+            { QStringLiteral("messageId"), record.messageId },
+            { QStringLiteral("receivedAt"), QDateTime::fromString(record.receivedAt, Qt::ISODate).toLocalTime() },
+            { QStringLiteral("sender"), email ? email->sender : QString() },
+            { QStringLiteral("subject"), email ? email->subject : QString() },
+        });
+    }
+    return rows;
+}
+
 void MailController::applyFilter()
 {
     if (m_selectedKeyword.isEmpty()) {
@@ -311,6 +328,8 @@ void MailController::finishRefresh(const MailRefreshPlan& plan, const InboxFetch
         setLastError(outcome.detail.isEmpty() ? i18n("Refresh failed") : outcome.detail);
     } else {
         setLastError(QString());
+        m_lastSyncAt = QDateTime::currentDateTime();
+        emit lastSyncAtChanged();
     }
 
     // m_currentFolder, deliberately -- NOT plan.folder. The user can switch
@@ -361,6 +380,15 @@ void MailController::finishRefresh(const MailRefreshPlan& plan, const InboxFetch
 void MailController::performActionCommon(const QStringList& messageIds, const QString& action,
                                           const std::optional<QString>& targetMailbox)
 {
+    // A server write: a reader or a move picker left under the PIN overlay
+    // must not archive, delete, flag or move anything before unlock. The QML
+    // controls check the lock too; this is the backstop for every caller.
+    // Reported as a failure, with no error text, so a swipe row that latched
+    // on dispatch lets go again.
+    if (m_appLocked) { // no mailbox action while locked
+        emit actionCompleted(action, messageIds, false);
+        return;
+    }
     QUrl serverBaseUrl;
     RelayAuth auth;
     if (!requirePairing(serverBaseUrl, auth)) {

@@ -239,6 +239,11 @@ Added 2026-07-26:
   subject of every mail through a third party. Don't reintroduce it; if
   no-distributor latency ever needs improving, shorten the poll interval.
   Reasoning in full: `core/domain/TransportStateMachine.h`.
+  The one addition (plan item L8, 2026-10-11) is Android's push-silence
+  backstop: in the Distributor tier, 3 h with no push (checked every 15 min
+  and on app foreground) triggers one pull and a mail refresh. Pulls skip
+  message ids already in history and items queued more than 6 h earlier,
+  because the Distributor tier never advances the notification cursor.
 
 ## 4a. Client-side OpenPGP (decision reversed 2026-08-22)
 
@@ -1144,6 +1149,27 @@ worse than no comment: the next reader stops looking.
   legitimately takes ~25 s and is not hung, and no `QEventLoop` timer can
   shorten that window because the thread is not processing events during it.
   `SecureStoreKeychain` bounds it; see AGENTS.md §6f.
+- **Never put a version on a Qt QML import.** Qt shares a type's property
+  cache across files, so one `import QtQuick 2.15` file with a DragHandler made
+  Kirigami's DrawerHandle (needs `DragAxis.activeValue`, 6.5) fail to compile
+  in 14 of 20 mobile launches ("Type Kirigami.GlobalDrawer unavailable"),
+  host and Flatpak runtime alike, depending on load order. Measured
+  2026-10-11; `QmlPropertyLint` gate 3 now rejects versioned Qt imports.
+- **Mobile pages must be `ThemedPage`, not `Kirigami.Page`.** Kirigami paints
+  pages and title bars from the platform palette, and a Window-level
+  `Kirigami.Theme` override does not reach items, so the app's light-on-dark
+  text landed on light grey (found 2026-10-12). `components/ThemedPage.qml`
+  paints the page and its ToolBar-style header; the default mobile breadcrumb
+  bar has no theme hook, hence `globalToolBar.style: ToolBar` in MobileRoot.
+  The GlobalDrawer still uses the platform palette. `tst_MobileFit` guards it.
+- **A copy of account data in QML must be re-read on `Pairing.pairingChanged`.**
+  An account replacement purges the cache on disk, but a list or map copied
+  out of a controller (`notificationHistory()`, `mailFolders()`,
+  `allKeywordSettings()`, `findByMessageId()`, `contactAt()`, the PGP QR code)
+  lives as long as its component, and DesktopRoot keeps Settings, the sidebar
+  and the detail pane alive. Notification history showed the previous
+  account's subjects that way (found 2026-10-12). Clear the copy, then re-read
+  it; `tst_ConnectionStatus` guards the history.
 - **CI Pipline Failes** Before commiting any change check the CI pipline code.
   EVERY Push to main not ment to fix the CI pipeline has broken the CI pipeline.
 

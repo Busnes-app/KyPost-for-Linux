@@ -82,6 +82,9 @@ public:
 
 signals:
     void changed();
+    // Emitted by tests as Pairing.pairingChanged(), the way an account
+    // replacement reaches QML from the real PairingController.
+    void pairingChanged();
 
 private:
     bool m_reregistrationRejected = false;

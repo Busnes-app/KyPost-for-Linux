@@ -53,7 +53,7 @@ std::optional<PushRecord> PushRepository::recordPushArrival(const PushNotificati
     return record;
 }
 
-QVector<PushNotification> PushRepository::pullOnce()
+QVector<PushNotification> PushRepository::pullOnce(qint64 minCreatedAtMs)
 {
     const std::optional<DevicePairing> pairing = m_pairingStore.load();
     if (!pairing.has_value())
@@ -85,6 +85,10 @@ QVector<PushNotification> PushRepository::pullOnce()
     QVector<PushNotification> delivered;
     for (const PullNotificationItem& item : result.notifications) {
         if (item.seq <= lastCursor)
+            continue;
+        if (item.createdAt.isValid() && item.createdAt.toMSecsSinceEpoch() < minCreatedAtMs)
+            continue;
+        if (!item.notification.messageId.isEmpty() && m_pushDao.findById(item.notification.messageId).has_value())
             continue;
         // Delivered but not history: a challenge is not mail and has no messageId.
         if (!item.notification.mfaChallenge.has_value())

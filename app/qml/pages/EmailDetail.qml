@@ -1,6 +1,6 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
-import QtQuick.Layouts 1.15
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
 import QtQuick.Dialogs
 import QtCore
 import QtWebEngine
@@ -137,6 +137,13 @@ Item {
                 protectedSaveDialog.close()
             webViewLoader.applyContent()
         }
+    }
+    // root.email is a copy of the cached row. An account replacement purges
+    // the cache, so re-read it: the message is gone, and with it the previous
+    // account's sender, subject and body.
+    Connections {
+        target: Pairing
+        function onPairingChanged() { root.reload() }
     }
     Component.onCompleted: {
         reload()

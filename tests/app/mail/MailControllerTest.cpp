@@ -33,6 +33,7 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimeZone>
 
 class MailControllerTest : public QObject
 {
@@ -73,6 +74,7 @@ private slots:
     void refreshFoldersStopsAtTheDepthCap();
     void mailFoldersShowsNoDeeperThanTheCap();
     void aLockedAppSendsNoFolderMutation();
+    void aLockedAppSendsNoMailboxAction();
     void aRefreshThatOutlivesItsAccountWritesNothingAndReportsNoError();
     void anAttachmentThatOutlivesItsAccountIsNeverWrittenOrOpened();
     void aPgpComposeAnswerThatOutlivesItsAccountIsNotCached();
@@ -230,6 +232,24 @@ void MailControllerTest::selectKeywordFiltersCachedEmailsWithoutAnyNetworkCall()
     controller.selectKeyword(QString());
     QCOMPARE(model->rowCount(), 2);
     QCOMPARE(fake.receivedRequest(), requestAfterRefresh);
+
+    // Settings -> Connection: the refresh above is the last sync, and
+    // notification history is labelled from this same cache.
+    QVERIFY(controller.lastSyncAt().isValid());
+    QVERIFY(controller.notificationHistory().isEmpty()); // no source set
+    controller.setNotificationHistorySource([]() {
+        return QVector<PushRecord>{ { QStringLiteral("m1"), 2, QStringLiteral("2026-10-11T07:05:00Z"), false },
+                                    { QStringLiteral("gone"), 1, QStringLiteral("2026-10-11T06:00:00Z"), true } };
+    });
+    const QVariantList history = controller.notificationHistory();
+    QCOMPARE(history.size(), 2);
+    const QVariantMap cached = history.at(0).toMap();
+    QCOMPARE(cached.value(QStringLiteral("messageId")).toString(), QStringLiteral("m1"));
+    QCOMPARE(cached.value(QStringLiteral("subject")).toString(), QStringLiteral("Work item"));
+    QCOMPARE(cached.value(QStringLiteral("sender")).toString(), QStringLiteral("a@example.com"));
+    QCOMPARE(cached.value(QStringLiteral("receivedAt")).toDateTime(),
+             QDateTime(QDate(2026, 10, 11), QTime(7, 5), QTimeZone::UTC));
+    QCOMPARE(history.at(1).toMap().value(QStringLiteral("subject")).toString(), QString());
 }
 
 void MailControllerTest::archiveEmailsNotPairedShortCircuitsWithNoNetworkCall()
@@ -2708,6 +2728,40 @@ void MailControllerTest::aLockedAppSendsNoFolderMutation()
     f.executor.shutdown();
     QVERIFY(fake.connectionCount() > 0);
     QVERIFY2(fake.receivedRequests().first().startsWith("POST "), fake.receivedRequests().first().constData());
+}
+
+// Archive, delete, spam and move reach the relay from a reader or a move
+// picker that can sit behind the PIN overlay. None of them may go out while
+// locked; each reports failure so a latched swipe row lets go.
+void MailControllerTest::aLockedAppSendsNoMailboxAction()
+{
+    FakeRelayServer fake(httpResponse(
+        200, "OK", R"({"ok":true,"action":"archive","processed":1,"failed":[],"targetMailbox":""})"));
+    RefreshFixture f(fake.port());
+    QSignalSpy doneSpy(&f.controller, &MailController::actionCompleted);
+
+    f.controller.setAppLocked(true);
+    f.controller.archiveEmails({ QStringLiteral("m1") });
+    f.controller.deleteEmails({ QStringLiteral("m1") });
+    f.controller.markSpam({ QStringLiteral("m1") });
+    f.controller.moveEmails({ QStringLiteral("m1") }, QStringLiteral("Archive"));
+    QVERIFY(!f.controller.isBusy());
+    // Give a dispatched request every chance to arrive before saying none did.
+    QTest::qWait(300);
+    QCOMPARE(fake.connectionCount(), 0);
+    QCOMPARE(doneSpy.count(), 4);
+    for (const QList<QVariant>& args : doneSpy)
+        QCOMPARE(args.at(2).toBool(), false);
+    QVERIFY(f.controller.lastError().isEmpty());
+
+    f.controller.setAppLocked(false);
+    doneSpy.clear();
+    f.controller.archiveEmails({ QStringLiteral("m1") });
+    QTRY_VERIFY_WITH_TIMEOUT(doneSpy.count() == 1, 10000);
+    f.executor.shutdown();
+    QCOMPARE(doneSpy.at(0).at(2).toBool(), true);
+    QVERIFY(fake.connectionCount() > 0);
+    QVERIFY2(fake.receivedRequests().last().contains("\"archive\""), fake.receivedRequests().last().constData());
 }
 
 QTEST_GUILESS_MAIN(MailControllerTest)

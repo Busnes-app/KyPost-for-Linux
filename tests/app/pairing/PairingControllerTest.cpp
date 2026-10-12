@@ -30,6 +30,7 @@ class PairingControllerTest : public QObject
     Q_OBJECT
 
 private slots:
+    void pushStatusShowsOnlyTheDistributorHost();
     void pairFromDeepLinkEntersConfirmStateWithoutNetworkCall();
     void confirmPendingPairWithNoPendingRequestFails();
     void cancelPendingPairDiscardsRequestWithNoNetworkCall();
@@ -1678,6 +1679,38 @@ void PairingControllerTest::anUnreadableSecretStoreRefusesToPairRatherThanSkipTh
     // The failure says which system component is at fault, not "pairing
     // failed" -- the user can act on a keyring that is not running.
     QVERIFY(f.controller->pairingError().contains(QStringLiteral("secret store")));
+}
+
+// The endpoint path is a bearer capability for pushing to this device.
+void PairingControllerTest::pushStatusShowsOnlyTheDistributorHost()
+{
+    QTemporaryDir secureDir;
+    QVERIFY(secureDir.isValid());
+    SecureStoreFile secureStore(secureDir.path());
+    PairingStore pairingStore(secureStore);
+    QTemporaryDir settingsDir;
+    QVERIFY(settingsDir.isValid());
+    SettingsStore settingsStore(settingsDir.filePath(QStringLiteral("settings.ini")));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    NativeRegistrationClient client(http);
+    HttpClientPinSink pinSink(http);
+    NetworkExecutor executor(3000);
+    DeviceRegistrationService service(client, pairingStore, settingsStore, pinSink);
+    PairingController controller(service, pairingStore, settingsStore, pinSink, executor);
+    QSignalSpy spy(&controller, &PairingController::pushStatusChanged);
+
+    controller.setDeviceToken(QStringLiteral("https://ntfy.example/upSECRETTOPIC?up=1"));
+    QCOMPARE(controller.pushServerHost(), QStringLiteral("ntfy.example"));
+    QCOMPARE(spy.size(), 1);
+    controller.setDeviceToken(QStringLiteral("https://ntfy.example/upOTHERTOPIC"));
+    QCOMPARE(spy.size(), 1); // same host, nothing to repaint
+
+    QVERIFY(!controller.distributorActive());
+    controller.setDistributorActive(true);
+    controller.setDistributorActive(true);
+    QVERIFY(controller.distributorActive());
+    QCOMPARE(spy.size(), 2);
 }
 
 QTEST_GUILESS_MAIN(PairingControllerTest)

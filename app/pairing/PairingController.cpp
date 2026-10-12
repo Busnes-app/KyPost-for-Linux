@@ -481,7 +481,18 @@ void PairingController::removePairing()
 
 void PairingController::setDeviceToken(const QString& token)
 {
+    const QString oldHost = pushServerHost();
     m_deviceToken = token;
+    if (pushServerHost() != oldHost)
+        emit pushStatusChanged();
+}
+
+void PairingController::setDistributorActive(bool active)
+{
+    if (m_distributorActive == active)
+        return;
+    m_distributorActive = active;
+    emit pushStatusChanged();
 }
 
 void PairingController::setAccountReplacementHandlers(std::function<bool()> purge, std::function<void()> escalate)

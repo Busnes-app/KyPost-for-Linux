@@ -1,4 +1,4 @@
-import QtQuick 2.15
+import QtQuick
 import com.kysecurity.mail 1.0
 
 // STYLE_GUIDE.md §4 "Status badge + dot" (mirrors web's `.users-badge`,

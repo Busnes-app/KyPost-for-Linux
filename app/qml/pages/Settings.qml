@@ -1,6 +1,6 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
-import QtQuick.Layouts 1.15
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
 import com.kysecurity.mail 1.0
 import "../components"
 // Qualified import of this same directory, aliased to PairingPage -- the
@@ -94,6 +94,21 @@ Item {
     }
 
     Component.onCompleted: refreshKeywordSettings()
+
+    // Called by a host that keeps this component alive between showings
+    // (DesktopRoot's sheet), so copies taken earlier are not shown again.
+    function refreshSnapshots() {
+        refreshKeywordSettings()
+        connectionStatus.reloadHistory()
+    }
+
+    // The keyword list is a copy of the INBOX cache, which an account
+    // replacement purges. Pairing happens from inside this component, so
+    // without this the previous account's keywords stayed listed.
+    Connections {
+        target: Pairing
+        function onPairingChanged() { root.refreshKeywordSettings() }
+    }
 
     onCurrentPaneChanged: {
         if (currentPane === 6)
@@ -245,6 +260,24 @@ Item {
                                 font.family: Theme.fontMono
                                 font.pixelSize: 14
                                 wrapMode: Text.WordWrap
+                            }
+                        }
+
+                        ConnectionStatus {
+                            id: connectionStatus
+                            Layout.fillWidth: true
+                            distributorActive: Pairing.distributorActive
+                            pushServerHost: Pairing.pushServerHost
+                            pushEncrypted: Pairing.pushEncrypted
+                            lastSyncAt: MailApp.lastSyncAt
+                            lastError: MailApp.lastError
+                            // Re-read when the pane is shown, the sheet opens or the
+                            // pairing changes; see ConnectionStatus.
+                            active: root.currentPane === 0
+                            onHistoryWanted: connectionStatus.history = MailApp.notificationHistory()
+                            onOpenRequested: (messageId) => {
+                                root.closed()
+                                MailApp.openEmailRequested(messageId)
                             }
                         }
                     }

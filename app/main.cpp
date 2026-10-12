@@ -192,6 +192,8 @@ int main(int argc, char* argv[])
     app.setApplicationName(QStringLiteral("mail"));
     app.setOrganizationDomain(QStringLiteral("kysecurity.com"));
     app.setDesktopFileName(QStringLiteral("com.kysecurity.mail"));
+    // Icon-only buttons need named icons outside a KDE session too.
+    QIcon::setFallbackThemeName(QStringLiteral("breeze"));
     app.setWindowIcon(QIcon::fromTheme(QStringLiteral("com.kysecurity.mail")));
 
     // Task 48: KI18n translation domain. Per KLocalizedString::
@@ -1610,7 +1612,9 @@ int main(int argc, char* argv[])
     };
 
     QObject::connect(&pushConnector, &UnifiedPushConnector::messageReceived, &pushConnector,
-                      [&pairingStore, &pushRepository, deliver](const QByteArray& message) {
+                      [&pairingStore, &pushRepository, &transportStateMachine, deliver](const QByteArray& message) {
+                          // Even an undecryptable message proves the distributor delivers.
+                          transportStateMachine.notePushReceived();
                           PushArrival::handle(message, pairingStore, pushRepository, deliver,
                                               QDateTime::currentMSecsSinceEpoch());
                       });
@@ -1624,6 +1628,22 @@ int main(int argc, char* argv[])
                       [deliver](const QVector<PushNotification>& delivered) {
                           for (const PushNotification& payload : delivered)
                               deliver(payload);
+                      });
+
+    // Push-silence backstop: a distributor silent for 3 h gets one pull, and
+    // mail is resynced with it. Checked on a timer and whenever the app comes
+    // forward. Mail is left alone while locked: the device secret may be sealed.
+    mailController.setNotificationHistorySource([&pushRepository]() { return pushRepository.history(30); });
+
+    QObject::connect(&transportStateMachine, &TransportStateMachine::pushSilenceBackstop, &mailController,
+                      [&mailController, &appLockManager]() {
+                          if (!appLockManager.locked())
+                              mailController.refresh();
+                      });
+    QObject::connect(&app, &QGuiApplication::applicationStateChanged, &transportStateMachine,
+                      [&transportStateMachine](Qt::ApplicationState state) {
+                          if (state == Qt::ApplicationActive)
+                              transportStateMachine.checkPushSilence();
                       });
 
     // Observability only -- TransportStateMachine.cpp itself has no logging
@@ -1646,6 +1666,7 @@ int main(int argc, char* argv[])
     // wire value to fall back to.
     QObject::connect(&transportStateMachine, &TransportStateMachine::tierChanged, &transportStateMachine,
                       [&pairingController, &pushConnector](TransportTier tier) {
+                          pairingController.setDistributorActive(tier == TransportTier::Distributor);
                           switch (tier) {
                           case TransportTier::Distributor:
                               pairingController.setDeviceToken(pushConnector.endpoint());

@@ -3,6 +3,7 @@
 #include "models/PushNotification.h"
 #include "net/NetworkError.h"
 
+#include <QDateTime>
 #include <QString>
 #include <QUrl>
 #include <QVector>
@@ -19,6 +20,7 @@ struct PullNotificationItem
 {
     qint64 seq = 0;
     PushNotification notification;
+    QDateTime createdAt; // relay's queue time; invalid if absent
 
     bool operator==(const PullNotificationItem&) const = default;
 };

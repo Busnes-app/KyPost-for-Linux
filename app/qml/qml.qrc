@@ -5,11 +5,13 @@
     <file>DesktopRoot.qml</file>
     <file>utils/format.js</file>
     <file>components/PrimaryButton.qml</file>
+    <file>components/ConnectionStatus.qml</file>
     <file>components/GhostButton.qml</file>
     <file>components/DangerButton.qml</file>
     <file>components/PillTab.qml</file>
     <file>components/ThemedScrollBar.qml</file>
     <file>components/IconButton.qml</file>
+    <file>components/ThemedPage.qml</file>
     <file>components/StatusBadge.qml</file>
     <file>components/Avatar.qml</file>
     <file>components/EmptyState.qml</file>

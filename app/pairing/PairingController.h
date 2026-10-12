@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <QString>
+#include <QUrl>
 
 #include <optional>
 
@@ -131,6 +132,10 @@ class PairingController : public QObject
     // Whether this pairing registered RFC 8291 keys, so pushes cross the
     // distributor's broker encrypted. False for pairings made before keys existed.
     Q_PROPERTY(bool pushEncrypted READ pushEncrypted NOTIFY pairingChanged)
+    // The live local push path: a UnifiedPush distributor, else polling. Host
+    // only, never the endpoint URL: its path is a bearer capability.
+    Q_PROPERTY(bool distributorActive READ distributorActive NOTIFY pushStatusChanged)
+    Q_PROPERTY(QString pushServerHost READ pushServerHost NOTIFY pushStatusChanged)
 
 public:
     // The pairing state machine, as a type rather than five string literals
@@ -153,6 +158,9 @@ public:
 
     bool isPaired() const;
     bool pushEncrypted() const { return m_pushEncrypted; }
+    bool distributorActive() const { return m_distributorActive; }
+    QString pushServerHost() const { return QUrl(m_deviceToken).host(); }
+    void setDistributorActive(bool active);
     QString pairedServerHost() const;
     QString deviceId() const;
     State state() const;
@@ -305,6 +313,7 @@ signals:
     void pairingStateChanged();
     void reregistrationRejectedChanged();
     void certificateMismatchChanged();
+    void pushStatusChanged();
 
 private:
     // Runs after a registration SUCCEEDS and before its result is persisted.
@@ -342,6 +351,7 @@ private:
     QString m_pairingError;
     bool m_isPaired = false;
     bool m_pushEncrypted = false;
+    bool m_distributorActive = false;
     QString m_pairedServerHost;
     QString m_deviceId;
     QByteArray m_observedSpki; // raw SPKI SHA-256 from the failed handshake

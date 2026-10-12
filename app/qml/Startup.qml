@@ -1,5 +1,5 @@
-import QtQuick 2.15
-import QtQuick.Window 2.15
+import QtQuick
+import QtQuick.Window
 import com.kysecurity.mail 1.0
 
 // The window KyPost puts up while main() is still building its object graph.
