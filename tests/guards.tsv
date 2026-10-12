@@ -393,6 +393,13 @@ core/security/WebPushCrypto.cpp	    if (keys.authSecret.bytes().size() != kAuthB
 core/security/WebPushCrypto.cpp	    if (rs < quint32(kTagBytes + 2) || quint32(record.size()) > rs)	    if (false)	WebPushCryptoTest:aRecordLongerThanItsDeclaredSizeIsRefused
 app/push/PushPayloadParser.cpp	    if (data.value(QStringLiteral("type")).toString() == QLatin1String("mfa_challenge"))	    if (false)	PushPayloadParserTest:signInChallengeIsNotShownAsANotification
 
+# --- a push opened for a replaced pairing is never recorded or shown -------
+#
+# The key read can span an account replacement and return the previous
+# pairing's keys; the identity captured before it must still be current.
+app/push/PushArrival.cpp	    if (!pairingStore.stillCurrent(owner)) {	    if (false) {	PushArrivalTest:aPushOpenedForAReplacedPairingIsNeitherRecordedNorShown
+app/push/PushArrival.cpp	    if (owner.isEmpty()) {	    if (false) {	PushArrivalTest:aPushWithNoPairingIsDroppedUnopened
+
 # --- a read-state rollback must not touch a replaced account's cache ------
 #
 # Message ids are per-mailbox UIDs and collide across accounts.

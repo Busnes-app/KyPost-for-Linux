@@ -710,8 +710,10 @@ never once run.
   place a relay reply reaches local storage: `MailRepository::applyRefresh`,
   `PushRepository::pullOnce`, `FolderRepository::applyList`/`applyMutation`,
   `GroupsRepository::applyRefresh`, `ContactSyncRepository::applySync`,
-  `ContactPhotoRepository::photoPathFor`, attachment downloads, and the cached
-  PGP compose state and recipient preflight. **Adding a new one is adding this
+  `ContactPhotoRepository::photoPathFor`, attachment downloads, the cached
+  PGP compose state and recipient preflight, and distributor-tier push
+  arrivals (`PushArrival::handle`, whose key read can span a replacement and
+  return the previous pairing's keys). **Adding a new one is adding this
   check** -- a plan that does not carry a `PairingIdentity` is a plan that
   cannot answer the question.
 

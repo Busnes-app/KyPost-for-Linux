@@ -366,6 +366,17 @@ kypost_add_app_test(PushPayloadParserTest
     ${CMAKE_SOURCE_DIR}/app/push/PushPayloadParser.cpp
 )
 
+# PushArrival: the distributor tier's open/parse/record/deliver step, lifted
+# out of main.cpp so the check that a push still belongs to the current
+# pairing after its keys were read has a test. Same pure-app pattern as
+# PushPayloadParserTest; delivery is a callback, so no KNotification.
+kypost_add_app_test(PushArrivalTest
+  SOURCES
+    app/push/PushArrivalTest.cpp
+    ${CMAKE_SOURCE_DIR}/app/push/PushArrival.cpp
+    ${CMAKE_SOURCE_DIR}/app/push/PushPayloadParser.cpp
+)
+
 # NotificationDispatcherTest (review follow-up to Task 40): covers only the
 # pure pickTitle()/pickText() static helpers, not notify() -- see the
 # PushPayloadParserTest comment above for why notify() itself stays

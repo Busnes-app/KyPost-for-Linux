@@ -12,7 +12,7 @@
 #include "security/AppLockManager.h"
 #include "security/AppRelauncher.h"
 #include "push/NotificationDispatcher.h"
-#include "push/PushPayloadParser.h"
+#include "push/PushArrival.h"
 #include "push/UnifiedPushConnector.h"
 #include "theme/ThemeController.h"
 #include "tray/TrayController.h"
@@ -1584,8 +1584,10 @@ int main(int argc, char* argv[])
     pairingController.setDeviceToken(pushConnector.endpoint());
 
     // Distributor-tier arrival path -- independent of TransportStateMachine,
-    // per constraint item 4. Parses the raw UnifiedPush message bytes with
-    // Task 40's PushPayloadParser; on success, persists+dedupes via
+    // per constraint item 4. PushArrival::handle() opens the message under
+    // this pairing's keys, drops it if the pairing changed while the keys
+    // were being read, and parses it with Task 40's PushPayloadParser; on
+    // success, persists+dedupes via
     // PushRepository::recordPushArrival() and hands the parsed payload to
     // NotificationDispatcher; on failure, logs byte count only (never
     // content) and does nothing else.
@@ -1597,29 +1599,12 @@ int main(int argc, char* argv[])
     // result; the notification is still shown either way.
     QObject::connect(&pushConnector, &UnifiedPushConnector::messageReceived, &pushConnector,
                       [&pairingStore, &pushRepository, &notificationDispatcher](const QByteArray& message) {
-                          // Never falls back to parsing the raw bytes: see openPushMessage().
-                          const std::optional<QByteArray> opened = pairingStore.openPushMessage(message);
-                          if (!opened.has_value()) {
-                              qWarning() << "main: dropped a push that did not decrypt under this pairing's keys,"
-                                         << message.size() << "bytes";
-                              return;
-                          }
-                          const std::optional<PushNotification> payload = PushPayloadParser::parse(*opened);
-                          if (!payload.has_value()) {
-                              qWarning() << "main: UnifiedPushConnector::messageReceived: failed to parse push"
-                                            " payload,"
-                                         << message.size() << "bytes";
-                              return;
-                          }
-                          // Shown either way -- the OS handed us this message and it
-                          // cannot be re-requested from the relay, so a lost history
-                          // row is not a reason to swallow the notification. Logged
-                          // rather than ignored, because "it is not in the history"
-                          // is otherwise indistinguishable from "it never arrived".
-                          if (!payload->messageId.isEmpty()
-                              && !pushRepository.recordPushArrival(*payload, QDateTime::currentMSecsSinceEpoch()))
-                              qWarning("main: a push arrived but could not be written to the notification history");
-                          notificationDispatcher.notify(*payload);
+                          PushArrival::handle(
+                              message, pairingStore, pushRepository,
+                              [&notificationDispatcher](const PushNotification& payload) {
+                                  notificationDispatcher.notify(payload);
+                              },
+                              QDateTime::currentMSecsSinceEpoch());
                       });
 
     // Polling-tier arrivals: PushRepository::pullOnce() (invoked internally
