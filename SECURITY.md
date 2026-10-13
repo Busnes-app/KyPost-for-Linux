@@ -7,7 +7,7 @@ how to report a vulnerability and where the boundary with the server lies.
 
 For **server-side** security — TLS termination, reverse proxies, key custody at
 rest, deployment hardening — see
-[SECURITY.md in the server repository](https://github.com/Busness-app/KyPost-Server/blob/main/SECURITY.md).
+[SECURITY.md in the server repository](https://github.com/Busnes-app/KyPost-Server/blob/main/SECURITY.md).
 Report server vulnerabilities there, not here.
 
 ## Reporting a vulnerability
@@ -15,7 +15,7 @@ Report server vulnerabilities there, not here.
 Report privately through GitHub Security Advisories rather than opening a public
 issue.
 
-1. Go to the [Security Advisories](https://github.com/Busness-app/KyPost-for-Linux/security/advisories/new) page
+1. Go to the [Security Advisories](https://github.com/Busnes-app/KyPost-for-Linux/security/advisories/new) page
 2. Click **Report a vulnerability**
 3. Give a description, the affected versions, and reproduction steps if you have them
 4. Please do not disclose publicly until a fix is available
@@ -34,7 +34,7 @@ be moved. A misfiled report is better than an unfiled one.
 - **The sealed PGP envelope.** Enrollment seals the account key to a key in this
   device's own store. The verification code shown during enrollment is the only
   thing standing between you and a server that substituted its own key — see
-  [PLATFORM_BASELINE.md](https://github.com/Busness-app/KyPost-Server/blob/main/docs/PLATFORM_BASELINE.md)
+  [PLATFORM_BASELINE.md](https://github.com/Busnes-app/KyPost-Server/blob/main/docs/PLATFORM_BASELINE.md)
   section 2, which is normative across every client.
 - **Rendering hostile mail.** Message bodies are attacker-controlled input.
 
@@ -65,11 +65,11 @@ not governed by two different clocks:
 
 Public disclosure timelines are by severity — **critical** 30 days, **high** 60,
 **moderate** 90 — as set out in
-[the server's SECURITY.md](https://github.com/Busness-app/KyPost-Server/blob/main/SECURITY.md).
+[the server's SECURITY.md](https://github.com/Busnes-app/KyPost-Server/blob/main/SECURITY.md).
 This assumes good-faith coordination, and patches are publicly available before
 any advisory is published.
 
 ## Contact
 
-- **Vulnerability reports:** [GitHub Security Advisories](https://github.com/Busness-app/KyPost-for-Linux/security/advisories/new)
+- **Vulnerability reports:** [GitHub Security Advisories](https://github.com/Busnes-app/KyPost-for-Linux/security/advisories/new)
 - **Maintainer:** [Yoshiofthewire](https://github.com/Yoshiofthewire)

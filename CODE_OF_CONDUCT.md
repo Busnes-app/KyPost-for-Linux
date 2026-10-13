@@ -105,7 +105,7 @@ target of.
 
 **Security vulnerabilities are not a Code of Conduct matter.** Report those
 privately through [GitHub Security
-Advisories](https://github.com/Busness-app/KyPost-for-Linux/security/advisories)
+Advisories](https://github.com/Busnes-app/KyPost-for-Linux/security/advisories)
 on this repository — not in a public issue, and not in a pull request. A finding
 in the relay rather than in this client belongs on the `kypost-server`
 repository instead.
