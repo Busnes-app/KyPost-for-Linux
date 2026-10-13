@@ -12,7 +12,7 @@ namespace {
 constexpr int kPollIntervalMs = 60 * 60 * 1000;
 
 // The page a user is sent to. Not an API endpoint -- this is for a human.
-constexpr auto kReleasesPage = "https://github.com/Busness-app/KyPost-for-Linux/releases";
+constexpr auto kReleasesPage = "https://github.com/Busnes-app/KyPost-for-Linux/releases";
 } // namespace
 
 QString UpdateCheckController::compiledInVersion()

@@ -6,12 +6,12 @@ body:
     attributes:
       value: >-
         **Not for security vulnerabilities** — report those through
-        [Security Advisories](https://github.com/Busness-app/KyPost-for-Linux/security/advisories/new).
+        [Security Advisories](https://github.com/Busnes-app/KyPost-for-Linux/security/advisories/new).
 
 
         **Not for server problems.** If mail is not arriving, not being labelled,
         or the server refuses a pairing code, that belongs in
-        [KyPost-Server](https://github.com/Busness-app/KyPost-Server/issues).
+        [KyPost-Server](https://github.com/Busnes-app/KyPost-Server/issues).
 
   - type: textarea
     id: what-happened

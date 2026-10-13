@@ -185,7 +185,7 @@ private:
     bool m_updateAvailable = false;
     QString m_checkedAt;
     QString m_releaseUrl =
-        QStringLiteral("https://github.com/Busness-app/KyPost-for-Linux/releases");
+        QStringLiteral("https://github.com/Busnes-app/KyPost-for-Linux/releases");
 };
 
 // Records what the approval page asked for; the C++ behind it has its own tests.

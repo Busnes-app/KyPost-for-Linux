@@ -16,7 +16,7 @@ fields, contact de-duplication, compose autocomplete, and PGP QR
 key-exchange features implemented after Phase 8 (see `Client_Contact_Update.md`,
 `Mobile_Contacts_DEDupe.md`, `ContactAutocomplete.md` and
 `Client_PGP_Update.md` — those four live in the sibling
-`~/busness.app/kypost-android` repo, not in this one) — those items are not yet confirmed against a live
+`~/git/busnes.app/kypost-android` repo, not in this one) — those items are not yet confirmed against a live
 backend and are the main reason this file was extended. Nothing here
 describes aspirational behavior — see "Known non-goals / do-not-expect" at
 the bottom for the inverse list.
