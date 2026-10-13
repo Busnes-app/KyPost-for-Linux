@@ -19,6 +19,7 @@ private slots:
     void foldersContainingNamesEveryMailboxHoldingTheId();
     void replaceFolderSnapshotWipesOnlyTargetFolderAndInsertsGivenEmails();
     void updateStatusTouchesOnlyThatFolderCopy();
+    void findByFolderSortsAWokenSnoozeAsIfItArrivedWhenItWoke();
 
 private:
     Database m_db;
@@ -49,6 +50,7 @@ void EmailDaoTest::roundTripsInsertUpdateDelete()
     email.keywords = QStringList{QStringLiteral("urgent"), QStringLiteral("work")};
     email.status = QStringLiteral("unread");
     email.atUtc = QStringLiteral("2026-01-01T00:00:00Z");
+    email.wokenAt = QStringLiteral("2026-01-03T00:00:00Z");
     email.hasAttachments = true;
     email.sourceMode = QStringLiteral("sync");
     email.pgpEncrypted = true;
@@ -66,6 +68,8 @@ void EmailDaoTest::roundTripsInsertUpdateDelete()
     // Cleared alongside the body: the mode describes a body that is no longer
     // there, and a stale "html" would outlive it.
     updated.bodyMode = std::nullopt;
+    // The pin was removed: NULL, not a stale wake time.
+    updated.wokenAt = std::nullopt;
     updated.keywords = QStringList{QStringLiteral("later")};
     updated.hasAttachments = false;
     // Also exercises clearing the PGP columns, so a stale decrypt error
@@ -80,6 +84,7 @@ void EmailDaoTest::roundTripsInsertUpdateDelete()
     QCOMPARE(*refetched, updated);
     QVERIFY(!refetched->body.has_value());
     QVERIFY(!refetched->bodyMode.has_value());
+    QVERIFY(!refetched->wokenAt.has_value());
 
     QVERIFY(dao.deleteById(email.folder, email.messageId));
     QVERIFY(!dao.findById(email.folder, email.messageId).has_value());
@@ -315,6 +320,30 @@ void EmailDaoTest::updateStatusTouchesOnlyThatFolderCopy()
     // No row, no claim of success.
     QVERIFY(!dao.updateStatus(QStringLiteral("INBOX"), QStringLiteral("no-such-id"), QStringLiteral("read")));
     QCOMPARE(dao.findAll().size(), 2);
+}
+
+// The order is the query's, not insertion or key order: each of those would
+// put these three rows differently, and so would plain at_utc DESC.
+void EmailDaoTest::findByFolderSortsAWokenSnoozeAsIfItArrivedWhenItWoke()
+{
+    EmailDao dao(m_db.handle());
+
+    const auto insert = [&dao](const char* id, const char* atUtc, std::optional<QString> wokenAt) {
+        Email email;
+        email.messageId = QString::fromLatin1(id);
+        email.folder = QStringLiteral("INBOX");
+        email.atUtc = QString::fromLatin1(atUtc);
+        email.wokenAt = wokenAt;
+        return dao.insertOrReplace(email);
+    };
+    QVERIFY(insert("m-old", "2026-01-02T00:00:00Z", std::nullopt));
+    QVERIFY(insert("m-woken", "2026-01-01T00:00:00Z", QStringLiteral("2026-01-10T00:00:00Z")));
+    QVERIFY(insert("m-new", "2026-01-05T00:00:00Z", std::nullopt));
+
+    QStringList ids;
+    for (const Email& email : dao.findByFolder(QStringLiteral("INBOX")))
+        ids.append(email.messageId);
+    QCOMPARE(ids, QStringList({ QStringLiteral("m-woken"), QStringLiteral("m-new"), QStringLiteral("m-old") }));
 }
 
 QTEST_GUILESS_MAIN(EmailDaoTest)

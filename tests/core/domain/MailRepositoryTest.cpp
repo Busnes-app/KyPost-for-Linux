@@ -43,6 +43,7 @@ private slots:
     void applyRefreshHoldsTheCursorBackWhenTheCacheWriteFails();
     void applyRefreshReportsFailureWhenTheCursorCannotBePersisted();
     void applyRefreshDiscardsAReplyTheCurrentPairingDidNotAuthorise();
+    void applyRefreshUpdatedRowSetsAndClearsTheSnoozePin();
 
 private:
     static void savePairing(PairingStore& pairingStore, quint16 port);
@@ -1178,6 +1179,82 @@ void MailRepositoryTest::applyRefreshReportsFailureWhenTheCursorCannotBePersiste
     // The message itself did land: the next refresh re-fetches this window
     // and writes the same row again, which is the harmless direction.
     QVERIFY(emailDao.findById(QStringLiteral("INBOX"), QStringLiteral("m-1")).has_value());
+}
+
+// The relay sends a gained or lost wokenAt as an "updated" row; one without
+// wokenAt means the pin was removed. The row is stored whole, so the absent
+// value must clear the cached one rather than be preserved like the body.
+void MailRepositoryTest::applyRefreshUpdatedRowSetsAndClearsTheSnoozePin()
+{
+    Database db;
+    QVERIFY(db.open(QStringLiteral(":memory:")));
+    EmailDao emailDao(db.handle());
+
+    QTemporaryDir secureDir;
+    QVERIFY(secureDir.isValid());
+    SecureStoreFile secureStore(secureDir.path());
+    PairingStore pairingStore(secureStore);
+    savePairing(pairingStore, 1); // nothing is sent
+
+    QTemporaryDir cursorDir;
+    QVERIFY(cursorDir.isValid());
+    CursorStore cursorStore(cursorDir.filePath(QStringLiteral("cursor.ini")));
+
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+    MailRepository repository(source, emailDao, pairingStore, cursorStore);
+
+    Email newer;
+    newer.messageId = QStringLiteral("m-newer");
+    newer.folder = QStringLiteral("INBOX");
+    newer.atUtc = QStringLiteral("2026-07-05T00:00:00Z");
+    QVERIFY(emailDao.insertOrReplace(newer));
+    Email snoozed;
+    snoozed.messageId = QStringLiteral("m-snoozed");
+    snoozed.folder = QStringLiteral("INBOX");
+    snoozed.atUtc = QStringLiteral("2026-07-01T00:00:00Z");
+    snoozed.body = QStringLiteral("cached body");
+    QVERIFY(emailDao.insertOrReplace(snoozed));
+
+    MailRefreshPlan plan;
+    plan.folder = QStringLiteral("INBOX");
+    plan.subscriberId = QStringLiteral("sub-1");
+    plan.endpoint.auth.deviceId = QStringLiteral("dev-1");
+
+    const auto applyUpdated = [&](std::optional<QString> wokenAt) {
+        Email row = snoozed;
+        row.folder = QStringLiteral("Uncategorized");
+        row.body.reset(); // "updated" rows omit the body
+        row.wokenAt = wokenAt;
+        InboxFetchResult result;
+        result.tabs = QStringList{ QStringLiteral("Uncategorized") };
+        result.byTab[QStringLiteral("Uncategorized")] =
+            QVector<InboxEmailItem>{ InboxEmailItem{ row, QString(), QStringLiteral("updated") } };
+        result.isDelta = true;
+        result.cursor = 7;
+        return repository.applyRefresh(plan, result).outcome;
+    };
+    const auto firstId = [&] { return repository.cachedEmails(QStringLiteral("INBOX")).first().messageId; };
+
+    QCOMPARE(firstId(), QStringLiteral("m-newer"));
+
+    // Gained: the older message now sits above the newer one.
+    QCOMPARE(applyUpdated(QStringLiteral("2026-07-10T00:00:00Z")), MailRepositoryOutcome::Success);
+    std::optional<Email> stored = emailDao.findById(QStringLiteral("INBOX"), QStringLiteral("m-snoozed"));
+    QVERIFY(stored.has_value());
+    QCOMPARE(stored->wokenAt, std::optional<QString>(QStringLiteral("2026-07-10T00:00:00Z")));
+    QCOMPARE(stored->atUtc, QStringLiteral("2026-07-01T00:00:00Z"));
+    QCOMPARE(*stored->body, QStringLiteral("cached body"));
+    QCOMPARE(firstId(), QStringLiteral("m-snoozed"));
+
+    // Lost: cleared, and back in date order.
+    QCOMPARE(applyUpdated(std::nullopt), MailRepositoryOutcome::Success);
+    stored = emailDao.findById(QStringLiteral("INBOX"), QStringLiteral("m-snoozed"));
+    QVERIFY(stored.has_value());
+    QVERIFY(!stored->wokenAt.has_value());
+    QCOMPARE(*stored->body, QStringLiteral("cached body"));
+    QCOMPARE(firstId(), QStringLiteral("m-newer"));
 }
 
 QTEST_GUILESS_MAIN(MailRepositoryTest)

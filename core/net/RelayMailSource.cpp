@@ -12,7 +12,7 @@
 namespace {
 
 // Maps one wire inbox item -- {messageId, sender, sentTo, cc, bcc, subject,
-// body, bodyMode, status, atUtc, hasAttachments, label, keywords, detail?,
+// body, bodyMode, status, atUtc, wokenAt?, hasAttachments, label, keywords, detail?,
 // changeType?}
 // -- onto
 // InboxEmailItem. atUtc is a direct pass-through (core/models/Email::atUtc
@@ -38,6 +38,10 @@ InboxEmailItem inboxItemFromJson(const QJsonObject& obj)
         item.email.bodyMode = obj.value(QStringLiteral("bodyMode")).toString();
     item.email.status = obj.value(QStringLiteral("status")).toString();
     item.email.atUtc = obj.value(QStringLiteral("atUtc")).toString();
+    // omitempty; absent on an "updated" row means the pin was removed.
+    const QString wokenAt = obj.value(QStringLiteral("wokenAt")).toString();
+    if (!wokenAt.isEmpty())
+        item.email.wokenAt = wokenAt;
     item.email.hasAttachments = obj.value(QStringLiteral("hasAttachments")).toBool();
     item.email.label = obj.value(QStringLiteral("label")).toString();
 

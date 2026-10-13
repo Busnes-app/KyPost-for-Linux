@@ -83,10 +83,15 @@ void EmailListModelTest::dataRoundTripsEveryRoleForAPopulatedRow()
     // sampleEmail() carries no PGP content, so both marker roles are empty.
     QVERIFY(model.data(index, EmailListModel::PgpMarkerRole).toString().isEmpty());
     QVERIFY(model.data(index, EmailListModel::PgpMarkerAccessibleNameRole).toString().isEmpty());
+    QCOMPARE(model.data(index, EmailListModel::WokenRole).toBool(), false);
+    Email woken = sampleEmail();
+    woken.wokenAt = QStringLiteral("2026-07-02T08:00:00Z");
+    model.setEmails({ woken });
+    QCOMPARE(model.data(index, EmailListModel::WokenRole).toBool(), true);
 
-    // roleNames() must expose exactly these 19 role-name strings for QML.
+    // roleNames() must expose exactly these 20 role-name strings for QML.
     const QHash<int, QByteArray> roles = model.roleNames();
-    QCOMPARE(roles.size(), 19);
+    QCOMPARE(roles.size(), 20);
     QCOMPARE(roles.value(EmailListModel::MessageIdRole), QByteArrayLiteral("messageId"));
     QCOMPARE(roles.value(EmailListModel::KeywordsRole), QByteArrayLiteral("keywords"));
     QCOMPARE(roles.value(EmailListModel::HasAttachmentsRole), QByteArrayLiteral("hasAttachments"));
@@ -95,6 +100,7 @@ void EmailListModelTest::dataRoundTripsEveryRoleForAPopulatedRow()
     QCOMPARE(roles.value(EmailListModel::PgpMarkerAccessibleNameRole),
              QByteArrayLiteral("pgpMarkerAccessibleName"));
     QCOMPARE(roles.value(EmailListModel::UnreadRole), QByteArrayLiteral("unread"));
+    QCOMPARE(roles.value(EmailListModel::WokenRole), QByteArrayLiteral("woken"));
     QCOMPARE(roles.value(EmailListModel::AccessibleNameRole), QByteArrayLiteral("accessibleName"));
 }
 

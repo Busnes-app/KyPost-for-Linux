@@ -2407,7 +2407,8 @@ void MailControllerTest::markReadIsOptimisticAndCoalescesRepeats()
     f.controller.refresh();
     QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
     auto* model = qobject_cast<EmailListModel*>(f.controller.emailModel());
-    QCOMPARE(model->emailAt(0).status, QStringLiteral("unread"));
+    QCOMPARE(model->emailAt(1).messageId, QStringLiteral("m1")); // newest first: m2, m1
+    QCOMPARE(model->emailAt(1).status, QStringLiteral("unread"));
 
     fake.setResponse(readStateReply("read", true));
     const int requestsBefore = fake.receivedRequests().size();
@@ -2418,7 +2419,7 @@ void MailControllerTest::markReadIsOptimisticAndCoalescesRepeats()
 
     // Before any reply: cache, list and signal already say read.
     QCOMPARE(cachedStatus(f.emailDao, "m1"), QStringLiteral("read"));
-    QCOMPARE(model->emailAt(0).status, QStringLiteral("read"));
+    QCOMPARE(model->emailAt(1).status, QStringLiteral("read"));
     QCOMPARE(stateSpy.count(), 1);
     QCOMPARE(stateSpy.at(0).at(2).toBool(), false);
     QCOMPARE(resetSpy.count(), 0);
@@ -2459,7 +2460,7 @@ void MailControllerTest::aRefusedMarkReadRollsBackSilently()
     f.executor.shutdown();
     QCOMPARE(stateSpy.at(1).at(2).toBool(), true);
     QCOMPARE(cachedStatus(f.emailDao, "m1"), QStringLiteral("unread"));
-    QCOMPARE(model->emailAt(0).status, QStringLiteral("unread"));
+    QCOMPARE(model->emailAt(1).status, QStringLiteral("unread"));
     // Incidental to opening the message: no error banner for it.
     QVERIFY(f.controller.lastError().isEmpty());
 }
@@ -2537,7 +2538,7 @@ void MailControllerTest::aLockedAppChangesNoReadStateUntilUnlocked()
     QCOMPARE(stateSpy.count(), 0);
     QCOMPARE(cachedStatus(f.emailDao, "m1"), QStringLiteral("unread"));
     QCOMPARE(cachedStatus(f.emailDao, "m2"), QStringLiteral("read"));
-    QCOMPARE(model->emailAt(0).status, QStringLiteral("unread"));
+    QCOMPARE(model->emailAt(1).status, QStringLiteral("unread"));
     // Give a dispatched request every chance to arrive before saying none did.
     QTest::qWait(300);
     QCOMPARE(fake.receivedRequests().size(), requestsBefore);
