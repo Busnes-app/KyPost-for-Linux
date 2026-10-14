@@ -4,8 +4,10 @@
 #include "domain/PairingStore.h"
 #include "net/NetworkError.h"
 #include "net/HttpClient.h"
+#include "net/PgpBootstrapClient.h"
 #include "net/PgpQrClient.h"
 #include "net/RelayAuth.h"
+#include "pgp/OpenPgpEncryptor.h"
 
 #include <QUrl>
 
@@ -62,7 +64,17 @@ PgpQrTokenOutcome PgpQrRepository::fetchTokenWith(HttpClient& httpClient, const 
     if (status != PgpQrTokenStatus::Success)
         return { status, {}, {}, {}, result.detail };
 
-    return { PgpQrTokenStatus::Success, result.token, result.expiresAt, result.url, QString() };
+    // The relay names the account key; the code vouches for it only if this
+    // keyring holds that exact primary key's secret.
+    const QString named = PgpBootstrapClient(httpClient).fetch(serverBaseUrl, auth).fingerprint;
+    const QString local = named.isEmpty() ? QString() : ownKeyFingerprint(named);
+    const bool isLocal = !local.isEmpty() && local == named;
+
+    PgpQrTokenOutcome outcome{ PgpQrTokenStatus::Success, result.token, result.expiresAt,
+                               pgpQrPayload(result.url, isLocal ? local : QString()), QString() };
+    outcome.fingerprint = named;
+    outcome.fingerprintIsLocal = isLocal;
+    return outcome;
 }
 
 // The synchronous form, kept as the composition of the two halves so the

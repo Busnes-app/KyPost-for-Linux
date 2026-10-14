@@ -26,7 +26,71 @@ private slots:
     void fetchKey404NoPgpIdentitySetsStatusCode();
     void fetchKey503MapsToServiceUnavailable();
     void fetchKeyPassesRedirectValidatorThroughToHttpClient();
+
+    // The in-person check: "#fp=<v4 fingerprint>" on the pickup URL.
+    void qrPayloadCarriesALocalFingerprintInTheFragment();
+    void qrPayloadOmitsAFingerprintItCannotCarry();
+    void qrPayloadDropsAFragmentTheServerPutInTheUrl();
+    void parseQrCode_data();
+    void parseQrCode();
 };
+
+namespace {
+const QString kPickup = QStringLiteral("https://example.com/api/pgp/qr/key?t=tok-1");
+const QString kFpr = QStringLiteral("0123456789ABCDEF0123456789ABCDEF01234567");
+} // namespace
+
+void PgpQrClientTest::qrPayloadCarriesALocalFingerprintInTheFragment()
+{
+    QCOMPARE(pgpQrPayload(kPickup, kFpr), kPickup + QStringLiteral("#fp=") + kFpr);
+    QCOMPARE(pgpQrPayload(kPickup, kFpr.toLower()), kPickup + QStringLiteral("#fp=") + kFpr);
+}
+
+void PgpQrClientTest::qrPayloadOmitsAFingerprintItCannotCarry()
+{
+    QCOMPARE(pgpQrPayload(kPickup, QString()), kPickup);
+    // A v5/v6 fingerprint is 64 hex digits; the code carries v4 only.
+    QCOMPARE(pgpQrPayload(kPickup, kFpr + QStringLiteral("0123456789ABCDEF0123456789AB")), kPickup);
+}
+
+// The pickup URL is the server's. A fragment it chose would ride into the QR
+// as if this device had vouched for it.
+void PgpQrClientTest::qrPayloadDropsAFragmentTheServerPutInTheUrl()
+{
+    const QString planted = kPickup + QStringLiteral("#fp=") + kFpr;
+    QCOMPARE(pgpQrPayload(planted, QString()), kPickup);
+    const QString other = QStringLiteral("FEDCBA9876543210FEDCBA9876543210FEDCBA98");
+    QCOMPARE(pgpQrPayload(planted, other), kPickup + QStringLiteral("#fp=") + other);
+}
+
+void PgpQrClientTest::parseQrCode_data()
+{
+    QTest::addColumn<QString>("text");
+    QTest::addColumn<bool>("hasFingerprint");
+    QTest::addColumn<QString>("fingerprint");
+
+    QTest::newRow("no fragment") << kPickup << false << QString();
+    QTest::newRow("fingerprint") << kPickup + QStringLiteral("#fp=") + kFpr << true << kFpr;
+    QTest::newRow("lowercase") << kPickup + QStringLiteral("#fp=") + kFpr.toLower() << true << kFpr;
+    QTest::newRow("too short") << kPickup + QStringLiteral("#fp=") + kFpr.left(39) << true << QString();
+    QTest::newRow("too long") << kPickup + QStringLiteral("#fp=") + kFpr + QStringLiteral("0") << true << QString();
+    QTest::newRow("not hex") << kPickup + QStringLiteral("#fp=") + kFpr.left(39) + QStringLiteral("G") << true
+                             << QString();
+    QTest::newRow("empty") << kPickup + QStringLiteral("#fp=") << true << QString();
+}
+
+void PgpQrClientTest::parseQrCode()
+{
+    QFETCH(QString, text);
+    QFETCH(bool, hasFingerprint);
+    QFETCH(QString, fingerprint);
+
+    const PgpQrCode code = parsePgpQrCode(text);
+    QCOMPARE(code.keyUrl, QUrl(kPickup));
+    QVERIFY(!code.keyUrl.hasFragment());
+    QCOMPARE(code.hasFingerprint, hasFingerprint);
+    QCOMPARE(code.fingerprint, fingerprint);
+}
 
 void PgpQrClientTest::fetchTokenSuccessParsesTokenExpiresAtAndUrl()
 {

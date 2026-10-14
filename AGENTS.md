@@ -366,6 +366,24 @@ The consequences are binding on anything that touches `core/pgp/OpenPgpKeyImport
   that lies consistently. Persisting into the keyring gives the user a chance
   to notice. Say "a chance", never "prevents".
 
+### 4c. The in-person QR check (2026-10-13, same protocol as Android and Mac)
+
+The QR is the pickup URL plus `#fp=<FPR>`, 40 uppercase hex digits for the v4
+primary key. A fragment never reaches the server.
+
+- **The showing side vouches only for a key it holds.** The relay's bootstrap
+  names the account fingerprint; it goes into `fp` only if
+  `ownKeyFingerprint()` finds that exact primary key with its secret in this
+  keyring. Otherwise the page labels it "reported by the server" and the QR has
+  no `fp`. `pgpQrPayload()` drops any fragment in the relay's pickup URL, or the
+  relay could put its own `fp` in a code this device shows.
+- **The scanning side never reads the relay's `fingerprint` field.**
+  `publicKeyFingerprint()` computes it in a scratch keyring. A mismatched or
+  malformed `fp` refuses the scan and nothing reaches the save button; no `fp`
+  shows the key as unverified. A key gpg cannot read is refused.
+- **No "confirmed" flag is stored.** `Contact::pgpKey` is a plain string, so
+  "verified" exists only on the scan screen.
+
 ## 5. Single-Qt rules
 
 Qt5/KF5 support was dropped (Qt5 is EOL); Ubuntu Touch is deferred until it

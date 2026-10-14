@@ -22,6 +22,8 @@ struct PgpQrTokenOutcome
     QString expiresAt;  // meaningful only when status == Success
     QString url;        // meaningful only when status == Success
     QString detail;     // meaningful when status != Success
+    QString fingerprint;             // the account key, as the relay names it
+    bool fingerprintIsLocal = false; // this device holds that key's secret
 };
 
 // Wraps only the "My QR Code" token-fetch side of PGP QR exchange -- the

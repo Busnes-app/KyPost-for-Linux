@@ -291,8 +291,11 @@ accounts) to exercise the full handshake.
       `PgpMyQrCode.qml`, pushed via `pgpMyQrCodePageComponent` on Mobile /
       inline on Desktop). Expected: on open, a QR code renders
       (`PgpQrController::myQrImageDataUrl()`) encoding a
-      `https://<host>/api/pgp/qr/key?t=<token>` URL, alongside the token's
-      `expiresAt`. If the account has no PGP identity configured, expect
+      `https://<host>/api/pgp/qr/key?t=<token>#fp=<fingerprint>` URL, alongside the
+      token's `expiresAt` and "Your key fingerprint", which must equal
+      `gpg --list-secret-keys` for the enrolled key. On a device with no
+      enrolled key, expect "Fingerprint reported by the server", a warning
+      that the code can't be verified in person, and no `#fp=` in the code. If the account has no PGP identity configured, expect
       the `400`-branch message prompting to set one up first, not a raw
       error or a blank QR.
 - [ ] **Token expiry.** Leave "My QR Code" open past 2 minutes without
@@ -305,10 +308,15 @@ accounts) to exercise the full handshake.
       that contact — `ContactDetail.qml:49`'s `scanPgpKeyRequested()`,
       `keyScanned(name, publicKey)` writes straight into `pgpKeyField`,
       `ContactDetail.qml:235`). Scan a valid "My QR Code" from a second
-      device with both flows. Expected: the scanner decodes the URL,
-      fetches and displays the `fingerprint` (and name) for out-of-band
-      confirmation before saving anywhere — never auto-save without that
-      confirmation step.
+      device with both flows. Expected: "This key matches the code they
+      showed you", and the fingerprint matches the other screen. Never
+      auto-saved without the Save tap.
+- [ ] **A code whose key doesn't match is refused.** Scan a code whose
+      `#fp=` was edited to another fingerprint (render it with any QR
+      generator). Expected: "This key doesn't match the code they showed you.
+      Nothing was saved." and no Save button. A code with no `#fp=` (from a
+      device without an enrolled key) shows the key with the
+      couldn't-be-verified warning.
 - [ ] **Scanning a user with no PGP identity configured** shows the
       `404`-branch "hasn't set up PGP encryption yet" message.
 - [ ] **Save-to-contact round-trips.** After a confirmed scan, save the key
