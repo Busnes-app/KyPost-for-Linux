@@ -86,6 +86,10 @@ struct PgpImportResult
 PgpImportResult importPublicKey(const QByteArray& armoredPublicKey, const QString& expectedFingerprint,
                                  const QString& homeDirectory = QString());
 
+// The primary fingerprint gpg computes for one armored public key, in a
+// throwaway keyring. Empty unless it is exactly one key gpg can read.
+QString publicKeyFingerprint(const QByteArray& armoredPublicKey);
+
 PgpImportResult importPrivateKey(const SecureBytes& armoredPrivateKey, const QString& expectedFingerprint,
                                   const QString& homeDirectory = QString());
 

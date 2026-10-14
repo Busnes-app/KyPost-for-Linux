@@ -3,6 +3,7 @@
 #include "net/ContactSyncClient.h"
 #include "net/HttpClient.h"
 #include "net/RelayAuth.h"
+#include "pgp/PgpFingerprint.h"
 
 #include <QJsonObject>
 
@@ -72,4 +73,33 @@ PgpQrKeyResult PgpQrClient::fetchKey(const QUrl& qrUrl, const HttpClient::Redire
     if (obj.value(QStringLiteral("contactCard")).isObject())
         out.contactCard = ContactWire::contactFromJson(obj.value(QStringLiteral("contactCard")).toObject());
     return out;
+}
+
+namespace {
+
+// The code carries v4 only: 40 hex digits, uppercased. Empty for anything else.
+QString v4Fingerprint(const QString& text)
+{
+    return text.size() == 40 ? normalizedFingerprint(text.toLatin1()) : QString();
+}
+
+} // namespace
+
+QString pgpQrPayload(const QString& pickupUrl, const QString& localFingerprint)
+{
+    const QString url = QUrl(pickupUrl).adjusted(QUrl::RemoveFragment).toString(QUrl::FullyEncoded);
+    const QString fingerprint = v4Fingerprint(localFingerprint);
+    return fingerprint.isEmpty() ? url : url + QStringLiteral("#fp=") + fingerprint;
+}
+
+PgpQrCode parsePgpQrCode(const QString& text)
+{
+    const QUrl url(text);
+    const QString fragment = url.fragment(QUrl::FullyDecoded);
+    PgpQrCode code;
+    code.keyUrl = url.adjusted(QUrl::RemoveFragment);
+    code.hasFingerprint = fragment.startsWith(QStringLiteral("fp="));
+    if (code.hasFingerprint)
+        code.fingerprint = v4Fingerprint(fragment.mid(3));
+    return code;
 }

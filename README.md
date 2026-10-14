@@ -33,7 +33,9 @@ use the same Go relay backend.
 - **Contacts** — synced list and detail views. The client creates and edits contacts offline
   and queues the changes. It also handles group membership and duplicate entries.
 - **PGP support** — the client exchanges public keys through QR codes. Scan or show a key with
-  the camera, then confirm the fingerprint out of band. Webmail can seal the account key to a
+  the camera. The code carries the fingerprint of the key this device holds, and a scan saves a
+  key as verified only if it matches; a device holding no private key shows a code that cannot be
+  verified in person. Webmail can seal the account key to a
   temporary ECDH device key; KyPost imports it into the user's GnuPG keyring and clears the
   transient key bytes. Once a key is enrolled, end-to-end encrypted mail is **decrypted and
   signed on this device** through the user's own `gpg-agent` (GPGME): KyPost never sees the

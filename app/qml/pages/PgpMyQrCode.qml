@@ -131,6 +131,31 @@ Item {
             font.pixelSize: 12
         }
 
+        SectionLabel {
+            visible: root.qrDataUrl !== "" && PgpQr.myFingerprint !== ""
+            text: PgpQr.myFingerprintIsLocal ? i18n("Your key fingerprint") : i18n("Fingerprint reported by the server")
+        }
+        Text {
+            Layout.fillWidth: true
+            visible: root.qrDataUrl !== "" && PgpQr.myFingerprint !== ""
+            textFormat: Text.PlainText
+            text: PgpQr.myFingerprint
+            color: Theme.inkStrong
+            font.family: Theme.fontMono
+            font.pixelSize: 13
+            wrapMode: Text.WrapAnywhere
+        }
+        Text {
+            Layout.fillWidth: true
+            visible: root.qrDataUrl !== "" && !PgpQr.myFingerprintIsLocal
+            textFormat: Text.PlainText
+            text: i18n("This device holds no private key for your account, so this code can't be verified in person.")
+            color: Theme.warningColor
+            font.family: Theme.fontUi
+            font.pixelSize: 12
+            wrapMode: Text.WordWrap
+        }
+
         Item { Layout.fillHeight: true }
 
         RowLayout {

@@ -636,6 +636,15 @@ PgpImportResult importPublicKey(const QByteArray& armoredPublicKey, const QStrin
     return out;
 }
 
+QString publicKeyFingerprint(const QByteArray& armoredPublicKey)
+{
+    QTemporaryDir home;
+    if (!home.isValid())
+        return {};
+    const PgpImportResult result = importPublicKey(armoredPublicKey, QString(), home.path());
+    return result.status == PgpImportStatus::Imported ? result.fingerprint : QString();
+}
+
 PgpImportResult importPrivateKey(const SecureBytes& armoredPrivateKey, const QString& expectedFingerprint,
                                   const QString& homeDirectory)
 {
