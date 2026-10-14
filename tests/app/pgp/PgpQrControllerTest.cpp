@@ -6,9 +6,14 @@
 #include "net/HttpClient.h"
 #include "net/NetworkExecutor.h"
 #include "net/PgpQrClient.h"
+#include "pgp/OpenPgpDecryptor.h"
 #include "stores/SecureStoreFile.h"
 
 #include "../../core/net/FakeRelayServer.h"
+#include "../../core/pgp/GnupgFixture.h"
+
+#include <QJsonDocument>
+#include <QJsonObject>
 
 #include <QNetworkAccessManager>
 #include <QElapsedTimer>
@@ -21,6 +26,9 @@ class PgpQrControllerTest : public QObject
     Q_OBJECT
 
 private slots:
+    void initTestCase();
+    void cleanupTestCase();
+
     void refreshMyQrCodeWithoutPairingSetsNotPairedError();
     void refreshMyQrCodeSuccessPopulatesUrlAndExpiresAt();
     void myQrCodeIsNotOfferedForAnAccountThisDeviceNoLongerHas();
@@ -41,9 +49,55 @@ private slots:
     void repeatedScansWhileOneIsInFlightAreCoalesced();
     void scanRejectsDotSegmentPathsThatResolveOffTheKeyEndpoint();
 
+    // The in-person check, both sides of it.
+    void myQrCodeCarriesTheFingerprintOfTheKeyThisDeviceHolds();
+    void myQrCodeWithoutTheKeyShowsTheServersFingerprintAndNoFp();
+    void aScanWhoseKeyMatchesTheCodeIsConfirmed();
+    void aScanWhoseKeyDiffersFromTheCodeIsRefused();
+    void aScanWithAMalformedFingerprintIsRefused();
+    void aScanWithoutAFingerprintIsNotConfirmed();
+    void aKeyThisDeviceCannotReadIsRefused();
+
 private:
     static void savePairing(PairingStore& pairingStore, quint16 port);
+    // A key-pickup response carrying the fixture's real public key, under a
+    // "fingerprint" field that names some other key.
+    QByteArray keyBody(const QByteArray& contactCard = {}) const;
+
+    // The throwaway keyring: the scanned person's key, and on the showing
+    // side the key "this device" holds. GNUPGHOME points at it throughout.
+    GnupgFixture m_keyring;
+    QByteArray m_publicKey;
+    QString m_fingerprint;
 };
+
+// Every test in this file must keep away from the developer's own keyring.
+void PgpQrControllerTest::initTestCase()
+{
+    if (!OpenPgpDecryptor::engineAvailable())
+        QSKIP("no usable gpg on this system -- the in-person key check is NOT covered");
+    QVERIFY(m_keyring.build(QStringLiteral("Ada <ada@example.com>")));
+    qputenv("GNUPGHOME", m_keyring.path().toUtf8());
+    m_publicKey = m_keyring.exportPublicKey(QStringLiteral("ada@example.com"));
+    m_fingerprint = m_keyring.fingerprintOf(QStringLiteral("ada@example.com"));
+    QVERIFY(!m_publicKey.isEmpty());
+    QCOMPARE(m_fingerprint.size(), 40);
+}
+
+void PgpQrControllerTest::cleanupTestCase()
+{
+    GnupgFixture::killAgent(m_keyring.path());
+}
+
+QByteArray PgpQrControllerTest::keyBody(const QByteArray& contactCard) const
+{
+    QJsonObject body{ { QStringLiteral("name"), QStringLiteral("Ada") },
+                      { QStringLiteral("fingerprint"), QStringLiteral("ABCD1234") },
+                      { QStringLiteral("publicKey"), QString::fromUtf8(m_publicKey) } };
+    if (!contactCard.isEmpty())
+        body.insert(QStringLiteral("contactCard"), QJsonDocument::fromJson(contactCard).object());
+    return QJsonDocument(body).toJson(QJsonDocument::Compact);
+}
 
 void PgpQrControllerTest::savePairing(PairingStore& pairingStore, quint16 port)
 {
@@ -344,9 +398,7 @@ void PgpQrControllerTest::scanQrPayloadRejectsLinkLocalMetadataHost()
 
 void PgpQrControllerTest::scanQrPayloadSuccessPopulatesScanResult()
 {
-    const QByteArray body =
-        R"({"name":"Ada","fingerprint":"ABCD1234","publicKey":"-----BEGIN PGP PUBLIC KEY BLOCK-----"})";
-    FakeRelayServer fake(httpResponse(200, "OK", body));
+    FakeRelayServer fake(httpResponse(200, "OK", keyBody()));
 
     QTemporaryDir secureDir;
     QVERIFY(secureDir.isValid());
@@ -371,16 +423,15 @@ void PgpQrControllerTest::scanQrPayloadSuccessPopulatesScanResult()
 
     QCOMPARE(controller.lastError(), QString());
     QCOMPARE(controller.scannedName(), QStringLiteral("Ada"));
-    QCOMPARE(controller.scannedFingerprint(), QStringLiteral("ABCD1234"));
-    QCOMPARE(controller.scannedPublicKey(), QStringLiteral("-----BEGIN PGP PUBLIC KEY BLOCK-----"));
+    // Computed here from the key, never the server's "fingerprint" field.
+    QCOMPARE(controller.scannedFingerprint(), m_fingerprint);
+    QCOMPARE(controller.scannedPublicKey(), QString::fromUtf8(m_publicKey));
     QVERIFY(scanSpy.count() >= 1);
 }
 
 void PgpQrControllerTest::scanQrPayloadSuccessPopulatesContactCardFields()
 {
-    const QByteArray body = R"({
-        "name":"Ada","fingerprint":"ABCD1234","publicKey":"-----BEGIN PGP PUBLIC KEY BLOCK-----",
-        "contactCard":{
+    const QByteArray body = keyBody(R"({
             "fn":"Ada Lovelace","org":"Analytical Engines Ltd","notes":"Pioneer of computing",
             "emails":[{"label":"work","value":"ada@example.com"}],
             "phones":[{"label":"mobile","value":"+1-555-0100"}],
@@ -391,8 +442,7 @@ void PgpQrControllerTest::scanQrPayloadSuccessPopulatesContactCardFields()
             "relations":[{"label":"spouse","name":"William King"}],
             "events":[{"label":"anniversary","date":"2026-06-01"}],
             "customFields":[{"label":"Employee ID","value":"42"}]
-        }
-    })";
+        })");
     FakeRelayServer fake(httpResponse(200, "OK", body));
 
     QTemporaryDir secureDir;
@@ -458,9 +508,7 @@ void PgpQrControllerTest::scanQrPayloadSuccessPopulatesContactCardFields()
 
 void PgpQrControllerTest::scanQrPayloadWithNoContactCardReturnsAllEmptyFields()
 {
-    const QByteArray body =
-        R"({"name":"Ada","fingerprint":"ABCD1234","publicKey":"-----BEGIN PGP PUBLIC KEY BLOCK-----"})";
-    FakeRelayServer fake(httpResponse(200, "OK", body));
+    FakeRelayServer fake(httpResponse(200, "OK", keyBody()));
 
     QTemporaryDir secureDir;
     QVERIFY(secureDir.isValid());
@@ -520,9 +568,7 @@ void PgpQrControllerTest::scanQrPayload404SetsFriendlyMessage()
 
 void PgpQrControllerTest::clearScanResultResetsFields()
 {
-    const QByteArray body =
-        R"({"name":"Ada","fingerprint":"ABCD1234","publicKey":"-----BEGIN PGP PUBLIC KEY BLOCK-----"})";
-    FakeRelayServer fake(httpResponse(200, "OK", body));
+    FakeRelayServer fake(httpResponse(200, "OK", keyBody()));
 
     QTemporaryDir secureDir;
     QVERIFY(secureDir.isValid());
@@ -666,6 +712,158 @@ void PgpQrControllerTest::repeatedScansWhileOneIsInFlightAreCoalesced()
     const int ten = connectionsForScanCount(10);
     QVERIFY(one > 0);
     QCOMPARE(ten, one);
+}
+
+namespace {
+
+// The in-person tests share one shape; the scan side needs no pairing.
+struct Rig
+{
+    QTemporaryDir secureDir;
+    SecureStoreFile secureStore{ secureDir.path() };
+    PairingStore pairingStore{ secureStore };
+    QNetworkAccessManager manager;
+    HttpClient http{ manager };
+    PgpQrClient client{ http };
+    PgpQrRepository repository{ client, pairingStore };
+    NetworkExecutor executor{ 3000 };
+    PgpQrController controller{ repository, executor };
+};
+
+const QByteArray kTokenBody =
+    R"({"token":"tok-1","expiresAt":"2026-07-17T12:02:00Z","url":"https://example.com/api/pgp/qr/key?t=tok-1"})";
+const QString kPickup = QStringLiteral("https://example.com/api/pgp/qr/key?t=tok-1");
+// A well-formed fingerprint of a key nobody here holds.
+const QString kOtherFingerprint = QStringLiteral("0123456789ABCDEF0123456789ABCDEF01234567");
+
+QByteArray bootstrapNaming(const QString& fingerprint)
+{
+    const QJsonObject body{ { QStringLiteral("hasIdentity"), true },
+                            { QStringLiteral("protection"), QStringLiteral("client") },
+                            { QStringLiteral("fingerprint"), fingerprint } };
+    return httpResponse(200, "OK", QJsonDocument(body).toJson(QJsonDocument::Compact));
+}
+
+QString mismatch()
+{
+    return QStringLiteral("This key doesn't match the code they showed you. Nothing was saved.");
+}
+
+} // namespace
+
+void PgpQrControllerTest::myQrCodeCarriesTheFingerprintOfTheKeyThisDeviceHolds()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", kTokenBody));
+    fake.setResponseForPath("/api/pgp/bootstrap", bootstrapNaming(m_fingerprint));
+    Rig rig;
+    savePairing(rig.pairingStore, fake.port());
+
+    rig.controller.refreshMyQrCode();
+    QTRY_VERIFY_WITH_TIMEOUT(!rig.controller.isBusy(), 10000);
+
+    QCOMPARE(rig.controller.lastError(), QString());
+    QVERIFY(rig.controller.myFingerprintIsLocal());
+    QCOMPARE(rig.controller.myFingerprint(), m_fingerprint);
+    QCOMPARE(rig.controller.myQrUrl(), kPickup + QStringLiteral("#fp=") + m_fingerprint);
+}
+
+// The relay names a key this device holds no secret for. What is shown is
+// only the relay's word, and the code must not vouch for it.
+void PgpQrControllerTest::myQrCodeWithoutTheKeyShowsTheServersFingerprintAndNoFp()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", kTokenBody));
+    fake.setResponseForPath("/api/pgp/bootstrap", bootstrapNaming(kOtherFingerprint));
+    Rig rig;
+    savePairing(rig.pairingStore, fake.port());
+
+    rig.controller.refreshMyQrCode();
+    QTRY_VERIFY_WITH_TIMEOUT(!rig.controller.isBusy(), 10000);
+
+    QCOMPARE(rig.controller.lastError(), QString());
+    QVERIFY(!rig.controller.myFingerprintIsLocal());
+    QCOMPARE(rig.controller.myFingerprint(), kOtherFingerprint);
+    QCOMPARE(rig.controller.myQrUrl(), kPickup);
+}
+
+void PgpQrControllerTest::aScanWhoseKeyMatchesTheCodeIsConfirmed()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", keyBody()));
+    Rig rig;
+
+    rig.controller.scanQrPayload(
+        QStringLiteral("http://127.0.0.1:%1/api/pgp/qr/key?t=tok-1#fp=").arg(fake.port()) + m_fingerprint);
+    QTRY_VERIFY_WITH_TIMEOUT(!rig.controller.isBusy(), 10000);
+
+    QCOMPARE(rig.controller.lastError(), QString());
+    QVERIFY(rig.controller.scannedVerified());
+    QCOMPARE(rig.controller.scannedFingerprint(), m_fingerprint);
+    QCOMPARE(rig.controller.scannedPublicKey(), QString::fromUtf8(m_publicKey));
+    // The fragment is for this device, never for the server.
+    QVERIFY(!fake.receivedRequest().contains("fp="));
+}
+
+void PgpQrControllerTest::aScanWhoseKeyDiffersFromTheCodeIsRefused()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", keyBody()));
+    Rig rig;
+
+    rig.controller.scanQrPayload(
+        QStringLiteral("http://127.0.0.1:%1/api/pgp/qr/key?t=tok-1#fp=").arg(fake.port()) + kOtherFingerprint);
+    QTRY_VERIFY_WITH_TIMEOUT(!rig.controller.isBusy(), 10000);
+
+    QCOMPARE(rig.controller.lastError(), mismatch());
+    QVERIFY(!rig.controller.scannedVerified());
+    QCOMPARE(rig.controller.scannedFingerprint(), QString());
+    QCOMPARE(rig.controller.scannedPublicKey(), QString());
+}
+
+void PgpQrControllerTest::aScanWithAMalformedFingerprintIsRefused()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", keyBody()));
+    Rig rig;
+
+    for (const QString& fp : { m_fingerprint.left(39), m_fingerprint.left(39) + QStringLiteral("Z"),
+                               m_fingerprint + QStringLiteral("0"), QString() }) {
+        rig.controller.scanQrPayload(
+            QStringLiteral("http://127.0.0.1:%1/api/pgp/qr/key?t=tok-1#fp=").arg(fake.port()) + fp);
+        QTRY_VERIFY_WITH_TIMEOUT(!rig.controller.isBusy(), 10000);
+
+        QCOMPARE(rig.controller.lastError(), mismatch());
+        QCOMPARE(rig.controller.scannedFingerprint(), QString());
+        QCOMPARE(rig.controller.scannedPublicKey(), QString());
+    }
+    // Refused from the code alone; there was nothing to fetch.
+    QCOMPARE(fake.connectionCount(), 0);
+}
+
+void PgpQrControllerTest::aScanWithoutAFingerprintIsNotConfirmed()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", keyBody()));
+    Rig rig;
+
+    rig.controller.scanQrPayload(QStringLiteral("http://127.0.0.1:%1/api/pgp/qr/key?t=tok-1").arg(fake.port()));
+    QTRY_VERIFY_WITH_TIMEOUT(!rig.controller.isBusy(), 10000);
+
+    QCOMPARE(rig.controller.lastError(), QString());
+    QVERIFY(!rig.controller.scannedVerified());
+    QCOMPARE(rig.controller.scannedFingerprint(), m_fingerprint);
+    QCOMPARE(rig.controller.scannedPublicKey(), QString::fromUtf8(m_publicKey));
+}
+
+// With no fingerprint of its own to show, the only one left is the server's.
+void PgpQrControllerTest::aKeyThisDeviceCannotReadIsRefused()
+{
+    const QByteArray body =
+        R"({"name":"Ada","fingerprint":"ABCD1234","publicKey":"-----BEGIN PGP PUBLIC KEY BLOCK-----"})";
+    FakeRelayServer fake(httpResponse(200, "OK", body));
+    Rig rig;
+
+    rig.controller.scanQrPayload(QStringLiteral("http://127.0.0.1:%1/api/pgp/qr/key?t=tok-1").arg(fake.port()));
+    QTRY_VERIFY_WITH_TIMEOUT(!rig.controller.isBusy(), 10000);
+
+    QVERIFY(!rig.controller.lastError().isEmpty());
+    QCOMPARE(rig.controller.scannedFingerprint(), QString());
+    QCOMPARE(rig.controller.scannedPublicKey(), QString());
 }
 
 QTEST_GUILESS_MAIN(PgpQrControllerTest)

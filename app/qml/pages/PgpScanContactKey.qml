@@ -136,8 +136,11 @@ Item {
             }
             Text {
                 Layout.fillWidth: true
-                text: i18n("Confirm this fingerprint matches what they show you in person before saving.")
-                color: Theme.ink
+                textFormat: Text.PlainText
+                text: PgpQr.scannedVerified
+                    ? i18n("This key matches the code they showed you.")
+                    : i18n("This code carried no fingerprint, so the key couldn't be verified in person. Compare the fingerprint with theirs before relying on it.")
+                color: PgpQr.scannedVerified ? Theme.ink : Theme.warningColor
                 font.family: Theme.fontUi
                 font.pixelSize: 12
                 wrapMode: Text.WordWrap

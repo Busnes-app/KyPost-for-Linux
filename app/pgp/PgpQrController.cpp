@@ -6,6 +6,7 @@
 #include "net/HttpClient.h"
 #include "net/NetworkExecutor.h"
 #include "net/PgpQrClient.h"
+#include "pgp/OpenPgpKeyImporter.h"
 #include "pgp/PgpQrTargetValidator.h"
 
 #include <KLocalizedString>
@@ -55,6 +56,16 @@ QString PgpQrController::myQrExpiresAt() const
     return myQrStillOurs() ? m_myQrExpiresAt : QString();
 }
 
+QString PgpQrController::myFingerprint() const
+{
+    return myQrStillOurs() ? m_myFingerprint : QString();
+}
+
+bool PgpQrController::myFingerprintIsLocal() const
+{
+    return myQrStillOurs() && m_myFingerprintIsLocal;
+}
+
 QString PgpQrController::scannedName() const
 {
     return m_scannedName;
@@ -68,6 +79,11 @@ QString PgpQrController::scannedFingerprint() const
 QString PgpQrController::scannedPublicKey() const
 {
     return m_scannedPublicKey;
+}
+
+bool PgpQrController::scannedVerified() const
+{
+    return m_scannedVerified;
 }
 
 void PgpQrController::setBusy(bool busy)
@@ -131,6 +147,8 @@ void PgpQrController::applyTokenOutcome(const PgpQrTokenOutcome& outcome)
         m_myQrIdentity = m_repository.currentIdentity();
         m_myQrUrl = outcome.url;
         m_myQrExpiresAt = outcome.expiresAt;
+        m_myFingerprint = outcome.fingerprint;
+        m_myFingerprintIsLocal = outcome.fingerprintIsLocal;
         emit myQrDataChanged();
         break;
     case PgpQrTokenStatus::NotPaired:
@@ -217,9 +235,13 @@ void PgpQrController::scanQrPayload(const QString& decodedText)
     // No RelayAuth -- the token in the URL is the sole credential, and the
     // scan target may be a different server than this device's own paired
     // one, so this deliberately doesn't route through m_repository at all.
-    const QUrl qrUrl(decodedText);
-    if (!qrUrl.isValid() || !isPermittedQrEndpoint(qrUrl)) {
+    const PgpQrCode code = parsePgpQrCode(decodedText);
+    if (!code.keyUrl.isValid() || !isPermittedQrEndpoint(code.keyUrl)) {
         setLastError(i18n("That QR code isn't a PGP key-exchange code"));
+        return;
+    }
+    if (code.hasFingerprint && code.fingerprint.isEmpty()) {
+        refuseScan(mismatchError());
         return;
     }
 
@@ -241,25 +263,38 @@ void PgpQrController::scanQrPayload(const QString& decodedText)
     // request moves -- there is no store to keep on this thread.
     m_executor.run(
         this,
-        [qrUrl](HttpClient& http) {
+        [qrUrl = code.keyUrl](HttpClient& http) {
             PgpQrClient client(http);
-            return client.fetchKey(qrUrl, isPermittedQrEndpoint);
+            PgpQrKeyResult result = client.fetchKey(qrUrl, isPermittedQrEndpoint);
+            // Computed from the key itself; the relay's claim is never used.
+            if (!result.error.has_value())
+                result.fingerprint = publicKeyFingerprint(result.publicKey.toUtf8());
+            return result;
         },
-        [this](const PgpQrKeyResult& result) {
+        [this, code](const PgpQrKeyResult& result) {
             m_inNetworkCall = false;
             setBusy(false);
-            applyKeyResult(result);
+            applyKeyResult(result, code);
         });
 }
 
-void PgpQrController::applyKeyResult(const PgpQrKeyResult& result)
+void PgpQrController::applyKeyResult(const PgpQrKeyResult& result, const PgpQrCode& code)
 {
     if (!result.error.has_value()) {
+        if (result.fingerprint.isEmpty()) {
+            refuseScan(i18n("This key couldn't be read on this device"));
+            return;
+        }
+        if (code.hasFingerprint && result.fingerprint != code.fingerprint) {
+            refuseScan(mismatchError());
+            return;
+        }
         setLastError(QString());
         m_scannedName = result.name;
         m_scannedFingerprint = result.fingerprint;
         m_scannedPublicKey = result.publicKey;
         m_scannedContactCard = result.contactCard.value_or(Contact());
+        m_scannedVerified = code.hasFingerprint;
         emit scanResultChanged();
         return;
     }
@@ -285,7 +320,20 @@ void PgpQrController::clearScanResult()
     m_scannedFingerprint.clear();
     m_scannedPublicKey.clear();
     m_scannedContactCard = Contact();
+    m_scannedVerified = false;
     emit scanResultChanged();
+}
+
+// Nothing from a refused scan is left for the Save button to pick up.
+void PgpQrController::refuseScan(const QString& error)
+{
+    clearScanResult();
+    setLastError(error);
+}
+
+QString PgpQrController::mismatchError()
+{
+    return i18n("This key doesn't match the code they showed you. Nothing was saved.");
 }
 
 QVariantMap PgpQrController::scannedContactCardFields() const

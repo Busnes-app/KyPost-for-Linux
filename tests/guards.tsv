@@ -461,3 +461,16 @@ app/qml/pages/Unlock.qml	                inputField.forceActiveFocus()	         
 #
 # Held in memory beside the cache; a replaced pairing must not open them.
 app/mail/MailController.cpp	    if (folder != m_searchFolder || !m_pairingStore.stillCurrent(m_searchIdentity))	    if (folder != m_searchFolder)	MailControllerTest:aSearchHitOpensFromMemoryAndNeverReachesTheCache
+
+# --- the in-person QR check vouches only for keys this device can see ----
+#
+# A code is the pickup URL plus "#fp=<fingerprint>". The showing side puts in
+# fp only a key whose secret it holds, and never a fragment the relay chose;
+# the scanning side computes the fetched key's fingerprint itself and refuses
+# a mismatched or malformed fp. Any one of these gone lets a relay that
+# substitutes keys on both sides pass the check.
+core/net/PgpQrClient.cpp	    const QString url = QUrl(pickupUrl).adjusted(QUrl::RemoveFragment).toString(QUrl::FullyEncoded);	    const QString url = pickupUrl;	PgpQrClientTest:qrPayloadDropsAFragmentTheServerPutInTheUrl
+core/domain/PgpQrRepository.cpp	    const bool isLocal = !local.isEmpty() && local == named;	    const bool isLocal = !named.isEmpty();	PgpQrControllerTest:myQrCodeWithoutTheKeyShowsTheServersFingerprintAndNoFp
+app/pgp/PgpQrController.cpp	                result.fingerprint = publicKeyFingerprint(result.publicKey.toUtf8());	                ;	PgpQrControllerTest:aScanWithoutAFingerprintIsNotConfirmed
+app/pgp/PgpQrController.cpp	        if (code.hasFingerprint && result.fingerprint != code.fingerprint) {	        if (false) {	PgpQrControllerTest:aScanWhoseKeyDiffersFromTheCodeIsRefused
+app/pgp/PgpQrController.cpp	    if (code.hasFingerprint && code.fingerprint.isEmpty()) {	    if (false) {	PgpQrControllerTest:aScanWithAMalformedFingerprintIsRefused

@@ -34,9 +34,16 @@ class PgpQrController : public QObject
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
     Q_PROPERTY(QString myQrUrl READ myQrUrl NOTIFY myQrDataChanged)
     Q_PROPERTY(QString myQrExpiresAt READ myQrExpiresAt NOTIFY myQrDataChanged)
+    // This account's fingerprint, and whether this device computed it from a
+    // secret key it holds (true) or it is only what the server reports.
+    Q_PROPERTY(QString myFingerprint READ myFingerprint NOTIFY myQrDataChanged)
+    Q_PROPERTY(bool myFingerprintIsLocal READ myFingerprintIsLocal NOTIFY myQrDataChanged)
     Q_PROPERTY(QString scannedName READ scannedName NOTIFY scanResultChanged)
     Q_PROPERTY(QString scannedFingerprint READ scannedFingerprint NOTIFY scanResultChanged)
     Q_PROPERTY(QString scannedPublicKey READ scannedPublicKey NOTIFY scanResultChanged)
+    // True only when the scanned code carried a fingerprint and the fetched
+    // key matched it. False means the key was not verified in person.
+    Q_PROPERTY(bool scannedVerified READ scannedVerified NOTIFY scanResultChanged)
 
 public:
     // Takes the executor rather than a PgpQrClient: that client is a
@@ -49,9 +56,12 @@ public:
     QString lastError() const;
     QString myQrUrl() const;
     QString myQrExpiresAt() const;
+    QString myFingerprint() const;
+    bool myFingerprintIsLocal() const;
     QString scannedName() const;
     QString scannedFingerprint() const;
     QString scannedPublicKey() const;
+    bool scannedVerified() const;
 
 public slots:
     // Calls repository.fetchMyToken(); on Success, myQrUrl/myQrExpiresAt
@@ -105,7 +115,9 @@ private:
     void setLastError(const QString& error);
     // The completion halves, running back on this object's own thread.
     void applyTokenOutcome(const PgpQrTokenOutcome& outcome);
-    void applyKeyResult(const PgpQrKeyResult& result);
+    void applyKeyResult(const PgpQrKeyResult& result, const PgpQrCode& code);
+    void refuseScan(const QString& error);
+    static QString mismatchError();
 
     PgpQrRepository& m_repository;
     NetworkExecutor& m_executor;
@@ -124,9 +136,12 @@ private:
     PairingIdentity m_myQrIdentity;
     QString m_myQrUrl;
     QString m_myQrExpiresAt;
+    QString m_myFingerprint;
+    bool m_myFingerprintIsLocal = false;
     QString m_scannedName;
     QString m_scannedFingerprint;
     QString m_scannedPublicKey;
+    bool m_scannedVerified = false;
     Contact m_scannedContactCard;
     // In-flight flag, not a re-entrancy guard: with the blocking call moved
     // off this thread there is no nested event loop to be re-entered

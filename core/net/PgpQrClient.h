@@ -73,3 +73,19 @@ public:
 private:
     HttpClient& m_httpClient;
 };
+
+// The in-person check rides in the QR as "#fp=<FPR>": the showing device's
+// v4 primary fingerprint, 40 uppercase hex. A fragment never goes on the wire.
+//
+// Builds the payload. Any fragment the server put in pickupUrl is dropped, and
+// fp is added only for a v4 fingerprint this device computed itself.
+QString pgpQrPayload(const QString& pickupUrl, const QString& localFingerprint);
+
+struct PgpQrCode
+{
+    QUrl keyUrl; // without the fragment
+    bool hasFingerprint = false;
+    QString fingerprint; // empty when hasFingerprint but malformed
+};
+
+PgpQrCode parsePgpQrCode(const QString& text);
