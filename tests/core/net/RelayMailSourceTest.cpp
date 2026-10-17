@@ -23,6 +23,8 @@ private slots:
     void fetchInboxSendsLimitMailboxSinceAsQueryParamsAndAuthAsHeaders();
     void fetchInboxOmitsLimitAndSinceWhenNotProvided();
     void fetchInboxUnauthorizedFrom401PassesErrorThrough();
+    void fetchInboxReadsHasMoreOnlyWhenTheRelaySendsIt();
+    void fetchOlderKeepsTheDefaultResponseCeiling();
 
     void performActionMoveIncludesTargetMailboxInRequestBody();
     void performActionReadOmitsTargetMailboxFromRequestBodyButResponseCarriesEmptyString();
@@ -235,6 +237,45 @@ void RelayMailSourceTest::fetchInboxOmitsLimitAndSinceWhenNotProvided()
     QVERIFY(!request.contains("limit="));
     QVERIFY(!request.contains("since="));
     QVERIFY(request.contains("mailbox=Inbox"));
+}
+
+// A relay that cannot page sends no hasMore; that is not "no more".
+void RelayMailSourceTest::fetchInboxReadsHasMoreOnlyWhenTheRelaySendsIt()
+{
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+    const RelayAuth auth{ QStringLiteral("device-1"), QStringLiteral("secret-1") };
+
+    FakeRelayServer old(httpResponse(200, "OK", R"({"tabs":[],"byTab":{}})"));
+    const InboxFetchResult unpaged = source.fetchOlder(QUrl(QStringLiteral("http://127.0.0.1:%1").arg(old.port())),
+                                                       auth, 50, QStringLiteral("INBOX"), QStringLiteral("9"));
+    QVERIFY(!unpaged.error.has_value());
+    QVERIFY(!unpaged.hasMore.has_value());
+
+    FakeRelayServer paged(httpResponse(200, "OK", R"({"tabs":[],"byTab":{},"hasMore":false})"));
+    const InboxFetchResult last = source.fetchInbox(QUrl(QStringLiteral("http://127.0.0.1:%1").arg(paged.port())),
+                                                    auth, 50, QStringLiteral("INBOX"), 0);
+    QCOMPARE(last.hasMore, std::optional<bool>(false));
+    QVERIFY(last.nextBefore.isEmpty());
+}
+
+// Older pages carry no bodies, so they do not get the window's ceiling.
+void RelayMailSourceTest::fetchOlderKeepsTheDefaultResponseCeiling()
+{
+    static_assert(HttpClient::kMaxResponseBytes < HttpClient::kMaxInboxResponseBytes);
+    const QByteArray oversized = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: "
+        + QByteArray::number(HttpClient::kMaxResponseBytes + 1) + "\r\nConnection: close\r\n\r\n{}";
+    FakeRelayServer fake(oversized);
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+
+    const InboxFetchResult result =
+        source.fetchOlder(QUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port())),
+                          RelayAuth{ QStringLiteral("device-1"), QStringLiteral("secret-1") }, 50,
+                          QStringLiteral("INBOX"), QStringLiteral("9"));
+    QCOMPARE(result.error, std::optional<NetworkError>(NetworkError::ResponseTooLarge));
 }
 
 void RelayMailSourceTest::fetchInboxUnauthorizedFrom401PassesErrorThrough()

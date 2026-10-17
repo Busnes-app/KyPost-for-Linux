@@ -110,19 +110,16 @@ public:
     //
     // The shape is kypost-android's (MemoryBudget.kt): a tight default that
     // every route inherits, plus named exceptions for the two that
-    // legitimately dwarf it. The VALUES are not Android's, deliberately.
-    // Android asks the relay for `limit=50`; this client sends no limit at
-    // all, so it gets the server default of 500 (maxInboxLimit in
-    // server_inbox.go), and the relay does not truncate bodies -- warmBody()
-    // stores them whole. A full window here is therefore up to ~10x the one
-    // Android's 8 MB was measured against, and copying that number would
-    // have broken first sync on any substantial mailbox.
-    //
-    // If the inbox window is ever given an explicit `limit`, revisit
-    // kMaxInboxResponseBytes with it -- the two numbers are one decision.
+    // legitimately dwarf it. The inbox value is not Android's: Android's
+    // window is `bodies=0`, this one carries every body whole (the relay
+    // does not truncate them), because the PGP classification reads them.
     static constexpr qint64 kMaxResponseBytes = 8LL * 1024 * 1024;
-    // The full-window inbox fetch: 500 messages with complete HTML bodies.
-    static constexpr qint64 kMaxInboxResponseBytes = 64LL * 1024 * 1024;
+    // The inbox window: MailRepository::kInboxPageSize (50) messages with
+    // complete bodies. The relay measured 13.3 MiB per 500 ordinary ones
+    // (server_inbox.go), so ~1.3 MiB; 16 MB leaves room for a few huge ones.
+    // The two numbers are one decision. Older pages carry no bodies and use
+    // the default.
+    static constexpr qint64 kMaxInboxResponseBytes = 16LL * 1024 * 1024;
     // One attachment. Matches the relay's own 25 MB cap, so a response above
     // this is already outside what the server will knowingly serve.
     static constexpr qint64 kMaxAttachmentResponseBytes = 25LL * 1024 * 1024;

@@ -161,45 +161,9 @@ bool isScheduledId(const QString& id)
     return pattern.match(id).hasMatch();
 }
 
-} // namespace
-
-QString sendAtWireValue(const QDateTime& at)
+// Both /api/inbox shapes: the window (cursor fields) and an older page.
+InboxFetchResult inboxResultFrom(const HttpClient::HttpResult& result)
 {
-    return at.toUTC().toString(QStringLiteral("yyyy-MM-dd'T'HH:mm:ss'Z'"));
-}
-
-QDateTime scheduledAtOf(const QJsonObject& response)
-{
-    if (!response.value(QStringLiteral("scheduled")).toBool())
-        return {};
-    return QDateTime::fromString(response.value(QStringLiteral("sendAt")).toString(), Qt::ISODate);
-}
-
-RelayMailSource::RelayMailSource(HttpClient& httpClient)
-    : m_httpClient(httpClient)
-{
-}
-
-InboxFetchResult RelayMailSource::fetchInbox(const QUrl& serverBaseUrl, const RelayAuth& auth,
-                                              std::optional<int> limit, const QString& mailbox,
-                                              std::optional<qint64> since) const
-{
-    QList<QPair<QString, QString>> query;
-    if (limit.has_value())
-        query.append({ QStringLiteral("limit"), QString::number(*limit) });
-    query.append({ QStringLiteral("mailbox"), mailbox });
-    if (since.has_value())
-        query.append({ QStringLiteral("since"), QString::number(*since) });
-
-    // The largest response this client ever reads, and the one route that
-    // needs more than HttpClient's default ceiling: a full window is up to
-    // `maxInboxLimit` (500) messages carrying complete HTML bodies, which the
-    // relay does not truncate. Named here rather than raising the global
-    // default, so every other route keeps the tight one.
-    const HttpClient::HttpResult result = m_httpClient.get(
-        joinUrlPath(serverBaseUrl, QStringLiteral("api/inbox")), query, auth.headerItems(), {},
-        HttpClient::kMaxInboxResponseBytes);
-
     InboxFetchResult out;
     if (result.error.has_value()) {
         out.error = result.error;
@@ -237,8 +201,62 @@ InboxFetchResult RelayMailSource::fetchInbox(const QUrl& serverBaseUrl, const Re
     out.cursor = static_cast<qint64>(json.value(QStringLiteral("cursor")).toDouble());
     for (const QJsonValue& value : json.value(QStringLiteral("removed")).toArray())
         out.removed.append(value.toString());
+    if (json.value(QStringLiteral("hasMore")).isBool())
+        out.hasMore = json.value(QStringLiteral("hasMore")).toBool();
+    out.nextBefore = json.value(QStringLiteral("nextBefore")).toString();
 
     return out;
+}
+
+} // namespace
+
+QString sendAtWireValue(const QDateTime& at)
+{
+    return at.toUTC().toString(QStringLiteral("yyyy-MM-dd'T'HH:mm:ss'Z'"));
+}
+
+QDateTime scheduledAtOf(const QJsonObject& response)
+{
+    if (!response.value(QStringLiteral("scheduled")).toBool())
+        return {};
+    return QDateTime::fromString(response.value(QStringLiteral("sendAt")).toString(), Qt::ISODate);
+}
+
+RelayMailSource::RelayMailSource(HttpClient& httpClient)
+    : m_httpClient(httpClient)
+{
+}
+
+InboxFetchResult RelayMailSource::fetchInbox(const QUrl& serverBaseUrl, const RelayAuth& auth,
+                                              std::optional<int> limit, const QString& mailbox,
+                                              std::optional<qint64> since) const
+{
+    QList<QPair<QString, QString>> query;
+    if (limit.has_value())
+        query.append({ QStringLiteral("limit"), QString::number(*limit) });
+    query.append({ QStringLiteral("mailbox"), mailbox });
+    if (since.has_value())
+        query.append({ QStringLiteral("since"), QString::number(*since) });
+
+    // The one route that needs more than HttpClient's default ceiling: the
+    // window carries complete HTML bodies, which the relay does not truncate.
+    // Named here rather than raising the global default, so every other
+    // route keeps the tight one.
+    return inboxResultFrom(m_httpClient.get(joinUrlPath(serverBaseUrl, QStringLiteral("api/inbox")), query,
+                                            auth.headerItems(), {}, HttpClient::kMaxInboxResponseBytes));
+}
+
+InboxFetchResult RelayMailSource::fetchOlder(const QUrl& serverBaseUrl, const RelayAuth& auth, int limit,
+                                              const QString& mailbox, const QString& before) const
+{
+    const QList<QPair<QString, QString>> query{ { QStringLiteral("limit"), QString::number(limit) },
+                                                { QStringLiteral("mailbox"), mailbox },
+                                                { QStringLiteral("before"), before },
+                                                { QStringLiteral("bodies"), QStringLiteral("0") } };
+    // Metadata only, so the default ceiling: the relay measured 184 KiB for
+    // 500 such rows (server_inbox.go).
+    return inboxResultFrom(m_httpClient.get(joinUrlPath(serverBaseUrl, QStringLiteral("api/inbox")), query,
+                                            auth.headerItems()));
 }
 
 ActionResult RelayMailSource::performAction(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& action,

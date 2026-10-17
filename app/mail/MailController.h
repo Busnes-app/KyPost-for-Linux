@@ -202,6 +202,10 @@ public slots:
     // network call.
     void selectKeyword(const QString& keyword);
     void refresh(bool forceFullResync = false);
+    // The next page of older mail in currentFolder, for a list that reached
+    // its end. One at a time; nothing while locked, while searching, or once
+    // the relay has said there is no more below the oldest row held.
+    void loadOlder();
     // All four dispatch and return; the outcome arrives as actionCompleted().
     // They no longer return a bool because there is nothing to return yet --
     // see that signal for how a caller learns whether its own action landed.
@@ -845,6 +849,10 @@ private:
     // full resync into a background delta refresh would silently downgrade
     // the one request the user explicitly asked for.
     bool m_refreshPendingFullResync = false;
+    bool m_olderInFlight = false;
+    // (subscriber, device, folder) -> the oldest row the relay said nothing
+    // lies below. A different oldest row asks again.
+    QHash<QString, QString> m_olderExhausted;
     // Set by openFromNotification() while it waits for a refresh to land.
     // Empty when no tap-through is outstanding.
     QString m_pendingNotificationMessageId;

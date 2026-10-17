@@ -1172,6 +1172,8 @@ Kirigami.ApplicationWindow {
                         spacing: 4
                         model: MailApp.searchActive ? MailApp.searchModel : MailApp.emailModel
                         ScrollBar.vertical: ThemedScrollBar {}
+                        // Scrolled to the end: the next page of older mail.
+                        onAtYEndChanged: if (atYEnd) MailApp.loadOlder()
 
                         delegate: Rectangle {
                             id: emailRow

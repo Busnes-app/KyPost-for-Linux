@@ -705,13 +705,15 @@ Kirigami.ApplicationWindow {
                     if (verticalOvershoot < -Kirigami.Units.gridUnit * 4)
                         MailApp.refresh()
                 }
+                // Scrolled to the end: the next page of older mail.
+                onAtYEndChanged: if (atYEnd) MailApp.loadOlder()
                 // Recycling isn't worth the correctness hazard here: a
                 // reused SwipeDelegate would keep its `actionTriggered`
                 // guard (see below) across whichever new model row it gets
                 // rebound to, which could silently disable that row's
-                // swipe actions forever. This app's inbox lists are small
-                // (a single relay folder, no infinite scroll), so disabling
-                // delegate reuse costs nothing observable.
+                // swipe actions forever. Delegates are still created only
+                // for visible rows, so with older pages loaded this costs
+                // creation while scrolling, nothing more.
                 reuseItems: false
 
                 delegate: SwipeDelegate {

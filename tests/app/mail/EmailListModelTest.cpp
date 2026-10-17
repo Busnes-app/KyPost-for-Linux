@@ -17,6 +17,7 @@ private slots:
     void dataOutOfRangeReturnsInvalidVariant();
     void unreadRolesFollowTheExactWireStatus();
     void setStatusUpdatesTheRowInPlace();
+    void rowsAddedAtTheEndAreInsertedNotReset();
 
 private:
     static Email sampleEmail();
@@ -204,6 +205,31 @@ void EmailListModelTest::setStatusUpdatesTheRowInPlace()
     // Already in that state: nothing to announce.
     model.setStatus(QStringLiteral("INBOX"), QStringLiteral("m1"), QStringLiteral("read"));
     QCOMPARE(changedSpy.count(), 1);
+}
+
+// An older page lands at the end of a list the user scrolled to its end.
+void EmailListModelTest::rowsAddedAtTheEndAreInsertedNotReset()
+{
+    Email older = sampleEmail();
+    older.messageId = QStringLiteral("m2");
+    EmailListModel model;
+    model.setEmails({ sampleEmail() });
+
+    QSignalSpy resetSpy(&model, &QAbstractItemModel::modelReset);
+    QSignalSpy insertedSpy(&model, &QAbstractItemModel::rowsInserted);
+    model.setEmails({ sampleEmail(), older });
+    QCOMPARE(resetSpy.count(), 0);
+    QCOMPARE(insertedSpy.count(), 1);
+    QCOMPARE(insertedSpy.at(0).at(1).toInt(), 1);
+    QCOMPARE(insertedSpy.at(0).at(2).toInt(), 1);
+    QCOMPARE(model.emailAt(1).messageId, QStringLiteral("m2"));
+
+    // Anything else about the held rows changed: a reset, as before.
+    Email changed = sampleEmail();
+    changed.status = QStringLiteral("read");
+    model.setEmails({ changed, older, sampleEmail() });
+    QCOMPARE(resetSpy.count(), 1);
+    QCOMPARE(model.emailAt(0).status, QStringLiteral("read"));
 }
 
 QTEST_GUILESS_MAIN(EmailListModelTest)

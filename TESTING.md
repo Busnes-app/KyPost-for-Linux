@@ -92,6 +92,15 @@ default/bare User-Agent strings (see `AGENTS.md` Section 8).
       surfaces as a KNotification and gets persisted, but isn't guaranteed
       to also re-render the currently-open Inbox list without another
       `refresh()`.
+- [ ] **Older mail loads at the end of the list** (plan L12). In a folder
+      with more than 50 messages, scroll the list to its end, on desktop and
+      on mobile. Expected: one `GET /api/inbox?limit=50&mailbox=…&before=<id>&bodies=0`
+      and the next 50 older messages appear below without the list jumping
+      to the top; scrolling to the new end loads the next page, until the
+      relay answers `"hasMore": false`. Open one of the older messages: its
+      body loads ("Loading message…", then the text). Refresh: the older
+      rows stay. In search, under the PIN overlay, or on a relay without
+      paging (no `hasMore` in the reply), no older page is stored.
 - [ ] **Swipe actions apply** (`app/qml/MobileRoot.qml`'s `SwipeDelegate`
       rows). Swipe an inbox row left to reveal Archive, right to reveal
       Delete; both call `MailApp.archiveEmails([messageId])` /
@@ -759,7 +768,10 @@ a full 500-message window with bodies, every 90 seconds, forever.
 What to expect now, verifiable with any HTTP proxy or from the relay's own
 access log:
 
-- Every `/api/inbox` request carries `since=`. There is no request without it.
+- Every window request carries `since=` and `limit=50`. The only `/api/inbox`
+  request without `since=` is an older page, which carries `before=` and
+  `bodies=0` instead (plan L12). The first refresh after upgrading resets the
+  cursor: the relay keeps a separate window per limit.
 - A cold start, a folder never synced by this subscriber, and "Refresh" all
   send `since=0`, and the response has `"delta": false` plus a real `cursor`.
 - The next refresh of that same folder sends that cursor, and the response has

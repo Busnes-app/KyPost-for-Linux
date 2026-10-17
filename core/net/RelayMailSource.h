@@ -59,6 +59,12 @@ struct InboxFetchResult
     bool isDelta = false;   // json "delta" == (since > 0); false on a full window
     qint64 cursor = 0;      // json "cursor"; meaningful whenever `since` was sent
     QStringList removed;    // json "removed"; empty on a full window
+    // Paging (server_inbox.go serveInboxBefore, and the cursor path since
+    // 2026-10-09). Absent on a relay that cannot page, which ignores
+    // `before=` and answers with its window. nextBefore is the reference of
+    // the oldest row below which more mail may lie.
+    std::optional<bool> hasMore;
+    QString nextBefore;
 };
 
 // One entry of POST /api/inbox/actions's "failed" array.
@@ -262,13 +268,19 @@ public:
     explicit RelayMailSource(HttpClient& httpClient);
 
     // limit/since are passed through only when the caller provides them --
-    // the server enforces its own default (500) / max (5000) bound, this
+    // the server defaults to 500 and ignores a limit outside 1..500; this
     // client never clamps client-side. since present (even 0) puts the
     // server into delta mode (only new/updated items, with changeType set);
     // this method doesn't need to know or care about that distinction, it
     // just parses whatever comes back via InboxEmailItem.
     InboxFetchResult fetchInbox(const QUrl& serverBaseUrl, const RelayAuth& auth, std::optional<int> limit,
                                  const QString& mailbox, std::optional<qint64> since) const;
+
+    // The page of `limit` messages older than `before` (a row's messageId),
+    // newest first. Metadata only: the relay sends no body, attachment hint
+    // or PGP flags on this path whatever is asked, so `bodies=0` only says so.
+    InboxFetchResult fetchOlder(const QUrl& serverBaseUrl, const RelayAuth& auth, int limit, const QString& mailbox,
+                                 const QString& before) const;
 
     // Plain QString action (not an enum) -- mirrors how Email::status/
     // Email::label are already plain QString wire values, keeping this
