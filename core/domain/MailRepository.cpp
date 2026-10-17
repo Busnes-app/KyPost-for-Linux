@@ -32,6 +32,106 @@ MailRepositoryOutcome outcomeFromNetworkError(NetworkError error)
     }
 }
 
+// The backend buckets one message into every keyword-tab it matches, so the
+// same messageId can appear as a separate copy in more than one byTab array.
+// Group by messageId, take any one copy as the base row, collect the
+// (non-Uncategorized) tab names it appeared under into Email::keywords, and
+// stamp Email::folder with the mailbox that was requested rather than the tab
+// name RelayMailSource set it to -- RelayMailSource intentionally leaves this
+// mapping to the domain layer (see its own header comments).
+QVector<Email> emailsFrom(const InboxFetchResult& result, const QString& folder, QSet<QString>* updatedIds)
+{
+    QMap<QString, Email> emailsById;
+    QMap<QString, QSet<QString>> keywordsById;
+    QStringList order;
+
+    for (auto it = result.byTab.constBegin(); it != result.byTab.constEnd(); ++it) {
+        const QString& tab = it.key();
+        for (const InboxEmailItem& item : it.value()) {
+            const QString& id = item.email.messageId;
+            if (!emailsById.contains(id)) {
+                emailsById.insert(id, item.email);
+                order.append(id);
+            }
+            if (updatedIds && item.changeType.has_value() && *item.changeType == QStringLiteral("updated"))
+                updatedIds->insert(id);
+            if (tab != kUncategorizedTab)
+                keywordsById[id].insert(tab);
+        }
+    }
+
+    QVector<Email> emails;
+    emails.reserve(order.size());
+    for (const QString& id : order) {
+        Email email = emailsById.value(id);
+        email.folder = folder;
+        QStringList keywords = keywordsById.value(id).values();
+        std::sort(keywords.begin(), keywords.end());
+        email.keywords = keywords;
+        emails.append(email);
+    }
+    return emails;
+}
+
+// A message reference as its place in the folder: IMAP's bare UID, or the id
+// after a native "n1:<generation>:" prefix (the relay's mail_source.go). The
+// relay pages by this number, not by date, so the window boundary does too.
+// Two references compare only under the same prefix.
+struct MessageRef
+{
+    QString prefix;
+    qint64 n = 0;
+};
+
+std::optional<MessageRef> messageRef(const QString& id)
+{
+    const int colon = id.lastIndexOf(QLatin1Char(':'));
+    const QString digits = id.mid(colon + 1);
+    bool ok = false;
+    const qint64 n = digits.toLongLong(&ok);
+    if (!ok || n <= 0 || QString::number(n) != digits)
+        return std::nullopt;
+    return MessageRef{ id.left(colon + 1), n };
+}
+
+std::optional<MessageRef> oldestOf(const QStringList& ids)
+{
+    std::optional<MessageRef> oldest;
+    for (const QString& id : ids) {
+        const std::optional<MessageRef> ref = messageRef(id);
+        if (ref && (!oldest || ref->n < oldest->n))
+            oldest = ref;
+    }
+    return oldest;
+}
+
+bool below(const QString& id, const MessageRef& bottom)
+{
+    const std::optional<MessageRef> ref = messageRef(id);
+    return ref && ref->prefix == bottom.prefix && ref->n < bottom.n;
+}
+
+// Whether a held row sits at or above a window's oldest row. New mail only
+// ever gets a higher number, so then nothing can be missing between the held
+// older rows and the window. If none does, mail older than the window but
+// newer than everything held may be missing, and paging, which starts from
+// the oldest held row, would never fetch it.
+bool reaches(const QStringList& held, const std::optional<MessageRef>& bottom)
+{
+    if (!bottom.has_value())
+        return false;
+    return std::any_of(held.begin(), held.end(), [&](const QString& id) {
+        const std::optional<MessageRef> ref = messageRef(id);
+        return ref && ref->prefix == bottom->prefix && ref->n >= bottom->n;
+    });
+}
+
+QString oldestHeld(const QStringList& held)
+{
+    const std::optional<MessageRef> oldest = oldestOf(held);
+    return oldest ? oldest->prefix + QString::number(oldest->n) : QString();
+}
+
 } // namespace
 
 MailRepository::MailRepository(RelayMailSource& source, EmailDao& emailDao, PairingStore& pairingStore,
@@ -66,6 +166,12 @@ QStringList MailRepository::foldersHolding(const QString& messageId) const
 bool MailRepository::setCachedStatus(const QString& folder, const QString& messageId, const QString& status)
 {
     return m_emailDao.updateStatus(folder, messageId, status);
+}
+
+bool MailRepository::setOlderRowBody(const QString& folder, const QString& messageId, const QString& body,
+                                     const std::optional<QString>& bodyMode)
+{
+    return m_emailDao.setMetadataOnlyBody(folder, messageId, body, bodyMode);
 }
 
 std::optional<MailRefreshPlan> MailRepository::planRefresh(const QString& folder, bool forceFullResync) const
@@ -104,7 +210,7 @@ InboxFetchResult MailRepository::fetchWith(HttpClient& httpClient, const MailRef
     // stateless wrapper over an HttpClient reference, and on the async path
     // that HttpClient belongs to the executor thread.
     RelayMailSource source(httpClient);
-    return source.fetchInbox(plan.endpoint.serverBaseUrl, plan.endpoint.auth, std::nullopt, plan.folder,
+    return source.fetchInbox(plan.endpoint.serverBaseUrl, plan.endpoint.auth, kInboxPageSize, plan.folder,
                               plan.since);
 }
 
@@ -131,48 +237,17 @@ MailFetchOutcome MailRepository::applyRefresh(const MailRefreshPlan& plan, const
     if (result.error.has_value())
         return { outcomeFromNetworkError(*result.error), result.detail };
 
-    // The backend buckets one message into every keyword-tab it matches, so
-    // the same messageId can appear as a separate copy in more than one
-    // byTab array. Group by messageId, take any one copy as the base row,
-    // collect the (non-Uncategorized) tab names it appeared under into
-    // Email::keywords, and stamp Email::folder with the mailbox that was
-    // requested rather than the tab name RelayMailSource set it to --
-    // RelayMailSource intentionally leaves this mapping to the domain layer
-    // (see its own header comments).
-    QMap<QString, Email> emailsById;
-    QMap<QString, QSet<QString>> keywordsById;
-    QStringList order;
     // Message ids the delta flagged as "updated" (flags/label changed, body
     // deliberately omitted). Consumed by the delta branch below to avoid
     // overwriting a cached body with the empty one the server sent on
     // purpose.
     QSet<QString> updatedIds;
-
-    for (auto it = result.byTab.constBegin(); it != result.byTab.constEnd(); ++it) {
-        const QString& tab = it.key();
-        for (const InboxEmailItem& item : it.value()) {
-            const QString& id = item.email.messageId;
-            if (!emailsById.contains(id)) {
-                emailsById.insert(id, item.email);
-                order.append(id);
-            }
-            if (item.changeType.has_value() && *item.changeType == QStringLiteral("updated"))
-                updatedIds.insert(id);
-            if (tab != kUncategorizedTab)
-                keywordsById[id].insert(tab);
-        }
-    }
-
-    QVector<Email> emails;
-    emails.reserve(order.size());
-    for (const QString& id : order) {
-        Email email = emailsById.value(id);
-        email.folder = folder;
-        QStringList keywords = keywordsById.value(id).values();
-        std::sort(keywords.begin(), keywords.end());
-        email.keywords = keywords;
-        emails.append(email);
-    }
+    const QVector<Email> emails = emailsFrom(result, folder, &updatedIds);
+    QSet<QString> replyIds;
+    for (const Email& email : emails)
+        replyIds.insert(email.messageId);
+    // Read before any write: what this folder held when the reply landed.
+    const QStringList held = m_emailDao.messageIdsInFolder(folder);
 
     // Every DAO call below reports whether it landed, and the cursor at the
     // end is advanced only if they all did. This is not tidiness: the cursor
@@ -183,11 +258,19 @@ MailFetchOutcome MailRepository::applyRefresh(const MailRefreshPlan& plan, const
     bool persisted = true;
 
     if (!result.isDelta) {
-        // A full window: every row the relay says this folder has, bodies
-        // included. replaceFolderSnapshot wipes the folder first, which is
-        // what prunes rows removed while this client was not listening --
-        // the one repair a delta cannot express.
-        persisted = m_emailDao.replaceFolderSnapshot(folder, emails);
+        // A full window, bodies included. Every held row it no longer lists
+        // is deleted -- the one repair a delta cannot express -- except older
+        // mail below the window's oldest row, which is the older pages' and
+        // still joins on. A window shorter than a page is the whole folder.
+        const std::optional<MessageRef> bottom =
+            emails.size() < kInboxPageSize ? std::nullopt : oldestOf(QStringList(replyIds.begin(), replyIds.end()));
+        const bool keepOlder = reaches(held, bottom);
+        QStringList gone;
+        for (const QString& id : held) {
+            if (!replyIds.contains(id) && !(keepOlder && below(id, *bottom)))
+                gone.append(id);
+        }
+        persisted = m_emailDao.replaceRows(folder, gone, emails);
     } else {
         // insertOrReplace is upsert-by-messageId, but it must not be handed
         // the row verbatim on an "updated" delta. The backend documents
@@ -232,6 +315,16 @@ MailFetchOutcome MailRepository::applyRefresh(const MailRefreshPlan& plan, const
         // cached under every other folder too.
         for (const QString& id : result.removed)
             persisted = m_emailDao.deleteById(folder, id) && persisted;
+        // More new mail than one window: some may lie below it, unsent. If
+        // nothing held reaches the window, that gap would sit above the held
+        // rows where paging never looks, so they go and paging restarts
+        // from the window.
+        if (result.hasMore.value_or(false) && !reaches(held, messageRef(result.nextBefore))) {
+            for (const QString& id : held) {
+                if (!replyIds.contains(id))
+                    persisted = m_emailDao.deleteById(folder, id) && persisted;
+            }
+        }
     }
 
     // No `detail` string: core owns the error VALUE, app/ owns its wording
@@ -278,7 +371,56 @@ MailFetchOutcome MailRepository::refreshFolder(const QString& folder, bool force
         return { MailRepositoryOutcome::NotPaired, QStringLiteral("Not paired") };
 
     const InboxFetchResult result =
-        m_source.fetchInbox(plan->endpoint.serverBaseUrl, plan->endpoint.auth, std::nullopt, plan->folder,
+        m_source.fetchInbox(plan->endpoint.serverBaseUrl, plan->endpoint.auth, kInboxPageSize, plan->folder,
                              plan->since);
     return applyRefresh(*plan, result);
+}
+
+std::optional<MailOlderPlan> MailRepository::planOlder(const QString& folder) const
+{
+    const std::optional<DevicePairing> pairing = m_pairingStore.load();
+    if (!pairing.has_value())
+        return std::nullopt;
+    const QString before = oldestHeld(m_emailDao.messageIdsInFolder(folder));
+    if (before.isEmpty())
+        return std::nullopt;
+    return MailOlderPlan{ RelayEndpoint{ QUrl(pairing->serverBaseUrl),
+                                         RelayAuth{ pairing->deviceId, pairing->deviceSecret } },
+                          folder, before, pairing->subscriberId };
+}
+
+InboxFetchResult MailRepository::fetchOlderWith(HttpClient& httpClient, const MailOlderPlan& plan)
+{
+    return RelayMailSource(httpClient).fetchOlder(plan.endpoint.serverBaseUrl, plan.endpoint.auth, kInboxPageSize,
+                                                  plan.folder, plan.before);
+}
+
+MailOlderOutcome MailRepository::applyOlder(const MailOlderPlan& plan, const InboxFetchResult& result)
+{
+    // Same question as applyRefresh(), for the same reason.
+    if (!m_pairingStore.stillCurrent({ plan.subscriberId, plan.endpoint.auth.deviceId }))
+        return { MailRepositoryOutcome::PairingChanged, false, {} };
+    if (result.error.has_value())
+        return { outcomeFromNetworkError(*result.error), false, {} };
+    // A relay that cannot page ignored `before=` and sent its window.
+    if (!result.hasMore.has_value())
+        return { MailRepositoryOutcome::Success, false, plan.before };
+    // A resync or a removal moved the oldest row since the request: this
+    // page no longer joins on below what is held.
+    if (oldestHeld(m_emailDao.messageIdsInFolder(plan.folder)) != plan.before)
+        return { MailRepositoryOutcome::Success, true, {} };
+
+    const MessageRef anchor = *messageRef(plan.before);
+    QVector<Email> page;
+    for (Email email : emailsFrom(result, plan.folder, nullptr)) {
+        if (!below(email.messageId, anchor))
+            continue;
+        email.metadataOnly = true;
+        page.append(email);
+    }
+    if (!m_emailDao.replaceRows(plan.folder, {}, page))
+        return { MailRepositoryOutcome::CacheWriteFailed, false, {} };
+    // A page that adds nothing would ask the same question again.
+    return { MailRepositoryOutcome::Success, *result.hasMore && !page.isEmpty(),
+             oldestHeld(m_emailDao.messageIdsInFolder(plan.folder)) };
 }

@@ -357,6 +357,8 @@ void MailController::finishRefresh(const MailRefreshPlan& plan, const InboxFetch
         setLastError(outcome.detail.isEmpty() ? i18n("Refresh failed") : outcome.detail);
     } else {
         setLastError(QString());
+        // The relay is answering again: a body that failed to load may be retried.
+        m_searchBodyFailed.clear();
         m_lastSyncAt = QDateTime::currentDateTime();
         emit lastSyncAtChanged();
     }
@@ -404,6 +406,38 @@ void MailController::finishRefresh(const MailRefreshPlan& plan, const InboxFetch
         m_refreshPendingFullResync = false;
         refreshInternal(fullResync);
     }
+}
+
+void MailController::loadOlder()
+{
+    if (m_appLocked || searchActive() || m_olderInFlight) // no older page while locked
+        return;
+    const std::optional<MailOlderPlan> plan = m_mailRepository.planOlder(m_currentFolder);
+    if (!plan.has_value())
+        return;
+    const QString exhaustedKey = plan->subscriberId + QLatin1Char('\n') + plan->endpoint.auth.deviceId
+        + QLatin1Char('\n') + plan->folder;
+    if (m_olderExhausted.value(exhaustedKey) == plan->before)
+        return;
+
+    m_olderInFlight = true;
+    m_executor.run(
+        this, [plan = *plan](HttpClient& http) { return MailRepository::fetchOlderWith(http, plan); },
+        [this, plan = *plan, exhaustedKey](const InboxFetchResult& result) {
+            m_olderInFlight = false;
+            const MailOlderOutcome outcome = m_mailRepository.applyOlder(plan, result);
+            if (outcome.outcome == MailRepositoryOutcome::PairingChanged)
+                return;
+            if (outcome.outcome != MailRepositoryOutcome::Success) {
+                setLastError(i18n("Older mail could not be loaded."));
+                return;
+            }
+            if (!outcome.more)
+                m_olderExhausted.insert(exhaustedKey, outcome.endsAt);
+            // Written under its own folder either way; shown only if still open.
+            if (plan.folder == m_currentFolder)
+                reloadCurrentFolder();
+        });
 }
 
 void MailController::performActionCommon(const QStringList& messageIds, const QString& action,
@@ -1877,15 +1911,18 @@ QVariantMap MailController::findByMessageId(const QString& messageId, const QStr
     if (!email.has_value())
         return {};
     QVariantMap map = emailMap(*email);
-    if (folder.isEmpty() || m_mailRepository.cachedEmail(folder, messageId).has_value())
+    if (folder.isEmpty() || (!email->metadataOnly && m_mailRepository.cachedEmail(folder, messageId).has_value()))
         return map;
 
-    // A search hit this device has not synced. Its body is fetched on demand
-    // and held in memory only.
+    // A search hit this device has not synced, or a row from an older page:
+    // no PGP flags or attachment hint, and a body fetched on demand (held in
+    // memory for a hit, cached for an older row).
     map[QStringLiteral("searchOnly")] = true;
     const QString key = folder + QLatin1Char('\n') + messageId;
     if (m_searchBodyFailed.contains(key)) {
-        map[QStringLiteral("bodyNotice")] = i18n("This message could not be loaded. Search again to retry.");
+        map[QStringLiteral("bodyNotice")] = email->metadataOnly
+            ? i18n("This message could not be loaded. Refresh, then open it again.")
+            : i18n("This message could not be loaded. Search again to retry.");
     } else if (!email->body.has_value()) {
         map[QStringLiteral("bodyPending")] = true;
         map[QStringLiteral("bodyNotice")] = i18n("Loading message…");
@@ -2782,9 +2819,11 @@ void MailController::loadSearchBody(const QString& folder, const QString& messag
     // EmailDetail asks again on unlock.
     if (m_appLocked) // no search body fetch while locked
         return;
-    if (m_mailRepository.cachedEmail(folder, messageId).has_value())
-        return;
     const std::optional<Email> hit = lookupEmail(folder, messageId);
+    // A synced row came with its body, unless it came from an older page.
+    const bool olderRow = hit.has_value() && hit->metadataOnly;
+    if (!olderRow && m_mailRepository.cachedEmail(folder, messageId).has_value())
+        return;
     const QString key = folder + QLatin1Char('\n') + messageId;
     if (!hit.has_value() || hit->body.has_value() || m_searchBodyInFlight.contains(key)
         || m_searchBodyFailed.contains(key))
@@ -2793,7 +2832,7 @@ void MailController::loadSearchBody(const QString& folder, const QString& messag
     if (!pairing.has_value())
         return;
     const RelayEndpoint endpoint{ QUrl(pairing->serverBaseUrl), RelayAuth{ pairing->deviceId, pairing->deviceSecret } };
-    const PairingIdentity identity = m_searchIdentity;
+    const PairingIdentity identity = olderRow ? m_pairingStore.currentIdentity() : m_searchIdentity;
 
     m_searchBodyInFlight.insert(key);
     m_executor.run(
@@ -2801,9 +2840,20 @@ void MailController::loadSearchBody(const QString& folder, const QString& messag
         [endpoint, folder, messageId](HttpClient& http) {
             return RelayMailSource(http).fetchBody(endpoint.serverBaseUrl, endpoint.auth, folder, messageId);
         },
-        [this, folder, messageId, identity, key](const MailBodyResult& result) {
+        [this, folder, messageId, identity, key, olderRow](const MailBodyResult& result) {
             m_searchBodyInFlight.remove(key);
-            if (folder != m_searchFolder || identity != m_searchIdentity || !m_pairingStore.stillCurrent(identity))
+            if (!m_pairingStore.stillCurrent(identity))
+                return;
+            const std::optional<QString> mode =
+                result.bodyMode.isEmpty() ? std::nullopt : std::optional<QString>(result.bodyMode);
+            if (olderRow) {
+                if (result.error.has_value()
+                    || !m_mailRepository.setOlderRowBody(folder, messageId, result.body, mode))
+                    m_searchBodyFailed.insert(key);
+                emit searchBodyLoaded(folder, messageId);
+                return;
+            }
+            if (folder != m_searchFolder || identity != m_searchIdentity)
                 return;
             const auto row = std::find_if(m_searchResults.begin(), m_searchResults.end(),
                                           [&](const Email& email) { return email.messageId == messageId; });
@@ -2813,7 +2863,7 @@ void MailController::loadSearchBody(const QString& folder, const QString& messag
                 m_searchBodyFailed.insert(key);
             } else {
                 row->body = result.body;
-                row->bodyMode = result.bodyMode.isEmpty() ? std::nullopt : std::optional<QString>(result.bodyMode);
+                row->bodyMode = mode;
             }
             emit searchBodyLoaded(folder, messageId);
         });
@@ -2830,9 +2880,9 @@ QVariantMap MailController::reopenDraft(const QString& folder, const QString& me
     if (!email.has_value() || !email->body.has_value() || email->pgpEncrypted
         || pgpMessageStateOf(*email) != PgpMessageState::None)
         return {};
-    // A search hit has no PGP flags: an empty body may be an encrypted draft,
-    // which a replacing save would then delete unread.
-    if (email->body->isEmpty() && !m_mailRepository.cachedEmail(folder, messageId).has_value())
+    // A search hit or an older-page row has no PGP flags: an empty body may be
+    // an encrypted draft, which a replacing save would then delete unread.
+    if (email->body->isEmpty() && (email->metadataOnly || !m_mailRepository.cachedEmail(folder, messageId).has_value()))
         return {};
     const PairingIdentity identity = m_pairingStore.currentIdentity();
     if (!m_pairingStore.stillCurrent(identity))

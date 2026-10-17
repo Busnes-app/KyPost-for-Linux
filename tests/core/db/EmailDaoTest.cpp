@@ -17,7 +17,8 @@ private slots:
     void insertOrReplaceStoresAnUnsetFolderAsEmptyRatherThanFailing();
     void findUniqueByIdRefusesAnIdCachedInMoreThanOneFolder();
     void foldersContainingNamesEveryMailboxHoldingTheId();
-    void replaceFolderSnapshotWipesOnlyTargetFolderAndInsertsGivenEmails();
+    void replaceRowsDeletesOnlyInTargetFolderAndInsertsGivenEmails();
+    void setMetadataOnlyBodyWritesOnlyAMetadataOnlyRow();
     void updateStatusTouchesOnlyThatFolderCopy();
     void findByFolderSortsAWokenSnoozeAsIfItArrivedWhenItWoke();
 
@@ -168,7 +169,7 @@ void EmailDaoTest::foldersContainingNamesEveryMailboxHoldingTheId()
     QCOMPARE(dao.foldersContaining(QStringLiteral("msg-shared")).size(), 2);
 }
 
-void EmailDaoTest::replaceFolderSnapshotWipesOnlyTargetFolderAndInsertsGivenEmails()
+void EmailDaoTest::replaceRowsDeletesOnlyInTargetFolderAndInsertsGivenEmails()
 {
     EmailDao dao(m_db.handle());
 
@@ -196,7 +197,9 @@ void EmailDaoTest::replaceFolderSnapshotWipesOnlyTargetFolderAndInsertsGivenEmai
     newInboxEmail2.subject = QStringLiteral("New 2");
     newInboxEmail2.atUtc = QStringLiteral("2026-01-04T00:00:00Z");
 
-    QVERIFY(dao.replaceFolderSnapshot(QStringLiteral("INBOX"), { newInboxEmail1, newInboxEmail2 }));
+    // msg-sent is named too: the deletes are scoped to the folder.
+    QVERIFY(dao.replaceRows(QStringLiteral("INBOX"), { QStringLiteral("msg-stale"), QStringLiteral("msg-sent") },
+                            { newInboxEmail1, newInboxEmail2 }));
 
     // The stale row in the replaced folder is gone.
     QVERIFY(!dao.findById(QStringLiteral("INBOX"), QStringLiteral("msg-stale")).has_value());
@@ -212,6 +215,34 @@ void EmailDaoTest::replaceFolderSnapshotWipesOnlyTargetFolderAndInsertsGivenEmai
     // A row in a different folder survives untouched.
     QVERIFY(dao.findById(QStringLiteral("Sent"), QStringLiteral("msg-sent")).has_value());
     QCOMPARE(*dao.findById(QStringLiteral("Sent"), QStringLiteral("msg-sent")), sentEmail);
+}
+
+// An opened older row gets its body; a window row that replaced it keeps its own.
+void EmailDaoTest::setMetadataOnlyBodyWritesOnlyAMetadataOnlyRow()
+{
+    EmailDao dao(m_db.handle());
+
+    Email older;
+    older.messageId = QStringLiteral("7");
+    older.folder = QStringLiteral("INBOX");
+    older.metadataOnly = true;
+    QVERIFY(dao.insertOrReplace(older));
+    QVERIFY(dao.findById(QStringLiteral("INBOX"), QStringLiteral("7"))->metadataOnly);
+
+    QVERIFY(dao.setMetadataOnlyBody(QStringLiteral("INBOX"), QStringLiteral("7"), QStringLiteral("<p>hi</p>"),
+                                    QStringLiteral("html")));
+    const Email loaded = *dao.findById(QStringLiteral("INBOX"), QStringLiteral("7"));
+    QCOMPARE(loaded.body, std::optional<QString>(QStringLiteral("<p>hi</p>")));
+    QCOMPARE(loaded.bodyMode, std::optional<QString>(QStringLiteral("html")));
+    QVERIFY(loaded.metadataOnly);
+
+    Email window = older;
+    window.metadataOnly = false;
+    window.body = QStringLiteral("window body");
+    QVERIFY(dao.insertOrReplace(window));
+    QVERIFY(!dao.setMetadataOnlyBody(QStringLiteral("INBOX"), QStringLiteral("7"), QStringLiteral("stale"), {}));
+    QCOMPARE(dao.findById(QStringLiteral("INBOX"), QStringLiteral("7"))->body,
+             std::optional<QString>(QStringLiteral("window body")));
 }
 
 

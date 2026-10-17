@@ -243,6 +243,19 @@ Added 2026-07-25 (parity work with `kypost-android`):
   every query key and value: `addQueryItem` alone sent `+` bare (Go reads a
   space) and passed `%XX` through.
 
+- **Inbox paging (plan item L12, 2026-10-17).** The window and every older
+  page are `MailRepository::kInboxPageSize` (50); the window keeps its bodies,
+  and `kMaxInboxResponseBytes` is sized to it, so change the two together.
+  Older pages are anchored at the oldest HELD row, compared by message number
+  (UID, or the id after `n1:<generation>:`), never by date: that is what the
+  relay pages by. A resync deletes absent rows only from the window's oldest
+  row up, and keeps older rows only while a held row still reaches the window;
+  otherwise mail may be missing between them that paging can never reach, so
+  they are dropped. Rows from a page are `metadataOnly`: treat them like a
+  search hit (no PGP flags, body on demand, never reopened as a draft with an
+  empty body). A page reply is dropped when the pairing or the folder's oldest
+  row changed; guards in `tests/guards.tsv`.
+
 - **Snooze (plan item L9, 2026-10-17).** `snooze` on `/api/inbox/actions` with
   `wakeAt` (whole-second UTC RFC 3339). Presets and the typed time live in
   `core/domain/Snooze.cpp`, read in the local zone and kept between 1 minute and

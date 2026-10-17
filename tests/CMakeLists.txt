@@ -90,6 +90,7 @@ kypost_add_test(ContactPhotoCacheTest core/stores/ContactPhotoCacheTest.cpp)
 kypost_add_test(PairingStoreTest core/domain/PairingStoreTest.cpp)
 kypost_add_test(DeviceRegistrationServiceTest core/domain/DeviceRegistrationServiceTest.cpp)
 kypost_add_test(MailRepositoryTest core/domain/MailRepositoryTest.cpp)
+kypost_add_test(MailPagingTest core/domain/MailPagingTest.cpp)
 kypost_add_test(FolderRepositoryTest core/domain/FolderRepositoryTest.cpp)
 # Scheduled send: the relay's sendAt window and the send-later presets.
 kypost_add_test(SendLaterTest core/domain/SendLaterTest.cpp)

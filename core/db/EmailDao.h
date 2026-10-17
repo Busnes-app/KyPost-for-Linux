@@ -50,10 +50,18 @@ public:
 
     bool deleteByFolder(const QString& folder);
 
-    // Wipes `folder` and inserts every email in `emails` (each with .folder
-    // already set to `folder` by the caller), wrapped in one transaction so
-    // a partial failure doesn't leave the folder half-replaced.
-    bool replaceFolderSnapshot(const QString& folder, const QVector<Email>& emails);
+    // Deletes `deleteIds` from `folder` and upserts `emails` (each with .folder
+    // already set by the caller) in one transaction, so a partial failure
+    // doesn't leave the folder half-replaced.
+    bool replaceRows(const QString& folder, const QStringList& deleteIds, const QVector<Email>& emails);
+
+    QStringList messageIdsInFolder(const QString& folder) const;
+
+    // Stores a body fetched on open. Only for a metadata-only row: a window
+    // row that replaced it meanwhile already has the real one. False when
+    // nothing was written.
+    bool setMetadataOnlyBody(const QString& folder, const QString& messageId, const QString& body,
+                             const std::optional<QString>& bodyMode);
 
 private:
     QSqlDatabase& m_db;

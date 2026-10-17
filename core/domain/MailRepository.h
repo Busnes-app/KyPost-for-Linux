@@ -60,6 +60,25 @@ struct MailRefreshPlan
     QString subscriberId;
 };
 
+// The next page of older mail: below `before`, the oldest row the folder
+// holds. Plain data, like MailRefreshPlan.
+struct MailOlderPlan
+{
+    RelayEndpoint endpoint;
+    QString folder;
+    QString before;
+    QString subscriberId;
+};
+
+struct MailOlderOutcome
+{
+    MailRepositoryOutcome outcome = MailRepositoryOutcome::Retry;
+    // Success only: whether asking again from the new oldest row can find
+    // more, and when it cannot, that row.
+    bool more = false;
+    QString endsAt;
+};
+
 // Sits between RelayMailSource and EmailDao, matching the Domain/
 // Repositories layer in kypost-for-Mac (its MailRepository does a dumb
 // full-replace with no delta-merge; Android's MailRepository.kt/
@@ -100,6 +119,10 @@ public:
 
     // Local cache write only; the relay is told separately.
     bool setCachedStatus(const QString& folder, const QString& messageId, const QString& status);
+    // The body fetched when an older-page row was opened; see
+    // EmailDao::setMetadataOnlyBody.
+    bool setOlderRowBody(const QString& folder, const QString& messageId, const QString& body,
+                         const std::optional<QString>& bodyMode);
 
     // forceFullResync sends `since=0`; every other refresh sends the
     // CursorStore-persisted cursor for this (subscriber, folder), or 0 when
@@ -154,6 +177,17 @@ public:
     // Phase 3, back on the calling thread. Does the keyword/folder wire
     // mapping, the delta merge, and the EmailDao + CursorStore writes.
     MailFetchOutcome applyRefresh(const MailRefreshPlan& plan, const InboxFetchResult& result);
+
+    // The window and every older page, as Android asks (#183). A window
+    // refresh replaces only its own range; older rows survive it.
+    static constexpr int kInboxPageSize = 50;
+
+    // Older mail, in the same three phases. planOlder() is nullopt when
+    // unpaired or when the folder holds no row to page below.
+    std::optional<MailOlderPlan> planOlder(const QString& folder) const;
+    static InboxFetchResult fetchOlderWith(HttpClient& httpClient, const MailOlderPlan& plan);
+    // Stores the page's rows as metadata-only, below the anchor only.
+    MailOlderOutcome applyOlder(const MailOlderPlan& plan, const InboxFetchResult& result);
 
 private:
     RelayMailSource& m_source;

@@ -4,6 +4,8 @@
 
 #include <KLocalizedString>
 
+#include <algorithm>
+
 EmailListModel::EmailListModel(QObject* parent)
     : QAbstractListModel(parent)
 {
@@ -97,6 +99,15 @@ QHash<int, QByteArray> EmailListModel::roleNames() const
 
 void EmailListModel::setEmails(const QVector<Email>& emails)
 {
+    // An older page only adds rows at the end. Inserted rather than reset,
+    // so the list keeps the scroll position that asked for them.
+    const int held = m_emails.size();
+    if (held > 0 && emails.size() > held && std::equal(m_emails.cbegin(), m_emails.cend(), emails.cbegin())) {
+        beginInsertRows({}, held, emails.size() - 1);
+        m_emails = emails;
+        endInsertRows();
+        return;
+    }
     beginResetModel();
     m_emails = emails;
     endResetModel();

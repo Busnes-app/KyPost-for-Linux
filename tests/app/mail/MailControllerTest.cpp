@@ -118,6 +118,14 @@ private slots:
     void aSearchOnlyDraftWithNoReadableBodyIsNotReopened();
     void aDraftInALocalizedDraftsFolderIsReopenedAndReplacedThere();
 
+    // Older mail (L12).
+    void anOlderPageLoadsBelowTheListUntilTheRelayHasNoMore();
+    void aLockedOrSearchingAppLoadsNoOlderMail();
+    void anOlderPageForAFolderNoLongerOpenIsKeptButNotShown();
+    void anOlderRowFetchesItsBodyWhenOpenedAndKeepsIt();
+    void anOlderRowBodyForAReplacedAccountIsNotWritten();
+    void anOlderDraftWithNoReadableBodyIsNotReopened();
+
 private:
     static void savePairing(PairingStore& pairingStore, quint16 port);
     // downloadAttachment() dispatches and returns; the answer arrives as
@@ -3496,6 +3504,164 @@ void MailControllerTest::replyAllLeavesOutOnlyThisAccountsOwnAddresses()
     other.deviceId = QStringLiteral("dev-2");
     QVERIFY(f.pairingStore.save(other));
     QCOMPARE(f.controller.replyAllRecipients(sender, to, cc), everyone);
+}
+
+namespace {
+
+// An /api/inbox reply holding these UIDs, newest first.
+QByteArray inboxRows(const QList<int>& ids, const char* hasMore = "false")
+{
+    QByteArray rows;
+    for (int id : ids) {
+        if (!rows.isEmpty())
+            rows += ',';
+        rows += R"({"messageId":")" + QByteArray::number(id) + R"(","subject":"Message )" + QByteArray::number(id)
+            + R"(","status":"read","atUtc":"2026-07-)" + QByteArray::number(10 + id % 20) + R"(T00:00:00Z"})";
+    }
+    return httpResponse(200, "OK",
+                        R"({"tabs":["Uncategorized"],"byTab":{"Uncategorized":[)" + rows + R"(]},"hasMore":)" + hasMore
+                            + "}");
+}
+
+void holdRow(EmailDao& dao, const QString& folder, const QString& id, bool metadataOnly,
+             std::optional<QString> body = std::nullopt)
+{
+    Email email;
+    email.messageId = id;
+    email.folder = folder;
+    email.subject = QStringLiteral("Held ") + id;
+    email.status = QStringLiteral("read");
+    email.atUtc = QStringLiteral("2026-08-01T00:00:00Z");
+    email.body = body;
+    email.metadataOnly = metadataOnly;
+    QVERIFY(dao.insertOrReplace(email));
+}
+
+} // namespace
+
+void MailControllerTest::anOlderPageLoadsBelowTheListUntilTheRelayHasNoMore()
+{
+    FakeRelayServer fake(inboxRows({ 9, 8 }));
+    fake.setResponseForPath("before=", inboxRows({ 5, 4 }));
+    RefreshFixture f(fake.port());
+    holdRow(f.emailDao, QStringLiteral("INBOX"), QStringLiteral("9"), false, QStringLiteral("b"));
+    holdRow(f.emailDao, QStringLiteral("INBOX"), QStringLiteral("8"), false, QStringLiteral("b"));
+    auto* model = qobject_cast<EmailListModel*>(f.controller.emailModel());
+
+    f.controller.loadOlder();
+    f.controller.loadOlder(); // one at a time
+    QTRY_VERIFY_WITH_TIMEOUT(model->rowCount() == 4, 10000);
+    QCOMPARE(requestsMatching(fake, "before=8&"), 1);
+    QVERIFY(f.emailDao.findById(QStringLiteral("INBOX"), QStringLiteral("4"))->metadataOnly);
+
+    // The relay said nothing lies below 4. One executor thread: an older
+    // request sent now would reach the relay before this refresh.
+    f.controller.loadOlder();
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(requestsMatching(fake, "since=") == 1 && !f.controller.isBusy(), 10000);
+    f.executor.shutdown();
+    QCOMPARE(requestsMatching(fake, "before="), 1);
+    QVERIFY(f.controller.lastError().isEmpty());
+}
+
+void MailControllerTest::aLockedOrSearchingAppLoadsNoOlderMail()
+{
+    FakeRelayServer fake(inboxRows({ 9 }));
+    fake.setResponseForPath("before=", inboxRows({ 5 }));
+    RefreshFixture f(fake.port());
+    holdRow(f.emailDao, QStringLiteral("INBOX"), QStringLiteral("9"), false, QStringLiteral("b"));
+
+    f.controller.setAppLocked(true);
+    f.controller.loadOlder();
+    f.controller.setAppLocked(false);
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(requestsMatching(fake, "since=") == 1 && !f.controller.isBusy(), 10000);
+    QCOMPARE(requestsMatching(fake, "before="), 0);
+
+    // The list on screen is the search results, not the folder.
+    f.controller.setSearchQuery(QStringLiteral("x"));
+    f.controller.loadOlder();
+    f.controller.clearSearch();
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(requestsMatching(fake, "since=") == 2 && !f.controller.isBusy(), 10000);
+    f.executor.shutdown();
+    QCOMPARE(requestsMatching(fake, "before="), 0);
+}
+
+void MailControllerTest::anOlderPageForAFolderNoLongerOpenIsKeptButNotShown()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"tabs":[],"byTab":{}})"));
+    fake.setResponseForPath("before=", inboxRows({ 5 }));
+    RefreshFixture f(fake.port());
+    holdRow(f.emailDao, QStringLiteral("INBOX"), QStringLiteral("9"), false, QStringLiteral("b"));
+    auto* model = qobject_cast<EmailListModel*>(f.controller.emailModel());
+
+    f.controller.loadOlder();
+    f.controller.selectFolder(QStringLiteral("Archive"));
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    f.executor.shutdown();
+    QCOMPARE(requestsMatching(fake, "before=9&"), 1);
+    QVERIFY(f.emailDao.findById(QStringLiteral("INBOX"), QStringLiteral("5")).has_value());
+    QCOMPARE(model->rowCount(), 0);
+}
+
+void MailControllerTest::anOlderRowFetchesItsBodyWhenOpenedAndKeepsIt()
+{
+    FakeRelayServer fake(httpResponse(500, "Internal Server Error", "{}"));
+    fake.setResponseForPath("/api/mail/body", httpResponse(200, "OK", R"({"body":"<p>old</p>","bodyMode":"html"})"));
+    RefreshFixture f(fake.port());
+    holdRow(f.emailDao, QStringLiteral("INBOX"), QStringLiteral("7"), true);
+
+    QVariantMap email = f.controller.findByMessageId(QStringLiteral("7"), QStringLiteral("INBOX"));
+    QVERIFY(email.value(QStringLiteral("searchOnly")).toBool());
+    QVERIFY(email.value(QStringLiteral("bodyPending")).toBool());
+
+    QSignalSpy loaded(&f.controller, &MailController::searchBodyLoaded);
+    f.controller.loadSearchBody(QStringLiteral("INBOX"), QStringLiteral("7"));
+    QTRY_VERIFY_WITH_TIMEOUT(loaded.count() == 1, 10000);
+    f.executor.shutdown();
+    QCOMPARE(requestsMatching(fake, "GET /api/mail/body?"), 1);
+    QCOMPARE(f.emailDao.findById(QStringLiteral("INBOX"), QStringLiteral("7"))->body,
+             std::optional<QString>(QStringLiteral("<p>old</p>")));
+    email = f.controller.findByMessageId(QStringLiteral("7"), QStringLiteral("INBOX"));
+    QCOMPARE(email.value(QStringLiteral("body")).toString(), QStringLiteral("<p>old</p>"));
+    QVERIFY(!email.value(QStringLiteral("bodyPending")).toBool());
+}
+
+void MailControllerTest::anOlderRowBodyForAReplacedAccountIsNotWritten()
+{
+    FakeRelayServer fake(httpResponse(500, "Internal Server Error", "{}"));
+    fake.setResponseForPath("/api/mail/body", httpResponse(200, "OK", R"({"body":"<p>theirs</p>","bodyMode":"html"})"));
+    RefreshFixture f(fake.port());
+    // The same UID, cached for whoever is paired when the reply lands.
+    holdRow(f.emailDao, QStringLiteral("INBOX"), QStringLiteral("7"), true);
+
+    f.controller.loadSearchBody(QStringLiteral("INBOX"), QStringLiteral("7"));
+    DevicePairing replacement;
+    replacement.subscriberId = QStringLiteral("sub-2");
+    replacement.deviceId = QStringLiteral("dev-2");
+    replacement.deviceSecret = QStringLiteral("secret-2");
+    replacement.serverBaseUrl = QStringLiteral("http://127.0.0.1:%1").arg(fake.port());
+    QVERIFY(f.pairingStore.save(replacement));
+
+    // One executor thread: this refresh completes after the body reply.
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    f.executor.shutdown();
+    QCOMPARE(requestsMatching(fake, "GET /api/mail/body?"), 1);
+    QVERIFY(!f.emailDao.findById(QStringLiteral("INBOX"), QStringLiteral("7"))->body.has_value());
+}
+
+void MailControllerTest::anOlderDraftWithNoReadableBodyIsNotReopened()
+{
+    FakeRelayServer fake(httpResponse(500, "Internal Server Error", "{}"));
+    RefreshFixture f(fake.port());
+    // An older page has no PGP flags: an empty body may be an encrypted draft.
+    holdRow(f.emailDao, QStringLiteral("Drafts"), QStringLiteral("e1"), true, QString(QLatin1String("")));
+    QVERIFY(f.controller.reopenDraft(QStringLiteral("Drafts"), QStringLiteral("e1")).isEmpty());
+    const QVariantMap email = f.controller.findByMessageId(QStringLiteral("e1"), QStringLiteral("Drafts"));
+    QVERIFY(!email.value(QStringLiteral("bodyNotice")).toString().isEmpty());
+    f.executor.shutdown();
 }
 
 QTEST_GUILESS_MAIN(MailControllerTest)

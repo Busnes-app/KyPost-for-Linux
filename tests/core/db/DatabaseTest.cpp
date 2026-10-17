@@ -32,10 +32,10 @@ void DatabaseTest::opensInMemoryAndAppliesSchema()
     QSqlQuery versionQuery(db.handle());
     QVERIFY(versionQuery.exec(QStringLiteral("PRAGMA user_version")));
     QVERIFY(versionQuery.next());
-    // 9 migrations on disk (001_initial .. 009_emails_woken_at) -- bumping
+    // 11 migrations on disk (001_initial .. 011_emails_metadata_only) -- bumping
     // this when a migration is added is how this test proves the loop in
     // Database::open() actually walks version+1..N end-to-end.
-    QCOMPARE(versionQuery.value(0).toInt(), 10);
+    QCOMPARE(versionQuery.value(0).toInt(), 11);
 
     QSqlQuery tablesQuery(db.handle());
     QVERIFY(tablesQuery.exec(
@@ -91,7 +91,7 @@ void DatabaseTest::openIsIdempotentOnRealFile()
         QSqlQuery query(db1.handle());
         QVERIFY(query.exec(QStringLiteral("PRAGMA user_version")));
         QVERIFY(query.next());
-        QCOMPARE(query.value(0).toInt(), 10);
+        QCOMPARE(query.value(0).toInt(), 11);
     }
     {
         Database db2;
@@ -99,7 +99,7 @@ void DatabaseTest::openIsIdempotentOnRealFile()
         QSqlQuery query(db2.handle());
         QVERIFY(query.exec(QStringLiteral("PRAGMA user_version")));
         QVERIFY(query.next());
-        QCOMPARE(query.value(0).toInt(), 10);
+        QCOMPARE(query.value(0).toInt(), 11);
     }
 }
 
@@ -273,7 +273,7 @@ void DatabaseTest::migrationIsAtomicSoAFailureLeavesNoHalfAppliedSchema()
     QSqlQuery versionQuery(db.handle());
     QVERIFY(versionQuery.exec(QStringLiteral("PRAGMA user_version")));
     QVERIFY(versionQuery.next());
-    QCOMPARE(versionQuery.value(0).toInt(), 10);
+    QCOMPARE(versionQuery.value(0).toInt(), 11);
 }
 
 
@@ -368,7 +368,7 @@ void DatabaseTest::migration006RekeysAnExistingProfileWithoutLosingCachedMail()
     QSqlQuery version(db.handle());
     QVERIFY(version.exec(QStringLiteral("PRAGMA user_version")));
     QVERIFY(version.next());
-    QCOMPARE(version.value(0).toInt(), 10);
+    QCOMPARE(version.value(0).toInt(), 11);
 
     // Nothing was dropped on the way across, values included.
     EmailDao dao(db.handle());

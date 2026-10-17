@@ -48,6 +48,7 @@ Email emailFromQuery(const QSqlQuery& query)
     email.pgpSigned = query.value(QStringLiteral("pgp_signed")).toInt() != 0;
     email.pgpEncrypted = query.value(QStringLiteral("pgp_encrypted")).toInt() != 0;
     email.pgpDecryptError = query.value(QStringLiteral("pgp_decrypt_error")).toString();
+    email.metadataOnly = query.value(QStringLiteral("metadata_only")).toInt() != 0;
     return email;
 }
 
@@ -72,10 +73,10 @@ bool EmailDao::insertOrReplace(const Email& email)
         "INSERT OR REPLACE INTO emails "
         "(message_id, folder, sender, sent_to, cc, bcc, subject, preview, body, body_mode, label, "
         "keywords_json, status, at_utc, woken_at, has_attachments, source_mode, pgp_encrypted, pgp_signed, "
-        "pgp_decrypt_error) "
+        "pgp_decrypt_error, metadata_only) "
         "VALUES (:message_id, :folder, :sender, :sent_to, :cc, :bcc, :subject, :preview, :body, "
         ":body_mode, :label, :keywords_json, :status, :at_utc, :woken_at, :has_attachments, :source_mode, "
-        ":pgp_encrypted, :pgp_signed, :pgp_decrypt_error)"));
+        ":pgp_encrypted, :pgp_signed, :pgp_decrypt_error, :metadata_only)"));
     query.bindValue(QStringLiteral(":message_id"), email.messageId);
     // A default-constructed QString is NULL to Qt's SQL layer, not ''. Since
     // migration 006 `folder` is NOT NULL and half of the PRIMARY KEY, so
@@ -102,6 +103,7 @@ bool EmailDao::insertOrReplace(const Email& email)
     query.bindValue(QStringLiteral(":pgp_encrypted"), email.pgpEncrypted ? 1 : 0);
     query.bindValue(QStringLiteral(":pgp_signed"), email.pgpSigned ? 1 : 0);
     query.bindValue(QStringLiteral(":pgp_decrypt_error"), email.pgpDecryptError);
+    query.bindValue(QStringLiteral(":metadata_only"), email.metadataOnly ? 1 : 0);
     return query.exec();
 }
 
@@ -203,14 +205,16 @@ bool EmailDao::deleteByFolder(const QString& folder)
     return query.exec();
 }
 
-bool EmailDao::replaceFolderSnapshot(const QString& folder, const QVector<Email>& emails)
+bool EmailDao::replaceRows(const QString& folder, const QStringList& deleteIds, const QVector<Email>& emails)
 {
     if (!m_db.transaction())
         return false;
 
-    if (!deleteByFolder(folder)) {
-        m_db.rollback();
-        return false;
+    for (const QString& id : deleteIds) {
+        if (!deleteById(folder, id)) {
+            m_db.rollback();
+            return false;
+        }
     }
 
     for (const Email& email : emails) {
@@ -221,4 +225,30 @@ bool EmailDao::replaceFolderSnapshot(const QString& folder, const QVector<Email>
     }
 
     return m_db.commit();
+}
+
+QStringList EmailDao::messageIdsInFolder(const QString& folder) const
+{
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral("SELECT message_id FROM emails WHERE folder = :folder"));
+    query.bindValue(QStringLiteral(":folder"), folder);
+    QStringList ids;
+    if (!query.exec())
+        return ids;
+    while (query.next())
+        ids.append(query.value(0).toString());
+    return ids;
+}
+
+bool EmailDao::setMetadataOnlyBody(const QString& folder, const QString& messageId, const QString& body,
+                                   const std::optional<QString>& bodyMode)
+{
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral("UPDATE emails SET body = :body, body_mode = :body_mode "
+                                 "WHERE folder = :folder AND message_id = :message_id AND metadata_only = 1"));
+    query.bindValue(QStringLiteral(":body"), body);
+    query.bindValue(QStringLiteral(":body_mode"), optionalStringToVariant(bodyMode));
+    query.bindValue(QStringLiteral(":folder"), folder);
+    query.bindValue(QStringLiteral(":message_id"), messageId);
+    return query.exec() && query.numRowsAffected() > 0;
 }

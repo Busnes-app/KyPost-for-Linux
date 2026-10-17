@@ -499,3 +499,20 @@ core/net/RelayMailSource.cpp	    if (!isScheduledId(id)) {	    if (false) {	Rela
 app/mail/ScheduledController.cpp	    m_appLocked = locked;		ScheduledControllerTest:lockingDropsTheListAndRefusesRefreshAndCancel
 app/mail/ScheduledController.cpp	    if (locked)	    if (false)	ScheduledControllerTest:lockingDropsTheListAndRefusesRefreshAndCancel
 app/qml/DesktopRoot.qml	            scheduledSheet.close();		QmlTests:ScheduledList::test_desktop_sheet_closes_on_lock
+
+# --- inbox paging (L12): an older page or a resync never crosses accounts,
+# never shows another folder's rows, and never keeps mail the window says is
+# gone. The window's own range is pruned; older rows survive only while they
+# still join on below it, or paging could never fetch what lies between.
+core/domain/MailRepository.cpp	        return { MailRepositoryOutcome::PairingChanged, false, {} };	        {}	MailPagingTest:anOlderPageForAReplacedAccountIsDropped
+app/mail/MailController.cpp	            if (!m_pairingStore.stillCurrent(identity))	            if (false)	MailControllerTest:anOlderRowBodyForAReplacedAccountIsNotWritten
+app/mail/MailController.cpp	    if (m_appLocked || searchActive() || m_olderInFlight) // no older page while locked	    if (searchActive() || m_olderInFlight) // no older page while locked	MailControllerTest:aLockedOrSearchingAppLoadsNoOlderMail
+app/mail/MailController.cpp	    if (m_appLocked || searchActive() || m_olderInFlight) // no older page while locked	    if (m_appLocked || m_olderInFlight) // no older page while locked	MailControllerTest:aLockedOrSearchingAppLoadsNoOlderMail
+app/mail/MailController.cpp	            if (plan.folder == m_currentFolder)	            if (true)	MailControllerTest:anOlderPageForAFolderNoLongerOpenIsKeptButNotShown
+app/mail/MailController.cpp	    if (email->body->isEmpty() && (email->metadataOnly || !m_mailRepository.cachedEmail(folder, messageId).has_value()))	    if (email->body->isEmpty() && !m_mailRepository.cachedEmail(folder, messageId).has_value())	MailControllerTest:anOlderDraftWithNoReadableBodyIsNotReopened
+core/domain/MailRepository.cpp	            if (!replyIds.contains(id) && !(keepOlder && below(id, *bottom)))	            if (false)	MailPagingTest:aResyncKeepsOlderRowsAndPrunesOnlyItsOwnRange
+core/domain/MailRepository.cpp	            emails.size() < kInboxPageSize ? std::nullopt : oldestOf(QStringList(replyIds.begin(), replyIds.end()));	            oldestOf(QStringList(replyIds.begin(), replyIds.end()));	MailPagingTest:aWindowShorterThanAPageIsTheWholeFolder
+core/domain/MailRepository.cpp	        const bool keepOlder = reaches(held, bottom);	        const bool keepOlder = bottom.has_value();	MailPagingTest:aResyncThatNoLongerReachesTheHeldRowsDropsThem
+core/domain/MailRepository.cpp	        if (result.hasMore.value_or(false) && !reaches(held, messageRef(result.nextBefore))) {	        if (false) {	MailPagingTest:aDeltaWithMoreThanAWindowDropsRowsItCannotReach
+core/domain/MailRepository.cpp	    if (oldestHeld(m_emailDao.messageIdsInFolder(plan.folder)) != plan.before)	    if (false)	MailPagingTest:anOlderPageThatNoLongerJoinsOnIsDropped
+core/domain/MailRepository.cpp	        if (!below(email.messageId, anchor))	        if (false)	MailPagingTest:anOlderPageStoresOnlyRowsBelowItsAnchor

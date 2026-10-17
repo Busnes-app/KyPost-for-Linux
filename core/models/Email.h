@@ -45,6 +45,11 @@ struct Email
     bool pgpSigned = false;
     QString pgpDecryptError;
 
+    // From an older page (`before=`), which carries no body, attachment hint
+    // or PGP flags. The reader treats it like a search hit until a window
+    // row replaces it.
+    bool metadataOnly = false;
+
     // Only the exact wire value counts, as on Android: an empty or unknown
     // status is not shown as unread.
     bool isUnread() const { return status == QLatin1String("unread"); }
