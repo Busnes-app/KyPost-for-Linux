@@ -109,6 +109,7 @@ kypost_add_test(PushRepositoryTest core/domain/PushRepositoryTest.cpp)
 kypost_add_test(MfaChallengeTrackerTest core/domain/MfaChallengeTrackerTest.cpp)
 kypost_add_test(TransportStateMachineTest core/domain/TransportStateMachineTest.cpp)
 kypost_add_test(PgpQrRepositoryTest core/domain/PgpQrRepositoryTest.cpp)
+kypost_add_test(LinkTargetTest core/domain/LinkTargetTest.cpp)
 
 kypost_add_test(NetworkErrorTest core/net/NetworkErrorTest.cpp)
 kypost_add_test(RelayAuthTest core/net/RelayAuthTest.cpp)

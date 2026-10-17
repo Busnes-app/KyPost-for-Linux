@@ -1,6 +1,7 @@
 #include "mail/ProtectedImageHandler.h"
 #include "mail/RemoteContentInterceptor.h"
 #include "../../core/net/FakeRelayServer.h"
+#include "domain/LinkTarget.h"
 
 #include <QBuffer>
 #include <QFile>
@@ -21,6 +22,7 @@ class ProtectedImageHandlerTest : public QObject
 private slots:
     void rendersLocalImagesWithoutFetchingRemoteContent();
     void restoredDraftHtmlIsCleanedBeforeEnteringTheEditor();
+    void linkAnchorScriptReadsLinksWithPageJavaScriptOff();
 };
 
 void ProtectedImageHandlerTest::rendersLocalImagesWithoutFetchingRemoteContent()
@@ -130,6 +132,39 @@ void ProtectedImageHandlerTest::restoredDraftHtmlIsCleanedBeforeEnteringTheEdito
     page.runJavaScript(QStringLiteral("typeof window.pwned"), [&](const QVariant& result) { executed = result.toString(); });
     QTRY_COMPARE_WITH_TIMEOUT(executed, QStringLiteral("undefined"), 5000);
     QCOMPARE(tracker.receivedRequests().size(), 0);
+}
+
+// EmailDetail reads link text with kLinkAnchorScript in the isolated world,
+// because the message's own JavaScript is off. Proves that works, that the
+// sender's inline script cannot rewrite what it reads, and that its hrefs
+// match the URL the click hands over.
+void ProtectedImageHandlerTest::linkAnchorScriptReadsLinksWithPageJavaScriptOff()
+{
+    QWebEngineProfile profile;
+    QWebEnginePage page(&profile);
+    page.settings()->setAttribute(QWebEngineSettings::JavascriptEnabled, false);
+    QSignalSpy loaded(&page, &QWebEnginePage::loadFinished);
+    page.setHtml(QStringLiteral("<a href='https://evil.example/'>bank.example</a>"
+                                "<a href='https://p\u0430yp\u0430l.com/x'>paypal.com</a>"
+                                "<a href='https://bank.example/'>Read more</a>"
+                                "<script>document.links[0].textContent = 'evil.example'</script>"));
+    QTRY_COMPARE_WITH_TIMEOUT(loaded.size(), 1, 15000);
+    QVERIFY(loaded[0][0].toBool());
+
+    QVariant result;
+    bool done = false;
+    page.runJavaScript(QString::fromLatin1(kLinkAnchorScript), QWebEngineScript::ApplicationWorld,
+        [&](const QVariant& value) { result = value; done = true; });
+    QTRY_VERIFY_WITH_TIMEOUT(done, 5000);
+    const QVariantList anchors = result.toList();
+    QCOMPARE(anchors.size(), 3);
+    QCOMPARE(anchors[0].toList(), (QVariantList{QStringLiteral("https://evil.example/"), QStringLiteral("bank.example")}));
+    QCOMPARE(anchors[1].toList().value(0).toString(), QStringLiteral("https://xn--pypl-53dc.com/x"));
+
+    QCOMPARE(linkTextMismatch(anchors, QUrl(QStringLiteral("https://evil.example/"))), QStringLiteral("evil.example"));
+    QCOMPARE(linkTextMismatch(anchors, QUrl(QStringLiteral("https://p\u0430yp\u0430l.com/x"))),
+             QStringLiteral("xn--pypl-53dc.com"));
+    QCOMPARE(linkTextMismatch(anchors, QUrl(QStringLiteral("https://bank.example/"))), QString());
 }
 
 int main(int argc, char** argv)

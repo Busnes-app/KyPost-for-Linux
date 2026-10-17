@@ -249,6 +249,12 @@ public slots:
     // call), so a miss just means "not fetched/cached yet", not an error.
     Q_INVOKABLE QVariantMap findByMessageId(const QString& messageId, const QString& folder = QString()) const;
 
+    // What EmailDetail's link confirm dialog shows and opens; see
+    // domain/LinkTarget.h. {host, shownUrl, mismatchHost}, or empty when
+    // `url` is not a web link. `anchors` is kLinkAnchorScript's result.
+    Q_INVOKABLE QVariantMap linkTarget(const QUrl& url, const QVariantList& anchors) const;
+    Q_INVOKABLE QString linkAnchorScript() const;
+
     // Fetches this message's ciphertext and decrypts it with the user's own
     // gpg-agent. Dispatches and returns; the result arrives on the
     // decrypted* properties.

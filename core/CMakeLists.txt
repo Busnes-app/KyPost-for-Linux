@@ -48,6 +48,8 @@ add_library(kypostcore STATIC
   domain/TransportStateMachine.h
   domain/PairingStoreCredentialSealer.cpp
   domain/PairingStoreCredentialSealer.h
+  domain/LinkTarget.cpp
+  domain/LinkTarget.h
   db/Database.cpp
   db/Database.h
   db/EmailDao.cpp

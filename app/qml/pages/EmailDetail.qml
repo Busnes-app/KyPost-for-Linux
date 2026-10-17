@@ -975,10 +975,30 @@ Item {
                         // phishing wearing the trusted UI. Every other
                         // scheme the session happens to have a handler for
                         // was reachable the same way.
-                        if (root.isExternallyOpenable(request.url))
-                            Qt.openUrlExternally(request.url)
-                        else
+                        if (!root.isExternallyOpenable(request.url)) {
                             root.blockedLinkScheme = Format.urlScheme(request.url)
+                            return
+                        }
+                        if (Format.urlScheme(request.url) === "mailto") {
+                            Qt.openUrlExternally(request.url)
+                            return
+                        }
+                        // A web link opens only from the confirm dialog. The
+                        // link text comes from an isolated-world script (the
+                        // sender's own JS stays off) and is advisory: the
+                        // dialog's host is parsed from request.url alone, and
+                        // that parse is what opens.
+                        const clicked = request.url
+                        const messageId = root.messageId
+                        runJavaScript(MailApp.linkAnchorScript(), WebEngineScript.ApplicationWorld, function (anchors) {
+                            if (root.messageId !== messageId)
+                                return
+                            const target = MailApp.linkTarget(clicked, anchors || [])
+                            if (target.host)
+                                linkConfirmDialog.show(target, phishingBanner.flagged)
+                            else
+                                root.blockedLinkScheme = Format.urlScheme(clicked)
+                        })
                         return
                     }
                     if (awaitingInitialLoad) {
@@ -1084,6 +1104,11 @@ Item {
         id: attachmentStatusTimer
         interval: 3000
         onTriggered: root.attachmentStatus = ""
+    }
+
+    LinkConfirmDialog {
+        id: linkConfirmDialog
+        onOpenRequested: function (url) { Qt.openUrlExternally(url) }
     }
 
     // Hosted here, not by the root, so a pop-out window's picker opens in
