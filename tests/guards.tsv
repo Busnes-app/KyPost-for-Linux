@@ -499,6 +499,7 @@ core/net/RelayMailSource.cpp	    if (!isScheduledId(id)) {	    if (false) {	Rela
 app/mail/ScheduledController.cpp	    m_appLocked = locked;		ScheduledControllerTest:lockingDropsTheListAndRefusesRefreshAndCancel
 app/mail/ScheduledController.cpp	    if (locked)	    if (false)	ScheduledControllerTest:lockingDropsTheListAndRefusesRefreshAndCancel
 app/qml/DesktopRoot.qml	            scheduledSheet.close();		QmlTests:ScheduledList::test_desktop_sheet_closes_on_lock
+app/mail/MailController.cpp	    if (m_pairingStore.stillCurrent(owner)) {	    if (true) {	MailControllerTest:aMoveReplyForAReplacedAccountLeavesTheCacheAlone
 
 # --- inbox paging (L12): an older page or a resync never crosses accounts,
 # never shows another folder's rows, and never keeps mail the window says is

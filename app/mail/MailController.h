@@ -69,6 +69,11 @@ class MailController : public QObject
     Q_PROPERTY(QString currentFolder READ currentFolder NOTIFY currentFolderChanged)
     Q_PROPERTY(QString selectedKeyword READ selectedKeyword NOTIFY selectedKeywordChanged)
     Q_PROPERTY(QVariantList keywordTabs READ keywordTabs NOTIFY keywordTabsChanged)
+    // Unread rows in the current folder's cache: the "All" tab's count.
+    Q_PROPERTY(int currentFolderUnread READ currentFolderUnread NOTIFY keywordTabsChanged)
+    // Folder path -> unread rows cached there, as Android shows them: Archive
+    // totals its subfolders, and Drafts, Sent and Snoozed are absent.
+    Q_PROPERTY(QVariantMap unreadCounts READ unreadCounts NOTIFY unreadCountsChanged)
     Q_PROPERTY(bool isBusy READ isBusy NOTIFY isBusyChanged)
     Q_PROPERTY(QString snoozedFolder READ snoozedFolder CONSTANT)
 
@@ -148,7 +153,12 @@ public:
     QObject* emailModel() const;
     QString currentFolder() const;
     QString selectedKeyword() const; // "" = All
-    QVariantList keywordTabs() const; // [{name, count}, ...] -- "All" NOT included, see Task 38
+    QVariantList keywordTabs() const; // [{name, unread}, ...] -- "All" NOT included, see Task 38
+    int currentFolderUnread() const;
+    QVariantMap unreadCounts() const { return m_unreadCounts; }
+    // Re-reads the current folder's cache into the model and recounts unread.
+    // Public for the pairing-change hook: the purge empties the cache under it.
+    void reloadCurrentFolder();
     bool isBusy() const;
     QString lastError() const; // "" when none
     QObject* searchModel() const { return m_searchModel; }
@@ -522,6 +532,7 @@ signals:
     void searchChanged();
     void searchBodyLoaded(const QString& folder, const QString& messageId);
     void keywordTabsChanged();
+    void unreadCountsChanged();
     void isBusyChanged();
     void lastErrorChanged();
     void lastSyncAtChanged();
@@ -662,9 +673,7 @@ private:
     void settleDraftReplacement(quint64 token, bool ok);
     QHash<quint64, DraftReplacement> m_draftReplacements;
     void applyFilter(); // recomputes m_model from m_currentFolderEmails + m_selectedKeyword
-    // Re-reads the current folder's cache into the model. Shared by
-    // selectFolderInternal() and the refresh completion.
-    void reloadCurrentFolder();
+    void recountUnread();
     // isBusy is a DEPTH, not a flag. With refresh() asynchronous and the rest
     // of this class still synchronous, the two overlap: a click on Archive
     // while a refresh is in flight used to run setBusy(true)/setBusy(false)
@@ -749,7 +758,7 @@ private:
                               const std::optional<QString>& targetMailbox,
                               const std::optional<QDateTime>& wakeAt = std::nullopt);
     void finishAction(const QString& action, const QStringList& messageIds, const QString& mailbox,
-                      const ActionResult& result);
+                      const PairingIdentity& owner, const ActionResult& result);
     void setReadState(const QString& folder, const QStringList& messageIds, bool read);
     void applyStatus(const QString& folder, const QString& messageId, const QString& status);
     void listFolderTree(const RelayRequestPlan& plan, const QString& parent, int depth);
@@ -813,6 +822,7 @@ private:
     QSet<QString> m_readStateInFlight; // folder + '\n' + messageId
     QString m_currentFolder = QStringLiteral("INBOX");
     QString m_selectedKeyword;
+    QVariantMap m_unreadCounts;
 
     EmailListModel* m_searchModel; // owned, parented to this
     QTimer* m_searchDebounce;      // owned, parented to this

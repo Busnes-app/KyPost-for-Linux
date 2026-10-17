@@ -341,3 +341,12 @@ function folderDisplayName(folders, wireName) {
     }
     return wireName
 }
+
+// A tab or folder label with its unread count, "Work · 3" as on Android; the
+// bare label when nothing is unread. The label is isolated (FSI...PDI) so a
+// right-to-left name cannot reorder the number into itself.
+function withUnread(label, unread) {
+    const s = String(label === undefined || label === null ? "" : label)
+    const n = Math.floor(Number(unread))
+    return n > 0 ? "\u2068" + s + "\u2069 · " + n : s
+}

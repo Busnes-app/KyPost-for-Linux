@@ -21,6 +21,7 @@ private slots:
     void setMetadataOnlyBodyWritesOnlyAMetadataOnlyRow();
     void updateStatusTouchesOnlyThatFolderCopy();
     void findByFolderSortsAWokenSnoozeAsIfItArrivedWhenItWoke();
+    void unreadCountsCountsUnreadRowsPerFolder();
 
 private:
     Database m_db;
@@ -375,6 +376,31 @@ void EmailDaoTest::findByFolderSortsAWokenSnoozeAsIfItArrivedWhenItWoke()
     for (const Email& email : dao.findByFolder(QStringLiteral("INBOX")))
         ids.append(email.messageId);
     QCOMPARE(ids, QStringList({ QStringLiteral("m-woken"), QStringLiteral("m-new"), QStringLiteral("m-old") }));
+}
+
+void EmailDaoTest::unreadCountsCountsUnreadRowsPerFolder()
+{
+    EmailDao dao(m_db.handle());
+    QVERIFY(dao.unreadCounts().isEmpty());
+
+    const auto add = [&](const char* folder, const char* id, const char* status) {
+        Email email;
+        email.folder = QString::fromLatin1(folder);
+        email.messageId = QString::fromLatin1(id);
+        email.status = QString::fromLatin1(status);
+        QVERIFY(dao.insertOrReplace(email));
+    };
+    add("INBOX", "1", "unread");
+    add("INBOX", "2", "unread");
+    add("INBOX", "3", "read");
+    add("Archive", "1", "unread"); // the same id in another mailbox is its own row
+    add("Archive/a", "4", "Unread"); // exact match only, as Email::isUnread
+    add("Trash", "5", "read");
+
+    const QHash<QString, int> counts = dao.unreadCounts();
+    QCOMPARE(counts.size(), 2);
+    QCOMPARE(counts.value(QStringLiteral("INBOX")), 2);
+    QCOMPARE(counts.value(QStringLiteral("Archive")), 1);
 }
 
 QTEST_GUILESS_MAIN(EmailDaoTest)

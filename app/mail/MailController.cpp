@@ -135,10 +135,46 @@ QVariantList MailController::keywordTabs() const
     for (const KeywordTab& tab : tabs) {
         QVariantMap entry;
         entry[QStringLiteral("name")] = tab.name;
-        entry[QStringLiteral("count")] = tab.count;
+        entry[QStringLiteral("unread")] = tab.unread;
         list.append(entry);
     }
     return list;
+}
+
+int MailController::currentFolderUnread() const
+{
+    return int(std::count_if(m_currentFolderEmails.cbegin(), m_currentFolderEmails.cend(),
+                             [](const Email& email) { return email.isUnread(); }));
+}
+
+// One grouped query over the cache, so it is called after every change
+// rather than adjusted by arithmetic, as Android does.
+void MailController::recountUnread()
+{
+    const QHash<QString, int> byFolder = m_mailRepository.unreadCounts();
+    QVariantMap counts;
+    for (auto it = byFolder.cbegin(); it != byFolder.cend(); ++it)
+        counts.insert(it.key(), it.value());
+
+    // Archive totals the subfolders mailFolders() lists under it.
+    const std::function<int(const QString&, int)> tree = [&](const QString& parent, int depth) {
+        int sum = byFolder.value(parent);
+        if (depth <= kMaxFolderDepth) {
+            for (const MailFolder& child : m_folderRepository.cachedFolders(parent))
+                sum += tree(child.path, depth + 1);
+        }
+        return sum;
+    };
+    const QString archive = folderPath(StandardFolder::Archive);
+    counts.insert(archive, tree(archive, 1));
+    counts.remove(folderPath(StandardFolder::Drafts));
+    counts.remove(folderPath(StandardFolder::Sent));
+    counts.remove(kSnoozedFolder);
+
+    if (counts == m_unreadCounts)
+        return;
+    m_unreadCounts = counts;
+    emit unreadCountsChanged();
 }
 
 bool MailController::isBusy() const
@@ -285,6 +321,7 @@ void MailController::reloadCurrentFolder()
     m_currentFolderEmails = m_mailRepository.cachedEmails(m_currentFolder);
     emit keywordTabsChanged();
     applyFilter();
+    recountUnread();
 }
 
 void MailController::selectKeyword(const QString& keyword)
@@ -465,6 +502,7 @@ void MailController::performActionCommon(const QStringList& messageIds, const QS
     // triggered it. Reading m_currentFolder when the reply lands would send
     // the request against whatever folder they had switched to since.
     const QString mailbox = m_currentFolder;
+    const PairingIdentity owner = m_pairingStore.currentIdentity();
 
     pushBusy();
     m_executor.run(
@@ -473,13 +511,13 @@ void MailController::performActionCommon(const QStringList& messageIds, const QS
             RelayMailSource source(http);
             return source.performAction(serverBaseUrl, auth, action, messageIds, mailbox, targetMailbox, wakeAt);
         },
-        [this, action, messageIds, mailbox](const ActionResult& result) {
-            finishAction(action, messageIds, mailbox, result);
+        [this, action, messageIds, mailbox, owner](const ActionResult& result) {
+            finishAction(action, messageIds, mailbox, owner, result);
         });
 }
 
 void MailController::finishAction(const QString& action, const QStringList& messageIds, const QString& mailbox,
-                                   const ActionResult& result)
+                                   const PairingIdentity& owner, const ActionResult& result)
 {
     popBusy();
 
@@ -500,6 +538,18 @@ void MailController::finishAction(const QString& action, const QStringList& mess
     QSet<QString> failedIds;
     for (const ActionFailure& failure : result.failed)
         failedIds.insert(failure.messageId);
+
+    // Out of the cache too, so the unread counts drop now. Only for the
+    // account that acted: ids are per-mailbox UIDs and repeat across accounts.
+    if (m_pairingStore.stillCurrent(owner)) {
+        QStringList processed;
+        for (const QString& id : messageIds) {
+            if (!failedIds.contains(id))
+                processed.append(id);
+        }
+        m_mailRepository.removeCached(mailbox, processed);
+        recountUnread();
+    }
 
     // Only from the mailbox acted on. Ids repeat across mailboxes, so after a
     // folder switch -- to a move's target, say -- they name other copies.
@@ -677,6 +727,8 @@ void MailController::setReadState(const QString& folder, const QStringList& mess
     }
     if (changed.isEmpty())
         return;
+    emit keywordTabsChanged(); // their unread counts
+    recountUnread();
 
     m_executor.run(
         this,
@@ -709,6 +761,10 @@ void MailController::setReadState(const QString& folder, const QStringList& mess
                 if (!m_mailRepository.cachedEmail(folder, id).has_value()
                     || m_mailRepository.setCachedStatus(folder, id, previous.value(id)))
                     applyStatus(folder, id, previous.value(id));
+            }
+            if (!failed.isEmpty()) {
+                emit keywordTabsChanged();
+                recountUnread();
             }
             if (!read && !failed.isEmpty()) {
                 setLastError(result.detail.isEmpty() ? i18n("Could not mark the message as unread.")
@@ -853,8 +909,10 @@ void MailController::listFolderTree(const RelayRequestPlan& plan, const QString&
                 // that belongs to an account this device no longer has.
                 qWarning("Folder refresh failed: %s", qUtf8Printable(outcome.detail));
             }
-            if (m_folderListsInFlight == 0)
+            if (m_folderListsInFlight == 0) {
+                recountUnread(); // Archive's subtree may have changed
                 emit foldersChanged();
+            }
         });
 }
 
@@ -904,6 +962,7 @@ void MailController::runFolderMutation(const QString& failureMessage,
             }
             setLastError(QString());
             onApplied(outcome.folder);
+            recountUnread();
             emit foldersChanged();
             emit folderMutationCompleted(true);
         });

@@ -1244,6 +1244,7 @@ int main(int argc, char* argv[])
                      [&mailController]() {
                          mailController.forgetDecrypted();
                          mailController.clearSearch(); // search hits are the previous account's mail
+                         mailController.reloadCurrentFolder(); // list and unread counts, from the purged cache
                      });
 
     // Third leak of the same kind, and the one with the least excuse: a

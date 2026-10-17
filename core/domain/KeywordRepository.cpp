@@ -18,7 +18,7 @@ QVector<KeywordTab> KeywordRepository::computeTabs(const QVector<Email>& emails)
     QMap<QString, int> counts;
     for (const Email& email : emails) {
         for (const QString& keyword : email.keywords)
-            counts[keyword] += 1;
+            counts[keyword] += email.isUnread() ? 1 : 0; // a read-only keyword is still a tab
     }
 
     QVector<KeywordTab> tabs;
@@ -38,7 +38,7 @@ QVector<KeywordTab> KeywordRepository::visibleTabs(const QVector<Email>& emails)
     const QVector<KeywordTab> tabs = computeTabs(emails);
     QMap<QString, int> counts;
     for (const KeywordTab& tab : tabs)
-        counts.insert(tab.name, tab.count);
+        counts.insert(tab.name, tab.unread);
 
     QVector<KeywordTab> visible;
     for (const KeywordSettings& setting : allSettings(emails)) {

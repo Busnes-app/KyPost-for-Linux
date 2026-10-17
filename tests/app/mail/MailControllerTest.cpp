@@ -97,6 +97,11 @@ private slots:
     void aRefusedMarkUnreadRollsBackAndSaysSo();
     void aReadStateReplyForAReplacedAccountRollsNothingBack();
     void aLockedAppChangesNoReadStateUntilUnlocked();
+    void unreadCountsComeFromTheCacheWithArchiveTotallingItsTree();
+    void readStateChangesUpdateTheUnreadCounts();
+    void aMoveDropsTheSourceCopyFromTheUnreadCounts();
+    void aMoveReplyForAReplacedAccountLeavesTheCacheAlone();
+    void aPurgedCacheShowsNoUnreadCounts();
 
     // Server search (L6).
     void searchIsDebouncedAndSendsOnlyTheLastQuery();
@@ -2482,6 +2487,7 @@ void MailControllerTest::aRefusedMarkReadRollsBackSilently()
     QCOMPARE(stateSpy.at(1).at(2).toBool(), true);
     QCOMPARE(cachedStatus(f.emailDao, "m1"), QStringLiteral("unread"));
     QCOMPARE(model->emailAt(1).status, QStringLiteral("unread"));
+    QCOMPARE(f.controller.unreadCounts().value(QStringLiteral("INBOX")).toInt(), 2);
     // Incidental to opening the message: no error banner for it.
     QVERIFY(f.controller.lastError().isEmpty());
 }
@@ -2588,6 +2594,167 @@ QByteArray folderListing(const char* parent, const char* foldersJson)
 
 // The relay's field is `targetMailbox` (server_inbox.go handleInboxActions);
 // a wrong name is a 400 "targetMailbox is required for move action".
+namespace {
+
+void cacheEmail(EmailDao& dao, const char* folder, const char* id, const char* status,
+                const QStringList& keywords = {})
+{
+    Email email;
+    email.folder = QString::fromLatin1(folder);
+    email.messageId = QString::fromLatin1(id);
+    email.status = QString::fromLatin1(status);
+    email.keywords = keywords;
+    QVERIFY(dao.insertOrReplace(email));
+}
+
+int keywordUnread(const MailController& controller, const QString& keyword)
+{
+    for (const QVariant& tab : controller.keywordTabs()) {
+        if (tab.toMap().value(QStringLiteral("name")).toString() == keyword)
+            return tab.toMap().value(QStringLiteral("unread")).toInt();
+    }
+    return -1;
+}
+
+} // namespace
+
+// Android #189: COUNT of status='unread' rows per cached folder. Archive adds
+// its subfolders; Drafts, Sent and Snoozed show no count at all.
+void MailControllerTest::unreadCountsComeFromTheCacheWithArchiveTotallingItsTree()
+{
+    FakeRelayServer fake(QByteArray{});
+    RefreshFixture f(fake.port());
+    const QStringList work{ QStringLiteral("Work") };
+    cacheEmail(f.emailDao, "INBOX", "1", "unread", work);
+    cacheEmail(f.emailDao, "INBOX", "2", "unread");
+    cacheEmail(f.emailDao, "INBOX", "3", "read", work);
+    cacheEmail(f.emailDao, "Junk", "4", "unread");
+    cacheEmail(f.emailDao, "Archive", "5", "unread");
+    cacheEmail(f.emailDao, "Archive/a", "6", "unread");
+    cacheEmail(f.emailDao, "Archive/a", "7", "unread");
+    cacheEmail(f.emailDao, "Archive/a/b", "8", "unread");
+    cacheEmail(f.emailDao, "Archive/gone", "9", "unread"); // not in the folder tree
+    cacheEmail(f.emailDao, "Drafts", "10", "unread");
+    cacheEmail(f.emailDao, "Sent", "11", "unread");
+    cacheEmail(f.emailDao, "Snoozed", "12", "unread");
+    QVERIFY(f.folderDao.insertOrReplace(QStringLiteral("Archive/a"), QStringLiteral("Archive"), true, QString()));
+    QVERIFY(f.folderDao.insertOrReplace(QStringLiteral("Archive/a/b"), QStringLiteral("Archive/a"), true, QString()));
+
+    QSignalSpy changedSpy(&f.controller, &MailController::unreadCountsChanged);
+    f.controller.reloadCurrentFolder();
+    QCOMPARE(changedSpy.count(), 1);
+    f.controller.reloadCurrentFolder();
+    QCOMPARE(changedSpy.count(), 1); // unchanged counts do not repaint
+
+    const QVariantMap counts = f.controller.unreadCounts();
+    QCOMPARE(counts.value(QStringLiteral("INBOX")).toInt(), 2);
+    QCOMPARE(counts.value(QStringLiteral("Junk")).toInt(), 1);
+    QCOMPARE(counts.value(QStringLiteral("Archive")).toInt(), 4);
+    QCOMPARE(counts.value(QStringLiteral("Archive/a")).toInt(), 2);
+    QCOMPARE(counts.value(QStringLiteral("Archive/a/b")).toInt(), 1);
+    QVERIFY(!counts.contains(QStringLiteral("Drafts")));
+    QVERIFY(!counts.contains(QStringLiteral("Sent")));
+    QVERIFY(!counts.contains(QStringLiteral("Snoozed")));
+
+    // The "All" tab and the keyword tabs count the folder on screen.
+    QCOMPARE(f.controller.currentFolderUnread(), 2);
+    QCOMPARE(keywordUnread(f.controller, QStringLiteral("Work")), 1);
+}
+
+void MailControllerTest::readStateChangesUpdateTheUnreadCounts()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", kTwoMessageInbox));
+    RefreshFixture f(fake.port());
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    QCOMPARE(f.controller.unreadCounts().value(QStringLiteral("INBOX")).toInt(), 2);
+    QCOMPARE(keywordUnread(f.controller, QStringLiteral("Work")), 1);
+
+    fake.setResponse(readStateReply("read", true));
+    QSignalSpy countsSpy(&f.controller, &MailController::unreadCountsChanged);
+    QSignalSpy tabsSpy(&f.controller, &MailController::keywordTabsChanged);
+    f.controller.markRead(QStringLiteral("INBOX"), { QStringLiteral("m1") });
+    QCOMPARE(countsSpy.count(), 1);
+    QVERIFY(tabsSpy.count() >= 1);
+    QCOMPARE(f.controller.unreadCounts().value(QStringLiteral("INBOX")).toInt(), 1);
+    QCOMPARE(f.controller.currentFolderUnread(), 1);
+    QCOMPARE(keywordUnread(f.controller, QStringLiteral("Work")), 0);
+
+    fake.setResponse(readStateReply("unread", true));
+    QTRY_VERIFY_WITH_TIMEOUT((f.controller.markUnread(QStringLiteral("INBOX"), { QStringLiteral("m1") }),
+                              countsSpy.count() == 2),
+                             10000);
+    f.executor.shutdown();
+    QCOMPARE(f.controller.unreadCounts().value(QStringLiteral("INBOX")).toInt(), 2);
+    QCOMPARE(keywordUnread(f.controller, QStringLiteral("Work")), 1);
+}
+
+void MailControllerTest::aMoveDropsTheSourceCopyFromTheUnreadCounts()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", kTwoMessageInbox));
+    fake.setResponseForPath("/api/inbox/actions", httpResponse(
+        200, "OK", R"({"ok":true,"action":"move","processed":1,"failed":[],"targetMailbox":"Archive"})"));
+    RefreshFixture f(fake.port());
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    QCOMPARE(f.controller.unreadCounts().value(QStringLiteral("INBOX")).toInt(), 2);
+
+    QSignalSpy doneSpy(&f.controller, &MailController::actionCompleted);
+    f.controller.moveEmails({ QStringLiteral("m1") }, QStringLiteral("Archive"));
+    QTRY_VERIFY_WITH_TIMEOUT(doneSpy.count() == 1, 10000);
+    f.executor.shutdown();
+    QCOMPARE(doneSpy.at(0).at(2).toBool(), true);
+    QVERIFY(!f.emailDao.findById(QStringLiteral("INBOX"), QStringLiteral("m1")).has_value());
+    QCOMPARE(f.controller.unreadCounts().value(QStringLiteral("INBOX")).toInt(), 1);
+    QCOMPARE(f.controller.currentFolderUnread(), 1);
+}
+
+// The move landed after another account was paired. Its INBOX may hold the
+// same UID, which is not the message the relay just moved.
+void MailControllerTest::aMoveReplyForAReplacedAccountLeavesTheCacheAlone()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", kTwoMessageInbox));
+    RefreshFixture f(fake.port());
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+
+    fake.setResponseForPath("/api/inbox/actions", httpResponse(
+        200, "OK", R"({"ok":true,"action":"move","processed":1,"failed":[],"targetMailbox":"Archive"})"));
+    QSignalSpy doneSpy(&f.controller, &MailController::actionCompleted);
+    f.controller.moveEmails({ QStringLiteral("m1") }, QStringLiteral("Archive"));
+
+    DevicePairing replacement;
+    replacement.subscriberId = QStringLiteral("sub-2");
+    replacement.deviceId = QStringLiteral("dev-2");
+    replacement.deviceSecret = QStringLiteral("secret-2");
+    replacement.serverBaseUrl = QStringLiteral("http://127.0.0.1:%1").arg(fake.port());
+    QVERIFY(f.pairingStore.save(replacement));
+
+    QTRY_VERIFY_WITH_TIMEOUT(doneSpy.count() == 1, 10000);
+    f.executor.shutdown();
+    QCOMPARE(doneSpy.at(0).at(2).toBool(), true);
+    QVERIFY(f.emailDao.findById(QStringLiteral("INBOX"), QStringLiteral("m1")).has_value());
+}
+
+// A pairing replacement purges the cache; the hook in main.cpp then reloads,
+// and nothing of the previous account's counts may survive it.
+void MailControllerTest::aPurgedCacheShowsNoUnreadCounts()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", kTwoMessageInbox));
+    RefreshFixture f(fake.port());
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    f.executor.shutdown();
+    QCOMPARE(f.controller.unreadCounts().value(QStringLiteral("INBOX")).toInt(), 2);
+
+    QVERIFY(f.emailDao.deleteAll());
+    f.controller.reloadCurrentFolder();
+    QCOMPARE(f.controller.unreadCounts().value(QStringLiteral("INBOX")).toInt(), 0);
+    QCOMPARE(f.controller.unreadCounts().value(QStringLiteral("Archive")).toInt(), 0);
+    QCOMPARE(f.controller.currentFolderUnread(), 0);
+    QVERIFY(f.controller.keywordTabs().isEmpty());
+}
+
 void MailControllerTest::moveEmailsSendsTheTargetMailboxAndDropsTheRow()
 {
     FakeRelayServer fake(httpResponse(200, "OK", kTwoMessageInbox));
