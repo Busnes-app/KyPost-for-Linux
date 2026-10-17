@@ -149,6 +149,18 @@ QStringList EmailDao::foldersContaining(const QString& messageId) const
     return folders;
 }
 
+QHash<QString, int> EmailDao::unreadCounts() const
+{
+    QSqlQuery query(m_db);
+    QHash<QString, int> counts;
+    if (!query.exec(QStringLiteral(
+            "SELECT folder, COUNT(*) FROM emails WHERE status = 'unread' GROUP BY folder")))
+        return counts;
+    while (query.next())
+        counts.insert(query.value(0).toString(), query.value(1).toInt());
+    return counts;
+}
+
 QVector<Email> EmailDao::findByFolder(const QString& folder) const
 {
     QSqlQuery query(m_db);

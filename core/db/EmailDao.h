@@ -2,6 +2,7 @@
 
 #include "models/Email.h"
 
+#include <QHash>
 #include <QSqlDatabase>
 #include <QString>
 #include <QStringList>
@@ -42,6 +43,8 @@ public:
     QStringList foldersContaining(const QString& messageId) const;
 
     QVector<Email> findByFolder(const QString& folder) const;
+    // Cached rows with status 'unread', per folder; folders with none are absent.
+    QHash<QString, int> unreadCounts() const;
     QVector<Email> findAll() const;
     bool deleteById(const QString& folder, const QString& messageId);
     // False when the write failed or no such row exists.

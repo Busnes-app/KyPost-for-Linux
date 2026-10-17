@@ -11,42 +11,47 @@ class KeywordRepositoryTest : public QObject
     Q_OBJECT
 
 private slots:
-    void computeTabsOrdersAlphabeticallyCaseInsensitiveWithPerKeywordCounts();
+    void computeTabsOrdersAlphabeticallyCaseInsensitiveWithPerKeywordUnreadCounts();
     void visibleTabsExcludesExplicitlyHiddenKeywordButKeepsNeverToggledOnes();
     void allSettingsUsesSavedOrderAndAppendsNewKeywords();
 
 private:
-    static Email emailWithKeywords(const QString& messageId, const QStringList& keywords);
+    static Email emailWithKeywords(const QString& messageId, const QStringList& keywords,
+                                   const QString& status = QStringLiteral("unread"));
 };
 
-Email KeywordRepositoryTest::emailWithKeywords(const QString& messageId, const QStringList& keywords)
+Email KeywordRepositoryTest::emailWithKeywords(const QString& messageId, const QStringList& keywords,
+                                               const QString& status)
 {
     Email email;
     email.messageId = messageId;
     email.keywords = keywords;
+    email.status = status;
     return email;
 }
 
-void KeywordRepositoryTest::computeTabsOrdersAlphabeticallyCaseInsensitiveWithPerKeywordCounts()
+void KeywordRepositoryTest::computeTabsOrdersAlphabeticallyCaseInsensitiveWithPerKeywordUnreadCounts()
 {
     const QVector<Email> emails = {
         emailWithKeywords(QStringLiteral("m1"), { QStringLiteral("work"), QStringLiteral("Urgent") }),
         emailWithKeywords(QStringLiteral("m2"), { QStringLiteral("work") }),
-        emailWithKeywords(QStringLiteral("m3"), { QStringLiteral("archive") }),
+        emailWithKeywords(QStringLiteral("m3"), { QStringLiteral("archive") }, QStringLiteral("read")),
+        emailWithKeywords(QStringLiteral("m4"), { QStringLiteral("work") }, QStringLiteral("read")),
     };
 
     const QVector<KeywordTab> tabs = KeywordRepository::computeTabs(emails);
 
     QCOMPARE(tabs.size(), 3);
     // Alphabetical, case-insensitive: archive, Urgent, work.
+    // A keyword on read mail only is still a tab, with nothing unread.
     QCOMPARE(tabs.at(0).name, QStringLiteral("archive"));
-    QCOMPARE(tabs.at(0).count, 1);
+    QCOMPARE(tabs.at(0).unread, 0);
     QCOMPARE(tabs.at(1).name, QStringLiteral("Urgent"));
-    QCOMPARE(tabs.at(1).count, 1);
-    // "work" appears on two separate emails -- counted twice, not
-    // deduplicated down to a single count across emails.
+    QCOMPARE(tabs.at(1).unread, 1);
+    // "work" is unread on two separate emails -- counted twice, not
+    // deduplicated down to a single count across emails; m4 is read.
     QCOMPARE(tabs.at(2).name, QStringLiteral("work"));
-    QCOMPARE(tabs.at(2).count, 2);
+    QCOMPARE(tabs.at(2).unread, 2);
 }
 
 void KeywordRepositoryTest::visibleTabsExcludesExplicitlyHiddenKeywordButKeepsNeverToggledOnes()

@@ -261,6 +261,14 @@ Added 2026-07-25 (parity work with `kypost-android`):
   to the pairing that asked, dropped and refused under the app lock; the
   desktop sheet is an OverlaySheet, so the lock handler closes it.
 
+- **Unread counts (plan item L13, 2026-10-17).** Counted from the cache, never
+  the relay: `EmailDao::unreadCounts` is re-read by
+  `MailController::recountUnread` after every change, never adjusted. A
+  successful mailbox action removes the source copies from the cache, but only
+  while the pairing that sent it is current (guard in `tests/guards.tsv`).
+  Counts are not hidden under the lock; nothing showing them may be a Popup
+  that stays open over `LockOverlay`.
+
 - **Biometric unlock and window-content protection are non-goals** — no
   portable Linux equivalent (no `FLAG_SECURE` analogue on Wayland).
 

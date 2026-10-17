@@ -68,6 +68,17 @@ bool MailRepository::setCachedStatus(const QString& folder, const QString& messa
     return m_emailDao.updateStatus(folder, messageId, status);
 }
 
+void MailRepository::removeCached(const QString& folder, const QStringList& messageIds)
+{
+    for (const QString& id : messageIds)
+        m_emailDao.deleteById(folder, id);
+}
+
+QHash<QString, int> MailRepository::unreadCounts() const
+{
+    return m_emailDao.unreadCounts();
+}
+
 std::optional<MailRefreshPlan> MailRepository::planRefresh(const QString& folder, bool forceFullResync) const
 {
     const std::optional<DevicePairing> pairing = m_pairingStore.load();
