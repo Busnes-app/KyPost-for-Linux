@@ -700,8 +700,9 @@ QVariantList MailController::mailFolders() const
             appendChildren(child.path, depth + 1);
         }
     };
+    const QVector<MailFolder> topLevel = m_folderRepository.cachedFolders(QString());
     for (StandardFolder folder : kFolders) {
-        const QString wireName = standardFolderWireName(folder);
+        const QString wireName = standardFolderPath(folder, topLevel);
         // Standard mailboxes are never deletable -- the backend rejects it
         // outright (isBuiltinMailbox), so don't offer it.
         list.append(entry(wireName, 0, /*deletable=*/false, /*isStandard=*/true));
@@ -718,10 +719,13 @@ void MailController::refreshFolders()
     if (!plan.has_value())
         return; // unpaired: an ordinary state at startup, not an error
 
+    // The top level, one level only: it carries the special-use roles.
+    listFolderTree(*plan, QString(), kMaxFolderDepth);
     // Only Archive's tree, matching Android's folder picker: the other five
     // standard mailboxes have no subfolder UI, so listing them would be five
-    // extra round-trips for nothing to render.
-    listFolderTree(*plan, standardFolderWireName(StandardFolder::Archive), 1);
+    // extra round-trips for nothing to render. A role learned by the listing
+    // above takes effect on the next refresh.
+    listFolderTree(*plan, folderPath(StandardFolder::Archive), 1);
 }
 
 // The relay lists one level per request, so the tree costs one listing per
@@ -1328,7 +1332,7 @@ quint64 MailController::openWebmailDrafts(const QString& to, const QString& cc, 
     if (!requirePairing(serverBaseUrl, auth)) // sets "Not paired"
         return 0;
 
-    const QUrl url = webmailMailboxUrl(webmailBaseUrl(), QStringLiteral("Drafts"));
+    const QUrl url = webmailMailboxUrl(webmailBaseUrl(), folderPath(StandardFolder::Drafts));
     // Checked BEFORE saving: a draft saved for a handoff that cannot open
     // leaves the user with a silently duplicated draft and no browser.
     if (url.isEmpty()) {
@@ -2237,12 +2241,13 @@ void MailController::releaseDraft(const QString& token)
     m_draftAttachments.clear();
     m_draftEncrypted = false;
     m_draftSourceId.clear();
+    m_draftSourceFolder.clear();
 }
 
 QVariantMap MailController::reopenDecryptedDraft(const QString& token)
 {
     if (!decryptedStillOurs() || token.isEmpty() || token != m_decryptedToken
-        || m_decryptedFolder != QStringLiteral("Drafts"))
+        || m_decryptedFolder != folderPath(StandardFolder::Drafts))
         return {};
     const auto email = m_mailRepository.cachedEmail(m_decryptedFolder, m_decryptedMessageId);
     if (!email || !email->pgpEncrypted)
@@ -2252,6 +2257,7 @@ QVariantMap MailController::reopenDecryptedDraft(const QString& token)
     m_draftAttachments = m_decryptedAttachments;
     m_draftEncrypted = true;
     m_draftSourceId = m_decryptedMessageId;
+    m_draftSourceFolder = m_decryptedFolder;
     QStringList paths;
     QVariantMap names;
     for (qsizetype i = 0; i < m_draftAttachments.size(); ++i) {
@@ -2484,16 +2490,22 @@ QVariantList MailController::standardFolders() const
         StandardFolder::Sent,  StandardFolder::Trash,  StandardFolder::Archive,
     };
 
+    const QVector<MailFolder> topLevel = m_folderRepository.cachedFolders(QString());
     QVariantList list;
     list.reserve(6);
     for (StandardFolder folder : kFolders) {
-        const QString wireName = standardFolderWireName(folder);
+        const QString wireName = standardFolderPath(folder, topLevel);
         QVariantMap entry;
         entry[QStringLiteral("wireName")] = wireName;
         entry[QStringLiteral("displayName")] = standardFolderDisplayName(wireName);
         list.append(entry);
     }
     return list;
+}
+
+QString MailController::folderPath(StandardFolder folder) const
+{
+    return standardFolderPath(folder, m_folderRepository.cachedFolders(QString()));
 }
 
 // ---- server search ---------------------------------------------------------
@@ -2667,8 +2679,7 @@ void MailController::loadSearchBody(const QString& folder, const QString& messag
 
 QVariantMap MailController::reopenDraft(const QString& folder, const QString& messageId)
 {
-    const QString drafts = standardFolderWireName(StandardFolder::Drafts);
-    if (m_appLocked || folder != drafts)
+    if (m_appLocked || folder != folderPath(StandardFolder::Drafts))
         return {};
     const std::optional<Email> email = lookupEmail(folder, messageId);
     // Encrypted drafts go through reopenDecryptedDraft(); never reopen them as plaintext.
@@ -2688,6 +2699,7 @@ QVariantMap MailController::reopenDraft(const QString& folder, const QString& me
     m_draftIdentity = identity;
     m_draftEncrypted = false;
     m_draftSourceId = messageId;
+    m_draftSourceFolder = folder;
 
     const QString mode = email->bodyMode.value_or(QString());
     const bool isHtml = mode == QStringLiteral("html") || (mode.isEmpty() && Qt::mightBeRichText(*email->body));
@@ -2708,7 +2720,8 @@ void MailController::captureDraftReplacement(quint64 token, const QString& draft
 {
     if (draftToken.isEmpty() || draftToken != m_draftToken || m_draftSourceId.isEmpty())
         return;
-    m_draftReplacements.insert(token, { m_draftIdentity, m_draftSourceId, draftToken, m_draftEncrypted });
+    m_draftReplacements.insert(token,
+                               { m_draftIdentity, m_draftSourceId, draftToken, m_draftEncrypted, m_draftSourceFolder });
 }
 
 // The relay's draft save is an APPEND with no id to replace, so the source is
@@ -2726,7 +2739,9 @@ void MailController::settleDraftReplacement(quint64 token, bool ok)
     if (!pairing.has_value())
         return;
     const RelayEndpoint endpoint{ QUrl(pairing->serverBaseUrl), RelayAuth{ pairing->deviceId, pairing->deviceSecret } };
-    const QString drafts = standardFolderWireName(StandardFolder::Drafts);
+    // The mailbox it was reopened from: ids repeat across mailboxes, so never
+    // a role re-resolved since.
+    const QString drafts = replacement.folder;
 
     enum class Outcome { Deleted, KeptForAttachments, Failed };
     m_executor.run(

@@ -37,7 +37,7 @@ TestCase {
         var source = new XMLHttpRequest()
         source.open("GET", "qrc:/qml/pages/EmailDetail.qml", false)
         source.send()
-        verify(source.responseText.indexOf('root.folder === "Drafts" && root.hasProtectedMessage && root.email.pgpState === 1') !== -1)
+        verify(source.responseText.indexOf('root.folder === MailApp.draftsFolder && root.hasProtectedMessage && root.email.pgpState === 1') !== -1)
         for (var root of ["DesktopRoot", "MobileRoot"]) {
             source.open("GET", "qrc:/qml/" + root + ".qml", false)
             source.send()

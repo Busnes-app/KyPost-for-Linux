@@ -3,7 +3,7 @@
 #include <QString>
 
 // One mailbox as reported by GET /api/inbox/folders (backend's `inboxFolder`
-// struct: {path, deletable}).
+// struct: {path, deletable, special}).
 //
 // `parent` is not on the wire per-folder -- the response carries a single
 // top-level `parent` echoing the request's query -- so it is filled in by
@@ -23,6 +23,9 @@ struct MailFolder
     // offer the action. Server-decided rather than re-derived here, so the
     // two can never disagree.
     bool deletable = false;
+    // RFC 6154 role, lowercase without the backslash ("sent", "drafts",
+    // "junk", "trash", "archive"); empty when the server published none.
+    QString special;
 
     bool operator==(const MailFolder&) const = default;
 };

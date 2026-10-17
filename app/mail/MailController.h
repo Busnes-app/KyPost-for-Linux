@@ -5,6 +5,7 @@
 #include "mail/EmailListModel.h"
 #include "db/PushDao.h" // PushRecord
 #include "models/Email.h"
+#include "models/StandardFolder.h"
 #include "net/RelayMailSource.h" // MailAttachmentUpload -- held by value in PendingSend below
 #include "pgp/EncryptedMessageReader.h" // PgpReadResult/PgpReadStatus -- carried across the hop
 #include "pgp/MimeBodyReader.h"
@@ -128,6 +129,9 @@ class MailController : public QObject
     // error -- the mail went out -- but the user's outbox will not have it.
     Q_PROPERTY(bool lastSendMissingSentCopy READ lastSendMissingSentCopy NOTIFY pgpComposeStateChanged)
     Q_PROPERTY(QStringList pgpKeylessRecipients READ pgpKeylessRecipients NOTIFY pgpKeylessRecipientsChanged)
+    // The account's Drafts and Archive paths, by special-use role (plan L15).
+    Q_PROPERTY(QString draftsFolder READ draftsFolder NOTIFY foldersChanged)
+    Q_PROPERTY(QString archiveFolder READ archiveFolder NOTIFY foldersChanged)
 
 public:
     // Deepest subfolder level mailFolders() shows and refreshFolders() lists.
@@ -294,6 +298,12 @@ public slots:
     Q_INVOKABLE void loadSearchBody(const QString& folder, const QString& messageId);
 
 public:
+    // `folder`'s path on this account: the cached top-level listing's
+    // special-use role, else the standard name.
+    QString folderPath(StandardFolder folder) const;
+    QString draftsFolder() const { return folderPath(StandardFolder::Drafts); }
+    QString archiveFolder() const { return folderPath(StandardFolder::Archive); }
+
     // What sendClientEncrypted() does off-thread, as one value so the GUI
     // thread only ever sees the outcome. Public because the worker that fills
     // it is a free function -- deliberately, so it cannot touch anything this
@@ -382,8 +392,9 @@ public slots:
     // connection.
     Q_INVOKABLE QVariantList mailFolders() const;
 
-    // Fetches Archive's subfolder tree, one listing per folder down to
-    // kMaxFolderDepth, and emits foldersChanged() once the walk is done.
+    // Lists the top level (for special-use roles) and Archive's subfolder
+    // tree, one listing per folder down to kMaxFolderDepth, and emits
+    // foldersChanged() once the walk is done.
     // A call while a walk is running is dropped.
     Q_INVOKABLE void refreshFolders();
 
@@ -621,6 +632,7 @@ private:
         QString messageId;
         QString token;
         bool encrypted = false;
+        QString folder;
     };
     void captureDraftReplacement(quint64 token, const QString& draftToken);
     void settleDraftReplacement(quint64 token, bool ok);
@@ -859,6 +871,7 @@ private:
     // Only an encrypted session forces encrypted sending and saving.
     bool m_draftEncrypted = false;
     QString m_draftSourceId; // Drafts message the session replaces; empty once replaced
+    QString m_draftSourceFolder; // the Drafts path it was reopened from
     QString m_decryptedFolder;
     quint64 m_decryptGeneration = 0;
     bool m_appLocked = false;

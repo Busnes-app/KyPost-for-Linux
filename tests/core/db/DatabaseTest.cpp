@@ -35,7 +35,7 @@ void DatabaseTest::opensInMemoryAndAppliesSchema()
     // 9 migrations on disk (001_initial .. 009_emails_woken_at) -- bumping
     // this when a migration is added is how this test proves the loop in
     // Database::open() actually walks version+1..N end-to-end.
-    QCOMPARE(versionQuery.value(0).toInt(), 9);
+    QCOMPARE(versionQuery.value(0).toInt(), 10);
 
     QSqlQuery tablesQuery(db.handle());
     QVERIFY(tablesQuery.exec(
@@ -91,7 +91,7 @@ void DatabaseTest::openIsIdempotentOnRealFile()
         QSqlQuery query(db1.handle());
         QVERIFY(query.exec(QStringLiteral("PRAGMA user_version")));
         QVERIFY(query.next());
-        QCOMPARE(query.value(0).toInt(), 9);
+        QCOMPARE(query.value(0).toInt(), 10);
     }
     {
         Database db2;
@@ -99,7 +99,7 @@ void DatabaseTest::openIsIdempotentOnRealFile()
         QSqlQuery query(db2.handle());
         QVERIFY(query.exec(QStringLiteral("PRAGMA user_version")));
         QVERIFY(query.next());
-        QCOMPARE(query.value(0).toInt(), 9);
+        QCOMPARE(query.value(0).toInt(), 10);
     }
 }
 
@@ -273,7 +273,7 @@ void DatabaseTest::migrationIsAtomicSoAFailureLeavesNoHalfAppliedSchema()
     QSqlQuery versionQuery(db.handle());
     QVERIFY(versionQuery.exec(QStringLiteral("PRAGMA user_version")));
     QVERIFY(versionQuery.next());
-    QCOMPARE(versionQuery.value(0).toInt(), 9);
+    QCOMPARE(versionQuery.value(0).toInt(), 10);
 }
 
 
@@ -345,6 +345,9 @@ void DatabaseTest::migration006RekeysAnExistingProfileWithoutLosingCachedMail()
             "sent_to TEXT, cc TEXT, bcc TEXT, subject TEXT, preview TEXT, body TEXT, label TEXT, "
             "keywords_json TEXT, status TEXT, at_utc TEXT, has_attachments INTEGER, "
             "source_mode TEXT, pgp_encrypted INTEGER DEFAULT 0, pgp_decrypt_error TEXT DEFAULT '')")));
+        // 001's `folders`, which 010 alters.
+        QVERIFY(q.exec(QStringLiteral(
+            "CREATE TABLE folders (path TEXT PRIMARY KEY, parent TEXT, deletable INTEGER, source_mode TEXT)")));
         QVERIFY(q.exec(QStringLiteral("CREATE INDEX idx_emails_folder_atutc ON emails(folder, at_utc)")));
         QVERIFY(q.exec(QStringLiteral(
             "INSERT INTO emails (message_id, folder, subject, body, at_utc, pgp_encrypted) "
@@ -365,7 +368,7 @@ void DatabaseTest::migration006RekeysAnExistingProfileWithoutLosingCachedMail()
     QSqlQuery version(db.handle());
     QVERIFY(version.exec(QStringLiteral("PRAGMA user_version")));
     QVERIFY(version.next());
-    QCOMPARE(version.value(0).toInt(), 9);
+    QCOMPARE(version.value(0).toInt(), 10);
 
     // Nothing was dropped on the way across, values included.
     EmailDao dao(db.handle());

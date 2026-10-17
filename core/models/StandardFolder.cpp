@@ -21,6 +21,20 @@ QString standardFolderWireName(StandardFolder folder)
     return QString();
 }
 
+QString standardFolderPath(StandardFolder folder, const QVector<MailFolder>& topLevel)
+{
+    // RFC 6154 has no role for INBOX, and the relay's roles are the wire
+    // names lowercased.
+    const QString role = standardFolderWireName(folder).toLower();
+    QString path;
+    for (const MailFolder& candidate : topLevel) {
+        if (folder != StandardFolder::Inbox && candidate.special == role
+            && (path.isEmpty() || candidate.path < path))
+            path = candidate.path;
+    }
+    return path.isEmpty() ? standardFolderWireName(folder) : path;
+}
+
 QString standardFolderDisplayName(const QString& fullPath)
 {
     const QString normalized = QString(fullPath).replace(QLatin1Char('.'), QLatin1Char('/'));
