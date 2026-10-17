@@ -497,5 +497,5 @@ core/net/PgpSendClient.cpp	    if (sendAt.isValid() && draftCopy.isEmpty()) {	  
 app/mail/MailController.cpp	    if (sendAt.isValid())	    if (false)	MailControllerTest:aScheduledSendHasNoImmediateLinkResend
 core/net/RelayMailSource.cpp	    if (!isScheduledId(id)) {	    if (false) {	RelayMailSourceTest:cancelScheduledRefusesAnIdThatIsNotTheRelays
 app/mail/ScheduledController.cpp	    m_appLocked = locked;		ScheduledControllerTest:lockingDropsTheListAndRefusesRefreshAndCancel
-app/mail/ScheduledController.cpp	        clear();		ScheduledControllerTest:lockingDropsTheListAndRefusesRefreshAndCancel
+app/mail/ScheduledController.cpp	    if (locked)	    if (false)	ScheduledControllerTest:lockingDropsTheListAndRefusesRefreshAndCancel
 app/qml/DesktopRoot.qml	            scheduledSheet.close();		QmlTests:ScheduledList::test_desktop_sheet_closes_on_lock
