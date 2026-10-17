@@ -78,6 +78,8 @@ target_sources(kypost PRIVATE
   mail/ProtectedImageHandler.h
   mail/RemoteContentInterceptor.cpp
   mail/RemoteContentInterceptor.h
+  mail/ScheduledController.cpp
+  mail/ScheduledController.h
 )
 target_link_libraries(kypost PRIVATE Qt6::WebEngineCore)
 

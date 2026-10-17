@@ -1,5 +1,6 @@
 #pragma once
 
+#include "pgp/OpenPgpEncryptor.h"
 #include "pgp/PgpMimeWriter.h"
 
 #include <QHash>
@@ -101,3 +102,14 @@ PgpSendPlan buildPgpSendPlan(const OutgoingMessage& message, const QStringList& 
                              const QHash<QString, QString>& fingerprintsByAddress,
                              const QString& senderFingerprint,
                              const QString& homeDirectory = QString());
+
+// The self-encrypted Drafts copy: Cc and Bcc travel only inside, and only the
+// owner's key can open it. `message` supplies From, To, Cc, Subject, body,
+// mode, Date and attachments. Used for a saved draft and for the copy a
+// scheduled send returns to Drafts; empty unless status is Encrypted.
+struct EncryptedDraft
+{
+    PgpEncryptStatus status = PgpEncryptStatus::EngineUnavailable;
+    QByteArray message;
+};
+EncryptedDraft buildEncryptedDraft(OutgoingMessage message, const QString& bcc, const QString& ownerFingerprint);

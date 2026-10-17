@@ -29,6 +29,7 @@
 
 #include "domain/PgpComposeState.h"
 #include "domain/ReplyAll.h"
+#include "domain/SendLater.h"
 #include "mail/PgpMessagePresentation.h"
 
 #include <KLocalizedString>
@@ -42,6 +43,7 @@
 #include <QFile>
 #include <QHash>
 #include <QDateTime>
+#include <QLocale>
 #include <QTimer>
 #include <QTextDocument>
 #include <QFileInfo>
@@ -70,6 +72,18 @@ bool openPgpEngineAvailable()
 {
     static const bool available = OpenPgpDecryptor::engineAvailable();
     return available;
+}
+
+// A relay without scheduled send ignores sendAt and sends at once, so it is
+// asked first. Empty when it can schedule; otherwise why nothing was sent.
+QString schedulingRefusal(const RelayMailSource& source, const QUrl& serverBaseUrl, const RelayAuth& auth)
+{
+    const ScheduledListResult probe = source.listScheduled(serverBaseUrl, auth);
+    if (probe.unsupported)
+        return i18n("This server can't schedule mail. Nothing was sent.");
+    if (probe.error.has_value())
+        return i18n("Could not check that the server can schedule mail. Nothing was sent.");
+    return {};
 }
 
 } // namespace
@@ -979,17 +993,13 @@ quint64 MailController::saveDraftInternal(const QString& to, const QString& cc, 
                 message.mode = QStringLiteral("html");
                 message.date = date;
                 message.attachments = attachments;
-                const QByteArray content = protectedDraftContent(message, bcc, randomMimeBoundary());
-                const auto encrypted = signAndEncrypt(content, identity.fingerprint, {identity.fingerprint});
+                const EncryptedDraft encrypted = buildEncryptedDraft(message, bcc, identity.fingerprint);
                 if (encrypted.status != PgpEncryptStatus::Encrypted) {
                     out.failure = Failure::Encryption;
                     out.encryption = encrypted.status;
                     return out;
                 }
-                // Cc and Bcc belong only inside the self-encrypted entity.
-                message.cc.clear();
-                encryptedDraft = QString::fromUtf8(pgpMimeDelivery(
-                    message, encrypted.armoredCiphertext, randomMimeBoundary()));
+                encryptedDraft = QString::fromUtf8(encrypted.message);
             }
             out.saved = RelayMailSource(http).saveDraft(serverBaseUrl, auth, to, cc, bcc, subject, body,
                                                         QStringLiteral("html"), attachments, encryptedDraft);
@@ -1040,7 +1050,7 @@ quint64 MailController::saveDraftInternal(const QString& to, const QString& cc, 
 quint64 MailController::sendMail(const QString& to, const QString& cc, const QString& bcc, const QString& subject,
                                    const QString& body, const QStringList& attachmentFilePaths, bool sign,
                                    bool encrypt, const QString& draftToken, const QString& replyToMessageId,
-                                   const QString& replyToMailbox)
+                                   const QString& replyToMailbox, qint64 sendAtMs)
 {
     // FIRST statement, before any early return below: PendingSend's own doc
     // comment promises the cached plaintext dies when a fresh send starts,
@@ -1050,8 +1060,11 @@ quint64 MailController::sendMail(const QString& to, const QString& cc, const QSt
     m_pendingSend = {};
     // A stale token goes the encrypted way too, where readAttachments refuses it.
     if (!draftToken.isEmpty() && (draftToken != m_draftToken || m_draftEncrypted))
-        return sendClientEncrypted(to, cc, bcc, subject, body, attachmentFilePaths, draftToken);
+        return sendClientEncrypted(to, cc, bcc, subject, body, attachmentFilePaths, draftToken, sendAtMs);
 
+    QDateTime sendAt;
+    if (!acceptSendAt(sendAtMs, sendAt))
+        return 0;
     QUrl serverBaseUrl;
     RelayAuth auth;
     if (!requirePairing(serverBaseUrl, auth))
@@ -1070,15 +1083,27 @@ quint64 MailController::sendMail(const QString& to, const QString& cc, const QSt
     // encrypt, token, replyToMessageId, replyToMailbox.
     m_pendingSend = PendingSend{ true, to, cc, bcc, subject, body, sendMode, attachments,
                                  sign, encrypt, sendToken, replyToMessageId, replyToMailbox };
+    // The pickup re-send carries no sendAt, so a scheduled send never offers it.
+    if (sendAt.isValid())
+        m_pendingSend = {};
 
     pushBusy();
     m_executor.run(
         this,
         [serverBaseUrl, auth, to, cc, bcc, subject, body, sendMode, attachments, sign, encrypt, replyToMessageId,
-         replyToMailbox](HttpClient& http) {
+         replyToMailbox, sendAt](HttpClient& http) {
             RelayMailSource source(http);
+            if (sendAt.isValid()) {
+                if (const QString refusal = schedulingRefusal(source, serverBaseUrl, auth); !refusal.isEmpty()) {
+                    SendMailResult refused;
+                    refused.error = NetworkError::Server;
+                    refused.detail = refusal;
+                    return refused;
+                }
+            }
             return source.sendMail(serverBaseUrl, auth, to, cc, bcc, subject, body, sendMode, attachments, sign,
-                                    encrypt, /*allowPickupFallback=*/false, replyToMessageId, replyToMailbox);
+                                    encrypt, /*allowPickupFallback=*/false, replyToMessageId, replyToMailbox,
+                                    sendAt);
         },
         [this, sendToken](const SendMailResult& result) { finishSend(sendToken, result); });
     return sendToken;
@@ -1144,10 +1169,30 @@ void MailController::finishSend(quint64 sendToken, const SendMailResult& result)
         emit sendCompleted(sendToken, false);
         return;
     }
+    if (result.scheduledAt.isValid())
+        announceScheduled(result.scheduledAt);
     if (!result.warning.isEmpty())
         emit sendWarning(result.warning);
     setLastError(QString());
     emit sendCompleted(sendToken, true);
+}
+
+bool MailController::acceptSendAt(qint64 sendAtMs, QDateTime& sendAt)
+{
+    if (sendAtMs == 0)
+        return true;
+    sendAt = QDateTime::fromMSecsSinceEpoch(sendAtMs);
+    if (sendAtAccepted(sendAt, QDateTime::currentDateTime()))
+        return true;
+    setLastError(i18n("That time is in the past or too far ahead. Nothing was sent."));
+    return false;
+}
+
+// Through the after-send notice: the composer closes on success.
+void MailController::announceScheduled(const QDateTime& at)
+{
+    emit sendWarning(i18n("Scheduled for %1. Cancel it from Scheduled.",
+                          QLocale().toString(at.toLocalTime(), QLocale::ShortFormat)));
 }
 
 // Re-sends the exact payload the server refused, with allowPickupFallback
@@ -1919,10 +1964,18 @@ namespace {
 MailController::ClientEncryptedOutcome runClientEncryptedSend(
     HttpClient& http, const RelayEndpoint& endpoint, const QString& to, const QString& cc,
     const QString& bcc, const QString& subject, const QString& body, const QString& date,
-    const QVector<MailAttachmentUpload>& attachments)
+    const QVector<MailAttachmentUpload>& attachments, const QDateTime& sendAt)
 {
     using Failure = MailController::ClientEncryptedOutcome::Failure;
     MailController::ClientEncryptedOutcome outcome;
+
+    if (sendAt.isValid()) {
+        outcome.detail = schedulingRefusal(RelayMailSource(http), endpoint.serverBaseUrl, endpoint.auth);
+        if (!outcome.detail.isEmpty()) {
+            outcome.failure = Failure::ScheduleUnavailable;
+            return outcome;
+        }
+    }
 
     const auto split = [](const QString& list) {
         QStringList out;
@@ -2049,10 +2102,37 @@ MailController::ClientEncryptedOutcome runClientEncryptedSend(
         return outcome;
     }
 
+    // What the relay returns to Drafts if a scheduled send cannot go out.
+    // Encrypted or not at all: there is no plaintext fallback.
+    QByteArray draftCopy;
+    if (sendAt.isValid()) {
+        OutgoingMessage draft = message;
+        draft.mode = QStringLiteral("html"); // as saveDraft() stores it
+        const EncryptedDraft encrypted =
+            buildEncryptedDraft(draft, bccList.join(QStringLiteral(", ")), identity.fingerprint);
+        switch (encrypted.status) {
+        case PgpEncryptStatus::Encrypted:
+            break;
+        case PgpEncryptStatus::CancelledOrWrongPassphrase:
+            outcome.failure = Failure::Cancelled;
+            return outcome;
+        case PgpEncryptStatus::NoSigningKey:
+            outcome.failure = Failure::NoSigningKey;
+            return outcome;
+        case PgpEncryptStatus::EngineUnavailable:
+            outcome.failure = Failure::EngineUnavailable;
+            return outcome;
+        default:
+            outcome.failure = Failure::EncryptionFailed;
+            return outcome;
+        }
+        draftCopy = encrypted.message;
+    }
+
     const PgpSendClient sender(http);
     const PgpSendResult sent = sender.send(endpoint.serverBaseUrl, endpoint.auth,
                                             identity.primaryAddress, plan, toList, ccList, bccList,
-                                            QStringLiteral("plain"));
+                                            QStringLiteral("plain"), sendAt, draftCopy);
     if (!sent.ok) {
         outcome.failure = sent.tooLarge ? Failure::TooLarge : Failure::SendFailed;
         outcome.detail = sent.detail;
@@ -2060,8 +2140,10 @@ MailController::ClientEncryptedOutcome runClientEncryptedSend(
     }
 
     outcome.ok = true;
-    // Either the planner never built a copy, or the relay did not file it.
-    outcome.missingSentCopy = plan.sentCopyUnavailable || !sent.sentSaved;
+    outcome.scheduledAt = sent.scheduledAt;
+    // Either the planner never built a copy, or the relay did not file it. A
+    // held message has filed nothing yet.
+    outcome.missingSentCopy = plan.sentCopyUnavailable || (!sent.sentSaved && !sendAt.isValid());
     return outcome;
 }
 
@@ -2069,11 +2151,15 @@ MailController::ClientEncryptedOutcome runClientEncryptedSend(
 
 quint64 MailController::sendClientEncrypted(const QString& to, const QString& cc, const QString& bcc,
                                              const QString& subject, const QString& body,
-                                             const QStringList& attachmentFilePaths, const QString& draftToken)
+                                             const QStringList& attachmentFilePaths, const QString& draftToken,
+                                             qint64 sendAtMs)
 {
     m_pendingSend = {};
     m_lastSendMissingSentCopy = false;
 
+    QDateTime sendAt;
+    if (!acceptSendAt(sendAtMs, sendAt))
+        return 0;
     QVector<MailAttachmentUpload> attachments;
     if (!readAttachments(attachmentFilePaths, attachments, draftToken))
         return 0; // readAttachments has already said what went wrong
@@ -2091,14 +2177,15 @@ quint64 MailController::sendClientEncrypted(const QString& to, const QString& cc
     captureDraftReplacement(sendToken, draftToken);
     // Stamped here, on the thread that knows when the user pressed Send --
     // not inside the worker, where pinentry may have been open for minutes.
-    const QString date = QDateTime::currentDateTime().toString(Qt::RFC2822Date);
+    // A scheduled message is dated when it goes out, as the relay requires.
+    const QString date = (sendAt.isValid() ? sendAt : QDateTime::currentDateTime()).toString(Qt::RFC2822Date);
 
     pushBusy();
     m_executor.run(
         this,
-        [endpoint, to, cc, bcc, subject, body, date, attachments](HttpClient& http) {
+        [endpoint, to, cc, bcc, subject, body, date, attachments, sendAt](HttpClient& http) {
             return runClientEncryptedSend(http, endpoint, to, cc, bcc, subject, body, date,
-                                           attachments);
+                                           attachments, sendAt);
         },
         [this, sendToken, identity](const ClientEncryptedOutcome& outcome) {
             popBusy();
@@ -2123,6 +2210,8 @@ void MailController::finishClientEncryptedSend(quint64 token, const ClientEncryp
 
     if (outcome.ok) {
         m_lastSendMissingSentCopy = outcome.missingSentCopy;
+        if (outcome.scheduledAt.isValid())
+            announceScheduled(outcome.scheduledAt);
         setLastError(QString());
         emit pgpComposeStateChanged();
         emit sendCompleted(token, true);
@@ -2179,6 +2268,9 @@ void MailController::finishClientEncryptedSend(quint64 token, const ClientEncryp
     case Failure::ServerEncryptsInstead:
         setLastError(i18n("This account's key is held by the server, which encrypts on its own. "
                            "Send it the usual way."));
+        break;
+    case Failure::ScheduleUnavailable:
+        setLastError(outcome.detail);
         break;
     }
     emit sendCompleted(token, false);

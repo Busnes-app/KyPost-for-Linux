@@ -74,6 +74,8 @@ private slots:
     void unsafeDiscoveryTierNeverSends();
     void anAttachmentTravelsInsideTheCiphertext();
     void aSendForAReplacedAccountIsNotReportedAsSent();
+    void aScheduledSendStaysEncryptedEndToEnd();
+    void aRelayThatCannotScheduleGetsNoCiphertext();
 
 private:
     GnupgFixture m_sender;
@@ -338,6 +340,92 @@ void MailEncryptedSendTest::aSendForAReplacedAccountIsNotReportedAsSent()
     QTRY_VERIFY_WITH_TIMEOUT(completed.count() == 1, 30000);
     QVERIFY2(!completed.at(0).at(1).toBool(),
              "a send belonging to a replaced account was reported as sent");
+}
+
+namespace {
+
+QByteArray armorIn(const QByteArray& message)
+{
+    const qsizetype begin = message.indexOf("-----BEGIN PGP MESSAGE-----");
+    const qsizetype end = message.indexOf("-----END PGP MESSAGE-----");
+    if (begin < 0 || end < begin)
+        return {};
+    return message.mid(begin, end - begin + qstrlen("-----END PGP MESSAGE-----"));
+}
+
+} // namespace
+
+// Scheduling must not cost the encryption: the relay holds ciphertext dated
+// for later, and the copy it returns to Drafts on failure opens only for the
+// sender.
+void MailEncryptedSendTest::aScheduledSendStaysEncryptedEndToEnd()
+{
+    FakeRelayServer fake(httpResponse(202, "Accepted",
+                                      R"({"scheduled":true,"id":"s1","sendAt":"2030-01-01T08:00:00Z"})"));
+    fake.setResponseForPath("/api/pgp/bootstrap", bootstrapResponse(QStringLiteral("me@example.com")));
+    fake.setResponseForPath("/api/pgp/recipients/resolve",
+                             resolveResponse(QStringLiteral("you@example.com"), m_recipientKey,
+                                              m_recipientFingerprint));
+    fake.setResponseForPath("/api/scheduled", httpResponse(200, "OK", R"({"scheduled":[]})"));
+
+    DecryptHarness harness;
+    QVERIFY(harness.build(fake));
+
+    QSignalSpy completed(harness.controller.get(), &MailController::sendCompleted);
+    QSignalSpy notice(harness.controller.get(), &MailController::sendWarning);
+    const QDateTime at = QDateTime::currentDateTime().addDays(1);
+    const QDateTime atWhole = QDateTime::fromSecsSinceEpoch(at.toSecsSinceEpoch());
+    harness.controller->sendClientEncrypted(QStringLiteral("you@example.com"), QString(), QString(),
+                                             QStringLiteral("Redundancies confirmed"),
+                                             QString::fromUtf8(kSecret), {}, {}, at.toMSecsSinceEpoch());
+    QTRY_VERIFY_WITH_TIMEOUT(completed.count() == 1, 30000);
+    QVERIFY2(completed.at(0).at(1).toBool(), qPrintable(harness.controller->lastError()));
+    QCOMPARE(notice.count(), 1);
+
+    const QJsonObject body = sendRequestBodyOf(fake.receivedRequests());
+    const QByteArray raw = QJsonDocument(body).toJson(QJsonDocument::Compact);
+    QVERIFY2(!raw.contains(kSecret), "the body reached the relay in clear");
+    QVERIFY2(!raw.contains("Redundancies"), "the real subject reached the relay in clear");
+    QCOMPARE(body.value(QStringLiteral("sendAt")).toString(), sendAtWireValue(at));
+
+    // validateScheduledPGP: every delivery is dated the send time.
+    const QByteArray delivery =
+        body.value(QStringLiteral("deliveries")).toArray().at(0).toObject().value(QStringLiteral("ciphertext"))
+            .toString().toUtf8();
+    QVERIFY2(delivery.contains("Date: " + atWhole.toString(Qt::RFC2822Date).toUtf8()), delivery.left(400).constData());
+
+    const QByteArray draftCopy = body.value(QStringLiteral("draftCopy")).toString().toUtf8();
+    QVERIFY2(draftCopy.contains("multipart/encrypted"), "the Drafts copy is not PGP/MIME");
+    const QByteArray draftArmor = armorIn(draftCopy);
+    QVERIFY(!draftArmor.isEmpty());
+    const PgpDecryptResult mine = OpenPgpDecryptor().decrypt(draftArmor, m_sender.path());
+    QCOMPARE(mine.status, PgpDecryptStatus::Decrypted);
+    QVERIFY(mine.plaintext.contains(kSecret));
+    QVERIFY2(OpenPgpDecryptor().decrypt(draftArmor, m_recipient.path()).status != PgpDecryptStatus::Decrypted,
+             "the recipient can open the sender's Drafts copy");
+}
+
+void MailEncryptedSendTest::aRelayThatCannotScheduleGetsNoCiphertext()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true,"sentSaved":true})"));
+    fake.setResponseForPath("/api/pgp/bootstrap", bootstrapResponse(QStringLiteral("me@example.com")));
+    fake.setResponseForPath("/api/pgp/recipients/resolve",
+                             resolveResponse(QStringLiteral("you@example.com"), m_recipientKey,
+                                              m_recipientFingerprint));
+    fake.setResponseForPath("/api/scheduled", httpResponse(404, "Not Found", "404 page not found", "text/plain"));
+
+    DecryptHarness harness;
+    QVERIFY(harness.build(fake));
+
+    QSignalSpy completed(harness.controller.get(), &MailController::sendCompleted);
+    harness.controller->sendClientEncrypted(QStringLiteral("you@example.com"), QString(), QString(),
+                                             QStringLiteral("Subject"), QString::fromUtf8(kSecret), {}, {},
+                                             QDateTime::currentDateTime().addDays(1).toMSecsSinceEpoch());
+    QTRY_VERIFY_WITH_TIMEOUT(completed.count() == 1, 30000);
+
+    QVERIFY(!completed.at(0).at(1).toBool());
+    QVERIFY(!harness.controller->lastError().isEmpty());
+    QVERIFY2(sendRequestBodyOf(fake.receivedRequests()).isEmpty(), "ciphertext went to a relay that would send it now");
 }
 
 QTEST_GUILESS_MAIN(MailEncryptedSendTest)

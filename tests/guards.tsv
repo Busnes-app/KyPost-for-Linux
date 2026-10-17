@@ -484,3 +484,14 @@ core/domain/LinkTarget.cpp	    const QUrl url = raw.adjusted(QUrl::RemoveUserInf
 core/domain/LinkTarget.cpp	    QString host = url.host(QUrl::FullyEncoded);	    QString host = url.host();	LinkTargetTest:lookalikeDomainShowsAsPunycode
 core/domain/LinkTarget.cpp	    if ((raw.userName(QUrl::FullyDecoded) + raw.password(QUrl::FullyDecoded)).contains(QLatin1Char('\\')))	    if (false)	LinkTargetTest:backslashCannotSmuggleAnotherHost
 app/qml/components/LinkConfirmDialog.qml	            onTapped: root.cancel()	            onTapped: root.confirm()	QmlTests:LinkConfirmDialog::test_cancelEscapeAndScrimOpenNothing
+
+# --- scheduled send: never early, never in clear ------------------------
+#
+# A relay without scheduled send ignores sendAt and sends at once, so it is
+# asked first; an encrypted scheduled send needs its encrypted Drafts copy; the
+# one-time-link re-send carries no sendAt; a cancel id cannot walk the path.
+app/mail/MailController.cpp	    const ScheduledListResult probe = source.listScheduled(serverBaseUrl, auth);	    const ScheduledListResult probe;	MailControllerTest:aRelayThatCannotScheduleSendsNothing
+app/mail/MailController.cpp	    const ScheduledListResult probe = source.listScheduled(serverBaseUrl, auth);	    const ScheduledListResult probe;	MailEncryptedSendTest:aRelayThatCannotScheduleGetsNoCiphertext
+core/net/PgpSendClient.cpp	    if (sendAt.isValid() && draftCopy.isEmpty()) {	    if (false) {	PgpSendClientTest:aScheduledSendWithoutADraftCopyNeverGoesOnTheWire
+app/mail/MailController.cpp	    if (sendAt.isValid())	    if (false)	MailControllerTest:aScheduledSendHasNoImmediateLinkResend
+core/net/RelayMailSource.cpp	    if (!isScheduledId(id)) {	    if (false) {	RelayMailSourceTest:cancelScheduledRefusesAnIdThatIsNotTheRelays

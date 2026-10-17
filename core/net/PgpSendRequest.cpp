@@ -1,5 +1,6 @@
 #include "net/PgpSendRequest.h"
 
+#include "net/RelayMailSource.h"
 #include "pgp/PgpMimeWriter.h"
 
 #include <QJsonArray>
@@ -17,7 +18,8 @@ QJsonArray toJsonArray(const QStringList& values)
 } // namespace
 
 QJsonObject pgpSendRequestBody(const QString& from, const PgpSendPlan& plan, const QStringList& to,
-                                const QStringList& cc, const QStringList& bcc, const QString& mode)
+                                const QStringList& cc, const QStringList& bcc, const QString& mode,
+                                const QDateTime& sendAt, const QByteArray& draftCopy)
 {
     QJsonArray deliveries;
     for (const PgpDelivery& delivery : plan.deliveries) {
@@ -47,6 +49,13 @@ QJsonObject pgpSendRequestBody(const QString& from, const PgpSendPlan& plan, con
     if (!plan.sentCopy.isEmpty()) {
         body[QStringLiteral("sentCopy")] = QString::fromUtf8(plan.sentCopy);
         body[QStringLiteral("sentCopyEncrypted")] = true;
+    }
+
+    // Scheduled: every delivery is already dated sendAt, and draftCopy is the
+    // self-encrypted message the relay files in Drafts if it cannot send.
+    if (sendAt.isValid()) {
+        body[QStringLiteral("sendAt")] = sendAtWireValue(sendAt);
+        body[QStringLiteral("draftCopy")] = QString::fromUtf8(draftCopy);
     }
 
     return body;

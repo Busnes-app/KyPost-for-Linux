@@ -140,3 +140,16 @@ PgpSendPlan buildPgpSendPlan(const OutgoingMessage& message, const QStringList& 
     plan.status = PgpSendPlanStatus::Built;
     return plan;
 }
+
+EncryptedDraft buildEncryptedDraft(OutgoingMessage message, const QString& bcc, const QString& ownerFingerprint)
+{
+    EncryptedDraft out;
+    const QByteArray content = protectedDraftContent(message, bcc, randomMimeBoundary());
+    const PgpEncryptResult encrypted = signAndEncrypt(content, ownerFingerprint, { ownerFingerprint });
+    out.status = encrypted.status;
+    if (encrypted.status != PgpEncryptStatus::Encrypted)
+        return out;
+    message.cc.clear();
+    out.message = pgpMimeDelivery(message, encrypted.armoredCiphertext, randomMimeBoundary());
+    return out;
+}

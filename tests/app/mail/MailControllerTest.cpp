@@ -111,6 +111,10 @@ private slots:
     void aReopenedDraftPrefillsComposeAndItsFirstSaveReplacesTheSource();
     void aFailedSaveOrADraftWithAttachmentsKeepsTheSource();
     void sendingAReopenedPlaintextDraftUsesTheNormalSendAndDeletesTheSource();
+    void aScheduledSendAsksTheRelayFirstThenCarriesSendAt();
+    void aSendTimeTheRelayWouldRefuseSendsNothing();
+    void aRelayThatCannotScheduleSendsNothing();
+    void aScheduledSendHasNoImmediateLinkResend();
     void aSearchOnlyDraftWithNoReadableBodyIsNotReopened();
     void aDraftInALocalizedDraftsFolderIsReopenedAndReplacedThere();
 
@@ -3309,6 +3313,92 @@ void MailControllerTest::aSearchOnlyDraftWithNoReadableBodyIsNotReopened()
     const QVariantMap email = f.controller.findByMessageId(QStringLiteral("e1"), QStringLiteral("Drafts"));
     QVERIFY(!email.value(QStringLiteral("bodyNotice")).toString().isEmpty());
     QVERIFY(f.controller.reopenDraft(QStringLiteral("Drafts"), QStringLiteral("e1")).isEmpty());
+}
+
+void MailControllerTest::aScheduledSendAsksTheRelayFirstThenCarriesSendAt()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", "{}"));
+    fake.setResponseForPath("/api/scheduled", httpResponse(200, "OK", R"({"scheduled":[]})"));
+    fake.setResponseForPath("/api/mail/send",
+                            httpResponse(202, "Accepted", R"({"scheduled":true,"id":"a","sendAt":"2030-01-01T08:00:00Z"})"));
+    RefreshFixture f(fake.port());
+    QSignalSpy sent(&f.controller, &MailController::sendCompleted);
+    QSignalSpy notice(&f.controller, &MailController::sendWarning);
+
+    const QDateTime at = QDateTime::currentDateTime().addDays(2);
+    QVERIFY(f.controller.sendMail(QStringLiteral("jane@example.com"), {}, {}, QStringLiteral("Later"),
+                                  QStringLiteral("<p>b</p>"), {}, false, false, {}, {}, {}, at.toMSecsSinceEpoch()) != 0);
+    QTRY_VERIFY_WITH_TIMEOUT(sent.count() == 1, 10000);
+    f.executor.shutdown();
+
+    QVERIFY2(sent.at(0).at(1).toBool(), qPrintable(f.controller.lastError()));
+    QCOMPARE(fake.receivedRequests().size(), 2);
+    QVERIFY(fake.receivedRequests().at(0).startsWith("GET /api/scheduled "));
+    const QByteArray send = fake.receivedRequests().at(1);
+    QVERIFY(send.startsWith("POST /api/mail/send "));
+    const QJsonObject body = QJsonDocument::fromJson(send.mid(send.indexOf("\r\n\r\n") + 4)).object();
+    QCOMPARE(body.value(QStringLiteral("sendAt")).toString(), sendAtWireValue(at));
+    QCOMPARE(notice.count(), 1);
+    QVERIFY(notice.at(0).at(0).toString().startsWith(QStringLiteral("Scheduled for")));
+}
+
+void MailControllerTest::aSendTimeTheRelayWouldRefuseSendsNothing()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true})"));
+    RefreshFixture f(fake.port());
+    const qint64 past = QDateTime::currentMSecsSinceEpoch() - 1000;
+    const qint64 tooFar = QDateTime::currentDateTime().addDays(367).toMSecsSinceEpoch();
+
+    for (const qint64 at : { past, tooFar }) {
+        QCOMPARE(f.controller.sendMail(QStringLiteral("jane@example.com"), {}, {}, QStringLiteral("s"),
+                                       QStringLiteral("b"), {}, false, false, {}, {}, {}, at), 0u);
+        QVERIFY(!f.controller.lastError().isEmpty());
+        QCOMPARE(f.controller.sendClientEncrypted(QStringLiteral("jane@example.com"), {}, {}, QStringLiteral("s"),
+                                                  QStringLiteral("b"), {}, {}, at), 0u);
+    }
+    QTest::qWait(200);
+    QCOMPARE(fake.connectionCount(), 0);
+}
+
+// An older relay ignores sendAt and would send at once.
+void MailControllerTest::aRelayThatCannotScheduleSendsNothing()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true,"sentSaved":true,"warning":""})"));
+    fake.setResponseForPath("/api/scheduled", httpResponse(404, "Not Found", "404 page not found", "text/plain"));
+    RefreshFixture f(fake.port());
+    QSignalSpy sent(&f.controller, &MailController::sendCompleted);
+
+    QVERIFY(f.controller.sendMail(QStringLiteral("jane@example.com"), {}, {}, QStringLiteral("Later"),
+                                  QStringLiteral("<p>b</p>"), {}, false, false, {}, {}, {},
+                                  QDateTime::currentDateTime().addDays(1).toMSecsSinceEpoch()) != 0);
+    QTRY_VERIFY_WITH_TIMEOUT(sent.count() == 1, 10000);
+    f.executor.shutdown();
+
+    QVERIFY(!sent.at(0).at(1).toBool());
+    QVERIFY(!f.controller.lastError().isEmpty());
+    QCOMPARE(requestsMatching(fake, "/api/mail/send"), 0);
+}
+
+// The one-time-link re-send carries no sendAt: confirming it would send now.
+void MailControllerTest::aScheduledSendHasNoImmediateLinkResend()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true,"sentSaved":true,"warning":""})"));
+    fake.setResponseForPath("/api/scheduled", httpResponse(200, "OK", R"({"scheduled":[]})"));
+    fake.setResponseForPath("/api/mail/send",
+                            httpResponse(409, "Conflict", R"({"error":"no key","keylessRecipients":["jane@example.com"]})"));
+    RefreshFixture f(fake.port());
+    QSignalSpy sent(&f.controller, &MailController::sendCompleted);
+
+    const quint64 token = f.controller.sendMail(QStringLiteral("jane@example.com"), {}, {}, QStringLiteral("Later"),
+                                                QStringLiteral("<p>b</p>"), {}, false, true, {}, {}, {},
+                                                QDateTime::currentDateTime().addDays(1).toMSecsSinceEpoch());
+    QVERIFY(token != 0);
+    QTRY_VERIFY_WITH_TIMEOUT(sent.count() == 1, 10000);
+
+    QCOMPARE(f.controller.confirmPickupFallbackSend(token), 0u);
+    QTest::qWait(200);
+    f.executor.shutdown();
+    QCOMPARE(requestsMatching(fake, "POST /api/mail/send "), 1);
 }
 
 // The replaced source is deleted from the mailbox it was reopened from, which

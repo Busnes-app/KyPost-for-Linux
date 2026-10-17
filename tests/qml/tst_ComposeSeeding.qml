@@ -64,7 +64,7 @@ TestCase {
         verify(source.responseText.indexOf("replyTo: composePage.replyTo") !== -1)
         source.open("GET", "qrc:/qml/pages/Compose.qml", false)
         source.send()
-        verify(source.responseText.indexOf('root.replyTo.messageId || "", root.replyTo.mailbox || "")') !== -1)
+        verify(source.responseText.indexOf('root.replyTo.messageId || "", root.replyTo.mailbox || "",') !== -1)
         // Another account's row id must never thread this account's mail.
         verify(source.responseText.indexOf("function onPairingChanged() { root.replyTo = {} }") !== -1)
         source.open("GET", "qrc:/qml/pages/EmailDetail.qml", false)

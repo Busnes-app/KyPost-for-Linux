@@ -4,6 +4,7 @@
 #include "net/NetworkError.h"
 #include "pgp/PgpSendPlanner.h"
 
+#include <QDateTime>
 #include <QString>
 #include <QUrl>
 #include <optional>
@@ -42,6 +43,9 @@ struct PgpSendResult
     // limitation of the endpoint, not one to paper over by rendering its text.
     bool warned = false;
     QString warningDetail; // logs only
+
+    // Valid when the relay held it for later (202) instead of sending.
+    QDateTime scheduledAt;
 };
 
 // Hands the relay a set of ciphertexts to deliver, for an account whose PGP
@@ -78,9 +82,13 @@ public:
     // relay uses them only for the Sent-folder copy's headers. They are sent
     // because the Sent copy needs them; nothing else about the send depends on
     // them.
+    //
+    // A valid sendAt schedules it (see pgpSendRequestBody); a 202 is then the
+    // success, and only then.
     PgpSendResult send(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& from,
                         const PgpSendPlan& plan, const QStringList& to, const QStringList& cc,
-                        const QStringList& bcc, const QString& mode) const;
+                        const QStringList& bcc, const QString& mode, const QDateTime& sendAt = {},
+                        const QByteArray& draftCopy = {}) const;
 
 private:
     HttpClient& m_httpClient;
