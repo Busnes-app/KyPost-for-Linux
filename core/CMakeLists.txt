@@ -25,6 +25,8 @@ add_library(kypostcore STATIC
   domain/PgpComposeState.h
   domain/SendLater.cpp
   domain/SendLater.h
+  domain/ReplyAll.cpp
+  domain/ReplyAll.h
   domain/KeywordRepository.cpp
   domain/KeywordRepository.h
   domain/ContactSyncReconciliation.cpp
@@ -46,10 +48,14 @@ add_library(kypostcore STATIC
   domain/PushRepository.h
   domain/MfaChallengeTracker.cpp
   domain/MfaChallengeTracker.h
+  domain/Snooze.cpp
+  domain/Snooze.h
   domain/TransportStateMachine.cpp
   domain/TransportStateMachine.h
   domain/PairingStoreCredentialSealer.cpp
   domain/PairingStoreCredentialSealer.h
+  domain/LinkTarget.cpp
+  domain/LinkTarget.h
   db/Database.cpp
   db/Database.h
   db/EmailDao.cpp

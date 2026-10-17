@@ -137,6 +137,12 @@ struct SendMailResult
 
     // Valid when the relay held the message for later (202) instead of sending.
     QDateTime scheduledAt;
+
+    // A reply the relay refused to thread (replyThreading in
+    // server_mail_send.go): one of its four exact sentences, all sent before
+    // any delivery, so sending again unthreaded cannot duplicate. Matched
+    // whole: other 502s here can follow a delivery and quote SMTP text.
+    bool replyThreadingRefused = false;
 };
 
 // POST /api/mail/draft response: {ok}. No sentSaved/warning -- the backend
@@ -269,10 +275,12 @@ public:
     // client a thin pass-through of whatever action strings the server
     // defines rather than a second source of truth for the valid action
     // set. targetMailbox is included in the request body only when it has
-    // a value (omitted entirely otherwise, never sent as "").
+    // a value (omitted entirely otherwise, never sent as ""). wakeAt is
+    // snooze's alone: RFC 3339, whole seconds, UTC (snooze.go parseWakeAt).
     ActionResult performAction(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& action,
                                 const QStringList& messageIds, const QString& mailbox,
-                                const std::optional<QString>& targetMailbox) const;
+                                const std::optional<QString>& targetMailbox,
+                                const std::optional<QDateTime>& wakeAt = std::nullopt) const;
 
     // to/cc/bcc are comma-joined address-list strings on the wire (the
     // server splits them via parseRecipientList) -- NOT JSON arrays, unlike
@@ -284,10 +292,15 @@ public:
     // is not scoped to a mailbox the way fetch/actions are (it sends via
     // SMTP using the account's configured credentials, then best-effort
     // saves to Sent).
+    //
+    // replyToMessageId/replyToMailbox name the answered message (its relay
+    // row id and folder) so the relay sets In-Reply-To/References. Omitted
+    // when replyToMessageId is empty, so an older relay sees the same request.
     SendMailResult sendMail(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& to, const QString& cc,
                              const QString& bcc, const QString& subject, const QString& body, const QString& mode,
                              const QVector<MailAttachmentUpload>& attachments, bool sign = false, bool encrypt = false,
-                             bool allowPickupFallback = false, const QDateTime& sendAt = {}) const;
+                             bool allowPickupFallback = false, const QString& replyToMessageId = {},
+                             const QString& replyToMailbox = {}, const QDateTime& sendAt = {}) const;
 
     // POST /api/mail/draft. When pgpDraft is supplied, only To and the complete
     // self-encrypted PGP/MIME message leave this process. The other arguments

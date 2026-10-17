@@ -11,6 +11,7 @@ private slots:
     void init();
     void roundTripsInsertUpdateDelete();
     void findsByParentAndAll();
+    void topLevelSnapshotKeepsTheSpecialUseRole();
 
 private:
     Database m_db;
@@ -61,6 +62,25 @@ void FolderDaoTest::findsByParentAndAll()
 
     QVERIFY(dao.deleteAll());
     QCOMPARE(dao.findAll().size(), 0);
+}
+
+// The top level is a null parent; it must still be found again, role intact.
+void FolderDaoTest::topLevelSnapshotKeepsTheSpecialUseRole()
+{
+    FolderDao dao(m_db.handle());
+
+    QVERIFY(dao.replaceParentSnapshot(
+        QString(),
+        { MailFolder{ QStringLiteral("INBOX.Gesendet"), QString(), false, QStringLiteral("sent") },
+          MailFolder{ QStringLiteral("Projects"), QString(), false, QString() } },
+        QStringLiteral("relay")));
+
+    QCOMPARE(dao.findByParent(QString()).size(), 2);
+    QCOMPARE(dao.findByPath(QStringLiteral("INBOX.Gesendet"))->special, QStringLiteral("sent"));
+    QVERIFY(dao.findByPath(QStringLiteral("Projects"))->special.isEmpty());
+
+    QVERIFY(dao.replaceParentSnapshot(QString(), {}, QStringLiteral("relay")));
+    QVERIFY(dao.findByParent(QString()).isEmpty());
 }
 
 QTEST_GUILESS_MAIN(FolderDaoTest)

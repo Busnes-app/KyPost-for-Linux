@@ -155,13 +155,13 @@ Kirigami.ApplicationWindow {
     // Same detailCollapsed branch as selectEmail() above -- the pane is
     // width-0 when collapsed, so setting composeSeed/detailMode into it
     // would be invisible; pop out a standalone window instead.
-    function openCompose(to, subject, body) {
+    function openCompose(to, subject, body, replyTo) {
         if (root.detailCollapsed) {
-            root.popOutCompose(to || "", subject || "", body || "", false)
+            root.popOutCompose(to || "", subject || "", body || "", false, replyTo)
             return
         }
         root.detailMode = "empty" // recreate the editor before applying another seed
-        root.composeSeed = { to: to || "", subject: subject || "", body: body || "" }
+        root.composeSeed = { to: to || "", subject: subject || "", body: body || "", replyTo: replyTo || ({}) }
         root.detailMode = "compose"
     }
 
@@ -575,9 +575,10 @@ Kirigami.ApplicationWindow {
             initialTo: root.composeSeed.to
             initialSubject: root.composeSeed.subject
             initialBody: root.composeSeed.body
+            replyTo: root.composeSeed.replyTo || ({})
             onSendSucceeded: root.closeDetail()
-            onPopOutRequested: function (to, subject, body, bodyIsHtml) {
-                root.popOutCompose(to, subject, body, bodyIsHtml)
+            onPopOutRequested: function (to, subject, body, bodyIsHtml, replyTo) {
+                root.popOutCompose(to, subject, body, bodyIsHtml, replyTo)
             }
         }
     }
@@ -626,7 +627,7 @@ Kirigami.ApplicationWindow {
                 folder: emailWindow.popFolder
                 isPoppedOut: true
                 onDraftRequested: function (draft) { root.openRestoredDraft(draft) }
-                onComposeRequested: function (to, subject, body) { root.openCompose(to, subject, body) }
+                onComposeRequested: function (to, subject, body, replyTo) { root.openCompose(to, subject, body, replyTo) }
                 onActionCompleted: emailWindow.close()
             }
 
@@ -665,6 +666,7 @@ Kirigami.ApplicationWindow {
             property string popInitialSubject: ""
             property string popInitialBody: ""
             property bool popInitialBodyIsHtml: false
+            property var popReplyTo: ({})
 
             Compose {
                 anchors.fill: parent
@@ -673,6 +675,7 @@ Kirigami.ApplicationWindow {
                 initialSubject: composeWindow.popInitialSubject
                 initialBody: composeWindow.popInitialBody
                 initialBodyIsHtml: composeWindow.popInitialBodyIsHtml
+                replyTo: composeWindow.popReplyTo
                 isPoppedOut: true
                 onSendSucceeded: composeWindow.close()
                 // No MailApp.sendWarning sink here: this Window closes on
@@ -759,10 +762,10 @@ Kirigami.ApplicationWindow {
         root.closeDetail()
     }
 
-    function popOutCompose(to, subject, body, bodyIsHtml) {
+    function popOutCompose(to, subject, body, bodyIsHtml, replyTo) {
         const win = composeWindowComponent.createObject(
             null, { popInitialTo: to, popInitialSubject: subject, popInitialBody: body,
-                    popInitialBodyIsHtml: bodyIsHtml === true })
+                    popInitialBodyIsHtml: bodyIsHtml === true, popReplyTo: replyTo || ({}) })
         win.show()
         win.raise()
         win.requestActivate()
@@ -1323,6 +1326,13 @@ Kirigami.ApplicationWindow {
                                     onTriggered: moveDialog.open([model.messageId], model.folder, MailApp.mailFolders())
                                 }
                                 MenuItem {
+                                    readonly property bool inSnoozed: model.folder === MailApp.snoozedFolder
+                                    text: inSnoozed ? i18n("Unsnooze") : i18n("Snooze…")
+                                    enabled: !MailApp.isBusy
+                                    onTriggered: inSnoozed ? MailApp.unsnoozeEmails([model.messageId])
+                                                           : snoozeDialog.open([model.messageId], MailApp.snoozePresets())
+                                }
+                                MenuItem {
                                     text: i18n("Delete")
                                     // Fire and forget -- the detail pane is
                                     // closed by root's own onActionCompleted
@@ -1397,7 +1407,7 @@ Kirigami.ApplicationWindow {
                     messageId: root.detailMode === "email" ? root.selectedMessageId : ""
                     folder: root.detailMode === "email" ? root.selectedEmailFolder : ""
                     onDraftRequested: function (draft) { root.openRestoredDraft(draft) }
-                    onComposeRequested: function (to, subject, body) { root.openCompose(to, subject, body) }
+                    onComposeRequested: function (to, subject, body, replyTo) { root.openCompose(to, subject, body, replyTo) }
                     onActionCompleted: root.closeDetail()
                     onPopOutRequested: root.popOutEmail(root.selectedMessageId, root.selectedEmailFolder)
                 }
@@ -1558,6 +1568,16 @@ Kirigami.ApplicationWindow {
         z: 900
         onChosen: function (messageIds, folder) {
             MailApp.moveEmails(messageIds, folder)
+        }
+    }
+
+    SnoozeDialog {
+        id: snoozeDialog
+        anchors.fill: parent
+        z: 900
+        parseCustom: function (date, time) { return MailApp.snoozeCustomTime(date, time) }
+        onChosen: function (messageIds, at) {
+            MailApp.snoozeEmails(messageIds, at)
         }
     }
 

@@ -93,7 +93,12 @@ Carried forward verbatim (in substance) from `Linux_QT_Client_Plan.md`'s own
   said "13" until 2026-07-25 — `Patina Ky`/`Polished Ky` were added later and
   the count was never updated, so don't trust a hardcoded number here again.)
 - **StandardFolder wire names**: `INBOX`, `Drafts`, `Junk`, `Sent`, `Trash`,
-  `Archive`; display name splits on both `/` and `.`.
+  `Archive`; display name splits on both `/` and `.`. Since plan L15 these are
+  the fallback only: resolve a mailbox with `standardFolderPath()` (or
+  `MailController::folderPath()`, `MailApp.draftsFolder`/`archiveFolder` in
+  QML), which prefers the top-level folder the relay flags with that RFC 6154
+  `special` role. Never compare a folder to a literal `"Drafts"`. A reopened
+  draft is deleted from the mailbox it was reopened from, not a re-resolved one.
 - **90-second foreground refresh cadence.**
   **Corrected again 2026-08-22 — read this one, the 2026-07-25 correction
   was itself wrong and cost this client delta sync entirely.**
@@ -237,6 +242,14 @@ Added 2026-07-25 (parity work with `kypost-android`):
   draft, and the replacement would delete it. `HttpClient` percent-encodes
   every query key and value: `addQueryItem` alone sent `+` bare (Go reads a
   space) and passed `%XX` through.
+
+- **Snooze (plan item L9, 2026-10-17).** `snooze` on `/api/inbox/actions` with
+  `wakeAt` (whole-second UTC RFC 3339). Presets and the typed time live in
+  `core/domain/Snooze.cpp`, read in the local zone and kept between 1 minute and
+  365 days ahead; `MailController::snoozeEmails` refuses anything else before a
+  request. `Snoozed` is matched by exact name (the relay gives it no role) and
+  is never a Move target. There is no unsnooze verb: `unsnoozeEmails` is a move
+  from Snoozed to INBOX, and refuses from any other folder.
 
 - **Scheduled send (plan item L10, 2026-10-17).** Before any `sendAt` request
   the relay is asked `GET /api/scheduled`; a 404 means it would ignore

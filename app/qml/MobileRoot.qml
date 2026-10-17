@@ -259,9 +259,9 @@ Kirigami.ApplicationWindow {
                 onDraftRequested: function (draft) {
                     root.pageStack.push(composePageComponent, { restoredDraft: draft })
                 }
-                onComposeRequested: function (to, subject, body) {
+                onComposeRequested: function (to, subject, body, replyTo) {
                     root.pageStack.push(composePageComponent,
-                        { initialTo: to, initialSubject: subject, initialBody: body })
+                        { initialTo: to, initialSubject: subject, initialBody: body, replyTo: replyTo })
                 }
                 // Archive/Junk/Delete have already happened by the time
                 // this fires -- EmailDetail.qml only emits actionCompleted
@@ -283,6 +283,7 @@ Kirigami.ApplicationWindow {
             property string initialTo: ""
             property string initialSubject: ""
             property string initialBody: ""
+            property var replyTo: ({})
 
             Compose {
                 anchors.fill: parent
@@ -290,6 +291,7 @@ Kirigami.ApplicationWindow {
                 initialTo: composePage.initialTo
                 initialSubject: composePage.initialSubject
                 initialBody: composePage.initialBody
+                replyTo: composePage.replyTo
                 onSendSucceeded: root.safePop()
             }
         }
@@ -886,7 +888,35 @@ Kirigami.ApplicationWindow {
                         anchors.fill: parent
                         color: Theme.warningColor
 
+                        // Snooze opens the picker and so does not latch;
+                        // in Snoozed it is Unsnooze, an action like Archive.
                         Text {
+                            readonly property bool inSnoozed: model.folder === MailApp.snoozedFolder
+                            anchors.right: archiveLabel.left
+                            anchors.rightMargin: 28
+                            anchors.verticalCenter: parent.verticalCenter
+                            textFormat: Text.PlainText
+                            text: inSnoozed ? i18n("Unsnooze") : i18n("Snooze")
+                            color: Theme.readableOnAccent
+                            font.family: Theme.fontUi
+                            font.pixelSize: 14
+                            font.weight: Font.Medium
+
+                            SwipeDelegate.onClicked: {
+                                if (emailRow.actionTriggered)
+                                    return
+                                if (inSnoozed) {
+                                    emailRow.actionTriggered = true
+                                    MailApp.unsnoozeEmails([model.messageId])
+                                } else {
+                                    emailRow.swipe.close()
+                                    snoozeDialog.open([model.messageId], MailApp.snoozePresets())
+                                }
+                            }
+                        }
+
+                        Text {
+                            id: archiveLabel
                             anchors.right: parent.right
                             anchors.rightMargin: 20
                             anchors.verticalCenter: parent.verticalCenter
@@ -996,7 +1026,7 @@ Kirigami.ApplicationWindow {
                     text: i18n("New folder…")
                     onClicked: {
                         folderPopup.close()
-                        folderDialog.openCreate("Archive", Format.folderDisplayName(MailApp.mailFolders(), "Archive"))
+                        folderDialog.openCreate(MailApp.archiveFolder, Format.folderDisplayName(MailApp.mailFolders(), MailApp.archiveFolder))
                     }
                 }
 
@@ -1105,6 +1135,17 @@ Kirigami.ApplicationWindow {
         z: 900
         onChosen: function (messageId, folder) {
             root.selectEmail(messageId, folder)
+        }
+    }
+
+    // The list's Snooze. The reader hosts its own (EmailDetail.qml).
+    SnoozeDialog {
+        id: snoozeDialog
+        anchors.fill: parent
+        z: 900
+        parseCustom: function (date, time) { return MailApp.snoozeCustomTime(date, time) }
+        onChosen: function (messageIds, at) {
+            MailApp.snoozeEmails(messageIds, at)
         }
     }
 

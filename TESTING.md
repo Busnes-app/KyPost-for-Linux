@@ -123,7 +123,14 @@ default/bare User-Agent strings (see `AGENTS.md` Section 8).
       no remote image loading** — `settings.javascriptEnabled: false` and
       `settings.autoLoadImages: false` are both explicitly set (commit
       `f0d48c1`). Tapping a link inside the body opens it externally
-      (`Qt.openUrlExternally(request.url)`), not inside the embedded view.
+      (`Qt.openUrlExternally`), not inside the embedded view.
+- [ ] **A web link opens only after its host is confirmed.** Send yourself
+      `<a href="https://bank.example@xn--pypl-53dc.com/">paypal.com</a>`
+      and click it. Expected: "Open this link?" names `xn--pypl-53dc.com`,
+      the full address has no `bank.example@`, a red line says the link text
+      names a different address, Cancel/Escape/the scrim open nothing, and
+      Open hands exactly the shown address to the browser. A `mailto:` link
+      still opens at once.
 - [ ] **A phishing-flagged message shows the warning banner.** Have the server
       flag a message with the `$Phishing` IMAP keyword (send yourself mail whose
       `text/html` part contains

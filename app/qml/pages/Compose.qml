@@ -27,6 +27,9 @@ Item {
     // that still needs escaping + quoting -- see quotedInitialBodyHtml()
     // and Component.onCompleted below.
     property bool initialBodyIsHtml: false
+    // {messageId, mailbox} of the message a reply answers (EmailDetail's
+    // replyReference()), sent so the relay threads it; {} otherwise.
+    property var replyTo: ({})
     // True for the instance DesktopRoot's composeWindowComponent embeds
     // inside an already-standalone pop-out Window -- hides the pop-out
     // button there (see below), same reasoning as EmailDetail.isPoppedOut.
@@ -49,7 +52,7 @@ Item {
     // EmailDetail.composeRequested -- doesn't carry those either). The host
     // is expected to close this embedded copy in response, same "host
     // decides what to do" shape as sendSucceeded() above.
-    signal popOutRequested(string to, string subject, string body, bool bodyIsHtml)
+    signal popOutRequested(string to, string subject, string body, bool bodyIsHtml, var replyTo)
 
     implicitWidth: 360
     implicitHeight: 640
@@ -257,6 +260,7 @@ Item {
             root.mySendToken = MailApp.sendMail(toField.joinedText, ccField.joinedText, bccField.joinedText,
                                                  subjectField.text, result.html, root.attachmentPaths,
                                                  signToggle.checked, encryptToggle.checked, root.restoredDraft.token || "",
+                                                 root.replyTo.messageId || "", root.replyTo.mailbox || "",
                                                  sendAt)
         })
     }
@@ -342,7 +346,7 @@ Item {
                 tooltip: i18n("Open in New Window")
                 onClicked: {
                     root.currentDraftForPopOut(function(draft) {
-                        root.popOutRequested(draft.to, draft.subject, draft.body, true)
+                        root.popOutRequested(draft.to, draft.subject, draft.body, true, root.replyTo)
                     })
                 }
             }
@@ -725,6 +729,13 @@ Item {
         }
     }
 
+    // A message id names a row in ONE account's mailbox; after a re-pair it
+    // could name an unrelated message in the next one.
+    Connections {
+        target: Pairing
+        function onPairingChanged() { root.replyTo = {} }
+    }
+
     Connections {
         target: MailApp
 
@@ -759,6 +770,12 @@ Item {
                 root.mySendToken = 0
             if (ok)
                 root.sendSucceeded()
+        }
+
+        // Nothing was sent; lastError says so. The next Send goes unthreaded.
+        function onReplyThreadingRefused(token) {
+            if (token === root.mySendToken)
+                root.replyTo = {}
         }
 
         function onDraftSaveCompleted(token, ok) {

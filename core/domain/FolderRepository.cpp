@@ -165,7 +165,7 @@ QVector<MailFolder> FolderRepository::cachedFolders(const QString& parent) const
     QVector<MailFolder> folders;
     folders.reserve(records.size());
     for (const FolderRecord& record : records)
-        folders.append(MailFolder{ record.path, record.parent, record.deletable });
+        folders.append(MailFolder{ record.path, record.parent, record.deletable, record.special });
 
     // The backend returns whatever order IMAP's LIST gave it; sort here so
     // the sidebar doesn't reshuffle between refreshes.

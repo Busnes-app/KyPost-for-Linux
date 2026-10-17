@@ -11,7 +11,7 @@
 class HttpClient;
 struct RelayAuth;
 
-// GET /api/inbox/folders[?parent=] -> {parent, folders: [{path, deletable}]}
+// GET /api/inbox/folders[?parent=] -> {parent, folders: [{path, deletable, special?}]}
 struct FolderListResult
 {
     std::optional<NetworkError> error;

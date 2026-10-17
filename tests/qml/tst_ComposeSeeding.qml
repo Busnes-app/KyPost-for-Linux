@@ -14,7 +14,7 @@ TestCase {
         verify(source.responseText.indexOf(
             "initialBodyIsHtml: composeWindow.popInitialBodyIsHtml") !== -1)
         verify(source.responseText.indexOf(
-            "root.popOutCompose(to || \"\", subject || \"\", body || \"\", false)") !== -1)
+            "root.popOutCompose(to || \"\", subject || \"\", body || \"\", false, replyTo)") !== -1)
     }
     function test_draft_recipients_keep_quoted_commas() {
         var source = new XMLHttpRequest()
@@ -37,7 +37,7 @@ TestCase {
         var source = new XMLHttpRequest()
         source.open("GET", "qrc:/qml/pages/EmailDetail.qml", false)
         source.send()
-        verify(source.responseText.indexOf('root.folder === "Drafts" && root.hasProtectedMessage && root.email.pgpState === 1') !== -1)
+        verify(source.responseText.indexOf('root.folder === MailApp.draftsFolder && root.hasProtectedMessage && root.email.pgpState === 1') !== -1)
         for (var root of ["DesktopRoot", "MobileRoot"]) {
             source.open("GET", "qrc:/qml/" + root + ".qml", false)
             source.send()
@@ -45,5 +45,31 @@ TestCase {
             verify(source.responseText.indexOf("onDraftRequested: function (draft)") !== -1)
             verify(source.responseText.indexOf("restoredDraft:") !== -1)
         }
+    }
+
+    // A reply's reference must survive every route into Compose, or the
+    // reply silently starts a new thread.
+    function test_reply_reference_reaches_the_send() {
+        var source = new XMLHttpRequest()
+        source.open("GET", "qrc:/qml/DesktopRoot.qml", false)
+        source.send()
+        var desktop = source.responseText
+        compare(desktop.split("onComposeRequested: function (to, subject, body, replyTo) { root.openCompose(to, subject, body, replyTo) }").length, 3)
+        verify(desktop.indexOf("replyTo: root.composeSeed.replyTo || ({})") !== -1)
+        verify(desktop.indexOf("replyTo: composeWindow.popReplyTo") !== -1)
+        verify(desktop.indexOf("root.popOutCompose(to, subject, body, bodyIsHtml, replyTo)") !== -1)
+        source.open("GET", "qrc:/qml/MobileRoot.qml", false)
+        source.send()
+        verify(source.responseText.indexOf("initialBody: body, replyTo: replyTo }") !== -1)
+        verify(source.responseText.indexOf("replyTo: composePage.replyTo") !== -1)
+        source.open("GET", "qrc:/qml/pages/Compose.qml", false)
+        source.send()
+        verify(source.responseText.indexOf('root.replyTo.messageId || "", root.replyTo.mailbox || "",') !== -1)
+        // Another account's row id must never thread this account's mail.
+        verify(source.responseText.indexOf("function onPairingChanged() { root.replyTo = {} }") !== -1)
+        source.open("GET", "qrc:/qml/pages/EmailDetail.qml", false)
+        source.send()
+        compare(source.responseText.split("root.composeRequested(").length - 1, 3)
+        compare(source.responseText.split("root.replyReference())").length - 1, 2)
     }
 }

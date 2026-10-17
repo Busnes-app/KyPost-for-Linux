@@ -50,7 +50,7 @@ TestCase {
         verify(text.split("enabled: !MailApp.isBusy && !AppLock.locked").length === 3)
         verify(text.indexOf("if (root.email.bodyPending)\n                MailApp.loadSearchBody(root.folder, root.messageId)") !== -1)
         // A search hit with no readable body may be an encrypted draft.
-        verify(text.indexOf('root.folder === "Drafts" && root.email.pgpState === 0 && (!root.email.searchOnly || !!root.email.body)') !== -1)
+        verify(text.indexOf('root.folder === MailApp.draftsFolder && root.email.pgpState === 0 && (!root.email.searchOnly || !!root.email.body)') !== -1)
     }
 
     function test_compose_no_longer_claims_saving_makes_a_copy() {

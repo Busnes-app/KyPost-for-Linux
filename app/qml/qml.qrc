@@ -31,9 +31,11 @@
     <file>components/RichBodyEditor.qml</file>
     <file>components/HyperlinkDialog.qml</file>
     <file>components/CertificateChangeDialog.qml</file>
+    <file>components/LinkConfirmDialog.qml</file>
     <file>components/PickupFallbackDialog.qml</file>
     <file>components/NotificationFolderDialog.qml</file>
     <file>components/MoveToFolderDialog.qml</file>
+    <file>components/SnoozeDialog.qml</file>
     <file>components/FolderDialog.qml</file>
     <file>components/SendLaterDialog.qml</file>
     <file>pages/EmailDetail.qml</file>

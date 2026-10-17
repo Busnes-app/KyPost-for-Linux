@@ -30,7 +30,8 @@ Item {
     property bool isPoppedOut: false
 
     signal draftRequested(var draft)
-    signal composeRequested(string to, string subject, string body)
+    // replyTo: {messageId, mailbox} for Reply/Reply All, {} for Forward.
+    signal composeRequested(string to, string subject, string body, var replyTo)
     signal actionCompleted(string action) // action: "archive" | "junk" | "delete" | "move"
     // Detach into a standalone top-level window (Desktop mode only -- see
     // the pop-out IconButton below, gated on General.isDesktopMode). The
@@ -231,6 +232,8 @@ Item {
         }
         root.email = MailApp.findByMessageId(root.messageId, root.folder)
         root.unread = root.email.status === "unread"
+        // Reply All leaves these out; fetched once per pairing.
+        MailApp.loadAccountAddresses()
         // A search hit this device has not synced: its body arrives later
         // through onSearchBodyLoaded.
         if (root.email.bodyPending)
@@ -271,13 +274,9 @@ Item {
         return Format.addressFromHeader(raw)
     }
 
-    // Splits a comma/semicolon-joined address-list string (Email.sentTo/.cc
-    // wire format, see RelayMailSource.h) into trimmed, non-empty parts.
-    function splitAddresses(raw) {
-        if (!raw)
-            return []
-        return raw.split(/[,;]/).map(function (s) { return s.trim() })
-                   .filter(function (s) { return s.length > 0 })
+    // The answered message, so the relay can thread the reply.
+    function replyReference() {
+        return { messageId: root.messageId, mailbox: root.folder }
     }
 
     // Prepends "<prefix> " unless `subject` already starts with `prefix`
@@ -476,7 +475,7 @@ Item {
                 objectName: "editProtectedDraft"
                 icon: "document-edit"
                 tooltip: i18n("Edit draft")
-                visible: root.folder === "Drafts" && root.hasProtectedMessage && root.email.pgpState === 1
+                visible: root.folder === MailApp.draftsFolder && root.hasProtectedMessage && root.email.pgpState === 1
                 enabled: !MailApp.isBusy && !AppLock.locked
                 onClicked: {
                     const draft = MailApp.reopenDecryptedDraft(MailApp.decryptedToken)
@@ -488,7 +487,7 @@ Item {
                 objectName: "editDraft"
                 icon: "document-edit"
                 tooltip: i18n("Edit draft")
-                visible: root.folder === "Drafts" && root.email.pgpState === 0 && (!root.email.searchOnly || !!root.email.body)
+                visible: root.folder === MailApp.draftsFolder && root.email.pgpState === 0 && (!root.email.searchOnly || !!root.email.body)
                 enabled: !MailApp.isBusy && !AppLock.locked
                 onClicked: {
                     const draft = MailApp.reopenDraft(root.folder, root.messageId)
@@ -505,7 +504,7 @@ Item {
                     const to = root.extractAddress(root.email.sender)
                     const subject = root.withPrefix(root.displaySubject, "Re:")
                     const body = "\n\n" + i18n("%1 wrote:", root.email.sender) + "\n" + root.email.preview
-                    root.composeRequested(to, subject, body)
+                    root.composeRequested(to, subject, body, root.replyReference())
                 }
             }
             IconButton {
@@ -513,21 +512,10 @@ Item {
                 tooltip: i18n("Reply All")
                 enabled: !MailApp.isBusy
                 onClicked: {
-                    const addrs = [root.extractAddress(root.email.sender)]
-                        .concat(root.splitAddresses(root.email.sentTo).map(root.extractAddress))
-                        .concat(root.splitAddresses(root.email.cc).map(root.extractAddress))
-                    const seen = {}
-                    const deduped = []
-                    for (let i = 0; i < addrs.length; i++) {
-                        const a = addrs[i]
-                        if (a.length > 0 && !seen[a]) {
-                            seen[a] = true
-                            deduped.push(a)
-                        }
-                    }
+                    const to = MailApp.replyAllRecipients(root.email.sender || "", root.email.sentTo || "", root.email.cc || "")
                     const subject = root.withPrefix(root.displaySubject, "Re:")
                     const body = "\n\n" + i18n("%1 wrote:", root.email.sender) + "\n" + root.email.preview
-                    root.composeRequested(deduped.join(", "), subject, body)
+                    root.composeRequested(to.join(", "), subject, body, root.replyReference())
                 }
             }
             IconButton {
@@ -540,7 +528,7 @@ Item {
                         + "\n" + i18n("From: %1", root.email.sender)
                         + "\n" + i18n("Subject: %1", root.displaySubject)
                         + "\n\n" + root.email.preview
-                    root.composeRequested("", subject, body)
+                    root.composeRequested("", subject, body, ({}))
                 }
             }
             IconButton {
@@ -565,6 +553,17 @@ Item {
                 // left behind by a folder switch must not offer it.
                 enabled: !MailApp.isBusy && root.folder === MailApp.currentFolder
                 onClicked: moveDialog.open([root.messageId], root.folder, MailApp.mailFolders())
+            }
+            IconButton {
+                // In Snoozed, snoozing again would only move the wake time,
+                // so the button wakes it instead. Same folder rule as Move.
+                objectName: "snooze"
+                readonly property bool inSnoozed: root.folder === MailApp.snoozedFolder
+                icon: inSnoozed ? "edit-undo" : "chronometer"
+                tooltip: inSnoozed ? i18n("Unsnooze") : i18n("Snooze…")
+                enabled: !MailApp.isBusy && root.folder === MailApp.currentFolder
+                onClicked: inSnoozed ? MailApp.unsnoozeEmails([root.messageId])
+                                     : snoozeDialog.open([root.messageId], MailApp.snoozePresets())
             }
             IconButton {
                 icon: "mail-mark-junk"
@@ -975,10 +974,30 @@ Item {
                         // phishing wearing the trusted UI. Every other
                         // scheme the session happens to have a handler for
                         // was reachable the same way.
-                        if (root.isExternallyOpenable(request.url))
-                            Qt.openUrlExternally(request.url)
-                        else
+                        if (!root.isExternallyOpenable(request.url)) {
                             root.blockedLinkScheme = Format.urlScheme(request.url)
+                            return
+                        }
+                        if (Format.urlScheme(request.url) === "mailto") {
+                            Qt.openUrlExternally(request.url)
+                            return
+                        }
+                        // A web link opens only from the confirm dialog. The
+                        // link text comes from an isolated-world script (the
+                        // sender's own JS stays off) and is advisory: the
+                        // dialog's host is parsed from request.url alone, and
+                        // that parse is what opens.
+                        const clicked = request.url
+                        const messageId = root.messageId
+                        runJavaScript(MailApp.linkAnchorScript(), WebEngineScript.ApplicationWorld, function (anchors) {
+                            if (root.messageId !== messageId)
+                                return
+                            const target = MailApp.linkTarget(clicked, anchors || [])
+                            if (target.host)
+                                linkConfirmDialog.show(target, phishingBanner.flagged)
+                            else
+                                root.blockedLinkScheme = Format.urlScheme(clicked)
+                        })
                         return
                     }
                     if (awaitingInitialLoad) {
@@ -1086,6 +1105,11 @@ Item {
         onTriggered: root.attachmentStatus = ""
     }
 
+    LinkConfirmDialog {
+        id: linkConfirmDialog
+        onOpenRequested: function (url) { Qt.openUrlExternally(url) }
+    }
+
     // Hosted here, not by the root, so a pop-out window's picker opens in
     // that window. The move's outcome arrives as actionCompleted("move").
     MoveToFolderDialog {
@@ -1094,6 +1118,16 @@ Item {
         z: 900
         onChosen: function (messageIds, folder) {
             MailApp.moveEmails(messageIds, folder)
+        }
+    }
+
+    SnoozeDialog {
+        id: snoozeDialog
+        anchors.fill: parent
+        z: 900
+        parseCustom: function (date, time) { return MailApp.snoozeCustomTime(date, time) }
+        onChosen: function (messageIds, at) {
+            MailApp.snoozeEmails(messageIds, at)
         }
     }
 }

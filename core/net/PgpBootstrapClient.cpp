@@ -51,5 +51,10 @@ PgpBootstrapResult PgpBootstrapClient::fetch(const QUrl& serverBaseUrl, const Re
     const QJsonArray userIds = obj.value(QStringLiteral("suggestedUserIDs")).toArray();
     if (!userIds.isEmpty())
         out.primaryAddress = userIds.first().toString().trimmed();
+    for (const QJsonValue& userId : userIds) {
+        const QString address = userId.toString().trimmed();
+        if (!address.isEmpty())
+            out.addresses.append(address);
+    }
     return out;
 }

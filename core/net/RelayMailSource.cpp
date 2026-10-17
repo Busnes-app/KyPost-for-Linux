@@ -243,7 +243,8 @@ InboxFetchResult RelayMailSource::fetchInbox(const QUrl& serverBaseUrl, const Re
 
 ActionResult RelayMailSource::performAction(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& action,
                                              const QStringList& messageIds, const QString& mailbox,
-                                             const std::optional<QString>& targetMailbox) const
+                                             const std::optional<QString>& targetMailbox,
+                                             const std::optional<QDateTime>& wakeAt) const
 {
     QJsonObject body;
     body[QStringLiteral("action")] = action;
@@ -251,6 +252,8 @@ ActionResult RelayMailSource::performAction(const QUrl& serverBaseUrl, const Rel
     body[QStringLiteral("mailbox")] = mailbox;
     if (targetMailbox.has_value())
         body[QStringLiteral("targetMailbox")] = *targetMailbox;
+    if (wakeAt.has_value())
+        body[QStringLiteral("wakeAt")] = wakeAt->toUTC().toString(Qt::ISODate);
 
     const HttpClient::HttpResult result = m_httpClient.post(
         joinUrlPath(serverBaseUrl, QStringLiteral("api/inbox/actions")), {}, body, auth.headerItems());
@@ -287,7 +290,8 @@ SendMailResult RelayMailSource::sendMail(const QUrl& serverBaseUrl, const RelayA
                                           const QString& cc, const QString& bcc, const QString& subject,
                                           const QString& body, const QString& mode,
                                           const QVector<MailAttachmentUpload>& attachments, bool sign, bool encrypt,
-                                          bool allowPickupFallback, const QDateTime& sendAt) const
+                                          bool allowPickupFallback, const QString& replyToMessageId,
+                                          const QString& replyToMailbox, const QDateTime& sendAt) const
 {
     QJsonObject requestBody = mailRequestBody(to, cc, bcc, subject, body, mode, attachments);
     // Inserted here rather than inside mailRequestBody() because saveDraft()
@@ -297,6 +301,11 @@ SendMailResult RelayMailSource::sendMail(const QUrl& serverBaseUrl, const RelayA
     requestBody.insert(QStringLiteral("allowPickupFallback"), allowPickupFallback);
     if (sendAt.isValid())
         requestBody.insert(QStringLiteral("sendAt"), sendAtWireValue(sendAt));
+    const bool threaded = !replyToMessageId.isEmpty();
+    if (threaded) {
+        requestBody.insert(QStringLiteral("replyToMessageId"), replyToMessageId);
+        requestBody.insert(QStringLiteral("replyToMailbox"), replyToMailbox);
+    }
 
     const HttpClient::HttpResult result = m_httpClient.post(
         joinUrlPath(serverBaseUrl, QStringLiteral("api/mail/send")), {}, requestBody, auth.headerItems());
@@ -304,6 +313,19 @@ SendMailResult RelayMailSource::sendMail(const QUrl& serverBaseUrl, const RelayA
     SendMailResult out;
     if (result.error.has_value()) {
         out.error = result.error;
+
+        // http.Error bodies: plain text plus a newline.
+        static const QList<QPair<int, QByteArray>> threadingRefusals{
+            { 400, "invalid replyToMessageId; refresh the mailbox" },
+            { 400, "invalid replyToMailbox" },
+            { 404, "the message being replied to was not found; nothing was sent" },
+            { 502, "could not read the message being replied to; nothing was sent" },
+        };
+        if (threaded && threadingRefusals.contains({ result.statusCode, result.body.trimmed() })) {
+            out.replyThreadingRefused = true;
+            out.detail = QString::fromUtf8(result.body.trimmed());
+            return out;
+        }
 
         // The backend's failures carry a human-readable `error` string in a
         // JSON body; HttpClient only fills `detail` for transport-level
