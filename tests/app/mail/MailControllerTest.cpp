@@ -3758,7 +3758,9 @@ void MailControllerTest::aLockedOrSearchingAppLoadsNoOlderMail()
 void MailControllerTest::anOlderPageForAFolderNoLongerOpenIsKeptButNotShown()
 {
     FakeRelayServer fake(httpResponse(200, "OK", R"({"tabs":[],"byTab":{}})"));
-    fake.setResponseForPath("before=", inboxRows({ 5 }));
+    fake.setResponseForPath("before=", httpResponse(200, "OK",
+        R"({"tabs":["Uncategorized"],"byTab":{"Uncategorized":[{"messageId":"5","subject":"Old","status":"unread",)"
+        R"("atUtc":"2026-07-15T00:00:00Z"}]},"hasMore":false})"));
     RefreshFixture f(fake.port());
     holdRow(f.emailDao, QStringLiteral("INBOX"), QStringLiteral("9"), false, QStringLiteral("b"));
     auto* model = qobject_cast<EmailListModel*>(f.controller.emailModel());
@@ -3770,6 +3772,8 @@ void MailControllerTest::anOlderPageForAFolderNoLongerOpenIsKeptButNotShown()
     QCOMPARE(requestsMatching(fake, "before=9&"), 1);
     QVERIFY(f.emailDao.findById(QStringLiteral("INBOX"), QStringLiteral("5")).has_value());
     QCOMPARE(model->rowCount(), 0);
+    // Not shown, but counted.
+    QCOMPARE(f.controller.unreadCounts().value(QStringLiteral("INBOX")).toInt(), 1);
 }
 
 void MailControllerTest::anOlderRowFetchesItsBodyWhenOpenedAndKeepsIt()

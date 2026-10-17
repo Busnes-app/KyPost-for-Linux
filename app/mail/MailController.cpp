@@ -474,6 +474,8 @@ void MailController::loadOlder()
             // Stored under plan.folder; the list always shows currentFolder.
             if (plan.folder == m_currentFolder)
                 reloadCurrentFolder();
+            else
+                recountUnread();
         });
 }
 
