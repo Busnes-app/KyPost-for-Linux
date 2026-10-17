@@ -2847,7 +2847,8 @@ void MailControllerTest::refreshFoldersPlacesALocalizedSentAndDraftsByRole()
         paths << v.toMap().value(QStringLiteral("wireName")).toString();
     QCOMPARE(paths, (QStringList{ QStringLiteral("INBOX"), QStringLiteral("INBOX.Entw&APw-rfe"),
                                   QStringLiteral("Junk"), QStringLiteral("INBOX.Gesendet"),
-                                  QStringLiteral("Trash"), QStringLiteral("Archive") }));
+                                  QStringLiteral("Trash"), QStringLiteral("Archive"),
+                                  QStringLiteral("Snoozed") }));
     QCOMPARE(f.controller.draftsFolder(), QStringLiteral("INBOX.Entw&APw-rfe"));
     QCOMPARE(f.controller.archiveFolder(), QStringLiteral("Archive"));
 }
