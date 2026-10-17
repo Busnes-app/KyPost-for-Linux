@@ -434,7 +434,7 @@ void MailController::loadOlder()
             }
             if (!outcome.more)
                 m_olderExhausted.insert(exhaustedKey, outcome.endsAt);
-            // Written under its own folder either way; shown only if still open.
+            // Stored under plan.folder; the list always shows currentFolder.
             if (plan.folder == m_currentFolder)
                 reloadCurrentFolder();
         });
