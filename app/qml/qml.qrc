@@ -34,6 +34,7 @@
     <file>components/PickupFallbackDialog.qml</file>
     <file>components/NotificationFolderDialog.qml</file>
     <file>components/MoveToFolderDialog.qml</file>
+    <file>components/SnoozeDialog.qml</file>
     <file>components/FolderDialog.qml</file>
     <file>pages/EmailDetail.qml</file>
     <file>pages/Unlock.qml</file>

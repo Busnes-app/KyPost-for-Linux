@@ -65,6 +65,13 @@ TestCase {
         compare(chosenSpy.count, 0)
     }
 
+    // Mail moved into Snoozed has no wake time and would never come back.
+    function test_snoozed_is_never_a_target() {
+        dialog.open(["m-1"], "INBOX", testCase.folders.concat([{ wireName: "Snoozed", displayName: "Snoozed", depth: 0 }]))
+
+        compare(dialog.folders.map(f => f.wireName), ["Archive", "Archive/Projects", "Archive/Projects/2026"])
+    }
+
     function test_nested_folders_are_offered_with_their_depth() {
         dialog.open(["m-1"], "Archive/Projects", testCase.folders)
 

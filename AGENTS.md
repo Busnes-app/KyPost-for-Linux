@@ -238,6 +238,14 @@ Added 2026-07-25 (parity work with `kypost-android`):
   every query key and value: `addQueryItem` alone sent `+` bare (Go reads a
   space) and passed `%XX` through.
 
+- **Snooze (plan item L9, 2026-10-17).** `snooze` on `/api/inbox/actions` with
+  `wakeAt` (whole-second UTC RFC 3339). Presets and the typed time live in
+  `core/domain/Snooze.cpp`, read in the local zone and kept between 1 minute and
+  365 days ahead; `MailController::snoozeEmails` refuses anything else before a
+  request. `Snoozed` is matched by exact name (the relay gives it no role) and
+  is never a Move target. There is no unsnooze verb: `unsnoozeEmails` is a move
+  from Snoozed to INBOX, and refuses from any other folder.
+
 - **Biometric unlock and window-content protection are non-goals** — no
   portable Linux equivalent (no `FLAG_SECURE` analogue on Wayland).
 

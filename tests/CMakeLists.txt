@@ -107,6 +107,7 @@ kypost_add_test(GroupsRepositoryTest core/domain/GroupsRepositoryTest.cpp)
 kypost_add_test(ContactPhotoRepositoryTest core/domain/ContactPhotoRepositoryTest.cpp)
 kypost_add_test(PushRepositoryTest core/domain/PushRepositoryTest.cpp)
 kypost_add_test(MfaChallengeTrackerTest core/domain/MfaChallengeTrackerTest.cpp)
+kypost_add_test(SnoozeTest core/domain/SnoozeTest.cpp)
 kypost_add_test(TransportStateMachineTest core/domain/TransportStateMachineTest.cpp)
 kypost_add_test(PgpQrRepositoryTest core/domain/PgpQrRepositoryTest.cpp)
 

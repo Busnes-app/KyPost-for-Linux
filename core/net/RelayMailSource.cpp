@@ -216,7 +216,8 @@ InboxFetchResult RelayMailSource::fetchInbox(const QUrl& serverBaseUrl, const Re
 
 ActionResult RelayMailSource::performAction(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& action,
                                              const QStringList& messageIds, const QString& mailbox,
-                                             const std::optional<QString>& targetMailbox) const
+                                             const std::optional<QString>& targetMailbox,
+                                             const std::optional<QDateTime>& wakeAt) const
 {
     QJsonObject body;
     body[QStringLiteral("action")] = action;
@@ -224,6 +225,8 @@ ActionResult RelayMailSource::performAction(const QUrl& serverBaseUrl, const Rel
     body[QStringLiteral("mailbox")] = mailbox;
     if (targetMailbox.has_value())
         body[QStringLiteral("targetMailbox")] = *targetMailbox;
+    if (wakeAt.has_value())
+        body[QStringLiteral("wakeAt")] = wakeAt->toUTC().toString(Qt::ISODate);
 
     const HttpClient::HttpResult result = m_httpClient.post(
         joinUrlPath(serverBaseUrl, QStringLiteral("api/inbox/actions")), {}, body, auth.headerItems());

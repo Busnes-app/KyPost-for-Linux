@@ -70,6 +70,11 @@ private slots:
     void moveEmailsSendsTheTargetMailboxAndDropsTheRow();
     void aRefusedMoveKeepsTheRowAndReportsWhy();
     void aMoveThatLandsAfterAFolderSwitchLeavesTheNewFolderAlone();
+    void snoozeEmailsSendsWakeAtAndDropsTheRow();
+    void snoozeEmailsRefusesATimeOutsideTheWindowWithoutARequest();
+    void unsnoozeIsAMoveFromSnoozedToInbox();
+    void unsnoozeOutsideSnoozedSendsNothing();
+    void mailFoldersListsSnoozedLast();
     void refreshFoldersWalksTheArchiveTree();
     void refreshFoldersStopsAtTheDepthCap();
     void mailFoldersShowsNoDeeperThanTheCap();
@@ -2655,6 +2660,121 @@ void MailControllerTest::aMoveThatLandsAfterAFolderSwitchLeavesTheNewFolderAlone
     QCOMPARE(rowsWhenDone, 2);
 }
 
+// snooze.go: {action:"snooze", messageIds, mailbox, wakeAt}. The relay moves
+// the message to Snoozed, so the row leaves the folder like a move.
+void MailControllerTest::snoozeEmailsSendsWakeAtAndDropsTheRow()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", kTwoMessageInbox));
+    RefreshFixture f(fake.port());
+
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    auto* model = qobject_cast<EmailListModel*>(f.controller.emailModel());
+    QCOMPARE(model->rowCount(), 2);
+
+    fake.setResponse(httpResponse(
+        200, "OK", R"({"ok":true,"action":"snooze","processed":1,"failed":[],"targetMailbox":""})"));
+
+    const QDateTime wakeAt = QDateTime::currentDateTimeUtc().addDays(1);
+    QSignalSpy doneSpy(&f.controller, &MailController::actionCompleted);
+    f.controller.snoozeEmails({ QStringLiteral("m1") }, wakeAt);
+    QTRY_VERIFY_WITH_TIMEOUT(doneSpy.count() == 1, 10000);
+    f.executor.shutdown();
+
+    QCOMPARE(doneSpy.at(0).at(0).toString(), QStringLiteral("snooze"));
+    QCOMPARE(doneSpy.at(0).at(2).toBool(), true);
+
+    const QJsonObject body = jsonBodyOf(fake.receivedRequests().last());
+    QCOMPARE(body.value(QStringLiteral("action")).toString(), QStringLiteral("snooze"));
+    QCOMPARE(body.value(QStringLiteral("mailbox")).toString(), QStringLiteral("INBOX"));
+    QCOMPARE(body.value(QStringLiteral("messageIds")).toArray(), QJsonArray{ QStringLiteral("m1") });
+    QCOMPARE(body.value(QStringLiteral("wakeAt")).toString(), wakeAt.toString(Qt::ISODate));
+    QVERIFY(!body.contains(QStringLiteral("targetMailbox")));
+
+    QCOMPARE(model->rowCount(), 1);
+    QCOMPARE(model->emailAt(0).messageId, QStringLiteral("m2"));
+}
+
+// The relay would answer 400; refusing here keeps the row and says why
+// without a round trip. A picker left open past its time lands here.
+void MailControllerTest::snoozeEmailsRefusesATimeOutsideTheWindowWithoutARequest()
+{
+    FakeRelayServer fake(httpResponse(
+        200, "OK", R"({"ok":true,"action":"snooze","processed":1,"failed":[],"targetMailbox":""})"));
+    RefreshFixture f(fake.port());
+    QSignalSpy doneSpy(&f.controller, &MailController::actionCompleted);
+
+    f.controller.snoozeEmails({ QStringLiteral("m1") }, QDateTime::currentDateTime().addSecs(-60));
+    f.controller.snoozeEmails({ QStringLiteral("m1") }, QDateTime::currentDateTime().addDays(400));
+    f.controller.snoozeEmails({ QStringLiteral("m1") }, QDateTime());
+    QTest::qWait(300);
+
+    QCOMPARE(fake.connectionCount(), 0);
+    QCOMPARE(doneSpy.count(), 3);
+    for (const QList<QVariant>& args : doneSpy) {
+        QCOMPARE(args.at(0).toString(), QStringLiteral("snooze"));
+        QCOMPARE(args.at(2).toBool(), false);
+    }
+    QVERIFY(!f.controller.lastError().isEmpty());
+}
+
+// No unsnooze verb on the relay: a move out of Snoozed is the unsnooze, and
+// its wake record is dropped at the old wake time (processor/snooze.go).
+void MailControllerTest::unsnoozeIsAMoveFromSnoozedToInbox()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", kTwoMessageInbox));
+    RefreshFixture f(fake.port());
+
+    f.controller.selectFolder(QStringLiteral("Snoozed"));
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    auto* model = qobject_cast<EmailListModel*>(f.controller.emailModel());
+    QCOMPARE(model->rowCount(), 2);
+
+    fake.setResponse(httpResponse(
+        200, "OK", R"({"ok":true,"action":"move","processed":1,"failed":[],"targetMailbox":"INBOX"})"));
+    QSignalSpy doneSpy(&f.controller, &MailController::actionCompleted);
+    f.controller.unsnoozeEmails({ QStringLiteral("m1") });
+    QTRY_VERIFY_WITH_TIMEOUT(doneSpy.count() == 1, 10000);
+    f.executor.shutdown();
+
+    QCOMPARE(doneSpy.at(0).at(0).toString(), QStringLiteral("move"));
+    QCOMPARE(doneSpy.at(0).at(2).toBool(), true);
+    const QJsonObject body = jsonBodyOf(fake.receivedRequests().last());
+    QCOMPARE(body.value(QStringLiteral("action")).toString(), QStringLiteral("move"));
+    QCOMPARE(body.value(QStringLiteral("mailbox")).toString(), QStringLiteral("Snoozed"));
+    QCOMPARE(body.value(QStringLiteral("targetMailbox")).toString(), QStringLiteral("INBOX"));
+    QVERIFY(!body.contains(QStringLiteral("wakeAt")));
+    QCOMPARE(model->rowCount(), 1);
+}
+
+void MailControllerTest::unsnoozeOutsideSnoozedSendsNothing()
+{
+    FakeRelayServer fake(httpResponse(
+        200, "OK", R"({"ok":true,"action":"move","processed":1,"failed":[],"targetMailbox":"INBOX"})"));
+    RefreshFixture f(fake.port());
+    QSignalSpy doneSpy(&f.controller, &MailController::actionCompleted);
+
+    QCOMPARE(f.controller.currentFolder(), QStringLiteral("INBOX"));
+    f.controller.unsnoozeEmails({ QStringLiteral("m1") });
+    QTest::qWait(300);
+
+    QCOMPARE(fake.connectionCount(), 0);
+    QCOMPARE(doneSpy.count(), 1);
+    QCOMPARE(doneSpy.at(0).at(2).toBool(), false);
+}
+
+void MailControllerTest::mailFoldersListsSnoozedLast()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", "{}"));
+    RefreshFixture f(fake.port());
+
+    const QVariantMap last = f.controller.mailFolders().last().toMap();
+    QCOMPARE(last.value(QStringLiteral("wireName")).toString(), QStringLiteral("Snoozed"));
+    QCOMPARE(last.value(QStringLiteral("depth")).toInt(), 0);
+    QCOMPARE(last.value(QStringLiteral("deletable")).toBool(), false);
+    QCOMPARE(f.controller.snoozedFolder(), QStringLiteral("Snoozed"));
+}
+
 void MailControllerTest::refreshFoldersWalksTheArchiveTree()
 {
     FakeRelayServer fake(folderListing("", "[]"));
@@ -2683,8 +2803,8 @@ void MailControllerTest::refreshFoldersWalksTheArchiveTree()
     }
     const qsizetype archive = paths.indexOf(QStringLiteral("Archive"));
     QVERIFY(archive >= 0);
-    QCOMPARE(paths.mid(archive), (QStringList{ QStringLiteral("Archive"), QStringLiteral("Archive/a"), QStringLiteral("Archive/a/b") }));
-    QCOMPARE(depths.mid(archive), (QList<int>{ 0, 1, 2 }));
+    QCOMPARE(paths.mid(archive, 3), (QStringList{ QStringLiteral("Archive"), QStringLiteral("Archive/a"), QStringLiteral("Archive/a/b") }));
+    QCOMPARE(depths.mid(archive, 3), (QList<int>{ 0, 1, 2 }));
 }
 
 // A relay that answers every listing with a child must not walk forever.
@@ -2761,11 +2881,12 @@ void MailControllerTest::aLockedAppSendsNoMailboxAction()
     f.controller.deleteEmails({ QStringLiteral("m1") });
     f.controller.markSpam({ QStringLiteral("m1") });
     f.controller.moveEmails({ QStringLiteral("m1") }, QStringLiteral("Archive"));
+    f.controller.snoozeEmails({ QStringLiteral("m1") }, QDateTime::currentDateTime().addDays(1));
     QVERIFY(!f.controller.isBusy());
     // Give a dispatched request every chance to arrive before saying none did.
     QTest::qWait(300);
     QCOMPARE(fake.connectionCount(), 0);
-    QCOMPARE(doneSpy.count(), 4);
+    QCOMPARE(doneSpy.count(), 5);
     for (const QList<QVariant>& args : doneSpy)
         QCOMPARE(args.at(2).toBool(), false);
     QVERIFY(f.controller.lastError().isEmpty());

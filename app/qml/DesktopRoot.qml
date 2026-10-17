@@ -1297,6 +1297,13 @@ Kirigami.ApplicationWindow {
                                     onTriggered: moveDialog.open([model.messageId], model.folder, MailApp.mailFolders())
                                 }
                                 MenuItem {
+                                    readonly property bool inSnoozed: model.folder === MailApp.snoozedFolder
+                                    text: inSnoozed ? i18n("Unsnooze") : i18n("Snooze…")
+                                    enabled: !MailApp.isBusy
+                                    onTriggered: inSnoozed ? MailApp.unsnoozeEmails([model.messageId])
+                                                           : snoozeDialog.open([model.messageId], MailApp.snoozePresets())
+                                }
+                                MenuItem {
                                     text: i18n("Delete")
                                     // Fire and forget -- the detail pane is
                                     // closed by root's own onActionCompleted
@@ -1532,6 +1539,16 @@ Kirigami.ApplicationWindow {
         z: 900
         onChosen: function (messageIds, folder) {
             MailApp.moveEmails(messageIds, folder)
+        }
+    }
+
+    SnoozeDialog {
+        id: snoozeDialog
+        anchors.fill: parent
+        z: 900
+        parseCustom: function (date, time) { return MailApp.snoozeCustomTime(date, time) }
+        onChosen: function (messageIds, at) {
+            MailApp.snoozeEmails(messageIds, at)
         }
     }
 
