@@ -35,6 +35,7 @@
     <file>components/NotificationFolderDialog.qml</file>
     <file>components/MoveToFolderDialog.qml</file>
     <file>components/FolderDialog.qml</file>
+    <file>components/SendLaterDialog.qml</file>
     <file>pages/EmailDetail.qml</file>
     <file>pages/Unlock.qml</file>
     <file>pages/MfaApproval.qml</file>
@@ -43,6 +44,7 @@
     <file>pages/ContactDetail.qml</file>
     <file>pages/Pairing.qml</file>
     <file>pages/Settings.qml</file>
+    <file>pages/ScheduledList.qml</file>
     <file>pages/PgpMyQrCode.qml</file>
     <file>pages/PgpScanContactKey.qml</file>
   </qresource>

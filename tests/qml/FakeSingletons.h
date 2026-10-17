@@ -3,6 +3,8 @@
 #include <QColor>
 #include <QDateTime>
 #include <QStringList>
+#include <QVariantList>
+#include <QVariantMap>
 #include <QObject>
 #include <QQmlEngine>
 #include <QString>
@@ -287,8 +289,50 @@ private:
     int m_searchClears = 0;
 };
 
+// Fixed presets and a customTime that accepts only "2030-01-02 10:00"; the
+// real rules are tested in C++.
+class FakeScheduled : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(QVariantList items MEMBER m_items NOTIFY changed)
+    Q_PROPERTY(bool busy MEMBER m_busy NOTIFY changed)
+    Q_PROPERTY(QString message MEMBER m_message NOTIFY changed)
+    Q_PROPERTY(QString lastCancelled MEMBER m_lastCancelled NOTIFY changed)
+
+public:
+    static constexpr qint64 kCustomMs = 1893578400000; // 2030-01-02 10:00 UTC
+
+    Q_INVOKABLE QVariantList presets() const
+    {
+        return { QVariantMap{ { QStringLiteral("label"), QStringLiteral("Tomorrow, 08:00") },
+                              { QStringLiteral("atMs"), qint64(1893484800000) } } };
+    }
+    Q_INVOKABLE qint64 customTime(const QString& date, const QString& time) const
+    {
+        return date == QStringLiteral("2030-01-02") && time == QStringLiteral("10:00") ? kCustomMs : 0;
+    }
+    Q_INVOKABLE void refresh() {}
+    Q_INVOKABLE void cancel(const QString& id)
+    {
+        m_lastCancelled = id;
+        emit changed();
+    }
+
+signals:
+    void changed();
+
+private:
+    QVariantList m_items;
+    bool m_busy = false;
+    QString m_message;
+    QString m_lastCancelled;
+};
+
 inline void registerFakeSingletons(QQmlEngine*)
 {
+    qmlRegisterSingletonType<FakeScheduled>(
+        "com.kysecurity.mail", 1, 0, "Scheduled",
+        [](QQmlEngine*, QJSEngine*) -> QObject* { return new FakeScheduled; });
     qmlRegisterSingletonType<FakeMailApp>(
         "com.kysecurity.mail", 1, 0, "MailApp",
         [](QQmlEngine*, QJSEngine*) -> QObject* { return new FakeMailApp; });

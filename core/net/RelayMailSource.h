@@ -4,6 +4,8 @@
 #include "net/NetworkError.h"
 
 #include <QByteArray>
+#include <QDateTime>
+#include <QJsonObject>
 #include <QMap>
 #include <QString>
 #include <QStringList>
@@ -132,6 +134,9 @@ struct SendMailResult
     // unrecoverable reason.
     bool pickupFallbackNeeded = false;
     QStringList keylessRecipients;
+
+    // Valid when the relay held the message for later (202) instead of sending.
+    QDateTime scheduledAt;
 };
 
 // POST /api/mail/draft response: {ok}. No sentSaved/warning -- the backend
@@ -197,6 +202,49 @@ struct MailBodyResult
     QString bodyMode;
 };
 
+// sendAt on the wire: RFC 3339 in UTC, whole seconds, what the relay's
+// parseSendAt reads.
+QString sendAtWireValue(const QDateTime& at);
+
+// The time a 202 {scheduled: true, sendAt} names; invalid for anything else.
+QDateTime scheduledAtOf(const QJsonObject& response);
+
+// One row of GET /api/scheduled. status is the relay's: scheduled (waiting),
+// sending, returning, returned, sent, queued, uncertain or failed. subject is
+// the placeholder for an encrypted message.
+struct ScheduledSend
+{
+    QString id;
+    QString status;
+    QString reason;
+    QDateTime sendAt;
+    QString subject;
+    QStringList to;
+
+    bool operator==(const ScheduledSend&) const = default;
+};
+
+struct ScheduledListResult
+{
+    std::optional<NetworkError> error;
+    QString detail;
+    // 404: a relay without scheduled send, which would send a sendAt now.
+    bool unsupported = false;
+    QVector<ScheduledSend> items;
+};
+
+// POST /api/scheduled/{id}/cancel. 200 is back in Drafts; 202 is canceled
+// with the Drafts copy still to be saved by the relay.
+struct CancelScheduledResult
+{
+    std::optional<NetworkError> error;
+    QString detail;
+    bool ok = false;
+    bool returned = false;
+    bool gone = false;    // 404, or an id that is not one of the relay's
+    bool claimed = false; // 409: already being sent
+};
+
 // Inbox fetch, inbox action, mail send, and attachment list/download calls
 // against the Relay backend's /api/inbox, /api/inbox/actions, /api/mail/
 // send, /api/mail/attachments, and /api/mail/attachment endpoints. sub/hash
@@ -239,7 +287,7 @@ public:
     SendMailResult sendMail(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& to, const QString& cc,
                              const QString& bcc, const QString& subject, const QString& body, const QString& mode,
                              const QVector<MailAttachmentUpload>& attachments, bool sign = false, bool encrypt = false,
-                             bool allowPickupFallback = false) const;
+                             bool allowPickupFallback = false, const QDateTime& sendAt = {}) const;
 
     // POST /api/mail/draft. When pgpDraft is supplied, only To and the complete
     // self-encrypted PGP/MIME message leave this process. The other arguments
@@ -273,6 +321,9 @@ public:
 
     MailBodyResult fetchBody(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& mailbox,
                               const QString& messageId) const;
+
+    ScheduledListResult listScheduled(const QUrl& serverBaseUrl, const RelayAuth& auth) const;
+    CancelScheduledResult cancelScheduled(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& id) const;
 
 private:
     HttpClient& m_httpClient;

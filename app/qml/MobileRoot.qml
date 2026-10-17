@@ -428,6 +428,19 @@ Kirigami.ApplicationWindow {
         }
     }
 
+    Component {
+        id: scheduledPageComponent
+        ThemedPage {
+            objectName: "scheduledPage"
+            title: i18n("Scheduled")
+
+            ScheduledList {
+                anchors.fill: parent
+                onClosed: root.safePop()
+            }
+        }
+    }
+
     function openSettingsPane(pane) {
         root.pageStack.push(settingsPageComponent, { "initialPane": pane })
     }
@@ -439,6 +452,10 @@ Kirigami.ApplicationWindow {
             Kirigami.Action {
                 text: i18n("Pair Device")
                 onTriggered: root.pageStack.push(pairingPageComponent)
+            },
+            Kirigami.Action {
+                text: i18n("Scheduled")
+                onTriggered: root.pageStack.push(scheduledPageComponent)
             },
             Kirigami.Action {
                 text: i18n("Settings")

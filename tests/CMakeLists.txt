@@ -91,6 +91,8 @@ kypost_add_test(PairingStoreTest core/domain/PairingStoreTest.cpp)
 kypost_add_test(DeviceRegistrationServiceTest core/domain/DeviceRegistrationServiceTest.cpp)
 kypost_add_test(MailRepositoryTest core/domain/MailRepositoryTest.cpp)
 kypost_add_test(FolderRepositoryTest core/domain/FolderRepositoryTest.cpp)
+# Scheduled send: the relay's sendAt window and the send-later presets.
+kypost_add_test(SendLaterTest core/domain/SendLaterTest.cpp)
 kypost_add_test(PairingStoreSealTest core/domain/PairingStoreSealTest.cpp)
 # The two data-destruction paths, which lived as untestable lambdas inside
 # main() until they were extracted into core/domain/LocalDataWipe.
@@ -315,6 +317,14 @@ kypost_add_app_test(WindowActivationTest
 # has no display at all -- without this the test aborts there and takes the
 # whole package build down with it, which is exactly how it was found.
 set_tests_properties(WindowActivationTest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# Scheduled send: presets, the held-mail list and cancel, against a fake relay.
+kypost_add_app_test(ScheduledControllerTest
+  SOURCES
+    app/mail/ScheduledControllerTest.cpp
+    ${CMAKE_SOURCE_DIR}/app/mail/ScheduledController.cpp
+  LIBS KF6::I18n
+)
 
 # Sign-in approval: lock gate, tapped digits, expiry, which paths may raise one.
 kypost_add_app_test(MfaControllerTest

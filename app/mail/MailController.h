@@ -226,8 +226,11 @@ public slots:
     // holds -- and it is the same token that already existed for the
     // pickup-fallback round trip, so the two mechanisms the old comment here
     // described separately are now one.
+    //
+    // sendAtMs (ms since the epoch, 0 = now) schedules it; see acceptSendAt().
     quint64 sendMail(const QString& to, const QString& cc, const QString& bcc, const QString& subject,
-                     const QString& body, const QStringList& attachmentFilePaths, bool sign, bool encrypt, const QString& draftToken = QString());
+                     const QString& body, const QStringList& attachmentFilePaths, bool sign, bool encrypt, const QString& draftToken = QString(),
+                     qint64 sendAtMs = 0);
     // Dispatches; the list arrives as attachmentsListed().
     void listAttachments(const QString& mailbox, const QString& messageId);
     // Writes the downloaded bytes to QStandardPaths::DownloadLocation,
@@ -295,10 +298,11 @@ public:
         enum class Failure {
             None, NotConfigured, RecipientWithoutKey, NoSigningKey, Cancelled,
             KeyImportRefused, EncryptionFailed, SendFailed, EngineUnavailable,
-            ServerEncryptsInstead, TooLarge
+            ServerEncryptsInstead, TooLarge, ScheduleUnavailable
         } failure = Failure::None;
         QStringList namedRecipients;
         QString detail;
+        QDateTime scheduledAt; // valid when the relay is holding it for later
     };
 
 public slots:
@@ -318,9 +322,14 @@ public slots:
     // carries one full copy of the message per delivery, and each blind-copied
     // recipient gets their own, so a file that is fine for one recipient can
     // put the request over the relay's cap with three.
+    //
+    // A scheduled send (sendAtMs) stays end-to-end encrypted: every delivery
+    // is dated sendAt and an encrypted copy rides along for Drafts. If that
+    // copy cannot be made, nothing is sent.
     Q_INVOKABLE quint64 sendClientEncrypted(const QString& to, const QString& cc, const QString& bcc,
                                              const QString& subject, const QString& body,
-                                             const QStringList& attachmentFilePaths, const QString& draftToken = QString());
+                                             const QStringList& attachmentFilePaths, const QString& draftToken = QString(),
+                                             qint64 sendAtMs = 0);
 
     // The notification tap-through entry point.
     //
@@ -635,6 +644,10 @@ private:
     // The half of downloadAttachment() that must stay on this thread.
     bool storeDownloadedAttachment(const QString& suggestedName, const DownloadAttachmentResult& result);
     void applyKeylessRecipients(const QStringList& keyless);
+    // sendAtMs 0 is now; otherwise it must be a time the relay accepts. False
+    // (lastError set) refuses the send before any work.
+    bool acceptSendAt(qint64 sendAtMs, QDateTime& sendAt);
+    void announceScheduled(const QDateTime& at);
 
     // These existed because the public entry points held a ReentrancyGuard
     // and several of them legitimately call each other (deleteFolder ->

@@ -4,6 +4,7 @@
 #include "mail/MailController.h"
 #include "mail/ProtectedImageHandler.h"
 #include "mail/RemoteContentInterceptor.h"
+#include "mail/ScheduledController.h"
 #include "pairing/MfaController.h"
 #include "pairing/PairingController.h"
 #include "pgp/PgpQrController.h"
@@ -1221,6 +1222,12 @@ int main(int argc, char* argv[])
                      [&mfaController]() { mfaController.clear(); });
     QObject::connect(&notificationDispatcher, &NotificationDispatcher::signInViewRequested, &mfaController,
                      &MfaController::show);
+
+    // Mail the relay holds for later; the list is the pairing's account's.
+    ScheduledController scheduledController(networkExecutor, pairingStore);
+    qmlRegisterSingletonInstance<ScheduledController>("com.kysecurity.mail", 1, 0, "Scheduled", &scheduledController);
+    QObject::connect(&pairingController, &PairingController::pairingChanged, &scheduledController,
+                     [&scheduledController]() { scheduledController.clear(); });
 
     // A decrypted message belongs to the account it was fetched for, and an
     // IMAP UID is not evidence of which account that was -- "5" exists again

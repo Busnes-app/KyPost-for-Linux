@@ -238,6 +238,15 @@ Added 2026-07-25 (parity work with `kypost-android`):
   every query key and value: `addQueryItem` alone sent `+` bare (Go reads a
   space) and passed `%XX` through.
 
+- **Scheduled send (plan item L10, 2026-10-17).** Before any `sendAt` request
+  the relay is asked `GET /api/scheduled`; a 404 means it would ignore
+  `sendAt` and send now, so nothing is sent. A client-encrypted scheduled send
+  carries a self-encrypted `draftCopy` (`buildEncryptedDraft`, the same bytes
+  Save Draft uploads) or is not sent; there is no plaintext fallback. A
+  scheduled plain send never caches the one-time-link re-send, which carries no
+  `sendAt`. The list and cancel are `ScheduledController` ("Scheduled"), scoped
+  to the pairing that asked.
+
 - **Biometric unlock and window-content protection are non-goals** — no
   portable Linux equivalent (no `FLAG_SECURE` analogue on Wayland).
 

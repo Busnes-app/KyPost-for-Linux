@@ -9,6 +9,7 @@
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QTest>
+#include <QTimeZone>
 
 namespace {
 
@@ -34,7 +35,8 @@ PgpSendPlan builtPlan(bool withSentCopy = true)
     return plan;
 }
 
-PgpSendResult sendAgainst(FakeRelayServer& fake, const PgpSendPlan& plan)
+PgpSendResult sendAgainst(FakeRelayServer& fake, const PgpSendPlan& plan, const QDateTime& sendAt = {},
+                          const QByteArray& draftCopy = {})
 {
     QNetworkAccessManager manager;
     HttpClient http(manager);
@@ -44,7 +46,7 @@ PgpSendResult sendAgainst(FakeRelayServer& fake, const PgpSendPlan& plan)
     const RelayAuth auth{ QStringLiteral("device-1"), QStringLiteral("secret-1") };
     return client.send(serverBaseUrl, auth, QStringLiteral("me@example.com"), plan,
                         { QStringLiteral("alice@example.com") }, { QStringLiteral("bob@example.com") },
-                        { QStringLiteral("carol@example.com") }, QStringLiteral("plain"));
+                        { QStringLiteral("carol@example.com") }, QStringLiteral("plain"), sendAt, draftCopy);
 }
 
 } // namespace
@@ -64,7 +66,48 @@ private slots:
     void aRequestOverTheRelaysLimitNeverGoesOnTheWire();
     void aPlainTextErrorBodyBecomesTheDetail();
     void anUndecodableResponseIsNotAnEmptySuccess();
+    void aScheduledSendCarriesItsTimeAndDraftCopy();
+    void anUnscheduledSendCarriesNeither();
+    void aScheduledSendWithoutADraftCopyNeverGoesOnTheWire();
 };
+
+void PgpSendClientTest::aScheduledSendCarriesItsTimeAndDraftCopy()
+{
+    FakeRelayServer fake(httpResponse(202, "Accepted",
+                                      R"({"scheduled":true,"id":"x","sendAt":"2026-10-18T06:00:00Z"})"));
+    const QDateTime at(QDate(2026, 10, 18), QTime(6, 0), QTimeZone::UTC);
+
+    const PgpSendResult result = sendAgainst(fake, builtPlan(), at, "DRAFT-COPY-CIPHERTEXT");
+
+    QVERIFY(result.ok);
+    QCOMPARE(result.scheduledAt, at);
+    const QJsonObject body = fake.receivedJsonBody();
+    QCOMPARE(body.value(QStringLiteral("sendAt")).toString(), QStringLiteral("2026-10-18T06:00:00Z"));
+    QCOMPARE(body.value(QStringLiteral("draftCopy")).toString(), QStringLiteral("DRAFT-COPY-CIPHERTEXT"));
+}
+
+void PgpSendClientTest::anUnscheduledSendCarriesNeither()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true,"sentSaved":true,"warning":""})"));
+
+    const PgpSendResult result = sendAgainst(fake, builtPlan());
+
+    QVERIFY(result.ok);
+    QVERIFY(!result.scheduledAt.isValid());
+    QVERIFY(!fake.receivedJsonBody().contains(QStringLiteral("sendAt")));
+    QVERIFY(!fake.receivedJsonBody().contains(QStringLiteral("draftCopy")));
+}
+
+void PgpSendClientTest::aScheduledSendWithoutADraftCopyNeverGoesOnTheWire()
+{
+    FakeRelayServer fake(httpResponse(202, "Accepted",
+                                      R"({"scheduled":true,"id":"x","sendAt":"2026-10-18T06:00:00Z"})"));
+
+    const PgpSendResult result = sendAgainst(fake, builtPlan(), QDateTime::currentDateTime().addDays(1));
+
+    QVERIFY(!result.ok);
+    QCOMPARE(fake.connectionCount(), 0);
+}
 
 void PgpSendClientTest::everyDeliveryReachesTheRelayWithItsOwnRecipients()
 {

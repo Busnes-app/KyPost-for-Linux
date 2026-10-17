@@ -11,6 +11,7 @@
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QTest>
+#include <QTimeZone>
 
 class RelayMailSourceTest : public QObject
 {
@@ -46,6 +47,18 @@ private slots:
     void searchMailRefusesUnsearchableQueriesWithoutARequest();
     void searchMailPassesHttpErrorsThrough();
     void fetchBodyReturnsBodyAndMode();
+
+    void sendAtTravelsAsUtcWholeSeconds();
+    void sendMailCarriesSendAtAndReadsTheHold();
+    void sendMailWithoutSendAtSendsNone();
+    void anUnaskedFor202IsNotASend();
+    void aPlainTextRefusalIsTheDetail();
+    void listScheduledMapsRows();
+    void listScheduledWithoutTheRouteIsUnsupported();
+    void cancelScheduledPostsToThatId();
+    void cancelScheduledTellsPendingFromReturned();
+    void cancelScheduledNamesGoneAndClaimed();
+    void cancelScheduledRefusesAnIdThatIsNotTheRelays();
 };
 
 void RelayMailSourceTest::oversizedEncryptedDraftNeverPosts()
@@ -743,6 +756,211 @@ void RelayMailSourceTest::fetchBodyReturnsBodyAndMode()
     QVERIFY(request.contains("mailbox=INBOX"));
     QVERIFY(request.contains("messageId=9"));
     QVERIFY(request.contains("X-Kypost-Device-Secret: s"));
+}
+
+namespace {
+
+const RelayAuth kAuth{ QStringLiteral("device-1"), QStringLiteral("secret-1") };
+
+QUrl baseOf(const FakeRelayServer& fake)
+{
+    return QUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port()));
+}
+
+SendMailResult sendAt(const FakeRelayServer& fake, RelayMailSource& source, const QDateTime& at)
+{
+    return source.sendMail(baseOf(fake), kAuth, QStringLiteral("a@example.com"), QString(), QString(),
+                           QStringLiteral("Hi"), QStringLiteral("Body"), QStringLiteral("html"), {},
+                           false, false, false, at);
+}
+
+} // namespace
+
+// parseSendAt reads RFC 3339; the relay compares instants, so the zone the user
+// picked in must come out as the same moment in UTC, without milliseconds.
+void RelayMailSourceTest::sendAtTravelsAsUtcWholeSeconds()
+{
+    const QDateTime berlinSummer(QDate(2026, 10, 17), QTime(14, 30, 5, 678), QTimeZone("Europe/Berlin"));
+    QCOMPARE(sendAtWireValue(berlinSummer), QStringLiteral("2026-10-17T12:30:05Z"));
+    const QDateTime berlinWinter(QDate(2026, 11, 2), QTime(8, 0), QTimeZone("Europe/Berlin"));
+    QCOMPARE(sendAtWireValue(berlinWinter), QStringLiteral("2026-11-02T07:00:00Z"));
+    const QDateTime newYork(QDate(2026, 12, 31), QTime(22, 0), QTimeZone("America/New_York"));
+    QCOMPARE(sendAtWireValue(newYork), QStringLiteral("2027-01-01T03:00:00Z"));
+}
+
+void RelayMailSourceTest::sendMailCarriesSendAtAndReadsTheHold()
+{
+    // scheduleSend's 202: no ok field.
+    FakeRelayServer fake(httpResponse(202, "Accepted",
+                                      R"({"scheduled":true,"id":"0b6e","sendAt":"2026-10-18T06:00:00Z"})"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+
+    const QDateTime at(QDate(2026, 10, 18), QTime(8, 0), QTimeZone("Europe/Berlin"));
+    const SendMailResult result = sendAt(fake, source, at);
+
+    QCOMPARE(fake.receivedJsonBody().value(QStringLiteral("sendAt")).toString(),
+             QStringLiteral("2026-10-18T06:00:00Z"));
+    QVERIFY(result.ok);
+    QCOMPARE(result.scheduledAt, at);
+}
+
+void RelayMailSourceTest::sendMailWithoutSendAtSendsNone()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true,"sentSaved":true,"warning":""})"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+
+    const SendMailResult result = sendAt(fake, source, QDateTime());
+
+    QVERIFY(result.ok);
+    QVERIFY(!result.scheduledAt.isValid());
+    QVERIFY(!fake.receivedJsonBody().contains(QStringLiteral("sendAt")));
+}
+
+// A hold nobody asked for is not a send; neither is a 202 that names no time.
+void RelayMailSourceTest::anUnaskedFor202IsNotASend()
+{
+    {
+        FakeRelayServer fake(httpResponse(202, "Accepted",
+                                          R"({"scheduled":true,"id":"1","sendAt":"2026-10-18T06:00:00Z"})"));
+        QNetworkAccessManager manager;
+        HttpClient http(manager);
+        RelayMailSource source(http);
+        const SendMailResult result = sendAt(fake, source, QDateTime());
+        QVERIFY(!result.ok);
+        QVERIFY(!result.scheduledAt.isValid());
+    }
+    {
+        FakeRelayServer fake(httpResponse(202, "Accepted", R"({"scheduled":true})"));
+        QNetworkAccessManager manager;
+        HttpClient http(manager);
+        RelayMailSource source(http);
+        const SendMailResult result = sendAt(fake, source, QDateTime::currentDateTime().addDays(1));
+        QVERIFY(!result.ok);
+    }
+}
+
+void RelayMailSourceTest::aPlainTextRefusalIsTheDetail()
+{
+    FakeRelayServer fake(httpResponse(400, "Bad Request",
+                                      "sendAt must be between one minute and 366 days from now\n", "text/plain"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+
+    const SendMailResult result = sendAt(fake, source, QDateTime::currentDateTime().addDays(400));
+
+    QVERIFY(!result.ok);
+    QCOMPARE(result.detail, QStringLiteral("sendAt must be between one minute and 366 days from now"));
+}
+
+void RelayMailSourceTest::listScheduledMapsRows()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"scheduled":[)"
+        R"({"id":"a-1","status":"scheduled","reason":"","sendAt":"2026-10-18T06:00:00Z","subject":"Hi","to":["x@example.com","y@example.com"]},)"
+        R"({"id":"b-2","status":"returned","reason":"canceled","sendAt":"2026-10-17T06:00:00Z","subject":"","to":null}]})"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+
+    const ScheduledListResult result = source.listScheduled(baseOf(fake), kAuth);
+
+    QVERIFY(!result.error.has_value());
+    QVERIFY(fake.receivedRequest().startsWith("GET /api/scheduled "));
+    QVERIFY(fake.receivedRequest().contains("X-Kypost-Device-Secret: secret-1"));
+    QCOMPARE(result.items.size(), 2);
+    const ScheduledSend first{ QStringLiteral("a-1"), QStringLiteral("scheduled"), QString(),
+                               QDateTime(QDate(2026, 10, 18), QTime(6, 0), QTimeZone::UTC), QStringLiteral("Hi"),
+                               { QStringLiteral("x@example.com"), QStringLiteral("y@example.com") } };
+    QCOMPARE(result.items.at(0), first);
+    QCOMPARE(result.items.at(1).reason, QStringLiteral("canceled"));
+    QVERIFY(result.items.at(1).to.isEmpty());
+}
+
+void RelayMailSourceTest::listScheduledWithoutTheRouteIsUnsupported()
+{
+    FakeRelayServer fake(httpResponse(404, "Not Found", "404 page not found\n", "text/plain"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+
+    const ScheduledListResult result = source.listScheduled(baseOf(fake), kAuth);
+
+    QVERIFY(result.error.has_value());
+    QVERIFY(result.unsupported);
+}
+
+void RelayMailSourceTest::cancelScheduledPostsToThatId()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true,"status":"returned"})"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+
+    const CancelScheduledResult result =
+        source.cancelScheduled(baseOf(fake), kAuth, QStringLiteral("6f1c2d3e-0000-4000-8000-000000000001"));
+
+    QVERIFY(fake.receivedRequest().startsWith("POST /api/scheduled/6f1c2d3e-0000-4000-8000-000000000001/cancel "));
+    QVERIFY(result.ok);
+    QVERIFY(result.returned);
+}
+
+void RelayMailSourceTest::cancelScheduledTellsPendingFromReturned()
+{
+    FakeRelayServer fake(httpResponse(202, "Accepted",
+        R"({"ok":true,"status":"returning","warning":"canceled; it will be saved to Drafts shortly"})"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+
+    const CancelScheduledResult result = source.cancelScheduled(baseOf(fake), kAuth, QStringLiteral("abc"));
+
+    QVERIFY(result.ok);
+    QVERIFY(!result.returned);
+}
+
+void RelayMailSourceTest::cancelScheduledNamesGoneAndClaimed()
+{
+    {
+        FakeRelayServer fake(httpResponse(404, "Not Found", "scheduled message not found\n", "text/plain"));
+        QNetworkAccessManager manager;
+        HttpClient http(manager);
+        const CancelScheduledResult result =
+            RelayMailSource(http).cancelScheduled(baseOf(fake), kAuth, QStringLiteral("abc"));
+        QVERIFY(!result.ok);
+        QVERIFY(result.gone);
+        QVERIFY(!result.claimed);
+    }
+    {
+        FakeRelayServer fake(httpResponse(409, "Conflict",
+            R"({"error":"this message is no longer waiting and cannot be canceled","status":"sending"})"));
+        QNetworkAccessManager manager;
+        HttpClient http(manager);
+        const CancelScheduledResult result =
+            RelayMailSource(http).cancelScheduled(baseOf(fake), kAuth, QStringLiteral("abc"));
+        QVERIFY(!result.ok);
+        QVERIFY(result.claimed);
+        QVERIFY(!result.gone);
+    }
+}
+
+void RelayMailSourceTest::cancelScheduledRefusesAnIdThatIsNotTheRelays()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true,"status":"returned"})"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+
+    for (const QString& id : { QStringLiteral(".."), QStringLiteral("a/../../api/mail/send"), QString(),
+                               QStringLiteral("a?x=1"), QString(65, QLatin1Char('a')) }) {
+        const CancelScheduledResult result = source.cancelScheduled(baseOf(fake), kAuth, id);
+        QVERIFY(!result.ok);
+        QVERIFY(result.gone);
+    }
+    QCOMPARE(fake.connectionCount(), 0);
 }
 
 QTEST_GUILESS_MAIN(RelayMailSourceTest)
