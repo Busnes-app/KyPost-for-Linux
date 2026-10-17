@@ -15,6 +15,7 @@ class FolderClientTest : public QObject
 private slots:
     void listParsesFoldersAndStampsParent();
     void listSendsParentQueryEvenWhenEmpty();
+    void listReadsTheSpecialUseRole();
     void listReportsHttpErrors();
     void createPostsParentAndName();
     void renameNormalisesRenamedIntoFolder();
@@ -75,6 +76,23 @@ void FolderClientTest::listSendsParentQueryEvenWhenEmpty()
     // handleInboxFolders' strings.TrimSpace(Get("parent")) sees for the top
     // level -- so this is correct, just not the spelling you'd predict.
     QVERIFY(fake.receivedRequest().startsWith("GET /api/inbox/folders?parent"));
+}
+
+void FolderClientTest::listReadsTheSpecialUseRole()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"parent":"","folders":[
+        {"path":"INBOX.Gesendet","deletable":false,"special":"sent"},
+        {"path":"Projects","deletable":false}]})"));
+
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    FolderClient client(http);
+
+    const FolderListResult result = client.list(baseUrl(fake.port()), auth(), QString());
+    QVERIFY(!result.error.has_value());
+    QCOMPARE(result.folders.size(), 2);
+    QCOMPARE(result.folders.at(0).special, QStringLiteral("sent"));
+    QVERIFY(result.folders.at(1).special.isEmpty()); // omitempty on the server
 }
 
 void FolderClientTest::listReportsHttpErrors()

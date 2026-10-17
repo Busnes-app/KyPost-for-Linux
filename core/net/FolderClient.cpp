@@ -104,6 +104,7 @@ FolderListResult FolderClient::list(const QUrl& serverBaseUrl, const RelayAuth& 
         MailFolder folder;
         folder.path = obj.value(QStringLiteral("path")).toString();
         folder.deletable = obj.value(QStringLiteral("deletable")).toBool();
+        folder.special = obj.value(QStringLiteral("special")).toString();
         // Not per-folder on the wire; stamped from the response's echoed
         // parent so FolderDao rows are addressable by parent.
         folder.parent = out.parent;

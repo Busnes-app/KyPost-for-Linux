@@ -979,7 +979,7 @@ Kirigami.ApplicationWindow {
                     text: i18n("New folder…")
                     onClicked: {
                         folderPopup.close()
-                        folderDialog.openCreate("Archive", Format.folderDisplayName(MailApp.mailFolders(), "Archive"))
+                        folderDialog.openCreate(MailApp.archiveFolder, Format.folderDisplayName(MailApp.mailFolders(), MailApp.archiveFolder))
                     }
                 }
 

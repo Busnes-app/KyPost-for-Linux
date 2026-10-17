@@ -476,7 +476,7 @@ Item {
                 objectName: "editProtectedDraft"
                 icon: "document-edit"
                 tooltip: i18n("Edit draft")
-                visible: root.folder === "Drafts" && root.hasProtectedMessage && root.email.pgpState === 1
+                visible: root.folder === MailApp.draftsFolder && root.hasProtectedMessage && root.email.pgpState === 1
                 enabled: !MailApp.isBusy && !AppLock.locked
                 onClicked: {
                     const draft = MailApp.reopenDecryptedDraft(MailApp.decryptedToken)
@@ -488,7 +488,7 @@ Item {
                 objectName: "editDraft"
                 icon: "document-edit"
                 tooltip: i18n("Edit draft")
-                visible: root.folder === "Drafts" && root.email.pgpState === 0 && (!root.email.searchOnly || !!root.email.body)
+                visible: root.folder === MailApp.draftsFolder && root.email.pgpState === 0 && (!root.email.searchOnly || !!root.email.body)
                 enabled: !MailApp.isBusy && !AppLock.locked
                 onClicked: {
                     const draft = MailApp.reopenDraft(root.folder, root.messageId)

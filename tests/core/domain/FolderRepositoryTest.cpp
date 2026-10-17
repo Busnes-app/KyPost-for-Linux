@@ -218,7 +218,7 @@ void FolderRepositoryTest::applyListDiscardsAReplyTheCurrentPairingDidNotAuthori
     FolderListResult listing;
     listing.parent = QStringLiteral("Archive");
     listing.folders = QVector<MailFolder>{ MailFolder{ QStringLiteral("Archive/Divorce paperwork"),
-                                                        QStringLiteral("Archive"), true } };
+                                                        QStringLiteral("Archive"), true, {} } };
 
     DevicePairing replacement;
     replacement.subscriberId = QStringLiteral("sub-2");
@@ -264,7 +264,7 @@ void FolderRepositoryTest::applyMutationDiscardsAReplyTheCurrentPairingDidNotAut
     fetched.listedParent = QStringLiteral("Archive");
     fetched.listing.parent = QStringLiteral("Archive");
     fetched.listing.folders = QVector<MailFolder>{ MailFolder{ QStringLiteral("Archive/Divorce paperwork"),
-                                                                QStringLiteral("Archive"), true } };
+                                                                QStringLiteral("Archive"), true, {} } };
 
     DevicePairing replacement;
     replacement.subscriberId = QStringLiteral("sub-2");
@@ -315,7 +315,7 @@ void FolderRepositoryTest::applyListReportsAFailedSnapshotWriteInsteadOfSuccess(
     FolderListResult listing;
     listing.parent = QStringLiteral("Archive");
     listing.folders = QVector<MailFolder>{ MailFolder{ QStringLiteral("Archive/2026"),
-                                                        QStringLiteral("Archive"), true } };
+                                                        QStringLiteral("Archive"), true, {} } };
 
     const MailFetchOutcome outcome = repository.applyList(*plan, QStringLiteral("Archive"), listing);
     QCOMPARE(outcome.outcome, MailRepositoryOutcome::CacheWriteFailed);

@@ -72,6 +72,7 @@ private slots:
     void aMoveThatLandsAfterAFolderSwitchLeavesTheNewFolderAlone();
     void refreshFoldersWalksTheArchiveTree();
     void refreshFoldersStopsAtTheDepthCap();
+    void refreshFoldersPlacesALocalizedSentAndDraftsByRole();
     void mailFoldersShowsNoDeeperThanTheCap();
     void aLockedAppSendsNoFolderMutation();
     void aLockedAppSendsNoMailboxAction();
@@ -104,6 +105,7 @@ private slots:
     void aFailedSaveOrADraftWithAttachmentsKeepsTheSource();
     void sendingAReopenedPlaintextDraftUsesTheNormalSendAndDeletesTheSource();
     void aSearchOnlyDraftWithNoReadableBodyIsNotReopened();
+    void aDraftInALocalizedDraftsFolderIsReopenedAndReplacedThere();
 
 private:
     static void savePairing(PairingStore& pairingStore, quint16 port);
@@ -2672,7 +2674,7 @@ void MailControllerTest::refreshFoldersWalksTheArchiveTree()
     QTRY_VERIFY_WITH_TIMEOUT(changedSpy.count() == 1, 10000);
     f.executor.shutdown();
     QCOMPARE(changedSpy.count(), 1);
-    QCOMPARE(fake.connectionCount(), 3);
+    QCOMPARE(fake.connectionCount(), 4); // the top level, then Archive's three
 
     QStringList paths;
     QList<int> depths;
@@ -2698,7 +2700,34 @@ void MailControllerTest::refreshFoldersStopsAtTheDepthCap()
     // Emitted only once nothing is in flight, so the walk has ended.
     QTRY_VERIFY_WITH_TIMEOUT(changedSpy.count() == 1, 10000);
     f.executor.shutdown();
-    QCOMPARE(fake.connectionCount(), MailController::kMaxFolderDepth);
+    // The top-level listing is one level only, whatever it answers.
+    QCOMPARE(fake.connectionCount(), MailController::kMaxFolderDepth + 1);
+}
+
+// A German account: the relay flags its Sent and Drafts by RFC 6154 role.
+void MailControllerTest::refreshFoldersPlacesALocalizedSentAndDraftsByRole()
+{
+    FakeRelayServer fake(folderListing("", R"([
+        {"path":"INBOX.Gesendet","deletable":false,"special":"sent"},
+        {"path":"INBOX.Entw&APw-rfe","deletable":false,"special":"drafts"},
+        {"path":"Sent","deletable":false}])"));
+    fake.setResponseForPath("parent=Archive ", folderListing("Archive", "[]"));
+    RefreshFixture f(fake.port());
+    QCOMPARE(f.controller.draftsFolder(), QStringLiteral("Drafts"));
+
+    QSignalSpy changedSpy(&f.controller, &MailController::foldersChanged);
+    f.controller.refreshFolders();
+    QTRY_VERIFY_WITH_TIMEOUT(changedSpy.count() == 1, 10000);
+    f.executor.shutdown();
+
+    QStringList paths;
+    for (const QVariant& v : f.controller.mailFolders())
+        paths << v.toMap().value(QStringLiteral("wireName")).toString();
+    QCOMPARE(paths, (QStringList{ QStringLiteral("INBOX"), QStringLiteral("INBOX.Entw&APw-rfe"),
+                                  QStringLiteral("Junk"), QStringLiteral("INBOX.Gesendet"),
+                                  QStringLiteral("Trash"), QStringLiteral("Archive") }));
+    QCOMPARE(f.controller.draftsFolder(), QStringLiteral("INBOX.Entw&APw-rfe"));
+    QCOMPARE(f.controller.archiveFolder(), QStringLiteral("Archive"));
 }
 
 void MailControllerTest::mailFoldersShowsNoDeeperThanTheCap()
@@ -3156,6 +3185,34 @@ void MailControllerTest::aSearchOnlyDraftWithNoReadableBodyIsNotReopened()
     const QVariantMap email = f.controller.findByMessageId(QStringLiteral("e1"), QStringLiteral("Drafts"));
     QVERIFY(!email.value(QStringLiteral("bodyNotice")).toString().isEmpty());
     QVERIFY(f.controller.reopenDraft(QStringLiteral("Drafts"), QStringLiteral("e1")).isEmpty());
+}
+
+// The replaced source is deleted from the mailbox it was reopened from, which
+// here is the flagged one, never the conventional name.
+void MailControllerTest::aDraftInALocalizedDraftsFolderIsReopenedAndReplacedThere()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true})"));
+    serveDraftsAccount(fake);
+    fake.setResponseForPath("/api/mail/attachments", httpResponse(200, "OK", R"({"ok":true,"attachments":[]})"));
+    RefreshFixture f(fake.port());
+    const QString brouillons = QStringLiteral("INBOX.Brouillons");
+    QVERIFY(f.folderDao.insertOrReplace(brouillons, QString(), false, QStringLiteral("relay"), QStringLiteral("drafts")));
+    QCOMPARE(f.controller.draftsFolder(), brouillons);
+
+    f.controller.selectFolder(brouillons);
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    QVERIFY(f.controller.reopenDraft(QStringLiteral("Drafts"), QStringLiteral("d1")).isEmpty());
+    const QString draftToken =
+        f.controller.reopenDraft(brouillons, QStringLiteral("d1")).value(QStringLiteral("token")).toString();
+    QVERIFY(!draftToken.isEmpty());
+
+    QVERIFY(f.controller.saveDraft({}, {}, {}, QStringLiteral("s"), QStringLiteral("<p>b</p>"), {}, draftToken) != 0);
+    QTRY_VERIFY_WITH_TIMEOUT(requestsMatching(fake, "POST /api/inbox/actions") == 1, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    f.executor.shutdown();
+    const QByteArray removal = firstRequestMatching(fake, "POST /api/inbox/actions");
+    QVERIFY2(removal.contains("\"mailbox\":\"INBOX.Brouillons\""), removal.constData());
+    QVERIFY(removal.contains("\"messageIds\":[\"d1\"]"));
 }
 
 QTEST_GUILESS_MAIN(MailControllerTest)

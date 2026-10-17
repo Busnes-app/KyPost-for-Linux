@@ -93,7 +93,12 @@ Carried forward verbatim (in substance) from `Linux_QT_Client_Plan.md`'s own
   said "13" until 2026-07-25 — `Patina Ky`/`Polished Ky` were added later and
   the count was never updated, so don't trust a hardcoded number here again.)
 - **StandardFolder wire names**: `INBOX`, `Drafts`, `Junk`, `Sent`, `Trash`,
-  `Archive`; display name splits on both `/` and `.`.
+  `Archive`; display name splits on both `/` and `.`. Since plan L15 these are
+  the fallback only: resolve a mailbox with `standardFolderPath()` (or
+  `MailController::folderPath()`, `MailApp.draftsFolder`/`archiveFolder` in
+  QML), which prefers the top-level folder the relay flags with that RFC 6154
+  `special` role. Never compare a folder to a literal `"Drafts"`. A reopened
+  draft is deleted from the mailbox it was reopened from, not a re-resolved one.
 - **90-second foreground refresh cadence.**
   **Corrected again 2026-08-22 — read this one, the 2026-07-25 correction
   was itself wrong and cost this client delta sync entirely.**
