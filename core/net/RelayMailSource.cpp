@@ -6,6 +6,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QRegularExpression>
 
 #include <algorithm>
 
@@ -146,7 +147,33 @@ QJsonObject mailRequestBody(const QString& to, const QString& cc, const QString&
     return requestBody;
 }
 
+// An http.Error body worth showing: short plain text, never a proxy's HTML page.
+QString plainErrorText(const QByteArray& body)
+{
+    const QString text = QString::fromUtf8(body).trimmed();
+    return text.startsWith(QLatin1Char('<')) || text.size() > 200 ? QString() : text;
+}
+
+// The relay's scheduled ids are UUIDs; anything else ("..") could walk the path.
+bool isScheduledId(const QString& id)
+{
+    static const QRegularExpression pattern(QStringLiteral("^[A-Za-z0-9-]{1,64}$"));
+    return pattern.match(id).hasMatch();
+}
+
 } // namespace
+
+QString sendAtWireValue(const QDateTime& at)
+{
+    return at.toUTC().toString(QStringLiteral("yyyy-MM-dd'T'HH:mm:ss'Z'"));
+}
+
+QDateTime scheduledAtOf(const QJsonObject& response)
+{
+    if (!response.value(QStringLiteral("scheduled")).toBool())
+        return {};
+    return QDateTime::fromString(response.value(QStringLiteral("sendAt")).toString(), Qt::ISODate);
+}
 
 RelayMailSource::RelayMailSource(HttpClient& httpClient)
     : m_httpClient(httpClient)
@@ -264,7 +291,7 @@ SendMailResult RelayMailSource::sendMail(const QUrl& serverBaseUrl, const RelayA
                                           const QString& body, const QString& mode,
                                           const QVector<MailAttachmentUpload>& attachments, bool sign, bool encrypt,
                                           bool allowPickupFallback, const QString& replyToMessageId,
-                                          const QString& replyToMailbox) const
+                                          const QString& replyToMailbox, const QDateTime& sendAt) const
 {
     QJsonObject requestBody = mailRequestBody(to, cc, bcc, subject, body, mode, attachments);
     // Inserted here rather than inside mailRequestBody() because saveDraft()
@@ -272,6 +299,8 @@ SendMailResult RelayMailSource::sendMail(const QUrl& serverBaseUrl, const RelayA
     requestBody.insert(QStringLiteral("sign"), sign);
     requestBody.insert(QStringLiteral("encrypt"), encrypt);
     requestBody.insert(QStringLiteral("allowPickupFallback"), allowPickupFallback);
+    if (sendAt.isValid())
+        requestBody.insert(QStringLiteral("sendAt"), sendAtWireValue(sendAt));
     const bool threaded = !replyToMessageId.isEmpty();
     if (threaded) {
         requestBody.insert(QStringLiteral("replyToMessageId"), replyToMessageId);
@@ -334,6 +363,8 @@ SendMailResult RelayMailSource::sendMail(const QUrl& serverBaseUrl, const RelayA
             out.detail = result.detail;
         else if (!bodyError.isEmpty())
             out.detail = bodyError;
+        else if (const QString text = plainErrorText(result.body); !text.isEmpty())
+            out.detail = text; // http.Error, e.g. a sendAt or scheduling refusal
         else
             out.detail = QStringLiteral("Mail send failed with status %1").arg(result.statusCode);
         return out;
@@ -348,6 +379,12 @@ SendMailResult RelayMailSource::sendMail(const QUrl& serverBaseUrl, const RelayA
     }
 
     const QJsonObject json = *decoded;
+    // Held for later: {scheduled, id, sendAt} and no ok. Counts only when asked for.
+    if (sendAt.isValid() && result.statusCode == 202) {
+        out.scheduledAt = scheduledAtOf(json);
+        out.ok = out.scheduledAt.isValid();
+        return out;
+    }
     out.ok = json.value(QStringLiteral("ok")).toBool();
     out.sentSaved = json.value(QStringLiteral("sentSaved")).toBool();
     out.warning = json.value(QStringLiteral("warning")).toString();
@@ -380,10 +417,10 @@ SaveDraftResult RelayMailSource::saveDraft(const QUrl& serverBaseUrl, const Rela
         // message ("imap configuration is required before saving drafts"),
         // so prefer it, capped so a proxy's HTML error page can't become the
         // toast.
-        const QString bodyText = QString::fromUtf8(result.body).trimmed();
+        const QString bodyText = plainErrorText(result.body);
         if (!result.detail.isEmpty())
             out.detail = result.detail;
-        else if (!bodyText.isEmpty() && !bodyText.startsWith(QLatin1Char('<')) && bodyText.size() <= 200)
+        else if (!bodyText.isEmpty())
             out.detail = bodyText;
         else
             out.detail = QStringLiteral("Draft save failed with status %1").arg(result.statusCode);
@@ -561,5 +598,78 @@ MailBodyResult RelayMailSource::fetchBody(const QUrl& serverBaseUrl, const Relay
     }
     out.body = decoded->value(QStringLiteral("body")).toString();
     out.bodyMode = decoded->value(QStringLiteral("bodyMode")).toString();
+    return out;
+}
+
+ScheduledListResult RelayMailSource::listScheduled(const QUrl& serverBaseUrl, const RelayAuth& auth) const
+{
+    const HttpClient::HttpResult result =
+        m_httpClient.get(joinUrlPath(serverBaseUrl, QStringLiteral("api/scheduled")), {}, auth.headerItems());
+
+    ScheduledListResult out;
+    if (result.error.has_value()) {
+        out.error = result.error;
+        out.unsupported = result.statusCode == 404;
+        out.detail = !result.detail.isEmpty()
+            ? result.detail
+            : QStringLiteral("Scheduled list failed with status %1").arg(result.statusCode);
+        return out;
+    }
+
+    QString errorString;
+    const std::optional<QJsonObject> decoded = decodeJsonObject(result.body, &errorString);
+    if (!decoded.has_value() || !decoded->value(QStringLiteral("scheduled")).isArray()) {
+        out.error = NetworkError::Decoding;
+        out.detail = QStringLiteral("Failed to decode scheduled list: %1").arg(errorString);
+        return out;
+    }
+    for (const QJsonValue& value : decoded->value(QStringLiteral("scheduled")).toArray()) {
+        const QJsonObject row = value.toObject();
+        ScheduledSend item;
+        item.id = row.value(QStringLiteral("id")).toString();
+        item.status = row.value(QStringLiteral("status")).toString();
+        item.reason = row.value(QStringLiteral("reason")).toString();
+        item.sendAt = QDateTime::fromString(row.value(QStringLiteral("sendAt")).toString(), Qt::ISODate);
+        item.subject = row.value(QStringLiteral("subject")).toString();
+        for (const QJsonValue& address : row.value(QStringLiteral("to")).toArray())
+            item.to.append(address.toString());
+        if (!item.id.isEmpty())
+            out.items.append(item);
+    }
+    return out;
+}
+
+CancelScheduledResult RelayMailSource::cancelScheduled(const QUrl& serverBaseUrl, const RelayAuth& auth,
+                                                        const QString& id) const
+{
+    CancelScheduledResult out;
+    if (!isScheduledId(id)) {
+        out.gone = true;
+        out.error = NetworkError::InvalidUrl;
+        return out;
+    }
+    const HttpClient::HttpResult result = m_httpClient.post(
+        joinUrlPath(serverBaseUrl, QStringLiteral("api/scheduled/%1/cancel").arg(id)), {}, QJsonObject(),
+        auth.headerItems());
+
+    if (result.error.has_value()) {
+        out.error = result.error;
+        out.gone = result.statusCode == 404;
+        out.claimed = result.statusCode == 409;
+        out.detail = !result.detail.isEmpty()
+            ? result.detail
+            : QStringLiteral("Scheduled cancel failed with status %1").arg(result.statusCode);
+        return out;
+    }
+
+    QString errorString;
+    const std::optional<QJsonObject> decoded = decodeJsonObject(result.body, &errorString);
+    if (!decoded.has_value()) {
+        out.error = NetworkError::Decoding;
+        out.detail = QStringLiteral("Failed to decode scheduled cancel: %1").arg(errorString);
+        return out;
+    }
+    out.ok = decoded->value(QStringLiteral("ok")).toBool();
+    out.returned = out.ok && result.statusCode == 200;
     return out;
 }

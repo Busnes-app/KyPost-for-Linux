@@ -23,6 +23,8 @@ add_library(kypostcore STATIC
   domain/PgpMessageState.h
   domain/PgpComposeState.cpp
   domain/PgpComposeState.h
+  domain/SendLater.cpp
+  domain/SendLater.h
   domain/ReplyAll.cpp
   domain/ReplyAll.h
   domain/KeywordRepository.cpp

@@ -327,6 +327,28 @@ Kirigami.ApplicationWindow {
         }
     }
 
+    // Same sheet shape as Settings; the page loads the list when it is made.
+    Kirigami.OverlaySheet {
+        id: scheduledSheet
+        modal: true
+
+        background: Rectangle {
+            color: Theme.panel
+            radius: Theme.shapeSheet
+            border.width: 1
+            border.color: Theme.line
+        }
+
+        Loader {
+            active: scheduledSheet.opened
+            sourceComponent: ScheduledList {
+                implicitWidth: Math.min(480, root.width - 64)
+                implicitHeight: Math.min(560, root.height - 64)
+                onClosed: scheduledSheet.close()
+            }
+        }
+    }
+
     // ---- pairing confirmation ------------------------------------------
     // VibeSec fix: this app is registered as the OS-wide handler for the
     // kypost:// scheme (packaging/flatpak/com.kysecurity.mail.desktop's
@@ -804,6 +826,11 @@ Kirigami.ApplicationWindow {
                 PrimaryButton {
                     text: i18n("Compose")
                     onClicked: root.openCompose("", "", "")
+                }
+                GhostButton {
+                    text: i18n("Scheduled")
+                    enabled: !AppLock.locked
+                    onClicked: scheduledSheet.open()
                 }
                 GhostButton {
                     text: i18n("Settings")
@@ -1500,6 +1527,7 @@ Kirigami.ApplicationWindow {
             if (!AppLock.locked)
                 return;
             settingsSheet.close();
+            scheduledSheet.close();
             pgpMyQrCodeSheet.close();
             pgpScanContactKeySheet.close();
         }

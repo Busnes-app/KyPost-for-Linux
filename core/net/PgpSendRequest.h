@@ -2,6 +2,7 @@
 
 #include "pgp/PgpSendPlanner.h"
 
+#include <QDateTime>
 #include <QJsonObject>
 #include <QString>
 #include <QStringList>
@@ -14,4 +15,5 @@
 // against a second opinion written here is worth much less than one verified
 // against the code that will actually read it.
 QJsonObject pgpSendRequestBody(const QString& from, const PgpSendPlan& plan, const QStringList& to,
-                                const QStringList& cc, const QStringList& bcc, const QString& mode);
+                                const QStringList& cc, const QStringList& bcc, const QString& mode,
+                                const QDateTime& sendAt = {}, const QByteArray& draftCopy = {});

@@ -221,7 +221,9 @@ Item {
         })
     }
 
-    function trySend() {
+    // sendAtMs, when given, is the scheduled time (SendLaterDialog); absent sends now.
+    function trySend(sendAtMs) {
+        const sendAt = sendAtMs || 0
         // Any address still sitting uncommitted in a field's input box (the
         // user typed it but never hit Enter/Tab/comma) is committed first --
         // otherwise it would silently vanish from the sent message.
@@ -245,7 +247,8 @@ Item {
             if (MailApp.pgpCanSendFromThisDevice) {
                 root.mySendToken = MailApp.sendClientEncrypted(toField.joinedText, ccField.joinedText,
                                                                bccField.joinedText, subjectField.text,
-                                                               result.html, root.attachmentPaths, root.restoredDraft.token || "")
+                                                               result.html, root.attachmentPaths, root.restoredDraft.token || "",
+                                                               sendAt)
                 return
             }
 
@@ -257,7 +260,8 @@ Item {
             root.mySendToken = MailApp.sendMail(toField.joinedText, ccField.joinedText, bccField.joinedText,
                                                  subjectField.text, result.html, root.attachmentPaths,
                                                  signToggle.checked, encryptToggle.checked, root.restoredDraft.token || "",
-                                                 root.replyTo.messageId || "", root.replyTo.mailbox || "")
+                                                 root.replyTo.messageId || "", root.replyTo.mailbox || "",
+                                                 sendAt)
         })
     }
 
@@ -631,6 +635,14 @@ Item {
                 enabled: !root.sendInFlight && !root.draftInFlight
                 onClicked: root.trySaveDraft()
             }
+            GhostButton {
+                objectName: "sendLaterButton"
+                text: i18n("Send Later")
+                // Not where Send itself would only hand off to webmail.
+                visible: !MailApp.pgpHandoffToWebmail || MailApp.pgpCanSendFromThisDevice
+                enabled: !root.sendInFlight && !root.draftInFlight
+                onClicked: sendLaterDialog.open()
+            }
             PrimaryButton {
                 text: i18n("Send")
                 enabled: !root.sendInFlight && !root.draftInFlight
@@ -684,6 +696,12 @@ Item {
         interval: 500
         onTriggered: MailApp.preflightRecipients(toField.joinedText, ccField.joinedText,
                                                   bccField.joinedText)
+    }
+
+    SendLaterDialog {
+        id: sendLaterDialog
+        z: 40
+        onChosen: function (atMs) { root.trySend(atMs) }
     }
 
     PickupFallbackDialog {

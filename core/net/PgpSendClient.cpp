@@ -1,6 +1,7 @@
 #include "net/PgpSendClient.h"
 
 #include "net/PgpSendRequest.h"
+#include "net/RelayMailSource.h"
 
 #include "net/RelayAuth.h"
 #include "pgp/PgpMimeWriter.h"
@@ -17,7 +18,8 @@ PgpSendClient::PgpSendClient(HttpClient& httpClient)
 PgpSendResult PgpSendClient::send(const QUrl& serverBaseUrl, const RelayAuth& auth,
                                    const QString& from, const PgpSendPlan& plan,
                                    const QStringList& to, const QStringList& cc,
-                                   const QStringList& bcc, const QString& mode) const
+                                   const QStringList& bcc, const QString& mode, const QDateTime& sendAt,
+                                   const QByteArray& draftCopy) const
 {
     PgpSendResult out;
 
@@ -30,7 +32,14 @@ PgpSendResult PgpSendClient::send(const QUrl& serverBaseUrl, const RelayAuth& au
         return out;
     }
 
-    const QJsonObject body = pgpSendRequestBody(from, plan, to, cc, bcc, mode);
+    if (sendAt.isValid() && draftCopy.isEmpty()) {
+        // The relay refuses it too; without the copy a failed send has nowhere to return.
+        out.error = NetworkError::InvalidUrl;
+        out.detail = QStringLiteral("scheduled send without an encrypted draft copy");
+        return out;
+    }
+
+    const QJsonObject body = pgpSendRequestBody(from, plan, to, cc, bcc, mode, sendAt, draftCopy);
 
     // Measured on the real serialized request, not estimated from the
     // message: the multiplier is the delivery count, and the armor and base64
@@ -69,6 +78,13 @@ PgpSendResult PgpSendClient::send(const QUrl& serverBaseUrl, const RelayAuth& au
     if (!decoded.has_value()) {
         out.error = NetworkError::Decoding;
         out.detail = QStringLiteral("Failed to decode send response: %1").arg(errorString);
+        return out;
+    }
+
+    // Held for later: {scheduled, id, sendAt} and no ok. Counts only when asked for.
+    if (sendAt.isValid() && result.statusCode == 202) {
+        out.scheduledAt = scheduledAtOf(*decoded);
+        out.ok = out.scheduledAt.isValid();
         return out;
     }
 
