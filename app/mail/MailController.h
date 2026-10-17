@@ -2,6 +2,7 @@
 
 #include "domain/FolderRepository.h" // FolderMutationFetch -- carried across the thread hop below
 #include "domain/MailRepository.h"   // MailRefreshPlan -- likewise
+#include "domain/Snooze.h"
 #include "mail/EmailListModel.h"
 #include "db/PushDao.h" // PushRecord
 #include "models/Email.h"
@@ -69,6 +70,7 @@ class MailController : public QObject
     Q_PROPERTY(QString selectedKeyword READ selectedKeyword NOTIFY selectedKeywordChanged)
     Q_PROPERTY(QVariantList keywordTabs READ keywordTabs NOTIFY keywordTabsChanged)
     Q_PROPERTY(bool isBusy READ isBusy NOTIFY isBusyChanged)
+    Q_PROPERTY(QString snoozedFolder READ snoozedFolder CONSTANT)
 
     // --- Server search (GET /api/mail/search) ---------------------------
     // Results live in searchModel and in memory only: never in the cache, so
@@ -197,6 +199,17 @@ public slots:
     void deleteEmails(const QStringList& messageIds);
     void markSpam(const QStringList& messageIds);
     void moveEmails(const QStringList& messageIds, const QString& targetFolder);
+    // The relay moves them to Snoozed and back to INBOX at wakeAt. A time
+    // outside the window (Snooze.h) is refused before any request.
+    void snoozeEmails(const QStringList& messageIds, const QDateTime& wakeAt);
+    // There is no unsnooze verb: it is a move from Snoozed to INBOX.
+    void unsnoozeEmails(const QStringList& messageIds);
+    // [{kind, at}] for now; kind is "laterToday", "thisEvening", "tomorrow"
+    // or "nextWeek", and the label is the QML's.
+    Q_INVOKABLE QVariantList snoozePresets() const;
+    // The typed time, or null when snoozeCustomTime() refuses it.
+    Q_INVOKABLE QVariant snoozeCustomTime(const QString& date, const QString& time) const;
+    QString snoozedFolder() const { return kSnoozedFolder; }
     // Optimistic: the cache and list change now, and roll back if the relay
     // refuses. An unsynced search hit changes in memory only. Messages already in the requested state, unknown, or with a
     // change still in flight are skipped, so a repeat call sends nothing.
@@ -718,7 +731,8 @@ private:
     QUrl webmailBaseUrl() const;
     // Shared body of archiveEmails/deleteEmails/markSpam/moveEmails.
     void performActionCommon(const QStringList& messageIds, const QString& action,
-                              const std::optional<QString>& targetMailbox);
+                              const std::optional<QString>& targetMailbox,
+                              const std::optional<QDateTime>& wakeAt = std::nullopt);
     void finishAction(const QString& action, const QStringList& messageIds, const QString& mailbox,
                       const ActionResult& result);
     void setReadState(const QString& folder, const QStringList& messageIds, bool read);

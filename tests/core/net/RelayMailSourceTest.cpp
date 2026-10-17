@@ -11,6 +11,7 @@
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QTest>
+#include <QTimeZone>
 
 class RelayMailSourceTest : public QObject
 {
@@ -25,6 +26,7 @@ private slots:
 
     void performActionMoveIncludesTargetMailboxInRequestBody();
     void performActionReadOmitsTargetMailboxFromRequestBodyButResponseCarriesEmptyString();
+    void performActionSnoozeSendsWakeAtAsWholeSecondUtc();
 
     void sendMailJoinsRecipientsAndBase64EncodesAttachmentByteForByte();
     void sendMailSendsEmptyAttachmentsArrayWhenNoneProvided();
@@ -304,6 +306,35 @@ void RelayMailSourceTest::performActionReadOmitsTargetMailboxFromRequestBodyButR
 
     const QJsonObject sent = fake.receivedJsonBody();
     QCOMPARE(sent.value(QStringLiteral("action")).toString(), QStringLiteral("read"));
+    QVERIFY(!sent.contains(QStringLiteral("targetMailbox")));
+    QVERIFY(!sent.contains(QStringLiteral("wakeAt")));
+}
+
+// snooze.go parseWakeAt is time.RFC3339, so a zone is required. A local time
+// with milliseconds goes out as whole-second UTC, as Android sends it.
+void RelayMailSourceTest::performActionSnoozeSendsWakeAtAsWholeSecondUtc()
+{
+    FakeRelayServer fake(
+        httpResponse(200, "OK", R"({"ok":true,"action":"snooze","processed":1,"failed":[],"targetMailbox":""})"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+
+    const QUrl serverBaseUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port()));
+    const RelayAuth auth{ QStringLiteral("device-1"), QStringLiteral("secret-1") };
+    const QDateTime wakeAt(QDate(2026, 10, 18), QTime(10, 0, 0, 250), QTimeZone("Europe/Berlin"));
+    QVERIFY(wakeAt.isValid());
+    const ActionResult result = source.performAction(serverBaseUrl, auth, QStringLiteral("snooze"),
+                                                       { QStringLiteral("m1") }, QStringLiteral("INBOX"),
+                                                       std::nullopt, wakeAt);
+
+    QVERIFY(!result.error.has_value());
+    QVERIFY(result.ok);
+    const QJsonObject sent = fake.receivedJsonBody();
+    QCOMPARE(sent.value(QStringLiteral("action")).toString(), QStringLiteral("snooze"));
+    QCOMPARE(sent.value(QStringLiteral("mailbox")).toString(), QStringLiteral("INBOX"));
+    QCOMPARE(sent.value(QStringLiteral("messageIds")).toArray(), QJsonArray{ QStringLiteral("m1") });
+    QCOMPARE(sent.value(QStringLiteral("wakeAt")).toString(), QStringLiteral("2026-10-18T08:00:00Z"));
     QVERIFY(!sent.contains(QStringLiteral("targetMailbox")));
 }
 

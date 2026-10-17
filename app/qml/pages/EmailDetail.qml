@@ -555,6 +555,17 @@ Item {
                 onClicked: moveDialog.open([root.messageId], root.folder, MailApp.mailFolders())
             }
             IconButton {
+                // In Snoozed, snoozing again would only move the wake time,
+                // so the button wakes it instead. Same folder rule as Move.
+                objectName: "snooze"
+                readonly property bool inSnoozed: root.folder === MailApp.snoozedFolder
+                icon: inSnoozed ? "edit-undo" : "chronometer"
+                tooltip: inSnoozed ? i18n("Unsnooze") : i18n("Snooze…")
+                enabled: !MailApp.isBusy && root.folder === MailApp.currentFolder
+                onClicked: inSnoozed ? MailApp.unsnoozeEmails([root.messageId])
+                                     : snoozeDialog.open([root.messageId], MailApp.snoozePresets())
+            }
+            IconButton {
                 icon: "mail-mark-junk"
                 tooltip: i18n("Junk")
                 enabled: !MailApp.isBusy
@@ -1107,6 +1118,16 @@ Item {
         z: 900
         onChosen: function (messageIds, folder) {
             MailApp.moveEmails(messageIds, folder)
+        }
+    }
+
+    SnoozeDialog {
+        id: snoozeDialog
+        anchors.fill: parent
+        z: 900
+        parseCustom: function (date, time) { return MailApp.snoozeCustomTime(date, time) }
+        onChosen: function (messageIds, at) {
+            MailApp.snoozeEmails(messageIds, at)
         }
     }
 }

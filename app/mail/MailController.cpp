@@ -393,7 +393,8 @@ void MailController::finishRefresh(const MailRefreshPlan& plan, const InboxFetch
 }
 
 void MailController::performActionCommon(const QStringList& messageIds, const QString& action,
-                                          const std::optional<QString>& targetMailbox)
+                                          const std::optional<QString>& targetMailbox,
+                                          const std::optional<QDateTime>& wakeAt)
 {
     // A server write: a reader or a move picker left under the PIN overlay
     // must not archive, delete, flag or move anything before unlock. The QML
@@ -420,9 +421,9 @@ void MailController::performActionCommon(const QStringList& messageIds, const QS
     pushBusy();
     m_executor.run(
         this,
-        [serverBaseUrl, auth, action, messageIds, mailbox, targetMailbox](HttpClient& http) {
+        [serverBaseUrl, auth, action, messageIds, mailbox, targetMailbox, wakeAt](HttpClient& http) {
             RelayMailSource source(http);
-            return source.performAction(serverBaseUrl, auth, action, messageIds, mailbox, targetMailbox);
+            return source.performAction(serverBaseUrl, auth, action, messageIds, mailbox, targetMailbox, wakeAt);
         },
         [this, action, messageIds, mailbox](const ActionResult& result) {
             finishAction(action, messageIds, mailbox, result);
@@ -505,6 +506,55 @@ void MailController::markSpam(const QStringList& messageIds)
 void MailController::moveEmails(const QStringList& messageIds, const QString& targetFolder)
 {
     performActionCommon(messageIds, QStringLiteral("move"), targetFolder);
+}
+
+void MailController::snoozeEmails(const QStringList& messageIds, const QDateTime& wakeAt)
+{
+    if (!snoozeTimeInWindow(wakeAt, QDateTime::currentDateTime())) {
+        setLastError(i18n("That time is in the past or too far ahead"));
+        emit actionCompleted(QStringLiteral("snooze"), messageIds, false);
+        return;
+    }
+    performActionCommon(messageIds, QStringLiteral("snooze"), std::nullopt, wakeAt);
+}
+
+void MailController::unsnoozeEmails(const QStringList& messageIds)
+{
+    // The source mailbox is the current folder; from anywhere else this
+    // would be an ordinary move to INBOX under another name.
+    if (m_currentFolder != kSnoozedFolder) {
+        emit actionCompleted(QStringLiteral("move"), messageIds, false);
+        return;
+    }
+    performActionCommon(messageIds, QStringLiteral("move"), standardFolderWireName(StandardFolder::Inbox));
+}
+
+QVariantList MailController::snoozePresets() const
+{
+    const auto kindName = [](SnoozePreset::Kind kind) {
+        switch (kind) {
+        case SnoozePreset::Kind::LaterToday:
+            return QStringLiteral("laterToday");
+        case SnoozePreset::Kind::ThisEvening:
+            return QStringLiteral("thisEvening");
+        case SnoozePreset::Kind::Tomorrow:
+            return QStringLiteral("tomorrow");
+        case SnoozePreset::Kind::NextWeek:
+            return QStringLiteral("nextWeek");
+        }
+        return QString();
+    };
+    QVariantList list;
+    for (const SnoozePreset& preset : ::snoozePresets(QDateTime::currentDateTime()))
+        list.append(QVariantMap{ { QStringLiteral("kind"), kindName(preset.kind) },
+                                 { QStringLiteral("at"), preset.at } });
+    return list;
+}
+
+QVariant MailController::snoozeCustomTime(const QString& date, const QString& time) const
+{
+    const std::optional<QDateTime> at = ::snoozeCustomTime(date, time, QDateTime::currentDateTime());
+    return at.has_value() ? QVariant(*at) : QVariant();
 }
 
 void MailController::markRead(const QString& folder, const QStringList& messageIds)
@@ -708,6 +758,8 @@ QVariantList MailController::mailFolders() const
         list.append(entry(wireName, 0, /*deletable=*/false, /*isStandard=*/true));
         appendChildren(wireName, 1);
     }
+    // Top-level, so the relay refuses to delete it.
+    list.append(entry(kSnoozedFolder, 0, /*deletable=*/false, /*isStandard=*/true));
     return list;
 }
 

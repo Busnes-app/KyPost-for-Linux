@@ -4,6 +4,7 @@
 #include "net/NetworkError.h"
 
 #include <QByteArray>
+#include <QDateTime>
 #include <QMap>
 #include <QString>
 #include <QStringList>
@@ -227,10 +228,12 @@ public:
     // client a thin pass-through of whatever action strings the server
     // defines rather than a second source of truth for the valid action
     // set. targetMailbox is included in the request body only when it has
-    // a value (omitted entirely otherwise, never sent as "").
+    // a value (omitted entirely otherwise, never sent as ""). wakeAt is
+    // snooze's alone: RFC 3339, whole seconds, UTC (snooze.go parseWakeAt).
     ActionResult performAction(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& action,
                                 const QStringList& messageIds, const QString& mailbox,
-                                const std::optional<QString>& targetMailbox) const;
+                                const std::optional<QString>& targetMailbox,
+                                const std::optional<QDateTime>& wakeAt = std::nullopt) const;
 
     // to/cc/bcc are comma-joined address-list strings on the wire (the
     // server splits them via parseRecipientList) -- NOT JSON arrays, unlike

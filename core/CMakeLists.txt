@@ -46,6 +46,8 @@ add_library(kypostcore STATIC
   domain/PushRepository.h
   domain/MfaChallengeTracker.cpp
   domain/MfaChallengeTracker.h
+  domain/Snooze.cpp
+  domain/Snooze.h
   domain/TransportStateMachine.cpp
   domain/TransportStateMachine.h
   domain/PairingStoreCredentialSealer.cpp

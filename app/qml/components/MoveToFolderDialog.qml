@@ -13,14 +13,16 @@ Item {
 
     property bool isOpen: false
     property var messageIds: []
-    // mailFolders() entries minus the mailbox the messages are in.
+    // mailFolders() entries minus the mailbox the messages are in, and minus
+    // Snoozed (kSnoozedFolder): mail moved there has no wake time, so it
+    // would never come back.
     property var folders: []
 
     signal chosen(var messageIds, string folder)
 
     function open(ids, fromFolder, allFolders) {
         root.messageIds = ids
-        root.folders = allFolders.filter(f => f.wireName !== fromFolder)
+        root.folders = allFolders.filter(f => f.wireName !== fromFolder && f.wireName !== "Snoozed")
         root.isOpen = true
         panel.forceActiveFocus()
     }
