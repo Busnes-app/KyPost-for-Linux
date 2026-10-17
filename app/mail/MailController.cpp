@@ -640,9 +640,6 @@ void MailController::applyStatus(const QString& folder, const QString& messageId
         }
     }
     m_model->setStatus(folder, messageId, status);
-    if (folder == m_currentFolder)
-        emit keywordTabsChanged();
-    recountUnread();
     if (folder == m_searchFolder) {
         for (Email& email : m_searchResults) {
             if (email.messageId == messageId)
@@ -696,6 +693,8 @@ void MailController::setReadState(const QString& folder, const QStringList& mess
     }
     if (changed.isEmpty())
         return;
+    emit keywordTabsChanged(); // their unread counts
+    recountUnread();
 
     m_executor.run(
         this,
@@ -728,6 +727,10 @@ void MailController::setReadState(const QString& folder, const QStringList& mess
                 if (!m_mailRepository.cachedEmail(folder, id).has_value()
                     || m_mailRepository.setCachedStatus(folder, id, previous.value(id)))
                     applyStatus(folder, id, previous.value(id));
+            }
+            if (!failed.isEmpty()) {
+                emit keywordTabsChanged();
+                recountUnread();
             }
             if (!read && !failed.isEmpty()) {
                 setLastError(result.detail.isEmpty() ? i18n("Could not mark the message as unread.")

@@ -2479,6 +2479,7 @@ void MailControllerTest::aRefusedMarkReadRollsBackSilently()
     QCOMPARE(stateSpy.at(1).at(2).toBool(), true);
     QCOMPARE(cachedStatus(f.emailDao, "m1"), QStringLiteral("unread"));
     QCOMPARE(model->emailAt(1).status, QStringLiteral("unread"));
+    QCOMPARE(f.controller.unreadCounts().value(QStringLiteral("INBOX")).toInt(), 2);
     // Incidental to opening the message: no error banner for it.
     QVERIFY(f.controller.lastError().isEmpty());
 }
