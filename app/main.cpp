@@ -1228,6 +1228,11 @@ int main(int argc, char* argv[])
     qmlRegisterSingletonInstance<ScheduledController>("com.kysecurity.mail", 1, 0, "Scheduled", &scheduledController);
     QObject::connect(&pairingController, &PairingController::pairingChanged, &scheduledController,
                      [&scheduledController]() { scheduledController.clear(); });
+    scheduledController.setAppLocked(appLockManager.locked());
+    QObject::connect(&appLockManager, &AppLockManager::lockedChanged, &scheduledController,
+                     [&scheduledController, &appLockManager]() {
+                         scheduledController.setAppLocked(appLockManager.locked());
+                     });
 
     // A decrypted message belongs to the account it was fetched for, and an
     // IMAP UID is not evidence of which account that was -- "5" exists again

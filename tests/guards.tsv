@@ -490,8 +490,12 @@ app/qml/components/LinkConfirmDialog.qml	            onTapped: root.cancel()	   
 # A relay without scheduled send ignores sendAt and sends at once, so it is
 # asked first; an encrypted scheduled send needs its encrypted Drafts copy; the
 # one-time-link re-send carries no sendAt; a cancel id cannot walk the path.
+# The Scheduled list is dropped, refused and closed under the app lock.
 app/mail/MailController.cpp	    const ScheduledListResult probe = source.listScheduled(serverBaseUrl, auth);	    const ScheduledListResult probe;	MailControllerTest:aRelayThatCannotScheduleSendsNothing
 app/mail/MailController.cpp	    const ScheduledListResult probe = source.listScheduled(serverBaseUrl, auth);	    const ScheduledListResult probe;	MailEncryptedSendTest:aRelayThatCannotScheduleGetsNoCiphertext
 core/net/PgpSendClient.cpp	    if (sendAt.isValid() && draftCopy.isEmpty()) {	    if (false) {	PgpSendClientTest:aScheduledSendWithoutADraftCopyNeverGoesOnTheWire
 app/mail/MailController.cpp	    if (sendAt.isValid())	    if (false)	MailControllerTest:aScheduledSendHasNoImmediateLinkResend
 core/net/RelayMailSource.cpp	    if (!isScheduledId(id)) {	    if (false) {	RelayMailSourceTest:cancelScheduledRefusesAnIdThatIsNotTheRelays
+app/mail/ScheduledController.cpp	    m_appLocked = locked;		ScheduledControllerTest:lockingDropsTheListAndRefusesRefreshAndCancel
+app/mail/ScheduledController.cpp	        clear();		ScheduledControllerTest:lockingDropsTheListAndRefusesRefreshAndCancel
+app/qml/DesktopRoot.qml	            scheduledSheet.close();		QmlTests:ScheduledList::test_desktop_sheet_closes_on_lock

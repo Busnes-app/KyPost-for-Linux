@@ -829,6 +829,7 @@ Kirigami.ApplicationWindow {
                 }
                 GhostButton {
                     text: i18n("Scheduled")
+                    enabled: !AppLock.locked
                     onClicked: scheduledSheet.open()
                 }
                 GhostButton {
@@ -1526,6 +1527,7 @@ Kirigami.ApplicationWindow {
             if (!AppLock.locked)
                 return;
             settingsSheet.close();
+            scheduledSheet.close();
             pgpMyQrCodeSheet.close();
             pgpScanContactKeySheet.close();
         }

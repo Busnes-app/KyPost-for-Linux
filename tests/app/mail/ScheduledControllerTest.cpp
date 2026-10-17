@@ -65,6 +65,8 @@ private slots:
     void cancelReturnsItAndReloads();
     void aRelayWithoutSchedulingSaysSo();
     void aReplyForAReplacedAccountIsDropped();
+    void lockingDropsTheListAndRefusesRefreshAndCancel();
+    void aListArrivingUnderTheLockIsNotShown();
 };
 
 void ScheduledControllerTest::presetsAreTheCoreChoices()
@@ -152,6 +154,37 @@ void ScheduledControllerTest::aReplyForAReplacedAccountIsDropped()
     QVERIFY(h.pairingStore.save(other));
     h.controller.clear();
 
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller.busy(), 10000);
+    QTest::qWait(50);
+    QVERIFY(h.controller.items().isEmpty());
+}
+
+// Subjects and recipients are mail metadata: not held, fetched or changed
+// while the PIN screen is up.
+void ScheduledControllerTest::lockingDropsTheListAndRefusesRefreshAndCancel()
+{
+    Harness h(httpResponse(200, "OK", kList));
+    h.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller.busy() && h.controller.items().size() == 2, 10000);
+
+    h.controller.setAppLocked(true);
+    QVERIFY(h.controller.items().isEmpty());
+    h.controller.refresh();
+    h.controller.cancel(QStringLiteral("w-1"));
+    QVERIFY(!h.controller.busy());
+    QTest::qWait(100);
+    QCOMPARE(h.fake.receivedRequests().size(), 1);
+
+    h.controller.setAppLocked(false);
+    h.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!h.controller.busy() && h.controller.items().size() == 2, 10000);
+}
+
+void ScheduledControllerTest::aListArrivingUnderTheLockIsNotShown()
+{
+    Harness h(httpResponse(200, "OK", kList));
+    h.controller.refresh();
+    h.controller.setAppLocked(true);
     QTRY_VERIFY_WITH_TIMEOUT(!h.controller.busy(), 10000);
     QTest::qWait(50);
     QVERIFY(h.controller.items().isEmpty());

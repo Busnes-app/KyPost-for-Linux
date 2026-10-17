@@ -46,6 +46,8 @@ public:
 
     // Pairing changed: the list belonged to the previous account.
     void clear();
+    // Locked: the list is dropped and nothing is loaded or canceled.
+    void setAppLocked(bool locked);
 
 signals:
     void changed();
@@ -61,5 +63,6 @@ private:
     PairingIdentity m_requestedBy;
     QVariantList m_items;
     bool m_busy = false;
+    bool m_appLocked = false;
     QString m_message;
 };

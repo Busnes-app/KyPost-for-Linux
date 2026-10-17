@@ -63,4 +63,18 @@ TestCase {
         compare(page.confirmingId, "")
         compare(Scheduled.lastCancelled, "")
     }
+
+    // OverlaySheet renders above LockOverlay, so the desktop sheet must close
+    // on lock and not open under it.
+    function test_desktop_sheet_closes_on_lock() {
+        const source = new XMLHttpRequest()
+        source.open("GET", "qrc:/qml/DesktopRoot.qml", false)
+        source.send()
+        compare(source.status, 200)
+        const text = source.responseText
+        const handler = text.indexOf("function onLockedChanged() {\n            if (!AppLock.locked)")
+        verify(handler !== -1)
+        verify(text.indexOf("scheduledSheet.close();", handler) !== -1)
+        verify(text.indexOf("enabled: !AppLock.locked\n                    onClicked: scheduledSheet.open()") !== -1)
+    }
 }

@@ -102,7 +102,7 @@ void ScheduledController::refresh()
 void ScheduledController::load()
 {
     const std::optional<DevicePairing> pairing = m_pairingStore.load();
-    if (m_busy || !pairing)
+    if (m_appLocked || m_busy || !pairing)
         return;
     m_requestedBy = identityOf(*pairing);
     const RelayEndpoint endpoint{ QUrl(pairing->serverBaseUrl), { pairing->deviceId, pairing->deviceSecret } };
@@ -117,7 +117,7 @@ void ScheduledController::load()
 void ScheduledController::cancel(const QString& id)
 {
     const std::optional<DevicePairing> pairing = m_pairingStore.load();
-    if (m_busy || !pairing)
+    if (m_appLocked || m_busy || !pairing)
         return;
     m_requestedBy = identityOf(*pairing);
     const RelayEndpoint endpoint{ QUrl(pairing->serverBaseUrl), { pairing->deviceId, pairing->deviceSecret } };
@@ -138,11 +138,19 @@ void ScheduledController::clear()
     emit changed();
 }
 
+void ScheduledController::setAppLocked(bool locked)
+{
+    m_appLocked = locked;
+    if (locked)
+        clear();
+}
+
 void ScheduledController::applyList(const ScheduledListResult& result)
 {
     m_busy = false;
-    // A reply for an account this device no longer holds is not news.
-    if (!m_pairingStore.stillCurrent(m_requestedBy)) {
+    // A reply for an account this device no longer holds, or landing under
+    // the lock, is not shown.
+    if (m_appLocked || !m_pairingStore.stillCurrent(m_requestedBy)) {
         emit changed();
         return;
     }
@@ -176,7 +184,7 @@ void ScheduledController::applyList(const ScheduledListResult& result)
 void ScheduledController::applyCancel(const CancelScheduledResult& result)
 {
     m_busy = false;
-    if (!m_pairingStore.stillCurrent(m_requestedBy)) {
+    if (m_appLocked || !m_pairingStore.stillCurrent(m_requestedBy)) {
         emit changed();
         return;
     }
