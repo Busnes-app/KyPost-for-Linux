@@ -58,6 +58,8 @@ private slots:
     void sendMailEmitsPickupFallbackRequiredWithTheServersAddressList();
     void confirmPickupFallbackSendResendsTheIdenticalBodyWithTheOptIn();
     void confirmPickupFallbackSendWithoutAPendingSendDoesNothing();
+    void aReplyKeepsItsReferenceThroughThePickupResendUntilRefused();
+    void replyAllLeavesOutOnlyThisAccountsOwnAddresses();
     void sendMailSurfacesAWarningOnAnOtherwiseSuccessfulSend();
     void sendMailClientSideNeededHandsOffAndOffersNoToggles();
     void openWebmailDraftsRefusesAnInsecurePairingBeforeSavingAnything();
@@ -3213,6 +3215,75 @@ void MailControllerTest::aDraftInALocalizedDraftsFolderIsReopenedAndReplacedTher
     const QByteArray removal = firstRequestMatching(fake, "POST /api/inbox/actions");
     QVERIFY2(removal.contains("\"mailbox\":\"INBOX.Brouillons\""), removal.constData());
     QVERIFY(removal.contains("\"messageIds\":[\"d1\"]"));
+}
+
+// Android #188's order: a keyless refusal, then the confirmed pickup re-send
+// is refused threading. Both requests name the answered message; the refusal
+// is its own signal so Compose can drop the reference for the next Send.
+void MailControllerTest::aReplyKeepsItsReferenceThroughThePickupResendUntilRefused()
+{
+    FakeRelayServer fake(httpResponse(
+        409, "Conflict", R"({"error":"no usable key","keylessRecipients":["bob@example.com"],"pickupFallbackAvailable":true})"));
+    RefreshFixture f(fake.port());
+
+    QSignalSpy pickupSpy(&f.controller, &MailController::pickupFallbackRequired);
+    const quint64 token = f.controller.sendMail(QStringLiteral("bob@example.com"), {}, {}, QStringLiteral("Re: Hi"),
+                                                QStringLiteral("Body"), {}, false, /*encrypt=*/true, {},
+                                                QStringLiteral("42"), QStringLiteral("Archive"));
+    QVERIFY(token != 0u);
+    QVERIFY(pickupSpy.wait(10000));
+
+    fake.setResponse(httpResponse(404, "Not Found", "the message being replied to was not found; nothing was sent\n"));
+    QSignalSpy refusedSpy(&f.controller, &MailController::replyThreadingRefused);
+    QSignalSpy completedSpy(&f.controller, &MailController::sendCompleted);
+    QCOMPARE(f.controller.confirmPickupFallbackSend(token), token);
+    QVERIFY(completedSpy.wait(10000));
+
+    QCOMPARE(refusedSpy.count(), 1);
+    QCOMPARE(refusedSpy.at(0).at(0).value<quint64>(), token);
+    QCOMPARE(completedSpy.at(0).at(1).toBool(), false);
+    QVERIFY(f.controller.lastError().contains(QStringLiteral("not found")));
+
+    QCOMPARE(fake.receivedRequests().size(), 2);
+    for (const QByteArray& request : fake.receivedRequests()) {
+        const QJsonObject body = QJsonDocument::fromJson(request.mid(request.indexOf("\r\n\r\n") + 4)).object();
+        QCOMPARE(body.value(QStringLiteral("replyToMessageId")).toString(), QStringLiteral("42"));
+        QCOMPARE(body.value(QStringLiteral("replyToMailbox")).toString(), QStringLiteral("Archive"));
+    }
+}
+
+void MailControllerTest::replyAllLeavesOutOnlyThisAccountsOwnAddresses()
+{
+    FakeRelayServer fake(httpResponse(
+        200, "OK",
+        R"({"hasIdentity":true,"protection":"server","suggestedUserIDs":["me@example.com","alias@example.com"]})"));
+    RefreshFixture f(fake.port());
+    const QString sender = QStringLiteral("Bob <bob@example.com>");
+    const QString to = QStringLiteral("Me <ME@example.com>, carol@example.com");
+    const QString cc = QStringLiteral("alias@example.com");
+    const QStringList everyone{ QStringLiteral("bob@example.com"), QStringLiteral("ME@example.com"),
+                                QStringLiteral("carol@example.com"), QStringLiteral("alias@example.com") };
+
+    QCOMPARE(f.controller.replyAllRecipients(sender, to, cc), everyone); // not fetched yet
+
+    QSignalSpy stateSpy(&f.controller, &MailController::pgpComposeStateChanged);
+    f.controller.loadAccountAddresses();
+    QVERIFY(stateSpy.wait(10000));
+    QCOMPARE(f.controller.replyAllRecipients(sender, to, cc),
+             QStringList({ QStringLiteral("bob@example.com"), QStringLiteral("carol@example.com") }));
+
+    // Held for this pairing: no second fetch.
+    f.controller.loadAccountAddresses();
+    QCOMPARE(fake.connectionCount(), 1);
+
+    // Another account's addresses are never applied to this one.
+    DevicePairing other;
+    other.subscriberId = QStringLiteral("sub-2");
+    other.deviceSecret = QStringLiteral("secret-2");
+    other.serverBaseUrl = QStringLiteral("http://127.0.0.1:%1").arg(fake.port());
+    other.deviceId = QStringLiteral("dev-2");
+    QVERIFY(f.pairingStore.save(other));
+    QCOMPARE(f.controller.replyAllRecipients(sender, to, cc), everyone);
 }
 
 QTEST_GUILESS_MAIN(MailControllerTest)

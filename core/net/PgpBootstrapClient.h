@@ -4,6 +4,7 @@
 #include "net/NetworkError.h"
 
 #include <QString>
+#include <QStringList>
 #include <QUrl>
 #include <optional>
 
@@ -34,6 +35,9 @@ struct PgpBootstrapResult
     // Empty when the account has no mail configured, which the caller must
     // treat as "cannot send" rather than guessing an address.
     QString primaryAddress;
+    // Every suggestedUserIDs entry: the primary plus verified send-as
+    // aliases. Only used to leave the user out of Reply All.
+    QStringList addresses;
 };
 
 // Talks to the account's PGP bootstrap endpoint. Follows PgpQrClient's

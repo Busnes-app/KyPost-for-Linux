@@ -2,6 +2,7 @@
 
 #include "domain/DevicePairing.h"
 #include "domain/KeywordRepository.h"
+#include "domain/LinkTarget.h"
 #include "domain/FolderRepository.h"
 #include "domain/MailRepository.h"
 #include "stores/SettingsStore.h"
@@ -27,6 +28,7 @@
 #include "net/RelayMailSource.h"
 
 #include "domain/PgpComposeState.h"
+#include "domain/ReplyAll.h"
 #include "mail/PgpMessagePresentation.h"
 
 #include <KLocalizedString>
@@ -985,7 +987,8 @@ quint64 MailController::saveDraftInternal(const QString& to, const QString& cc, 
 
 quint64 MailController::sendMail(const QString& to, const QString& cc, const QString& bcc, const QString& subject,
                                    const QString& body, const QStringList& attachmentFilePaths, bool sign,
-                                   bool encrypt, const QString& draftToken)
+                                   bool encrypt, const QString& draftToken, const QString& replyToMessageId,
+                                   const QString& replyToMailbox)
 {
     // FIRST statement, before any early return below: PendingSend's own doc
     // comment promises the cached plaintext dies when a fresh send starts,
@@ -1010,19 +1013,20 @@ quint64 MailController::sendMail(const QString& to, const QString& cc, const QSt
     const quint64 sendToken = m_nextPendingSendToken++;
     captureDraftReplacement(sendToken, draftToken);
 
-    // Field order matters -- PendingSend is aggregate-initialized. Eleven
+    // Field order matters -- PendingSend is aggregate-initialized. Thirteen
     // fields: valid, to, cc, bcc, subject, body, mode, attachments, sign,
-    // encrypt, token.
-    m_pendingSend = PendingSend{ true, to, cc, bcc, subject, body, sendMode, attachments, sign, encrypt, sendToken };
+    // encrypt, token, replyToMessageId, replyToMailbox.
+    m_pendingSend = PendingSend{ true, to, cc, bcc, subject, body, sendMode, attachments,
+                                 sign, encrypt, sendToken, replyToMessageId, replyToMailbox };
 
     pushBusy();
     m_executor.run(
         this,
-        [serverBaseUrl, auth, to, cc, bcc, subject, body, sendMode, attachments, sign,
-         encrypt](HttpClient& http) {
+        [serverBaseUrl, auth, to, cc, bcc, subject, body, sendMode, attachments, sign, encrypt, replyToMessageId,
+         replyToMailbox](HttpClient& http) {
             RelayMailSource source(http);
             return source.sendMail(serverBaseUrl, auth, to, cc, bcc, subject, body, sendMode, attachments, sign,
-                                    encrypt, /*allowPickupFallback=*/false);
+                                    encrypt, /*allowPickupFallback=*/false, replyToMessageId, replyToMailbox);
         },
         [this, sendToken](const SendMailResult& result) { finishSend(sendToken, result); });
     return sendToken;
@@ -1072,6 +1076,15 @@ void MailController::finishSend(quint64 sendToken, const SendMailResult& result)
     if (m_pendingSend.token == sendToken)
         m_pendingSend = {};
 
+    if (result.replyThreadingRefused) {
+        // Nothing was sent. Re-sending unthreaded is the user's call.
+        setLastError(i18n("Not sent: the server could not link this reply to the message it answers (%1). "
+                          "Press Send again to send it as a new conversation.",
+                          result.detail));
+        emit replyThreadingRefused(sendToken);
+        emit sendCompleted(sendToken, false);
+        return;
+    }
     if (!result.ok) {
         // Same shape as every other failure in this class: prefer the
         // server's own detail, fall back to localized wording.
@@ -1123,27 +1136,11 @@ quint64 MailController::confirmPickupFallbackSend(quint64 token)
             RelayMailSource source(http);
             return source.sendMail(serverBaseUrl, auth, pending.to, pending.cc, pending.bcc, pending.subject,
                                     pending.body, pending.mode, pending.attachments, pending.sign,
-                                    pending.encrypt, /*allowPickupFallback=*/true);
+                                    pending.encrypt, /*allowPickupFallback=*/true, pending.replyToMessageId,
+                                    pending.replyToMailbox);
         },
-        [this, sendToken](const SendMailResult& result) {
-            popBusy();
-            settleDraftReplacement(sendToken, result.ok);
-            if (!result.ok) {
-                // Same detail-or-localized-fallback shape as every other
-                // failure in this class: a 200 carrying {"ok":false} leaves
-                // detail empty, and reporting that verbatim would fail
-                // silently.
-                setLastError(result.detail.isEmpty() ? i18n("Could not send message") : result.detail);
-                emit sendCompleted(sendToken, false);
-                return;
-            }
-            if (!result.warning.isEmpty())
-                emit sendWarning(result.warning);
-            // The one send that most needs to read as success: clear any
-            // error left over from the refusal that opened the confirmation.
-            setLastError(QString());
-            emit sendCompleted(sendToken, true);
-        });
+        // Same outcomes as a first send, including a threading refusal.
+        [this, sendToken](const SendMailResult& result) { finishSend(sendToken, result); });
     return sendToken;
 }
 
@@ -1177,6 +1174,23 @@ void MailController::refreshPgpComposeState(bool force)
     // for the remaining one.
     if (m_pgpComposeStateFetched && !force)
         return;
+    fetchPgpBootstrap();
+}
+
+void MailController::loadAccountAddresses()
+{
+    if (!m_pairingStore.stillCurrent(m_accountAddressesOwner))
+        fetchPgpBootstrap();
+}
+
+QStringList MailController::replyAllRecipients(const QString& sender, const QString& to, const QString& cc) const
+{
+    const bool ours = m_pairingStore.stillCurrent(m_accountAddressesOwner);
+    return ::replyAllRecipients(sender, to, cc, ours ? m_accountAddresses : QStringList());
+}
+
+void MailController::fetchPgpBootstrap()
+{
     // Coalescing: Compose can be opened twice before the first answer lands.
     if (m_pgpBootstrapInFlight)
         return;
@@ -1214,6 +1228,10 @@ void MailController::refreshPgpComposeState(bool force)
             // rest of the session over one transient 503; the next compose
             // open retries instead.
             m_pgpComposeStateFetched = bootstrap.ok;
+            if (bootstrap.ok) {
+                m_accountAddresses = bootstrap.addresses;
+                m_accountAddressesOwner = requestedBy;
+            }
             m_pgpCanEncrypt = state.canEncrypt;
             m_pgpCanSign = state.canSign;
             m_pgpHandoffToWebmail = state.handoffToWebmail;
@@ -1723,6 +1741,21 @@ void MailController::openFromNotification(const QString& messageId)
         refreshInternal(false);
     else
         selectFolderInternal(inbox);
+}
+
+QVariantMap MailController::linkTarget(const QUrl& url, const QVariantList& anchors) const
+{
+    const auto target = linkTargetOf(url);
+    if (!target)
+        return {};
+    return {{QStringLiteral("host"), target->host},
+            {QStringLiteral("shownUrl"), target->url.toString(QUrl::FullyEncoded)},
+            {QStringLiteral("mismatchHost"), linkTextMismatch(anchors, url)}};
+}
+
+QString MailController::linkAnchorScript() const
+{
+    return QString::fromLatin1(kLinkAnchorScript);
 }
 
 QVariantMap MailController::findByMessageId(const QString& messageId, const QString& folder) const

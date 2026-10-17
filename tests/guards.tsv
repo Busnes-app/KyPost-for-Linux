@@ -474,3 +474,13 @@ core/domain/PgpQrRepository.cpp	    const bool isLocal = !local.isEmpty() && loc
 app/pgp/PgpQrController.cpp	                result.fingerprint = publicKeyFingerprint(result.publicKey.toUtf8());	                ;	PgpQrControllerTest:aScanWithoutAFingerprintIsNotConfirmed
 app/pgp/PgpQrController.cpp	        if (code.hasFingerprint && result.fingerprint != code.fingerprint) {	        if (false) {	PgpQrControllerTest:aScanWhoseKeyDiffersFromTheCodeIsRefused
 app/pgp/PgpQrController.cpp	    if (code.hasFingerprint && code.fingerprint.isEmpty()) {	    if (false) {	PgpQrControllerTest:aScanWithAMalformedFingerprintIsRefused
+
+# --- a link opens only where the confirm dialog said it goes ------------
+#
+# Not mail-reading, but the same failure shape: the dialog is the user's one
+# look at where a sender's link really goes. Userinfo and a Unicode host are
+# the two ways the shown host reads as a site it is not.
+core/domain/LinkTarget.cpp	    const QUrl url = raw.adjusted(QUrl::RemoveUserInfo);	    const QUrl url = raw;	LinkTargetTest:userinfoIsNotTheHostAndIsNotOpened
+core/domain/LinkTarget.cpp	    QString host = url.host(QUrl::FullyEncoded);	    QString host = url.host();	LinkTargetTest:lookalikeDomainShowsAsPunycode
+core/domain/LinkTarget.cpp	    if ((raw.userName(QUrl::FullyDecoded) + raw.password(QUrl::FullyDecoded)).contains(QLatin1Char('\\')))	    if (false)	LinkTargetTest:backslashCannotSmuggleAnotherHost
+app/qml/components/LinkConfirmDialog.qml	            onTapped: root.cancel()	            onTapped: root.confirm()	QmlTests:LinkConfirmDialog::test_cancelEscapeAndScrimOpenNothing
