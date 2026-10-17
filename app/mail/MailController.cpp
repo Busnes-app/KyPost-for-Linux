@@ -2,6 +2,7 @@
 
 #include "domain/DevicePairing.h"
 #include "domain/KeywordRepository.h"
+#include "domain/LinkTarget.h"
 #include "domain/FolderRepository.h"
 #include "domain/MailRepository.h"
 #include "stores/SettingsStore.h"
@@ -1736,6 +1737,21 @@ void MailController::openFromNotification(const QString& messageId)
         refreshInternal(false);
     else
         selectFolderInternal(inbox);
+}
+
+QVariantMap MailController::linkTarget(const QUrl& url, const QVariantList& anchors) const
+{
+    const auto target = linkTargetOf(url);
+    if (!target)
+        return {};
+    return {{QStringLiteral("host"), target->host},
+            {QStringLiteral("shownUrl"), target->url.toString(QUrl::FullyEncoded)},
+            {QStringLiteral("mismatchHost"), linkTextMismatch(anchors, url)}};
+}
+
+QString MailController::linkAnchorScript() const
+{
+    return QString::fromLatin1(kLinkAnchorScript);
 }
 
 QVariantMap MailController::findByMessageId(const QString& messageId, const QString& folder) const
