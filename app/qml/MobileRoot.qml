@@ -259,9 +259,9 @@ Kirigami.ApplicationWindow {
                 onDraftRequested: function (draft) {
                     root.pageStack.push(composePageComponent, { restoredDraft: draft })
                 }
-                onComposeRequested: function (to, subject, body) {
+                onComposeRequested: function (to, subject, body, replyTo) {
                     root.pageStack.push(composePageComponent,
-                        { initialTo: to, initialSubject: subject, initialBody: body })
+                        { initialTo: to, initialSubject: subject, initialBody: body, replyTo: replyTo })
                 }
                 // Archive/Junk/Delete have already happened by the time
                 // this fires -- EmailDetail.qml only emits actionCompleted
@@ -283,6 +283,7 @@ Kirigami.ApplicationWindow {
             property string initialTo: ""
             property string initialSubject: ""
             property string initialBody: ""
+            property var replyTo: ({})
 
             Compose {
                 anchors.fill: parent
@@ -290,6 +291,7 @@ Kirigami.ApplicationWindow {
                 initialTo: composePage.initialTo
                 initialSubject: composePage.initialSubject
                 initialBody: composePage.initialBody
+                replyTo: composePage.replyTo
                 onSendSucceeded: root.safePop()
             }
         }
@@ -1007,7 +1009,7 @@ Kirigami.ApplicationWindow {
                     text: i18n("New folder…")
                     onClicked: {
                         folderPopup.close()
-                        folderDialog.openCreate("Archive", Format.folderDisplayName(MailApp.mailFolders(), "Archive"))
+                        folderDialog.openCreate(MailApp.archiveFolder, Format.folderDisplayName(MailApp.mailFolders(), MailApp.archiveFolder))
                     }
                 }
 

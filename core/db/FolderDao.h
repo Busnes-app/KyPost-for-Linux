@@ -16,6 +16,7 @@ struct FolderRecord
     QString parent;
     bool deletable = false;
     QString sourceMode;
+    QString special; // RFC 6154 role; see MailFolder::special
 
     bool operator==(const FolderRecord&) const = default;
 };
@@ -26,7 +27,7 @@ public:
     explicit FolderDao(QSqlDatabase& db);
 
     bool insertOrReplace(const QString& path, const QString& parent, bool deletable,
-                          const QString& sourceMode);
+                          const QString& sourceMode, const QString& special = QString());
     std::optional<FolderRecord> findByPath(const QString& path) const;
     QVector<FolderRecord> findByParent(const QString& parent) const;
     QVector<FolderRecord> findAll() const;

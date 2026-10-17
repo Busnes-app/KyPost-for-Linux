@@ -133,6 +133,12 @@ struct SendMailResult
     // unrecoverable reason.
     bool pickupFallbackNeeded = false;
     QStringList keylessRecipients;
+
+    // A reply the relay refused to thread (replyThreading in
+    // server_mail_send.go): one of its four exact sentences, all sent before
+    // any delivery, so sending again unthreaded cannot duplicate. Matched
+    // whole: other 502s here can follow a delivery and quote SMTP text.
+    bool replyThreadingRefused = false;
 };
 
 // POST /api/mail/draft response: {ok}. No sentSaved/warning -- the backend
@@ -239,10 +245,15 @@ public:
     // is not scoped to a mailbox the way fetch/actions are (it sends via
     // SMTP using the account's configured credentials, then best-effort
     // saves to Sent).
+    //
+    // replyToMessageId/replyToMailbox name the answered message (its relay
+    // row id and folder) so the relay sets In-Reply-To/References. Omitted
+    // when replyToMessageId is empty, so an older relay sees the same request.
     SendMailResult sendMail(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& to, const QString& cc,
                              const QString& bcc, const QString& subject, const QString& body, const QString& mode,
                              const QVector<MailAttachmentUpload>& attachments, bool sign = false, bool encrypt = false,
-                             bool allowPickupFallback = false) const;
+                             bool allowPickupFallback = false, const QString& replyToMessageId = {},
+                             const QString& replyToMailbox = {}) const;
 
     // POST /api/mail/draft. When pgpDraft is supplied, only To and the complete
     // self-encrypted PGP/MIME message leave this process. The other arguments

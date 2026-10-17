@@ -37,6 +37,9 @@ private slots:
     void sendMailDualField409ReportsTheUnrecoverableRefusal();
     void sendMail409WithNeitherPgpFieldStaysAGenericError();
     void sendMailMalformed409BodyDoesNotCrashTheDecode();
+    void sendMailNamesTheAnsweredMessageOnlyForAReply();
+    void sendMailRecognisesOnlyTheRelaysThreadingRefusals_data();
+    void sendMailRecognisesOnlyTheRelaysThreadingRefusals();
 
     void listAttachmentsSendsMailboxMessageIdAsQueryParamsAndAuthAsHeadersAndParsesResult();
 
@@ -774,6 +777,82 @@ void RelayMailSourceTest::fetchBodyReturnsBodyAndMode()
     QVERIFY(request.contains("mailbox=INBOX"));
     QVERIFY(request.contains("messageId=9"));
     QVERIFY(request.contains("X-Kypost-Device-Secret: s"));
+}
+
+// Android #188's wire contract: present on a reply, absent otherwise, so an
+// older relay sees the request it always did. Drafts have no such arguments.
+void RelayMailSourceTest::sendMailNamesTheAnsweredMessageOnlyForAReply()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true,"sentSaved":true,"warning":""})"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+    const QUrl serverBaseUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port()));
+
+    QVERIFY(source.sendMail(serverBaseUrl, {}, QStringLiteral("a@example.com"), {}, {}, QStringLiteral("Re: Hi"),
+                            QStringLiteral("Body"), QStringLiteral("html"), {}, false, false, false,
+                            QStringLiteral("42"), QStringLiteral("Archive"))
+                .ok);
+    QVERIFY(source.sendMail(serverBaseUrl, {}, QStringLiteral("a@example.com"), {}, {}, QStringLiteral("Hi"),
+                            QStringLiteral("Body"), QStringLiteral("html"), {})
+                .ok);
+
+    QCOMPARE(fake.receivedRequests().size(), 2);
+    const auto bodyOf = [](const QByteArray& request) {
+        return QJsonDocument::fromJson(request.mid(request.indexOf("\r\n\r\n") + 4)).object();
+    };
+    const QJsonObject reply = bodyOf(fake.receivedRequests().at(0));
+    QCOMPARE(reply.value(QStringLiteral("replyToMessageId")).toString(), QStringLiteral("42"));
+    QCOMPARE(reply.value(QStringLiteral("replyToMailbox")).toString(), QStringLiteral("Archive"));
+    const QJsonObject fresh = bodyOf(fake.receivedRequests().at(1));
+    QVERIFY(!fresh.contains(QStringLiteral("replyToMessageId")));
+    QVERIFY(!fresh.contains(QStringLiteral("replyToMailbox")));
+}
+
+void RelayMailSourceTest::sendMailRecognisesOnlyTheRelaysThreadingRefusals_data()
+{
+    QTest::addColumn<int>("status");
+    QTest::addColumn<QByteArray>("body");
+    QTest::addColumn<bool>("isReply");
+    QTest::addColumn<bool>("refused");
+    // server_mail_send.go replyThreading, http.Error adds the newline.
+    QTest::newRow("bad-id") << 400 << QByteArray("invalid replyToMessageId; refresh the mailbox\n") << true << true;
+    QTest::newRow("bad-mailbox") << 400 << QByteArray("invalid replyToMailbox\n") << true << true;
+    QTest::newRow("not-found") << 404 << QByteArray("the message being replied to was not found; nothing was sent\n")
+                               << true << true;
+    QTest::newRow("unreadable") << 502 << QByteArray("could not read the message being replied to; nothing was sent\n")
+                                << true << true;
+    // A 502 after delivery: offering to send again could send twice.
+    QTest::newRow("smtp-failure") << 502 << QByteArray("failed to send email: 554 rejected\n") << true << false;
+    QTest::newRow("smtp-quoting-the-words")
+        << 502 << QByteArray("failed to send email: 550 the message being replied to was not found; nothing was sent\n")
+        << true << false;
+    QTest::newRow("wrong-status") << 502 << QByteArray("the message being replied to was not found; nothing was sent\n")
+                                  << true << false;
+    QTest::newRow("not-a-reply") << 404 << QByteArray("the message being replied to was not found; nothing was sent\n")
+                                 << false << false;
+}
+
+void RelayMailSourceTest::sendMailRecognisesOnlyTheRelaysThreadingRefusals()
+{
+    QFETCH(int, status);
+    QFETCH(QByteArray, body);
+    QFETCH(bool, isReply);
+    QFETCH(bool, refused);
+
+    FakeRelayServer fake(httpResponse(status, "Error", body));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+    const SendMailResult result = source.sendMail(
+        QUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port())), {}, QStringLiteral("a@example.com"), {}, {},
+        QStringLiteral("Re: Hi"), QStringLiteral("Body"), QStringLiteral("html"), {}, false, false, false,
+        isReply ? QStringLiteral("42") : QString(), isReply ? QStringLiteral("INBOX") : QString());
+
+    QVERIFY(!result.ok);
+    QCOMPARE(result.replyThreadingRefused, refused);
+    if (refused)
+        QCOMPARE(result.detail, QString::fromUtf8(body.trimmed()));
 }
 
 QTEST_GUILESS_MAIN(RelayMailSourceTest)

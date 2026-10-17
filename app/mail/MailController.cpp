@@ -2,6 +2,7 @@
 
 #include "domain/DevicePairing.h"
 #include "domain/KeywordRepository.h"
+#include "domain/LinkTarget.h"
 #include "domain/FolderRepository.h"
 #include "domain/MailRepository.h"
 #include "stores/SettingsStore.h"
@@ -27,6 +28,7 @@
 #include "net/RelayMailSource.h"
 
 #include "domain/PgpComposeState.h"
+#include "domain/ReplyAll.h"
 #include "mail/PgpMessagePresentation.h"
 
 #include <KLocalizedString>
@@ -748,8 +750,9 @@ QVariantList MailController::mailFolders() const
             appendChildren(child.path, depth + 1);
         }
     };
+    const QVector<MailFolder> topLevel = m_folderRepository.cachedFolders(QString());
     for (StandardFolder folder : kFolders) {
-        const QString wireName = standardFolderWireName(folder);
+        const QString wireName = standardFolderPath(folder, topLevel);
         // Standard mailboxes are never deletable -- the backend rejects it
         // outright (isBuiltinMailbox), so don't offer it.
         list.append(entry(wireName, 0, /*deletable=*/false, /*isStandard=*/true));
@@ -768,10 +771,13 @@ void MailController::refreshFolders()
     if (!plan.has_value())
         return; // unpaired: an ordinary state at startup, not an error
 
+    // The top level, one level only: it carries the special-use roles.
+    listFolderTree(*plan, QString(), kMaxFolderDepth);
     // Only Archive's tree, matching Android's folder picker: the other five
     // standard mailboxes have no subfolder UI, so listing them would be five
-    // extra round-trips for nothing to render.
-    listFolderTree(*plan, standardFolderWireName(StandardFolder::Archive), 1);
+    // extra round-trips for nothing to render. A role learned by the listing
+    // above takes effect on the next refresh.
+    listFolderTree(*plan, folderPath(StandardFolder::Archive), 1);
 }
 
 // The relay lists one level per request, so the tree costs one listing per
@@ -1033,7 +1039,8 @@ quint64 MailController::saveDraftInternal(const QString& to, const QString& cc, 
 
 quint64 MailController::sendMail(const QString& to, const QString& cc, const QString& bcc, const QString& subject,
                                    const QString& body, const QStringList& attachmentFilePaths, bool sign,
-                                   bool encrypt, const QString& draftToken)
+                                   bool encrypt, const QString& draftToken, const QString& replyToMessageId,
+                                   const QString& replyToMailbox)
 {
     // FIRST statement, before any early return below: PendingSend's own doc
     // comment promises the cached plaintext dies when a fresh send starts,
@@ -1058,19 +1065,20 @@ quint64 MailController::sendMail(const QString& to, const QString& cc, const QSt
     const quint64 sendToken = m_nextPendingSendToken++;
     captureDraftReplacement(sendToken, draftToken);
 
-    // Field order matters -- PendingSend is aggregate-initialized. Eleven
+    // Field order matters -- PendingSend is aggregate-initialized. Thirteen
     // fields: valid, to, cc, bcc, subject, body, mode, attachments, sign,
-    // encrypt, token.
-    m_pendingSend = PendingSend{ true, to, cc, bcc, subject, body, sendMode, attachments, sign, encrypt, sendToken };
+    // encrypt, token, replyToMessageId, replyToMailbox.
+    m_pendingSend = PendingSend{ true, to, cc, bcc, subject, body, sendMode, attachments,
+                                 sign, encrypt, sendToken, replyToMessageId, replyToMailbox };
 
     pushBusy();
     m_executor.run(
         this,
-        [serverBaseUrl, auth, to, cc, bcc, subject, body, sendMode, attachments, sign,
-         encrypt](HttpClient& http) {
+        [serverBaseUrl, auth, to, cc, bcc, subject, body, sendMode, attachments, sign, encrypt, replyToMessageId,
+         replyToMailbox](HttpClient& http) {
             RelayMailSource source(http);
             return source.sendMail(serverBaseUrl, auth, to, cc, bcc, subject, body, sendMode, attachments, sign,
-                                    encrypt, /*allowPickupFallback=*/false);
+                                    encrypt, /*allowPickupFallback=*/false, replyToMessageId, replyToMailbox);
         },
         [this, sendToken](const SendMailResult& result) { finishSend(sendToken, result); });
     return sendToken;
@@ -1120,6 +1128,15 @@ void MailController::finishSend(quint64 sendToken, const SendMailResult& result)
     if (m_pendingSend.token == sendToken)
         m_pendingSend = {};
 
+    if (result.replyThreadingRefused) {
+        // Nothing was sent. Re-sending unthreaded is the user's call.
+        setLastError(i18n("Not sent: the server could not link this reply to the message it answers (%1). "
+                          "Press Send again to send it as a new conversation.",
+                          result.detail));
+        emit replyThreadingRefused(sendToken);
+        emit sendCompleted(sendToken, false);
+        return;
+    }
     if (!result.ok) {
         // Same shape as every other failure in this class: prefer the
         // server's own detail, fall back to localized wording.
@@ -1171,27 +1188,11 @@ quint64 MailController::confirmPickupFallbackSend(quint64 token)
             RelayMailSource source(http);
             return source.sendMail(serverBaseUrl, auth, pending.to, pending.cc, pending.bcc, pending.subject,
                                     pending.body, pending.mode, pending.attachments, pending.sign,
-                                    pending.encrypt, /*allowPickupFallback=*/true);
+                                    pending.encrypt, /*allowPickupFallback=*/true, pending.replyToMessageId,
+                                    pending.replyToMailbox);
         },
-        [this, sendToken](const SendMailResult& result) {
-            popBusy();
-            settleDraftReplacement(sendToken, result.ok);
-            if (!result.ok) {
-                // Same detail-or-localized-fallback shape as every other
-                // failure in this class: a 200 carrying {"ok":false} leaves
-                // detail empty, and reporting that verbatim would fail
-                // silently.
-                setLastError(result.detail.isEmpty() ? i18n("Could not send message") : result.detail);
-                emit sendCompleted(sendToken, false);
-                return;
-            }
-            if (!result.warning.isEmpty())
-                emit sendWarning(result.warning);
-            // The one send that most needs to read as success: clear any
-            // error left over from the refusal that opened the confirmation.
-            setLastError(QString());
-            emit sendCompleted(sendToken, true);
-        });
+        // Same outcomes as a first send, including a threading refusal.
+        [this, sendToken](const SendMailResult& result) { finishSend(sendToken, result); });
     return sendToken;
 }
 
@@ -1225,6 +1226,23 @@ void MailController::refreshPgpComposeState(bool force)
     // for the remaining one.
     if (m_pgpComposeStateFetched && !force)
         return;
+    fetchPgpBootstrap();
+}
+
+void MailController::loadAccountAddresses()
+{
+    if (!m_pairingStore.stillCurrent(m_accountAddressesOwner))
+        fetchPgpBootstrap();
+}
+
+QStringList MailController::replyAllRecipients(const QString& sender, const QString& to, const QString& cc) const
+{
+    const bool ours = m_pairingStore.stillCurrent(m_accountAddressesOwner);
+    return ::replyAllRecipients(sender, to, cc, ours ? m_accountAddresses : QStringList());
+}
+
+void MailController::fetchPgpBootstrap()
+{
     // Coalescing: Compose can be opened twice before the first answer lands.
     if (m_pgpBootstrapInFlight)
         return;
@@ -1262,6 +1280,10 @@ void MailController::refreshPgpComposeState(bool force)
             // rest of the session over one transient 503; the next compose
             // open retries instead.
             m_pgpComposeStateFetched = bootstrap.ok;
+            if (bootstrap.ok) {
+                m_accountAddresses = bootstrap.addresses;
+                m_accountAddressesOwner = requestedBy;
+            }
             m_pgpCanEncrypt = state.canEncrypt;
             m_pgpCanSign = state.canSign;
             m_pgpHandoffToWebmail = state.handoffToWebmail;
@@ -1362,7 +1384,7 @@ quint64 MailController::openWebmailDrafts(const QString& to, const QString& cc, 
     if (!requirePairing(serverBaseUrl, auth)) // sets "Not paired"
         return 0;
 
-    const QUrl url = webmailMailboxUrl(webmailBaseUrl(), QStringLiteral("Drafts"));
+    const QUrl url = webmailMailboxUrl(webmailBaseUrl(), folderPath(StandardFolder::Drafts));
     // Checked BEFORE saving: a draft saved for a handoff that cannot open
     // leaves the user with a silently duplicated draft and no browser.
     if (url.isEmpty()) {
@@ -1771,6 +1793,21 @@ void MailController::openFromNotification(const QString& messageId)
         refreshInternal(false);
     else
         selectFolderInternal(inbox);
+}
+
+QVariantMap MailController::linkTarget(const QUrl& url, const QVariantList& anchors) const
+{
+    const auto target = linkTargetOf(url);
+    if (!target)
+        return {};
+    return {{QStringLiteral("host"), target->host},
+            {QStringLiteral("shownUrl"), target->url.toString(QUrl::FullyEncoded)},
+            {QStringLiteral("mismatchHost"), linkTextMismatch(anchors, url)}};
+}
+
+QString MailController::linkAnchorScript() const
+{
+    return QString::fromLatin1(kLinkAnchorScript);
 }
 
 QVariantMap MailController::findByMessageId(const QString& messageId, const QString& folder) const
@@ -2256,12 +2293,13 @@ void MailController::releaseDraft(const QString& token)
     m_draftAttachments.clear();
     m_draftEncrypted = false;
     m_draftSourceId.clear();
+    m_draftSourceFolder.clear();
 }
 
 QVariantMap MailController::reopenDecryptedDraft(const QString& token)
 {
     if (!decryptedStillOurs() || token.isEmpty() || token != m_decryptedToken
-        || m_decryptedFolder != QStringLiteral("Drafts"))
+        || m_decryptedFolder != folderPath(StandardFolder::Drafts))
         return {};
     const auto email = m_mailRepository.cachedEmail(m_decryptedFolder, m_decryptedMessageId);
     if (!email || !email->pgpEncrypted)
@@ -2271,6 +2309,7 @@ QVariantMap MailController::reopenDecryptedDraft(const QString& token)
     m_draftAttachments = m_decryptedAttachments;
     m_draftEncrypted = true;
     m_draftSourceId = m_decryptedMessageId;
+    m_draftSourceFolder = m_decryptedFolder;
     QStringList paths;
     QVariantMap names;
     for (qsizetype i = 0; i < m_draftAttachments.size(); ++i) {
@@ -2503,16 +2542,22 @@ QVariantList MailController::standardFolders() const
         StandardFolder::Sent,  StandardFolder::Trash,  StandardFolder::Archive,
     };
 
+    const QVector<MailFolder> topLevel = m_folderRepository.cachedFolders(QString());
     QVariantList list;
     list.reserve(6);
     for (StandardFolder folder : kFolders) {
-        const QString wireName = standardFolderWireName(folder);
+        const QString wireName = standardFolderPath(folder, topLevel);
         QVariantMap entry;
         entry[QStringLiteral("wireName")] = wireName;
         entry[QStringLiteral("displayName")] = standardFolderDisplayName(wireName);
         list.append(entry);
     }
     return list;
+}
+
+QString MailController::folderPath(StandardFolder folder) const
+{
+    return standardFolderPath(folder, m_folderRepository.cachedFolders(QString()));
 }
 
 // ---- server search ---------------------------------------------------------
@@ -2686,8 +2731,7 @@ void MailController::loadSearchBody(const QString& folder, const QString& messag
 
 QVariantMap MailController::reopenDraft(const QString& folder, const QString& messageId)
 {
-    const QString drafts = standardFolderWireName(StandardFolder::Drafts);
-    if (m_appLocked || folder != drafts)
+    if (m_appLocked || folder != folderPath(StandardFolder::Drafts))
         return {};
     const std::optional<Email> email = lookupEmail(folder, messageId);
     // Encrypted drafts go through reopenDecryptedDraft(); never reopen them as plaintext.
@@ -2707,6 +2751,7 @@ QVariantMap MailController::reopenDraft(const QString& folder, const QString& me
     m_draftIdentity = identity;
     m_draftEncrypted = false;
     m_draftSourceId = messageId;
+    m_draftSourceFolder = folder;
 
     const QString mode = email->bodyMode.value_or(QString());
     const bool isHtml = mode == QStringLiteral("html") || (mode.isEmpty() && Qt::mightBeRichText(*email->body));
@@ -2727,7 +2772,8 @@ void MailController::captureDraftReplacement(quint64 token, const QString& draft
 {
     if (draftToken.isEmpty() || draftToken != m_draftToken || m_draftSourceId.isEmpty())
         return;
-    m_draftReplacements.insert(token, { m_draftIdentity, m_draftSourceId, draftToken, m_draftEncrypted });
+    m_draftReplacements.insert(token,
+                               { m_draftIdentity, m_draftSourceId, draftToken, m_draftEncrypted, m_draftSourceFolder });
 }
 
 // The relay's draft save is an APPEND with no id to replace, so the source is
@@ -2745,7 +2791,9 @@ void MailController::settleDraftReplacement(quint64 token, bool ok)
     if (!pairing.has_value())
         return;
     const RelayEndpoint endpoint{ QUrl(pairing->serverBaseUrl), RelayAuth{ pairing->deviceId, pairing->deviceSecret } };
-    const QString drafts = standardFolderWireName(StandardFolder::Drafts);
+    // The mailbox it was reopened from: ids repeat across mailboxes, so never
+    // a role re-resolved since.
+    const QString drafts = replacement.folder;
 
     enum class Outcome { Deleted, KeptForAttachments, Failed };
     m_executor.run(

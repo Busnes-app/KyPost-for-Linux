@@ -18,6 +18,7 @@ private slots:
     void fingerprintAdmission_data();
     void fingerprintAdmission();
     void parsesIdentityAndProtection();
+    void keepsEveryAccountAddress();
     void ignoresTheBrowserOnlyFields();
     void failureIsNotAnEmptySuccess();
 };
@@ -62,6 +63,23 @@ void PgpBootstrapClientTest::parsesIdentityAndProtection()
     QCOMPARE(result.ok, true);
     QCOMPARE(result.hasIdentity, true);
     QCOMPARE(result.protection, QStringLiteral("client"));
+}
+
+// The primary drives From; the whole list (primary plus send-as aliases) is
+// what Reply All leaves out.
+void PgpBootstrapClientTest::keepsEveryAccountAddress()
+{
+    FakeRelayServer fake(httpResponse(
+        200, "OK",
+        R"({"hasIdentity":true,"protection":"server","suggestedUserIDs":[" me@example.com ","","alias@example.com"]})"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    const auto result = PgpBootstrapClient(http).fetch(
+        QUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port())), {});
+
+    QVERIFY(result.ok);
+    QCOMPARE(result.primaryAddress, QStringLiteral("me@example.com"));
+    QCOMPARE(result.addresses, QStringList({ QStringLiteral("me@example.com"), QStringLiteral("alias@example.com") }));
 }
 
 // bootstrap carries wrappedPrivateKey, unlockRequired, signerPublicKeys and

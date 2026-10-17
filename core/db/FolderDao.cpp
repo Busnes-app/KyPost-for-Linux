@@ -5,6 +5,13 @@
 
 namespace {
 
+// The top level is parent "": a null QString binds as NULL, which no
+// `parent = :parent` ever matches.
+QString parentKey(const QString& parent)
+{
+    return parent.isNull() ? QString::fromLatin1("") : parent;
+}
+
 FolderRecord folderFromQuery(const QSqlQuery& query)
 {
     FolderRecord record;
@@ -12,6 +19,7 @@ FolderRecord folderFromQuery(const QSqlQuery& query)
     record.parent = query.value(QStringLiteral("parent")).toString();
     record.deletable = query.value(QStringLiteral("deletable")).toInt() != 0;
     record.sourceMode = query.value(QStringLiteral("source_mode")).toString();
+    record.special = query.value(QStringLiteral("special")).toString();
     return record;
 }
 
@@ -30,16 +38,17 @@ FolderDao::FolderDao(QSqlDatabase& db) : m_db(db)
 }
 
 bool FolderDao::insertOrReplace(const QString& path, const QString& parent, bool deletable,
-                                 const QString& sourceMode)
+                                 const QString& sourceMode, const QString& special)
 {
     QSqlQuery query(m_db);
     query.prepare(QStringLiteral(
-        "INSERT OR REPLACE INTO folders (path, parent, deletable, source_mode) "
-        "VALUES (:path, :parent, :deletable, :source_mode)"));
+        "INSERT OR REPLACE INTO folders (path, parent, deletable, source_mode, special) "
+        "VALUES (:path, :parent, :deletable, :source_mode, :special)"));
     query.bindValue(QStringLiteral(":path"), path);
-    query.bindValue(QStringLiteral(":parent"), parent);
+    query.bindValue(QStringLiteral(":parent"), parentKey(parent));
     query.bindValue(QStringLiteral(":deletable"), deletable ? 1 : 0);
     query.bindValue(QStringLiteral(":source_mode"), sourceMode);
+    query.bindValue(QStringLiteral(":special"), special);
     return query.exec();
 }
 
@@ -47,7 +56,7 @@ bool FolderDao::deleteByParent(const QString& parent)
 {
     QSqlQuery query(m_db);
     query.prepare(QStringLiteral("DELETE FROM folders WHERE parent = :parent"));
-    query.bindValue(QStringLiteral(":parent"), parent);
+    query.bindValue(QStringLiteral(":parent"), parentKey(parent));
     return query.exec();
 }
 
@@ -63,7 +72,7 @@ bool FolderDao::replaceParentSnapshot(const QString& parent, const QVector<MailF
     }
 
     for (const MailFolder& folder : folders) {
-        if (!insertOrReplace(folder.path, parent, folder.deletable, sourceMode)) {
+        if (!insertOrReplace(folder.path, parent, folder.deletable, sourceMode, folder.special)) {
             m_db.rollback();
             return false;
         }
@@ -86,7 +95,7 @@ QVector<FolderRecord> FolderDao::findByParent(const QString& parent) const
 {
     QSqlQuery query(m_db);
     query.prepare(QStringLiteral("SELECT * FROM folders WHERE parent = :parent"));
-    query.bindValue(QStringLiteral(":parent"), parent);
+    query.bindValue(QStringLiteral(":parent"), parentKey(parent));
     if (!query.exec())
         return {};
     return collect(query);

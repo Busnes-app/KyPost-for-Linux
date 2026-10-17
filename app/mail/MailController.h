@@ -6,6 +6,7 @@
 #include "mail/EmailListModel.h"
 #include "db/PushDao.h" // PushRecord
 #include "models/Email.h"
+#include "models/StandardFolder.h"
 #include "net/RelayMailSource.h" // MailAttachmentUpload -- held by value in PendingSend below
 #include "pgp/EncryptedMessageReader.h" // PgpReadResult/PgpReadStatus -- carried across the hop
 #include "pgp/MimeBodyReader.h"
@@ -130,6 +131,9 @@ class MailController : public QObject
     // error -- the mail went out -- but the user's outbox will not have it.
     Q_PROPERTY(bool lastSendMissingSentCopy READ lastSendMissingSentCopy NOTIFY pgpComposeStateChanged)
     Q_PROPERTY(QStringList pgpKeylessRecipients READ pgpKeylessRecipients NOTIFY pgpKeylessRecipientsChanged)
+    // The account's Drafts and Archive paths, by special-use role (plan L15).
+    Q_PROPERTY(QString draftsFolder READ draftsFolder NOTIFY foldersChanged)
+    Q_PROPERTY(QString archiveFolder READ archiveFolder NOTIFY foldersChanged)
 
 public:
     // Deepest subfolder level mailFolders() shows and refreshFolders() lists.
@@ -239,8 +243,14 @@ public slots:
     // holds -- and it is the same token that already existed for the
     // pickup-fallback round trip, so the two mechanisms the old comment here
     // described separately are now one.
+    //
+    // replyToMessageId/replyToMailbox thread a reply (see RelayMailSource);
+    // only this plain /api/mail/send path carries them, never a draft or a
+    // client-encrypted send, same as Android.
     quint64 sendMail(const QString& to, const QString& cc, const QString& bcc, const QString& subject,
-                     const QString& body, const QStringList& attachmentFilePaths, bool sign, bool encrypt, const QString& draftToken = QString());
+                     const QString& body, const QStringList& attachmentFilePaths, bool sign, bool encrypt,
+                     const QString& draftToken = QString(), const QString& replyToMessageId = QString(),
+                     const QString& replyToMailbox = QString());
     // Dispatches; the list arrives as attachmentsListed().
     void listAttachments(const QString& mailbox, const QString& messageId);
     // Writes the downloaded bytes to QStandardPaths::DownloadLocation,
@@ -261,6 +271,12 @@ public slots:
     // isn't cached locally -- this is a pure local-cache read (no network
     // call), so a miss just means "not fetched/cached yet", not an error.
     Q_INVOKABLE QVariantMap findByMessageId(const QString& messageId, const QString& folder = QString()) const;
+
+    // What EmailDetail's link confirm dialog shows and opens; see
+    // domain/LinkTarget.h. {host, shownUrl, mismatchHost}, or empty when
+    // `url` is not a web link. `anchors` is kLinkAnchorScript's result.
+    Q_INVOKABLE QVariantMap linkTarget(const QUrl& url, const QVariantList& anchors) const;
+    Q_INVOKABLE QString linkAnchorScript() const;
 
     // Fetches this message's ciphertext and decrypts it with the user's own
     // gpg-agent. Dispatches and returns; the result arrives on the
@@ -295,6 +311,12 @@ public slots:
     Q_INVOKABLE void loadSearchBody(const QString& folder, const QString& messageId);
 
 public:
+    // `folder`'s path on this account: the cached top-level listing's
+    // special-use role, else the standard name.
+    QString folderPath(StandardFolder folder) const;
+    QString draftsFolder() const { return folderPath(StandardFolder::Drafts); }
+    QString archiveFolder() const { return folderPath(StandardFolder::Archive); }
+
     // What sendClientEncrypted() does off-thread, as one value so the GUI
     // thread only ever sees the outcome. Public because the worker that fills
     // it is a free function -- deliberately, so it cannot touch anything this
@@ -383,8 +405,9 @@ public slots:
     // connection.
     Q_INVOKABLE QVariantList mailFolders() const;
 
-    // Fetches Archive's subfolder tree, one listing per folder down to
-    // kMaxFolderDepth, and emits foldersChanged() once the walk is done.
+    // Lists the top level (for special-use roles) and Archive's subfolder
+    // tree, one listing per folder down to kMaxFolderDepth, and emits
+    // foldersChanged() once the walk is done.
     // A call while a walk is running is dropped.
     Q_INVOKABLE void refreshFolders();
 
@@ -452,6 +475,12 @@ public slots:
     // call makes this a no-op rather than nesting a second one -- see
     // m_preflightInFlight.
     Q_INVOKABLE void preflightRecipients(const QString& to, const QString& cc, const QString& bcc);
+    // Fetches the account's own addresses (bootstrap) unless this pairing's
+    // are already held. Called when a message opens, ahead of Reply All.
+    Q_INVOKABLE void loadAccountAddresses();
+    // replyAllRecipients() (core/domain/ReplyAll.h) with the account's own
+    // addresses, once loadAccountAddresses() has them for this pairing.
+    Q_INVOKABLE QStringList replyAllRecipients(const QString& sender, const QString& to, const QString& cc) const;
     // Re-sends the exact payload the server refused with 409 +
     // keylessRecipients, with allowPickupFallback set. `token` is the value
     // pickupFallbackRequired() carried: this returns false without sending
@@ -546,6 +575,10 @@ signals:
     // preceded by pickupFallbackRequired, which is what the composer acts on;
     // this one just says the attempt is over.
     void sendCompleted(quint64 token, bool ok);
+    // The relay refused to thread this reply and sent nothing; precedes
+    // sendCompleted(token, false). The composer drops the reply reference so
+    // the user's next Send goes out as a new conversation.
+    void replyThreadingRefused(quint64 token);
     // Terminal outcome of one saveDraft()/openWebmailDrafts().
     void draftSaveCompleted(quint64 token, bool ok);
     // Emitted on a 200 response carrying a non-empty warning: the message
@@ -612,6 +645,7 @@ private:
         QString messageId;
         QString token;
         bool encrypted = false;
+        QString folder;
     };
     void captureDraftReplacement(quint64 token, const QString& draftToken);
     void settleDraftReplacement(quint64 token, bool ok);
@@ -648,6 +682,8 @@ private:
     // The half of downloadAttachment() that must stay on this thread.
     bool storeDownloadedAttachment(const QString& suggestedName, const DownloadAttachmentResult& result);
     void applyKeylessRecipients(const QStringList& keyless);
+    // GET /api/pgp/bootstrap: compose state and account addresses.
+    void fetchPgpBootstrap();
 
     // These existed because the public entry points held a ReentrancyGuard
     // and several of them legitimately call each other (deleteFolder ->
@@ -739,6 +775,8 @@ private:
         // counter starts at 1, so a default-constructed PendingSend can never
         // accidentally match a real token.
         quint64 token = 0;
+        QString replyToMessageId;
+        QString replyToMailbox;
     };
     PendingSend m_pendingSend;
     // Monotonic, per-session. quint64 crosses into QML as a JS number, which
@@ -800,6 +838,10 @@ private:
     // session -- see refreshPgpComposeState(). A short-circuited pairing
     // lookup does NOT set it, so pairing later still gets a real answer.
     bool m_pgpComposeStateFetched = false;
+    // suggestedUserIDs from the last bootstrap, and the pairing it answered
+    // for: another account's list is never used.
+    QStringList m_accountAddresses;
+    PairingIdentity m_accountAddressesOwner;
     // Coalescing flags for the two PGP compose-state calls. Both used to be
     // re-entrancy defences against the nested event loop; the requests are
     // off-thread now, so they only stop a second call piling up behind one
@@ -843,6 +885,7 @@ private:
     // Only an encrypted session forces encrypted sending and saving.
     bool m_draftEncrypted = false;
     QString m_draftSourceId; // Drafts message the session replaces; empty once replaced
+    QString m_draftSourceFolder; // the Drafts path it was reopened from
     QString m_decryptedFolder;
     quint64 m_decryptGeneration = 0;
     bool m_appLocked = false;
