@@ -258,7 +258,8 @@ Added 2026-07-25 (parity work with `kypost-android`):
   Save Draft uploads) or is not sent; there is no plaintext fallback. A
   scheduled plain send never caches the one-time-link re-send, which carries no
   `sendAt`. The list and cancel are `ScheduledController` ("Scheduled"), scoped
-  to the pairing that asked.
+  to the pairing that asked, dropped and refused under the app lock; the
+  desktop sheet is an OverlaySheet, so the lock handler closes it.
 
 - **Biometric unlock and window-content protection are non-goals** — no
   portable Linux equivalent (no `FLAG_SECURE` analogue on Wayland).
