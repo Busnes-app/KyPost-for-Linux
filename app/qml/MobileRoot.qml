@@ -662,18 +662,14 @@ Kirigami.ApplicationWindow {
                     spacing: 8
 
                     PillTab {
-                        text: i18n("All")
+                        text: Format.withUnread(i18n("All"), MailApp.currentFolderUnread)
                         selected: MailApp.selectedKeyword === ""
                         onClicked: MailApp.selectKeyword("")
                     }
                     Repeater {
                         model: MailApp.keywordTabs
                         delegate: PillTab {
-                            // modelData.name is a keyword the user typed --
-                            // data, not wrapped (see the task-49 brief's
-                            // exclusion list); only the "%1 (%2)" chrome
-                            // wrapper around it is.
-                            text: i18n("%1 (%2)", modelData.name, modelData.count)
+                            text: Format.withUnread(modelData.name, modelData.unread)
                             selected: MailApp.selectedKeyword === modelData.name
                             onClicked: MailApp.selectKeyword(modelData.name)
                         }
@@ -1001,7 +997,7 @@ Kirigami.ApplicationWindow {
                             anchors.left: parent.left
                             anchors.leftMargin: 10 + (modelData.depth || 0) * 14
                             textFormat: Text.PlainText
-                            text: modelData.displayName
+                            text: Format.withUnread(modelData.displayName, MailApp.unreadCounts[modelData.wireName])
                             color: Theme.inkStrong
                             font.family: Theme.fontUi
                             font.pixelSize: 14

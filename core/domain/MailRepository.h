@@ -4,6 +4,7 @@
 #include "net/RelayAuth.h"
 #include "net/RelayMailSource.h" // InboxFetchResult -- crosses the thread hop by value
 
+#include <QHash>
 #include <QString>
 #include <QUrl>
 #include <QVector>
@@ -100,6 +101,9 @@ public:
 
     // Local cache write only; the relay is told separately.
     bool setCachedStatus(const QString& folder, const QString& messageId, const QString& status);
+    // Local cache only: rows the relay has already moved out of `folder`.
+    void removeCached(const QString& folder, const QStringList& messageIds);
+    QHash<QString, int> unreadCounts() const;
 
     // forceFullResync sends `since=0`; every other refresh sends the
     // CursorStore-persisted cursor for this (subscriber, folder), or 0 when
