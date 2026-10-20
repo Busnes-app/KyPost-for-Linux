@@ -1,5 +1,5 @@
 **Repo:** kypost-Linux
-**PR:** #61 — https://github.com/Busness-app/KyPost-for-Linux/pull/61
+**PR:** #61 — https://github.com/Busnes-app/KyPost-for-Linux/pull/61
 **Worktree:** /home/yoshi/busness.app/kypost-Linux (branch feat/linux-pgp-parity)
 
 Owner: Usagi / GPT-6 / alder. Date: 2026-09-15.

@@ -14,7 +14,7 @@
 
 - **Two repos.** Tasks 1-3 and 8 are in `kypost-server` (`/home/yoshi/busness.app/kypost-server`). Tasks 4-7 are in `kypost-Linux` (`/home/yoshi/busness.app/kypost-Linux`). Confirm your working directory before every edit — the two repos have same-named files.
 - **Release ordering:** the server endpoint (Tasks 2-3) must be released before the client (Tasks 4-7). Task 5 makes a 404 harmless, which is what allows the client to ship against older servers.
-- **The releases URL is permanent for every install that ships with it:** `https://api.github.com/repos/Busness-app/KyPost-for-Linux/releases`. Verified against the Linux repo's `git remote`. Use the **list** endpoint, never `/releases/latest` — the list is what allows a soak window.
+- **The releases URL is permanent for every install that ships with it:** `https://api.github.com/repos/Busnes-app/KyPost-for-Linux/releases`. Verified against the Linux repo's `git remote`. Use the **list** endpoint, never `/releases/latest` — the list is what allows a soak window.
 - **Soak window is 6 hours** (`linuxClientReleaseMinAge = 6 * time.Hour`).
 - **The installed version is the left-hand side of the comparison** and is compiled in. Never send the client's version to the server for comparison.
 - **Version strings:** tags are `v0.2.0`, `KYPOST_VERSION` is `0.2.0`. Strip a leading `v` on both sides. Refuse anything that is not `N.N.N` — `v0.1-alpha` exists in the Linux tag list today.
@@ -250,7 +250,7 @@ import (
 // This URL is compiled into every client that asks for it and is permanent
 // for the life of those installs. It was read from the Linux repository's
 // git remote rather than assumed.
-var linuxClientReleasesURL = "https://api.github.com/repos/Busness-app/KyPost-for-Linux/releases"
+var linuxClientReleasesURL = "https://api.github.com/repos/Busnes-app/KyPost-for-Linux/releases"
 
 // linuxClientReleaseMinAge is six hours where serverReleaseMinAge is zero.
 //
@@ -1194,7 +1194,7 @@ namespace {
 constexpr int kPollIntervalMs = 60 * 60 * 1000;
 
 // The page a user is sent to. Not an API endpoint -- this is for a human.
-constexpr auto kReleasesPage = "https://github.com/Busness-app/KyPost-for-Linux/releases";
+constexpr auto kReleasesPage = "https://github.com/Busnes-app/KyPost-for-Linux/releases";
 } // namespace
 
 QString UpdateCheckController::compiledInVersion()
@@ -1396,7 +1396,7 @@ private:
     bool m_updateAvailable = false;
     QString m_checkedAt;
     QString m_releaseUrl =
-        QStringLiteral("https://github.com/Busness-app/KyPost-for-Linux/releases");
+        QStringLiteral("https://github.com/Busnes-app/KyPost-for-Linux/releases");
 };
 ```
 
@@ -1547,7 +1547,7 @@ Expected: no output. If that changes, the issue text below is wrong — re-verif
 - [ ] **Step 2: File the issue**
 
 ```bash
-gh issue create --repo Busness-app/KyPost-for-Linux \
+gh issue create --repo Busnes-app/KyPost-for-Linux \
   --title "Honour pin= from the pairing URI, and fail closed on a mismatch" \
   --body 'The server publishes a certificate pin in the pairing URI. Android honours it. Linux does not read it.
 
