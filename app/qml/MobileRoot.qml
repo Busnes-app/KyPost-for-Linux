@@ -126,7 +126,6 @@ Kirigami.ApplicationWindow {
         // Only the user can answer this, so ask instead of rendering the
         // refusal as a blank detail page.
         function onNotificationEmailAmbiguous(messageId, folders) {
-            root.currentSection = "mail"
             notificationFolderDialog.open(messageId, folders)
         }
 
@@ -1132,7 +1131,7 @@ Kirigami.ApplicationWindow {
         anchors.fill: parent
         z: 900
         onChosen: function (messageId, folder) {
-            root.selectEmail(messageId, folder)
+            root.openEmailDetail(messageId, folder)
         }
     }
 
