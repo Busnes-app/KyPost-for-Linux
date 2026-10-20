@@ -19,10 +19,14 @@ repository's `gh-pages` branch by `.github/workflows/flatpak.yml`.
 > Tell users to add the remote; adding `--repo-url` and `--gpg-keys` to the
 > bundle step would close it.
 
-**KyPost will never be on Flathub.** Flathub bans applications that use AI, and
-KyPost's backend does (the Ollama-backed classifier). That is a policy ban, not a
-packaging gap — no amount of manifest compliance changes it. Don't spend effort on
-Flathub-specific requirements or `flathub/` scaffolding.
+KyPost’s chosen application distribution channel is its own signed remote. Flathub
+supplies the KDE runtime; KyPost itself is not listed there. This is the project’s
+packaging choice, not evidence of a general Flathub policy banning AI-backed applications.
+
+**Availability recheck, 2026-10-20:** release `v0.4.2` and `gh-pages` exist and the
+public `.flatpakrepo` responds HTTP 200. The dated signature/install observations above
+remain evidence of their original run; this recheck did not reinstall or validate the
+current release’s signer on a fresh machine.
 
 Because there is no store, this repo *is* the distribution channel. That's why the
 workflow publishes an OSTree repository rather than only a single-file bundle: a

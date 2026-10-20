@@ -62,14 +62,25 @@ use the same Go relay backend.
 - **Device pairing** — paste a link, or use a `kypost://` deep link.
 - **Localized** — the code wraps every user-facing string for translation (`po/`).
 
+## Standalone client setup
+
+The client needs a separate [KyPost server](https://github.com/Busnes-app/KyPost-Server)
+over HTTPS and an everyday mailbox account. It cannot use IMAP/SMTP directly. Install the
+server first, configure its mail service, then build this client or install from its signed Flatpak remote.
+
+Launch KyPost, generate a device pairing link in the server’s web security settings, paste
+it into the client and confirm the server. Check mail access and a controlled send/reply.
+UnifiedPush is optional; polling remains available. PGP key enrollment is a separate step
+and requires the account’s key/recovery material. Preserve your profile, OS keyring and
+GnuPG keyring on updates. See [setup](docs/SETUP.md) and [manual testing](TESTING.md).
+
 ## Installing
 
-> **Not published yet.** The signing key is not configured, so the workflow builds and
-> smoke-tests but skips publishing: there is no `gh-pages` branch and no release on the
-> repository today, and the commands below will 404 until the first signed publish runs. They
-> are the shape of the channel, not a working install. See
-> [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md) for the three one-time maintainer steps that
-> turn it on.
+> **Available channel (checked 2026-10-20):** GitHub release `v0.4.2`, the
+> `gh-pages` branch and the public `.flatpakrepo` endpoint exist (HTTP 200).
+> Install from the signed remote below for updates. This availability check is not
+> a fresh installation or signer-verification result; follow
+> [distribution verification](docs/DISTRIBUTION.md) before relying on the package.
 
 KyPost has its own signed Flatpak remote:
 
@@ -80,8 +91,7 @@ flatpak install kypost com.kysecurity.mail
 ```
 
 The normal `flatpak update` command then installs new versions. The Flathub remote supplies the
-`org.kde.Platform//6.11` runtime. KyPost itself is not on Flathub and never will be. Flathub bans
-applications that use AI, and the KyPost backend uses AI. Each
+`org.kde.Platform//6.11` runtime. KyPost uses its own distribution channel rather than a Flathub listing. Each
 [release](https://github.com/Busnes-app/KyPost-for-Linux/releases) also attaches a
 single-file `.flatpak` bundle, but a bundle gives you no automatic updates. For more
 information, see [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md).
@@ -117,12 +127,18 @@ unavailable`. SQLCipher has to carry the SONAME `libsqlite3.so.0` and be built w
 it — the same way CI and the Flatpak manifest do:
 
 ```sh
-./scripts/build-sqlcipher.sh /tmp/sqlcipher
-cmake -B build -S . -DCMAKE_BUILD_TYPE=RelWithDebInfo -DKYPOST_SQLCIPHER_ROOT=/tmp/sqlcipher
+./scripts/build-sqlcipher.sh "$HOME/.local/opt/kypost-sqlcipher"
+cmake -B build -S . -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DKYPOST_SQLCIPHER_ROOT="$HOME/.local/opt/kypost-sqlcipher"
+cmake --build build
+ctest --test-dir build --output-on-failure
 ```
 
-`AGENTS.md` §6h explains why each of those two conditions is load-bearing; both were shipped
-bugs first.
+The first build recipe is for evaluation without database encryption. Encryption tests may
+skip there: a green `ctest` result with skips is not encryption coverage. Use the SQLCipher
+build above for an encrypted profile and verify that configure reports SQLCipher enabled.
+`AGENTS.md` §6h explains the SONAME/metadata requirements. Fake-relay tests and demo
+screenshots do not qualify live mail, push or physical-device PGP interoperability.
 
 ### Flatpak
 
@@ -136,9 +152,9 @@ This manifest is the packaging target for Linux Desktop and for Plasma Mobile. T
 Ubuntu Touch directory (`packaging/click/`) is a deliberate empty placeholder. It stays empty
 until UBports releases a Qt6/KF6 track.
 
-CI builds this manifest for every pull request. For every push to `main`, CI publishes a signed
-OSTree repository to the `gh-pages` branch
-([`.github/workflows/flatpak.yml`](.github/workflows/flatpak.yml)). The `flatpak remote-add`
+CI builds this manifest for every pull request. Publishing a signed OSTree repository
+to `gh-pages` on `main` is conditional on the configured signing/publishing secrets;
+without them the build/smoke checks run and publication is skipped. See [the publishing workflow](.github/workflows/flatpak.yml). The `flatpak remote-add`
 command above uses that published repository.
 
 ## Architecture
