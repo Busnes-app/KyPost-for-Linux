@@ -149,9 +149,9 @@ and the same SQLCipher as above. `-DQT_DIR` selects Qt 5 when Qt 6 is also insta
 prints the version it used, for example `kypostcore: Qt 5.15.13`:
 
 ```sh
-./scripts/build-sqlcipher.sh /tmp/sqlcipher
+./scripts/build-sqlcipher.sh "$HOME/.local/opt/kypost-sqlcipher"
 cmake -B build-qt5 -S . -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DKYPOST_CORE_ONLY=ON \
-  -DQT_DIR=/usr/lib/cmake/Qt5 -DKYPOST_SQLCIPHER_ROOT=/tmp/sqlcipher
+  -DQT_DIR=/usr/lib/cmake/Qt5 -DKYPOST_SQLCIPHER_ROOT="$HOME/.local/opt/kypost-sqlcipher"
 cmake --build build-qt5
 ctest --test-dir build-qt5 --output-on-failure
 ```
