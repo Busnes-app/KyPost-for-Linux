@@ -2,11 +2,9 @@
 #
 # --- Why this exists separately from ci.yml ---
 #
-# KyPost will never ship on Flathub: Flathub bans applications that use AI,
-# and KyPost's backend does (the Ollama-backed classifier). That is a policy
-# ban, not a packaging gap, so no amount of manifest compliance changes it.
-# This workflow therefore *is* the distribution channel, not a rehearsal for
-# one -- it publishes a signed OSTree repository to the gh-pages branch so
+# KyPost uses its own signed application remote; Flathub supplies the KDE runtime.
+# This workflow is the distribution channel, not a rehearsal for another
+# channel -- it publishes a signed OSTree repository to the gh-pages branch so
 # users get working `flatpak update`, rather than a one-shot .flatpak bundle
 # that installs once and then rots. See docs/DISTRIBUTION.md.
 #

@@ -156,11 +156,7 @@ Carried forward verbatim (in substance) from `Linux_QT_Client_Plan.md`'s own
 
 Added 2026-07-25 (parity work with `kypost-android`):
 
-- **No Flathub, ever.** Flathub bans applications that use AI and KyPost's
-  backend does, so the app is permanently ineligible. Distribution is a
-  self-hosted signed OSTree repo published to `gh-pages` by
-  `.github/workflows/flatpak.yml` — see `docs/DISTRIBUTION.md`. Don't spend
-  effort on Flathub-specific manifest compliance.
+- **Distribution:** use the project’s self-hosted signed OSTree remote published to `gh-pages` by `.github/workflows/flatpak.yml`; Flathub supplies the KDE runtime. Preserve that distribution choice without asserting an unsupported blanket Flathub AI policy. See `docs/DISTRIBUTION.md` for publication and verification.
 - ~~**No PGP private key on this client, ever.**~~ **REVERSED 2026-08-22 at
   the maintainer's direction.** The rule stood from 2026-07-25 to
   2026-08-22 and read: "It handles public keys and protection-mode
