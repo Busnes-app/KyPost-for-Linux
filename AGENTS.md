@@ -3,7 +3,7 @@
 ## 1. Project identity
 
 KyPost is a **relay-only** Qt/C++/QML email client: there is no IMAP or
-SMTP anywhere on-device, and the backend at `mail.urlxl.com` is the sole
+SMTP anywhere on-device, and the paired KyPost relay is the sole
 transport for mail, contacts, and push. It targets **Qt6/Kirigami KF6
 only** across two surfaces from one codebase — **Linux Desktop** (KDE
 Plasma primary, packaged as a Flatpak) and **KDE Mobile** (Plasma Mobile,
@@ -79,7 +79,7 @@ application or native tests.
 Carried forward verbatim (in substance) from `Linux_QT_Client_Plan.md`'s own
 "Locked decisions carried over" section:
 
-- **Relay-only.** No IMAP/SMTP anywhere. `mail.urlxl.com` is the sole
+- **Relay-only.** No IMAP/SMTP anywhere. The KyPost relay is the sole
   transport. Search used to be local-cache-only; since plan L6 (2026-10-11)
   it is the relay's `GET /api/mail/search`, results held in memory only.
 - **Wire contracts come from the backend Go source**, plus `kypost-android`'s
@@ -1157,14 +1157,14 @@ worse than no comment: the next reader stops looking.
   a persistent banner (`components/StatusBanner.qml`). Before that, both
   sites discarded the result and the only symptom was push silently
   stopping behind a green "Paired" badge.
-- **`mail.urlxl.com` sits behind Cloudflare** (bare `urlxl.com` → 530) and
+- **The live test relay sits behind Cloudflare** (its bare apex domain → 530) and
   needs a real, non-default User-Agent set on QNAM for every request from
   day one — a bare/default UA gets blocked. Any non-default product token
   works; the version inside it is not part of the rule, so bumping
   `KYPOST_VERSION` does not affect access.
 - **Cloudflare rotates the TLS leaf every ~90 days with a NEW KEY, so the
   TLS pin is anchored to the ISSUER, not the leaf.** Measured 2026-08-24:
-  the leaf `CN=urlxl.com` was valid 2026-07-20 → 2026-10-18, while its
+  the leaf (CN = the relay's apex domain) was valid 2026-07-20 → 2026-10-18, while its
   issuer (Google Trust Services `WE1`) runs to 2029-02-20; both edge IPs
   served the same key, so this is rotation, not per-PoP variance. A
   leaf-SPKI pin therefore fired the "server is being impersonated" banner
@@ -1182,7 +1182,7 @@ worse than no comment: the next reader stops looking.
 - **Deployment lag.** The backend deploys via a separate Docker pipeline on
   a remote host; a commit landing in the backend repo does not mean it is
   live yet. Verify the relevant backend commits are actually deployed to
-  `mail.urlxl.com` before running any live end-to-end test — this has
+  the live relay before running any live end-to-end test — this has
   previously produced a "committed but 404s live" window.
 - **The Flatpak pipeline was red from its first run (2026-07-26) until
   2026-08-22 — 40 consecutive failures, never once green.** Four independent

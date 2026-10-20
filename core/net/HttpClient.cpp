@@ -109,7 +109,7 @@ QByteArray HttpClient::pinnedSpkiFromChain(const QList<QSslCertificate>& chain)
     // chain be sent leaf-first with each certificate certifying the one
     // before it, and Qt preserves that order. Verified against the live
     // relay rather than assumed -- peerCertificateChain() returned
-    // [urlxl.com, WE1, GTS Root R4] with peerCertificate() == chain[0],
+    // [relay leaf, WE1, GTS Root R4] with peerCertificate() == chain[0],
     // on fresh AND pooled keep-alive connections alike.
     if (chain.size() < 2)
         return {};

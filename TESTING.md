@@ -9,7 +9,7 @@ Mac repo to port from, despite older planning-doc phrasing suggesting
 otherwise.
 
 Every item below either (a) was live-verified against the real
-`mail.urlxl.com` backend at some point during Phase 6/7 development (cited
+live relay backend at some point during Phase 6/7 development (cited
 by task number where useful), (b) is packaging-relevant, locally
 verifiable behavior added in Phase 8, or (c) covers the extended contact
 fields, contact de-duplication, compose autocomplete, and PGP QR
@@ -22,9 +22,9 @@ describes aspirational behavior — see "Known non-goals / do-not-expect" at
 the bottom for the inverse list.
 
 Prerequisites for any live-backend section: a paired account on
-`mail.urlxl.com`, KDE Wallet (or another Secret Service provider) unlocked
+a live KyPost relay, KDE Wallet (or another Secret Service provider) unlocked
 and running, and network access. The client sends a real User-Agent on
-every request — `mail.urlxl.com` sits behind Cloudflare and blocks
+every request — the live test relay sits behind Cloudflare and blocks
 default/bare User-Agent strings (see `AGENTS.md` Section 8).
 
 ---
@@ -786,7 +786,7 @@ access log:
 
 ## Known non-goals / do-not-expect
 
-- **No IMAP/SMTP anywhere.** `mail.urlxl.com` is the sole transport; this
+- **No IMAP/SMTP anywhere.** The KyPost relay is the sole transport; this
   is a relay-only client (`AGENTS.md` Section 4). Don't go looking for a
   "server settings" IMAP/SMTP screen — it doesn't exist and never will in
   this design.
@@ -810,7 +810,7 @@ access log:
   proves the app builds and its unit tests pass, nothing about pairing,
   push delivery, or MFA against the real backend. All of the live-backend
   items in this checklist require a human running the app locally against
-  `mail.urlxl.com`; none of it is automated or CI-gated.
+  a live relay; none of it is automated or CI-gated.
 - **No desktop-session pairing flow.** Only native sub/hash pairing via
   `kypost://native-pair` exists; `kypost://desktop-pair` is
   explicitly recognized-and-dropped, not a second supported flow.
