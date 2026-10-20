@@ -65,7 +65,7 @@ pairing. The second is not a real loss: an unpaired KyPost client is inert.
 New file `backend/internal/api/client_version.go`, mirroring `server_version.go`.
 
 - `linuxClientReleasesURL` — the LIST endpoint
-  `https://api.github.com/repos/Busness-app/KyPost-for-Linux/releases`. A
+  `https://api.github.com/repos/Busnes-app/KyPost-for-Linux/releases`. A
   `var`, not a `const`, only so tests can point it at an `httptest` server —
   the reason `serverReleasesURL` is one. The slug was read from the Linux
   repo's `git remote`, not assumed.
@@ -213,7 +213,7 @@ code in a security ceremony.
 
 ## Bug 2 — real, filed, not fixed for 0.2.0
 
-Filed as [Busness-app/KyPost-for-Linux#50](https://github.com/Busness-app/KyPost-for-Linux/issues/50),
+Filed as [Busnes-app/KyPost-for-Linux#50](https://github.com/Busnes-app/KyPost-for-Linux/issues/50),
 targeted at 0.4.0.
 
 Linux never reads `pin=` from the pairing URI. It parses with `QUrlQuery`,

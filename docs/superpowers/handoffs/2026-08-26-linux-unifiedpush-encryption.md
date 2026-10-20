@@ -15,7 +15,7 @@ citation and was verified against the file it names.
 **Path convention:** `app/` and `core/` are in `kypost-Linux`. `backend/` is in
 `kypost-server`. The contract is `docs/PLATFORM_BASELINE.md` in the server repo,
 a tracked file, so also readable at
-<https://github.com/Busness-app/KyPost-Server/blob/main/docs/PLATFORM_BASELINE.md>
+<https://github.com/Busnes-app/KyPost-Server/blob/main/docs/PLATFORM_BASELINE.md>
 — §4 gained a "UnifiedPush: the WebPush key exchange is REQUIRED" subsection in
 the server PR below.
 
@@ -36,7 +36,7 @@ Estimate: one small PR, most of it tests.
 
 ## What changed on the server
 
-**`Busness-app/KyPost-Server` PR #149**, branch `feat/unifiedpush-rfc8291`.
+**`Busnes-app/KyPost-Server` PR #149**, branch `feat/unifiedpush-rfc8291`.
 **[review] Merged `2026-08-26T02:45:01Z`** — *"Encrypt UnifiedPush payloads
 (RFC 8291), and let push-MFA follow"*, confirmed with `gh pr view 149`. What the
 *deployed* server is running is still unchecked.
