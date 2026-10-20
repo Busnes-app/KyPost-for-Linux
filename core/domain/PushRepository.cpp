@@ -11,7 +11,6 @@
 
 #include <QDateTime>
 #include <QDebug>
-#include <QTimeZone>
 #include <QUrl>
 
 PushRepository::PushRepository(PushDao& pushDao, CursorStore& cursorStore, PushNotificationClient& client,
@@ -45,7 +44,7 @@ std::optional<PushRecord> PushRepository::recordPushArrival(const PushNotificati
     record.messageId = payload.messageId;
     record.seq = seq;
     record.receivedAt =
-        QDateTime::fromMSecsSinceEpoch(receivedAtEpochMs, QTimeZone::UTC).toString(Qt::ISODate);
+        QDateTime::fromMSecsSinceEpoch(receivedAtEpochMs).toUTC().toString(Qt::ISODate);
     record.consumed = false;
 
     if (!m_pushDao.insertOrReplace(record.messageId, record.seq, record.receivedAt, record.consumed))

@@ -1,6 +1,7 @@
 #include "GroupDao.h"
 
 #include <QSqlQuery>
+#include <QVariant>
 
 namespace {
 

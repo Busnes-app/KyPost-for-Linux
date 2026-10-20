@@ -98,8 +98,9 @@ information, see [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md).
 
 ## Building
 
-KyPost needs Qt6. The project dropped Qt5 and Ubuntu Touch support. [`AGENTS.md`](AGENTS.md)
-gives the reason and the conditions for a new review. Use one out-of-tree build directory:
+The app needs Qt6 and KF6. Ubuntu Touch will get a separate Qt 5.15 app that shares `core/`, so
+`core/` also builds on Qt 5.15; [`AGENTS.md`](AGENTS.md) §3 has that core-only build
+(`-DKYPOST_CORE_ONLY=ON`). Use one out-of-tree build directory:
 
 ```sh
 cmake -B build -S . -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -150,7 +151,7 @@ flatpak-builder --run build-flatpak packaging/flatpak/com.kysecurity.mail.yaml k
 
 This manifest is the packaging target for Linux Desktop and for Plasma Mobile. The Click and
 Ubuntu Touch directory (`packaging/click/`) is a deliberate empty placeholder. It stays empty
-until UBports releases a Qt6/KF6 track.
+until the Ubuntu Touch app exists.
 
 CI builds this manifest for every pull request. Publishing a signed OSTree repository
 to `gh-pages` on `main` is conditional on the configured signing/publishing secrets;

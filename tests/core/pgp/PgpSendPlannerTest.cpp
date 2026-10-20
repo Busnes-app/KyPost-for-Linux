@@ -113,8 +113,8 @@ void PgpSendPlannerTest::cleanupTestCase()
 void PgpSendPlannerTest::toAndCcShareOneDelivery()
 {
     OutgoingMessage message = sampleMessage();
-    message.to = { QStringLiteral("alice@example.com") };
-    message.cc = { QStringLiteral("bob@example.com") };
+    message.to = QStringList{ QStringLiteral("alice@example.com") };
+    message.cc = QStringList{ QStringLiteral("bob@example.com") };
 
     const PgpSendPlan plan =
         buildPgpSendPlan(message, {}, m_fingerprints, m_senderFingerprint, m_sender.path());
@@ -131,7 +131,7 @@ void PgpSendPlannerTest::toAndCcShareOneDelivery()
 void PgpSendPlannerTest::everyBccRecipientGetsTheirOwnCiphertext()
 {
     OutgoingMessage message = sampleMessage();
-    message.to = { QStringLiteral("alice@example.com") };
+    message.to = QStringList{ QStringLiteral("alice@example.com") };
 
     const PgpSendPlan plan = buildPgpSendPlan(
         message, { QStringLiteral("bob@example.com"), QStringLiteral("carol@example.com") },
@@ -152,7 +152,7 @@ void PgpSendPlannerTest::everyBccRecipientGetsTheirOwnCiphertext()
 void PgpSendPlannerTest::aBccRecipientIsNotNamedInAnybodyElsesDelivery()
 {
     OutgoingMessage message = sampleMessage();
-    message.to = { QStringLiteral("alice@example.com") };
+    message.to = QStringList{ QStringLiteral("alice@example.com") };
 
     const PgpSendPlan plan =
         buildPgpSendPlan(message, { QStringLiteral("bob@example.com") }, m_fingerprints,
@@ -173,8 +173,8 @@ void PgpSendPlannerTest::aBccRecipientIsNotNamedInAnybodyElsesDelivery()
 void PgpSendPlannerTest::aBccRecipientSeesTheSameVisibleHeadersAsEveryoneElse()
 {
     OutgoingMessage message = sampleMessage();
-    message.to = { QStringLiteral("alice@example.com") };
-    message.cc = { QStringLiteral("carol@example.com") };
+    message.to = QStringList{ QStringLiteral("alice@example.com") };
+    message.cc = QStringList{ QStringLiteral("carol@example.com") };
 
     const PgpSendPlan plan =
         buildPgpSendPlan(message, { QStringLiteral("bob@example.com") }, m_fingerprints,
@@ -191,7 +191,7 @@ void PgpSendPlannerTest::aBccRecipientSeesTheSameVisibleHeadersAsEveryoneElse()
 void PgpSendPlannerTest::theSentCopyOpensWithTheSendersOwnKey()
 {
     OutgoingMessage message = sampleMessage();
-    message.to = { QStringLiteral("alice@example.com") };
+    message.to = QStringList{ QStringLiteral("alice@example.com") };
 
     const PgpSendPlan plan =
         buildPgpSendPlan(message, {}, m_fingerprints, m_senderFingerprint, m_sender.path());
@@ -215,7 +215,7 @@ void PgpSendPlannerTest::theSentCopyOpensWithTheSendersOwnKey()
 void PgpSendPlannerTest::withNoKeyOfTheirOwnTheSenderIsToldRatherThanGivenACleartextCopy()
 {
     OutgoingMessage message = sampleMessage();
-    message.to = { QStringLiteral("alice@example.com") };
+    message.to = QStringList{ QStringLiteral("alice@example.com") };
 
     const PgpSendPlan plan =
         buildPgpSendPlan(message, {}, m_fingerprints, QString(), m_sender.path());
@@ -232,7 +232,7 @@ void PgpSendPlannerTest::withNoKeyOfTheirOwnTheSenderIsToldRatherThanGivenAClear
 void PgpSendPlannerTest::aRecipientWithNoKeyRefusesTheWholeSend()
 {
     OutgoingMessage message = sampleMessage();
-    message.to = { QStringLiteral("stranger@example.com") };
+    message.to = QStringList{ QStringLiteral("stranger@example.com") };
 
     const PgpSendPlan plan =
         buildPgpSendPlan(message, {}, m_fingerprints, m_senderFingerprint, m_sender.path());
@@ -248,7 +248,7 @@ void PgpSendPlannerTest::aRecipientWithNoKeyRefusesTheWholeSend()
 void PgpSendPlannerTest::nothingIsBuiltWhenOneRecipientOfManyIsMissingAKey()
 {
     OutgoingMessage message = sampleMessage();
-    message.to = { QStringLiteral("alice@example.com"), QStringLiteral("bob@example.com") };
+    message.to = QStringList{ QStringLiteral("alice@example.com"), QStringLiteral("bob@example.com") };
 
     const PgpSendPlan plan =
         buildPgpSendPlan(message, { QStringLiteral("stranger@example.com") }, m_fingerprints,
@@ -265,7 +265,7 @@ void PgpSendPlannerTest::nothingIsBuiltWhenOneRecipientOfManyIsMissingAKey()
 void PgpSendPlannerTest::addressesMatchCaseInsensitively()
 {
     OutgoingMessage message = sampleMessage();
-    message.to = { QStringLiteral("Alice@Example.COM") };
+    message.to = QStringList{ QStringLiteral("Alice@Example.COM") };
 
     const PgpSendPlan plan =
         buildPgpSendPlan(message, {}, m_fingerprints, m_senderFingerprint, m_sender.path());
@@ -283,7 +283,7 @@ void PgpSendPlannerTest::currentFingerprintWinsWhileOldMailStillDecrypts()
     const auto current = m_sender.fingerprintOf(rotatedUid);
     QVERIFY(!current.isEmpty() && current != m_senderFingerprint);
     auto message = sampleMessage();
-    message.to = {QStringLiteral("sender@example.com")};
+    message.to = QStringList{ QStringLiteral("sender@example.com") };
     const auto plan = buildPgpSendPlan(message, {}, {{message.from, current}}, current, m_sender.path());
     QCOMPARE(plan.status, PgpSendPlanStatus::Built);
     const auto begin = plan.sentCopy.indexOf("-----BEGIN PGP MESSAGE-----");
@@ -299,7 +299,7 @@ void PgpSendPlannerTest::currentFingerprintWinsWhileOldMailStillDecrypts()
 void PgpSendPlannerTest::missingCurrentKeyNeverFallsBackToOldAddressKey()
 {
     auto message = sampleMessage();
-    message.to = {QStringLiteral("alice@example.com")};
+    message.to = QStringList{ QStringLiteral("alice@example.com") };
     const auto plan = buildPgpSendPlan(message, {}, m_fingerprints,
         QStringLiteral("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), m_sender.path());
     QCOMPARE(plan.status, PgpSendPlanStatus::SigningUnavailable);

@@ -10,8 +10,8 @@
 #include <QSslCertificate>
 #include <QSslConfiguration>
 #include <QSslKey>
-#include <QSslServer>
 #include <QSslSocket>
+#include <QTcpServer>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTest>
@@ -126,31 +126,42 @@ struct SslDefaultsGuard
 // connection pool keeps the socket and a second request reuses it without a
 // second handshake. That reuse is the case QNetworkReply::encrypted cannot
 // see, and connectionCount() is what proves the test really took that path.
-class KeepAliveTlsServer : public QSslServer
+// It starts TLS itself because QSslServer is Qt 6.4+.
+class KeepAliveTlsServer : public QTcpServer
 {
 public:
     KeepAliveTlsServer()
     {
-        QSslConfiguration config = QSslConfiguration::defaultConfiguration();
-        config.setLocalCertificateChain({ certOf(kServedLeafPem), certOf(kServedIssuerPem) });
-        config.setPrivateKey(QSslKey(QByteArray(kServedLeafKeyPem), QSsl::Rsa, QSsl::Pem, QSsl::PrivateKey));
+        m_config = QSslConfiguration::defaultConfiguration();
+        m_config.setLocalCertificateChain({ certOf(kServedLeafPem), certOf(kServedIssuerPem) });
+        m_config.setPrivateKey(QSslKey(QByteArray(kServedLeafKeyPem), QSsl::Rsa, QSsl::Pem, QSsl::PrivateKey));
         // Qt offers h2 over ALPN by default for https; answer http/1.1 only,
         // because an h2 stream is a different reuse story from the
         // keep-alive one this test is about.
-        config.setAllowedNextProtocols({ QSslConfiguration::NextProtocolHttp1_1 });
-        setSslConfiguration(config);
+        m_config.setAllowedNextProtocols({ QSslConfiguration::NextProtocolHttp1_1 });
         listen(QHostAddress::LocalHost);
-        connect(this, &QTcpServer::pendingConnectionAvailable, this, &KeepAliveTlsServer::onEncrypted);
     }
 
     int connectionCount() const { return m_connectionCount; }
     int requestCount() const { return m_requestCount; }
 
+protected:
+    void incomingConnection(qintptr handle) override
+    {
+        auto* socket = new QSslSocket(this);
+        if (!socket->setSocketDescriptor(handle)) {
+            delete socket;
+            return;
+        }
+        socket->setSslConfiguration(m_config);
+        connect(socket, &QSslSocket::encrypted, this, [this, socket]() { onEncrypted(socket); });
+        socket->startServerEncryption();
+    }
+
 private:
-    void onEncrypted()
+    void onEncrypted(QSslSocket* socket)
     {
         ++m_connectionCount;
-        QTcpSocket* socket = nextPendingConnection();
         auto pending = std::make_shared<QByteArray>();
         connect(socket, &QIODevice::readyRead, this, [this, socket, pending]() {
             *pending += socket->readAll();
@@ -164,6 +175,7 @@ private:
         });
     }
 
+    QSslConfiguration m_config;
     int m_connectionCount = 0;
     int m_requestCount = 0;
 };

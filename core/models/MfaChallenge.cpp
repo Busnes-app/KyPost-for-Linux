@@ -26,7 +26,7 @@ QString context(const QJsonObject& data, const char* key)
             out.append(c);
     }
     out.truncate(MfaChallenge::kMaxContextLength);
-    if (!out.isEmpty() && out.back().isHighSurrogate())
+    if (!out.isEmpty() && out.at(out.size() - 1).isHighSurrogate())
         out.chop(1);
     return out;
 }

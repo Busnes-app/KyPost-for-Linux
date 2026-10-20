@@ -38,9 +38,9 @@ public:
     // `.plaintext-old` is a COMPLETE unencrypted copy of the user's mail,
     // swapInEncrypted() deliberately survives failing to delete it, and a run
     // killed between the two renames leaves it for the next launch to find.
-    static constexpr QLatin1StringView kMarkerSuffix{".encrypting"};
-    static constexpr QLatin1StringView kWorkingCopySuffix{".encrypted-new"};
-    static constexpr QLatin1StringView kSupersededSuffix{".plaintext-old"};
+    static constexpr QLatin1String kMarkerSuffix{".encrypting"};
+    static constexpr QLatin1String kWorkingCopySuffix{".encrypted-new"};
+    static constexpr QLatin1String kSupersededSuffix{".plaintext-old"};
 
     // `databasePath` is the live profile database.
     explicit DatabaseEncryptionMigration(const QString& databasePath);

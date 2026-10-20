@@ -1,8 +1,8 @@
 # Task 51: CI (GitHub Actions).
 #
-# Single Qt6 build+test job, no matrix -- global constraint 1 (phase8-
-# global-constraints.md): Qt5/Ubuntu Touch/Clickable support was dropped
-# outright, so there is exactly one build path to verify here.
+# Two jobs, no matrix. build-and-test builds and tests the whole Qt6/KF6 app.
+# Ubuntu Touch is back as a separate Qt 5.15 app that shares core/, so
+# core-qt5 verifies core/ and its tests on Qt 5.15 from the same source.
 #
 # --- Why this isn't a plain `apt-get install` against stock ubuntu-24.04 ---
 #
@@ -322,3 +322,51 @@ jobs:
           ASAN_OPTIONS: detect_leaks=0
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         run: ctest --test-dir build-asan --output-on-failure
+
+  # core/ (libkypostcore) and tests/core on Qt 5.15, for the Ubuntu Touch app
+  # that shares it (AGENTS.md section 5). Stock noble packages only: no KDE
+  # neon archive, because nothing here needs KF6 and neon would bring Qt6.
+  # build-sqlcipher.sh needs only curl, make, a C compiler and libssl-dev.
+  # SQLCipher is built so the encryption tests run instead of skipping.
+  core-qt5:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # One shell command with backslash continuations: no comments inside.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake \
+            ninja-build \
+            g++ \
+            qtbase5-dev \
+            libqt5sql5-sqlite \
+            libssl-dev \
+            libargon2-dev \
+            libgpgme-dev \
+            gnupg \
+            pkg-config
+
+      - name: Build SQLCipher from source
+        run: ./scripts/build-sqlcipher.sh /tmp/sqlcipher
+
+      # Fails unless configure picked Qt 5.15: a runner that grew Qt 6 would
+      # otherwise turn this into a second Qt 6 job without anyone noticing.
+      - name: Configure (core only, Qt 5.15)
+        run: |
+          set -o pipefail
+          cmake -B build -S . -G Ninja -DKYPOST_CORE_ONLY=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DKYPOST_SQLCIPHER_ROOT=/tmp/sqlcipher | tee configure.log
+          grep 'kypostcore: Qt 5\.15\.' configure.log
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

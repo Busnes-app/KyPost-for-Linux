@@ -14,7 +14,7 @@ PgpKeyringSnapshot snapshot(const QJsonObject& ring)
 {
     PgpKeyringSnapshot out;
     out.activeFingerprint = ring["activeFingerprint"].toString();
-    out.materialGeneration = ring["materialGeneration"].toInteger();
+    out.materialGeneration = qint64(ring["materialGeneration"].toDouble());
     for (const auto& value : ring["keyFingerprints"].toArray())
         out.keyFingerprints.append(value.toString());
     return out;

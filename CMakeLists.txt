@@ -102,19 +102,32 @@ if(KYPOST_SANITIZE)
   add_link_options(-fsanitize=address,undefined)
 endif()
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Network Sql Quick Qml QuickControls2 Test)
-find_package(KF6Kirigami REQUIRED)
+# Core-only builds libkypostcore and its tests, on Qt 6 or Qt 5.15: the
+# separate Qt 5.15 Ubuntu Touch app shares core/. The app itself is Qt 6/KF6
+# only, so the default build never looks for Qt 5.
+option(KYPOST_CORE_ONLY "Build only libkypostcore and its tests, on Qt 6 or Qt 5.15" OFF)
+if(KYPOST_CORE_ONLY)
+  find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core)
+  find_package(Qt${QT_VERSION_MAJOR} 5.15 REQUIRED COMPONENTS Core Network Sql Test)
+else()
+  set(QT_VERSION_MAJOR 6)
+  find_package(Qt6 6.4 REQUIRED COMPONENTS Core Network Sql Quick Qml QuickControls2 Test)
+  find_package(KF6Kirigami REQUIRED)
 
-# Task 48: KI18n translation infrastructure. Found once here, same split as
-# KF6Kirigami above -- app/CMakeLists.txt links KF6::I18n/KF6::I18nQml
-# without a second find_package call, and po/CMakeLists.txt's ki18n_install()
-# call relies on KF6I18nMacros.cmake, which KF6I18nConfig.cmake includes
-# automatically as part of this find_package().
-find_package(KF6I18n REQUIRED)
+  # Task 48: KI18n translation infrastructure. Found once here, same split as
+  # KF6Kirigami above -- app/CMakeLists.txt links KF6::I18n/KF6::I18nQml
+  # without a second find_package call, and po/CMakeLists.txt's ki18n_install()
+  # call relies on KF6I18nMacros.cmake, which KF6I18nConfig.cmake includes
+  # automatically as part of this find_package().
+  find_package(KF6I18n REQUIRED)
+endif()
+message(STATUS "kypostcore: Qt ${Qt${QT_VERSION_MAJOR}Core_VERSION}")
 
 add_subdirectory(core)
-add_subdirectory(app)
-add_subdirectory(po)
+if(NOT KYPOST_CORE_ONLY)
+  add_subdirectory(app)
+  add_subdirectory(po)
+endif()
 include(CTest)
 if(BUILD_TESTING)
   add_subdirectory(tests)

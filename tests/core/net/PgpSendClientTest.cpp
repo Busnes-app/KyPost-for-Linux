@@ -19,12 +19,12 @@ PgpSendPlan builtPlan(bool withSentCopy = true)
     plan.status = PgpSendPlanStatus::Built;
 
     PgpDelivery visible;
-    visible.smtpRecipients = { QStringLiteral("alice@example.com"), QStringLiteral("bob@example.com") };
+    visible.smtpRecipients = QStringList{ QStringLiteral("alice@example.com"), QStringLiteral("bob@example.com") };
     visible.message = "From: me@example.com\r\nTo: alice@example.com\r\n\r\nVISIBLE-CIPHERTEXT";
     plan.deliveries.append(visible);
 
     PgpDelivery blind;
-    blind.smtpRecipients = { QStringLiteral("carol@example.com") };
+    blind.smtpRecipients = QStringList{ QStringLiteral("carol@example.com") };
     blind.message = "From: me@example.com\r\nTo: alice@example.com\r\n\r\nBLIND-CIPHERTEXT";
     plan.deliveries.append(blind);
 
@@ -75,7 +75,7 @@ void PgpSendClientTest::aScheduledSendCarriesItsTimeAndDraftCopy()
 {
     FakeRelayServer fake(httpResponse(202, "Accepted",
                                       R"({"scheduled":true,"id":"x","sendAt":"2026-10-18T06:00:00Z"})"));
-    const QDateTime at(QDate(2026, 10, 18), QTime(6, 0), QTimeZone::UTC);
+    const QDateTime at(QDate(2026, 10, 18), QTime(6, 0), QTimeZone::utc());
 
     const PgpSendResult result = sendAgainst(fake, builtPlan(), at, "DRAFT-COPY-CIPHERTEXT");
 
@@ -239,7 +239,7 @@ void PgpSendClientTest::aRequestOverTheRelaysLimitNeverGoesOnTheWire()
     plan.status = PgpSendPlanStatus::Built;
     for (int i = 0; i < 4; ++i) {
         PgpDelivery delivery;
-        delivery.smtpRecipients = { QStringLiteral("r%1@example.com").arg(i) };
+        delivery.smtpRecipients = QStringList{ QStringLiteral("r%1@example.com").arg(i) };
         delivery.message = QByteArray(10 * 1024 * 1024, 'A');
         plan.deliveries.append(delivery);
     }

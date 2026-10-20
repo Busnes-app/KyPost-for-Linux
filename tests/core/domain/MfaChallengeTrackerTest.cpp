@@ -13,7 +13,7 @@ MfaChallenge challenge(int n, qint64 issuedAtMs = kNow)
     c.challengeId = QStringLiteral("%1").arg(n, 48, 16, QLatin1Char('0'));
     c.issuedAtMs = issuedAtMs;
     c.matchDigits = QStringLiteral("07");
-    c.decoyDigits = { QStringLiteral("42"), QStringLiteral("93") };
+    c.decoyDigits = QStringList{ QStringLiteral("42"), QStringLiteral("93") };
     return c;
 }
 

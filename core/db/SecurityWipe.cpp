@@ -16,9 +16,9 @@ namespace {
 QStringList migrationCopies(const QString& dbPath)
 {
     QStringList databases;
-    for (const QLatin1StringView suffix : { DatabaseEncryptionMigration::kMarkerSuffix,
-                                             DatabaseEncryptionMigration::kWorkingCopySuffix,
-                                             DatabaseEncryptionMigration::kSupersededSuffix })
+    for (const QLatin1String suffix : { DatabaseEncryptionMigration::kMarkerSuffix,
+                                         DatabaseEncryptionMigration::kWorkingCopySuffix,
+                                         DatabaseEncryptionMigration::kSupersededSuffix })
         databases.append(dbPath + suffix);
     return databases;
 }

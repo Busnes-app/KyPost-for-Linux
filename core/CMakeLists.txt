@@ -227,9 +227,9 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(ARGON2 REQUIRED IMPORTED_TARGET libargon2)
 
 target_link_libraries(kypostcore PUBLIC
-  Qt6::Core
-  Qt6::Network
-  Qt6::Sql
+  Qt${QT_VERSION_MAJOR}::Core
+  Qt${QT_VERSION_MAJOR}::Network
+  Qt${QT_VERSION_MAJOR}::Sql
 )
 
 # gpgme's C library, NOT the gpgmepp C++ wrapper.

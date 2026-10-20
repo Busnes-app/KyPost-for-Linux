@@ -84,7 +84,7 @@ void SnoozeTest::tomorrowKeepsEightOClockAcrossSpringForward()
     const QVector<SnoozePreset> presets = snoozePresets(now);
 
     QCOMPARE(presets.first().kind, Kind::Tomorrow);
-    QCOMPARE(presets.first().at.toUTC(), QDateTime(QDate(2026, 3, 29), QTime(6, 0), QTimeZone::UTC));
+    QCOMPARE(presets.first().at.toUTC(), QDateTime(QDate(2026, 3, 29), QTime(6, 0), QTimeZone::utc()));
     QCOMPARE(now.secsTo(presets.first().at), qint64(9 * 3600));
 }
 
@@ -97,7 +97,7 @@ void SnoozeTest::laterTodayKeepsTheOffsetAcrossFallBack()
     const QVector<SnoozePreset> presets = snoozePresets(now);
 
     QCOMPARE(presets.first().kind, Kind::LaterToday);
-    QCOMPARE(presets.first().at.toUTC(), QDateTime(QDate(2026, 10, 25), QTime(1, 0), QTimeZone::UTC));
+    QCOMPARE(presets.first().at.toUTC(), QDateTime(QDate(2026, 10, 25), QTime(1, 0), QTimeZone::utc()));
     QCOMPARE(presets.first().at.time(), QTime(2, 0));
 }
 
@@ -107,7 +107,7 @@ void SnoozeTest::customTimeIsReadInTheZone()
     const std::optional<QDateTime> picked = snoozeCustomTime(QStringLiteral("2026-10-20"), QStringLiteral("07:45"), now);
 
     QVERIFY(picked.has_value());
-    QCOMPARE(picked->toUTC(), QDateTime(QDate(2026, 10, 20), QTime(11, 45), QTimeZone::UTC));
+    QCOMPARE(picked->toUTC(), QDateTime(QDate(2026, 10, 20), QTime(11, 45), QTimeZone::utc()));
 }
 
 void SnoozeTest::customTimeRefusesThePastAndBeyondAYear()

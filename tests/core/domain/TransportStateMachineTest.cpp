@@ -119,7 +119,7 @@ QByteArray pullItem(int seq, const QString& messageId, qint64 createdAtMs)
 {
     return QStringLiteral(R"({"seq":%1,"title":"T","body":"B","createdAt":"%2","data":{"messageId":"%3"}})")
         .arg(seq)
-        .arg(QDateTime::fromMSecsSinceEpoch(createdAtMs, QTimeZone::UTC).toString(Qt::ISODate), messageId)
+        .arg(QDateTime::fromMSecsSinceEpoch(createdAtMs).toUTC().toString(Qt::ISODate), messageId)
         .toUtf8();
 }
 

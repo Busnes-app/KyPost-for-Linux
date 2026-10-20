@@ -4,6 +4,10 @@
 
 #include <QTest>
 
+// Qt 5 needs these declared to use them as test data; Qt 6 does it implicitly.
+Q_DECLARE_METATYPE(std::optional<QString>)
+Q_DECLARE_METATYPE(PgpMessageState)
+
 class PgpMessageStateTest : public QObject
 {
     Q_OBJECT

@@ -947,7 +947,7 @@ void RelayMailSourceTest::listScheduledMapsRows()
     QVERIFY(fake.receivedRequest().contains("X-Kypost-Device-Secret: secret-1"));
     QCOMPARE(result.items.size(), 2);
     const ScheduledSend first{ QStringLiteral("a-1"), QStringLiteral("scheduled"), QString(),
-                               QDateTime(QDate(2026, 10, 18), QTime(6, 0), QTimeZone::UTC), QStringLiteral("Hi"),
+                               QDateTime(QDate(2026, 10, 18), QTime(6, 0), QTimeZone::utc()), QStringLiteral("Hi"),
                                { QStringLiteral("x@example.com"), QStringLiteral("y@example.com") } };
     QCOMPARE(result.items.at(0), first);
     QCOMPARE(result.items.at(1).reason, QStringLiteral("canceled"));
