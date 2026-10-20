@@ -173,7 +173,7 @@ until a wipe or an explicit `remove()` clears them.
 
 ## What deliberately did NOT change
 
-- **`mail.urlxl.com`** — the relay hostname is infrastructure, not branding.
+- **The relay hostname** — it is deployment infrastructure, not branding, and is not hard-coded in the client.
 - **`com/urlxl/mail/...`** in `core/models/MfaChallenge.h` and the mobile plan —
   Java package paths pointing into the kypost-android repo. They rename when
   that repo does.

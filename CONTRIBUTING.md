@@ -340,7 +340,7 @@ still be the wrong feature for this project.
 - Anything that archives, deletes, or moves mail without an explicit human
   action for that message.
 - Any trust decision derived from a keyword label.
-- IMAP or SMTP client code. This is a relay-only client; `mail.urlxl.com` is the
+- IMAP or SMTP client code. This is a relay-only client; the KyPost relay is the
   sole transport (`AGENTS.md` §4).
 - Convenience defaults that silently disable a protection — treating an
   unreadable keyring as an empty one, downgrading an encrypted send to

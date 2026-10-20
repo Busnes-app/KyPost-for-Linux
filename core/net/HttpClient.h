@@ -205,7 +205,7 @@ public:
     // the AUTHORITY vouching for the relay, not continuity of the relay's own
     // key: it narrows trust from "any CA in the store" to "certificates issued
     // under this one intermediate", which is what catches hostile Wi-Fi and a
-    // corporate MITM root. It does NOT uniquely identify mail.urlxl.com, and
+    // corporate MITM root. It does NOT uniquely identify the relay host, and
     // it does not detect mis-issuance by that same CA.
     //
     // This comment used to describe a leaf pin and say the SPKI form let the
