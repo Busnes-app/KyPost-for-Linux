@@ -363,7 +363,8 @@ jobs:
           set -o pipefail
           cmake -B build -S . -G Ninja -DKYPOST_CORE_ONLY=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DKYPOST_SQLCIPHER_ROOT=/tmp/sqlcipher | tee configure.log
-          grep 'kypostcore: Qt 5\.15\.' configure.log
+          grep 'kypostcore: Qt 5\.15\.' configure.log \
+            || { echo "::error::core-qt5 configured against the wrong Qt (expected 5.15)"; exit 1; }
 
       - name: Build
         run: cmake --build build

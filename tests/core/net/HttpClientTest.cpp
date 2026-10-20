@@ -12,7 +12,6 @@
 #include <QSslKey>
 #include <QSslSocket>
 #include <QTcpServer>
-#include <QTcpServer>
 #include <QTcpSocket>
 #include <QTest>
 #include <memory>

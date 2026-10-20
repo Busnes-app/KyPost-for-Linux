@@ -99,8 +99,8 @@ information, see [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md).
 ## Building
 
 The app needs Qt6 and KF6. Ubuntu Touch will get a separate Qt 5.15 app that shares `core/`, so
-`core/` also builds on Qt 5.15; [`AGENTS.md`](AGENTS.md) §3 has that core-only build
-(`-DKYPOST_CORE_ONLY=ON`). Use one out-of-tree build directory:
+`core/` also builds on Qt 5.15 (see [Core only, on Qt 5.15](#core-only-on-qt-515)). Use one
+out-of-tree build directory:
 
 ```sh
 cmake -B build -S . -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -140,6 +140,23 @@ skip there: a green `ctest` result with skips is not encryption coverage. Use th
 build above for an encrypted profile and verify that configure reports SQLCipher enabled.
 `AGENTS.md` §6h explains the SONAME/metadata requirements. Fake-relay tests and demo
 screenshots do not qualify live mail, push or physical-device PGP interoperability.
+
+### Core only, on Qt 5.15
+
+`-DKYPOST_CORE_ONLY=ON` builds only `core/` and its tests, with no KF6 and no app. This is the
+build the CI `core-qt5` job runs. It needs `qt5-base` (Ubuntu: `qtbase5-dev`, `libqt5sql5-sqlite`)
+and the same SQLCipher as above. `-DQT_DIR` selects Qt 5 when Qt 6 is also installed. Configure
+prints the version it used, for example `kypostcore: Qt 5.15.13`:
+
+```sh
+./scripts/build-sqlcipher.sh /tmp/sqlcipher
+cmake -B build-qt5 -S . -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DKYPOST_CORE_ONLY=ON \
+  -DQT_DIR=/usr/lib/cmake/Qt5 -DKYPOST_SQLCIPHER_ROOT=/tmp/sqlcipher
+cmake --build build-qt5
+ctest --test-dir build-qt5 --output-on-failure
+```
+
+Without `KYPOST_CORE_ONLY` the build is always Qt 6, whatever `QT_DIR` says.
 
 ### Flatpak
 
