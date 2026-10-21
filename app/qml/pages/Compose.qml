@@ -5,6 +5,7 @@ import QtQuick.Dialogs
 import com.kysecurity.mail 1.0
 import "../components"
 import "../utils/format.js" as Format
+import "../utils/layout.js" as Breakpoints
 
 // Task 35 -- plain reusable Item, deliberately NOT a Kirigami.Page (see
 // Phase 6 global constraint 4); MobileRoot/DesktopRoot each host this
@@ -325,12 +326,42 @@ Item {
     // component's own bounds is covered by design.
     Rectangle {
         anchors.fill: parent
-        color: Theme.bg
+        color: Theme.panel
     }
 
-    ColumnLayout {
+    // Android's labelled rows ("To:", "Cc:", "Bcc:", "Subject") with a
+    // hairline between them. From 840px, if it fits, the fields sit left of
+    // the editor as on Android's 7-inch layout.
+    component FieldLabel: Text {
+        textFormat: Text.PlainText
+        Layout.preferredWidth: 60
+        color: Theme.inkStrong
+        font.family: Theme.fontUi
+        font.pixelSize: Theme.fontDate
+    }
+    component Hairline: Rectangle {
+        Layout.fillWidth: true
+        implicitHeight: 1
+        color: Theme.line
+    }
+
+    // Scrolls only when the window is shorter than the form (a phone);
+    // otherwise the editor takes the spare height.
+    Flickable {
+        id: composeFlick
         anchors.fill: parent
-        anchors.margins: 16
+        contentWidth: width
+        contentHeight: composeColumn.height + 32
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.vertical: ThemedScrollBar {}
+
+    ColumnLayout {
+        id: composeColumn
+        x: 16
+        y: 16
+        width: composeFlick.width - 32
+        height: Math.max(composeFlick.height - 32, implicitHeight)
         spacing: 10
 
         // Pop-out -- Desktop-only (General.isDesktopMode): popping out a
@@ -343,7 +374,7 @@ Item {
             Item { Layout.fillWidth: true }
             IconButton {
                 icon: "open-in-new"
-                tooltip: i18n("Open in New Window")
+                tooltip: i18n("Open in new window")
                 onClicked: {
                     root.currentDraftForPopOut(function(draft) {
                         root.popOutRequested(draft.to, draft.subject, draft.body, true, root.replyTo)
@@ -352,122 +383,162 @@ Item {
             }
         }
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
-
-            TokenField {
-                id: toField
-                Layout.fillWidth: true
-                placeholderText: i18n("To")
-                dropdown: autocompleteDropdown
-                onQueryChanged: (query) => root.onFieldQueryChanged(toField, query)
-                onDuplicateRejected: (email) => toast.show(i18n("%1 is already added", email))
-            }
-            GhostButton {
-                text: i18n("Address Book")
-                onClicked: addressBookPicker.open()
-            }
-        }
-        TokenField {
-            id: ccField
-            Layout.fillWidth: true
-            placeholderText: i18n("Cc")
-            dropdown: autocompleteDropdown
-            onQueryChanged: (query) => root.onFieldQueryChanged(ccField, query)
-            onDuplicateRejected: (email) => toast.show(i18n("%1 is already added", email))
-        }
-        TokenField {
-            id: bccField
-            Layout.fillWidth: true
-            placeholderText: i18n("Bcc")
-            dropdown: autocompleteDropdown
-            onQueryChanged: (query) => root.onFieldQueryChanged(bccField, query)
-            onDuplicateRejected: (email) => toast.show(i18n("%1 is already added", email))
-        }
-        ThemedTextField {
-            id: subjectField
-            Layout.fillWidth: true
-            placeholderText: i18n("Subject")
-        }
-
-        Text {
-            Layout.fillWidth: true
-            visible: !!root.restoredDraft.token
-            textFormat: Text.PlainText
-            // Mirrors MailController::settleDraftReplacement.
-            text: root.restoredDraft.sourceHasAttachments
-                ? i18n("The saved draft's attachments are not reopened here, so the original stays in Drafts. Saving creates another draft.")
-                : root.restoredDraft.encrypted
-                    ? i18n("The first save or send replaces the original draft; later saves add new copies. Inline images remain attached files; the editor keeps basic text formatting.")
-                    : i18n("The first save or send replaces the original draft; later saves add new copies.")
-            color: Theme.ink
-            wrapMode: Text.WordWrap
-        }
-
-        // Body -- rich HTML editor (see RichBodyEditor.qml; supersedes the
-        // earlier plain-TextArea-only constraint).
-        RichBodyEditor {
-            id: bodyEditor
+        GridLayout {
+            id: composeGrid
+            readonly property bool sideBySide: root.width >= Breakpoints.splitMin
             Layout.fillWidth: true
             Layout.fillHeight: true
-        }
+            columns: sideBySide ? 2 : 1
+            columnSpacing: 32
+            rowSpacing: 10
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
+        ColumnLayout {
+            Layout.fillWidth: !composeGrid.sideBySide
+            Layout.preferredWidth: composeGrid.sideBySide ? Math.round(composeGrid.width * 0.4) : -1
+            Layout.alignment: Qt.AlignTop
+            spacing: 10
 
-            GhostButton {
-                text: i18n("Attach files")
-                onClicked: fileDialog.open()
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                FieldLabel { text: i18n("To:") }
+                TokenField {
+                    id: toField
+                    Layout.fillWidth: true
+                    dropdown: autocompleteDropdown
+                    onQueryChanged: (query) => root.onFieldQueryChanged(toField, query)
+                    onDuplicateRejected: (email) => toast.show(i18n("%1 is already added", email))
+                }
+                IconButton {
+                    icon: "person"
+                    tooltip: i18n("Address book")
+                    onClicked: addressBookPicker.open()
+                }
             }
-            Item { Layout.fillWidth: true }
+            Hairline {}
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                FieldLabel { text: i18n("Cc:") }
+                TokenField {
+                    id: ccField
+                    Layout.fillWidth: true
+                    dropdown: autocompleteDropdown
+                    onQueryChanged: (query) => root.onFieldQueryChanged(ccField, query)
+                    onDuplicateRejected: (email) => toast.show(i18n("%1 is already added", email))
+                }
+            }
+            Hairline {}
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                FieldLabel { text: i18n("Bcc:") }
+                TokenField {
+                    id: bccField
+                    Layout.fillWidth: true
+                    dropdown: autocompleteDropdown
+                    onQueryChanged: (query) => root.onFieldQueryChanged(bccField, query)
+                    onDuplicateRejected: (email) => toast.show(i18n("%1 is already added", email))
+                }
+            }
+            Hairline {}
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                FieldLabel { text: i18n("Subject") }
+                ThemedTextField {
+                    id: subjectField
+                    Layout.fillWidth: true
+                }
+            }
+            Hairline { visible: !composeGrid.sideBySide }
+
+            Text {
+                Layout.fillWidth: true
+                visible: !!root.restoredDraft.token
+                textFormat: Text.PlainText
+                // Mirrors MailController::settleDraftReplacement.
+                text: root.restoredDraft.sourceHasAttachments
+                    ? i18n("The saved draft's attachments are not reopened here, so the original stays in Drafts. Saving creates another draft.")
+                    : root.restoredDraft.encrypted
+                        ? i18n("The first save or send replaces the original draft; later saves add new copies. Inline images remain attached files; the editor keeps basic text formatting.")
+                        : i18n("The first save or send replaces the original draft; later saves add new copies.")
+                color: Theme.ink
+                wrapMode: Text.WordWrap
+            }
         }
 
-        Flow {
+        ColumnLayout {
             Layout.fillWidth: true
-            spacing: 8
-            visible: root.attachmentPaths.length > 0
+            Layout.fillHeight: true
+            spacing: 10
 
-            Repeater {
-                model: root.attachmentPaths
-                delegate: Rectangle {
-                    radius: Theme.shapeButton
-                    color: Theme.panel
-                    border.width: 1
-                    border.color: Theme.line
-                    implicitWidth: chipRow.implicitWidth + 20
-                    implicitHeight: chipRow.implicitHeight + 12
+            // Body -- rich HTML editor (see RichBodyEditor.qml); "Attach"
+            // sits at the end of its format toolbar, as on Android.
+            RichBodyEditor {
+                id: bodyEditor
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.minimumHeight: 220
 
-                    Row {
-                        id: chipRow
-                        anchors.centerIn: parent
-                        spacing: 6
+                GhostButton {
+                    icon: "attach"
+                    text: i18n("Attach")
+                    radius: height / 2
+                    onClicked: fileDialog.open()
+                }
+            }
 
-                        Text {
-                            textFormat: Text.PlainText
-                            text: root.fileNameOf(modelData)
-                            color: Theme.inkStrong
-                            font.family: Theme.fontUi
-                            font.pixelSize: Theme.fontDate
-                        }
-                        Text {
-                            text: "✕"
-                            color: Theme.ink
-                            font.family: Theme.fontUi
-                            font.pixelSize: Theme.fontDate
+            Flow {
+                Layout.fillWidth: true
+                spacing: 8
+                visible: root.attachmentPaths.length > 0
 
-                            TapHandler {
-                                onTapped: {
-                                    const updated = root.attachmentPaths.slice()
-                                    updated.splice(index, 1)
-                                    root.attachmentPaths = updated
+                Repeater {
+                    model: root.attachmentPaths
+                    delegate: Rectangle {
+                        radius: height / 2
+                        color: Theme.panel
+                        border.width: 1
+                        border.color: Theme.line
+                        implicitWidth: chipRow.implicitWidth + 20
+                        implicitHeight: chipRow.implicitHeight + 12
+
+                        Row {
+                            id: chipRow
+                            anchors.centerIn: parent
+                            spacing: 6
+
+                            Text {
+                                textFormat: Text.PlainText
+                                text: root.fileNameOf(modelData)
+                                color: Theme.inkStrong
+                                font.family: Theme.fontUi
+                                font.pixelSize: Theme.fontDate
+                            }
+                            Text {
+                                text: "✕"
+                                color: Theme.ink
+                                font.family: Theme.fontUi
+                                font.pixelSize: Theme.fontDate
+
+                                TapHandler {
+                                    onTapped: {
+                                        const updated = root.attachmentPaths.slice()
+                                        updated.splice(index, 1)
+                                        root.attachmentPaths = updated
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+        }
         }
 
         // --- PGP controls -------------------------------------------------
@@ -631,13 +702,13 @@ Item {
             }
             Item { Layout.fillWidth: true }
             GhostButton {
-                text: i18n("Save Draft")
+                text: i18n("Save draft")
                 enabled: !root.sendInFlight && !root.draftInFlight
                 onClicked: root.trySaveDraft()
             }
             GhostButton {
                 objectName: "sendLaterButton"
-                text: i18n("Send Later")
+                text: i18n("Send later")
                 // Not where Send itself would only hand off to webmail.
                 visible: !MailApp.pgpHandoffToWebmail || MailApp.pgpCanSendFromThisDevice
                 enabled: !root.sendInFlight && !root.draftInFlight
@@ -649,6 +720,7 @@ Item {
                 onClicked: root.trySend()
             }
         }
+    }
     }
 
     FileDialog {

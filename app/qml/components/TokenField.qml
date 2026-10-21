@@ -72,7 +72,7 @@ Item {
     }
 
     implicitWidth: 260
-    implicitHeight: Math.max(flow.implicitHeight, 40)
+    implicitHeight: Math.max(flow.implicitHeight + 4, 48)
 
     Rectangle {
         anchors.fill: parent
@@ -89,18 +89,18 @@ Item {
     Flow {
         id: flow
         anchors.fill: parent
-        anchors.margins: 6
+        anchors.margins: 8
         spacing: 6
 
         Repeater {
             model: root.tokens
             delegate: Rectangle {
-                radius: Theme.shapeButton
+                radius: height / 2
                 color: Theme.panel
                 border.width: 1
                 border.color: modelData.valid ? Theme.line : Theme.dangerActionBorder
-                implicitWidth: chipRow.implicitWidth + 18
-                implicitHeight: chipRow.implicitHeight + 10
+                implicitWidth: chipRow.implicitWidth + 24
+                implicitHeight: Math.max(32, chipRow.implicitHeight + 12)
 
                 Row {
                     id: chipRow
@@ -112,7 +112,7 @@ Item {
                         text: modelData.email
                         color: modelData.valid ? Theme.inkStrong : Theme.dangerActionText
                         font.family: Theme.fontUi
-                        font.pixelSize: Theme.fontDate
+                        font.pixelSize: Theme.fontPreview
                     }
                     Text {
                         text: "✕"
@@ -131,7 +131,9 @@ Item {
         TextInput {
             id: inputField
             width: Math.max(80, flow.width - 20)
-            height: 24
+            height: 32
+            verticalAlignment: TextInput.AlignVCenter
+            leftPadding: 4
             color: Theme.inkStrong
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontSender
@@ -139,6 +141,8 @@ Item {
             clip: true
 
             Text {
+                anchors.verticalCenter: parent.verticalCenter
+                x: inputField.leftPadding
                 textFormat: Text.PlainText
                 text: root.placeholderText
                 visible: inputField.text === "" && !inputField.activeFocus

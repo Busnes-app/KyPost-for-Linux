@@ -4,17 +4,18 @@ import com.kysecurity.mail 1.0
 
 // Icon-only button for toolbars and action rows, Android style: a 24px
 // bundled Material icon (qrc:/qml/icons, see MaterialIcon) in a round hit
-// area. `variant` picks the ghost, primary or danger colours.
+// area. `variant` picks the ghost, primary or danger colours, or "outline":
+// the smaller stroked circle of Android's compose format buttons.
 Rectangle {
     id: root
 
     property string icon: ""
     property string tooltip: ""
-    property string variant: "ghost" // "ghost" | "primary" | "danger"
+    property string variant: "ghost" // "ghost" | "primary" | "danger" | "outline"
     signal clicked()
 
-    readonly property int buttonSize: 44
-    readonly property int iconSize: 24
+    readonly property int buttonSize: variant === "outline" ? 40 : 44
+    readonly property int iconSize: variant === "outline" ? 20 : 24
 
     implicitWidth: buttonSize
     implicitHeight: buttonSize
@@ -28,8 +29,8 @@ Rectangle {
         : (variant === "danger" ? Theme.dangerActionText : Theme.inkStrong)
 
     color: (hoverHandler.hovered && !tapHandler.pressed) ? hoverColor : restColor
-    // Android's toolbar icons are borderless; danger keeps its stroke.
-    border.width: variant === "danger" ? 1 : 0
+    // Android's toolbar icons are borderless; danger and outline keep a stroke.
+    border.width: variant === "danger" || variant === "outline" ? 1 : 0
     border.color: variant === "danger" ? Theme.dangerActionBorder : Theme.line
     opacity: !root.enabled ? 0.5 : (tapHandler.pressed ? 0.85 : (hoverHandler.hovered ? 0.92 : 1.0))
 

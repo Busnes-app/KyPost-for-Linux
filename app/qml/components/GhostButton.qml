@@ -24,7 +24,10 @@ Rectangle {
     readonly property int horizontalPadding: 20
     readonly property int verticalPadding: 12
 
-    implicitWidth: label.implicitWidth + horizontalPadding * 2
+    // Optional leading Material icon (Android's outlined "Attach" pill).
+    property string icon: ""
+
+    implicitWidth: label.implicitWidth + (icon !== "" ? 26 : 0) + horizontalPadding * 2
     implicitHeight: label.implicitHeight + verticalPadding * 2
 
     radius: Theme.shapeButton
@@ -40,10 +43,21 @@ Rectangle {
         NumberAnimation { duration: 120 }
     }
 
+    MaterialIcon {
+        anchors.right: label.left
+        anchors.rightMargin: 6
+        anchors.verticalCenter: parent.verticalCenter
+        visible: root.icon !== ""
+        width: 20
+        height: 20
+        name: root.icon
+    }
     Text {
         id: label
         anchors.centerIn: parent
-        width: Math.min(implicitWidth, root.width - root.horizontalPadding * 2)
+        anchors.horizontalCenterOffset: root.icon !== "" ? 13 : 0
+        width: Math.min(implicitWidth, root.width - root.horizontalPadding * 2
+                        - (root.icon !== "" ? 26 : 0))
         elide: Text.ElideRight
         textFormat: Text.PlainText
         text: root.text
