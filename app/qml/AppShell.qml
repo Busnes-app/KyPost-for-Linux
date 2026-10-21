@@ -312,13 +312,19 @@ Kirigami.ApplicationWindow {
         onActivated: root.openCompose("", "", "")
     }
 
-    Kirigami.OverlaySheet {
+    Popup {
         id: scheduledSheet
-        // The page inside carries its own title and Close/Done; Kirigami's
-        // header would add an empty band above it.
-        header: null
-        showCloseButton: false
+        contentWidth: 480
+        contentHeight: 560
+        // A plain centred Popup: Kirigami.OverlaySheet sizes itself from its
+        // own y and its y from its size (a binding loop on every load), and
+        // the page inside carries its own title and Close/Done anyway.
         modal: true
+        padding: 0
+        anchors.centerIn: Overlay.overlay
+        width: Math.min(implicitWidth, root.width - 32)
+        height: Math.min(implicitHeight, root.height - 32)
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.4) }
 
         background: Rectangle {
             color: Theme.panel
@@ -329,9 +335,8 @@ Kirigami.ApplicationWindow {
 
         Loader {
             active: scheduledSheet.opened
+            anchors.fill: parent // the popup clamps to small windows
             sourceComponent: ScheduledList {
-                implicitWidth: Math.min(480, root.width - 64)
-                implicitHeight: Math.min(560, root.height - 64)
                 onClosed: scheduledSheet.close()
             }
         }
@@ -464,14 +469,21 @@ Kirigami.ApplicationWindow {
         }
     }
 
-    // ---- PGP QR key exchange: two more OverlaySheets, same choice as
+    // ---- PGP QR key exchange: two more popups, same choice as
     // the scheduled sheet above (no second top-level window/event-loop to manage).
-    Kirigami.OverlaySheet {
+    Popup {
         id: pgpMyQrCodeSheet
-        // The page inside carries its own title and Close/Done; Kirigami's
-        // header would add an empty band above it.
-        header: null
-        showCloseButton: false
+        contentWidth: 360
+        contentHeight: 480
+        // A plain centred Popup: Kirigami.OverlaySheet sizes itself from its
+        // own y and its y from its size (a binding loop on every load), and
+        // the page inside carries its own title and Close/Done anyway.
+        modal: true
+        padding: 0
+        anchors.centerIn: Overlay.overlay
+        width: Math.min(implicitWidth, root.width - 32)
+        height: Math.min(implicitHeight, root.height - 32)
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.4) }
 
         background: Rectangle {
             color: Theme.panel
@@ -481,18 +493,24 @@ Kirigami.ApplicationWindow {
         }
 
         PgpMyQrCode {
-            implicitWidth: 360
-            implicitHeight: 480
+            anchors.fill: parent // the popup clamps to small windows
             onClosed: pgpMyQrCodeSheet.close()
         }
     }
 
-    Kirigami.OverlaySheet {
+    Popup {
         id: pgpScanContactKeySheet
-        // The page inside carries its own title and Close/Done; Kirigami's
-        // header would add an empty band above it.
-        header: null
-        showCloseButton: false
+        contentWidth: 360
+        contentHeight: 640
+        // A plain centred Popup: Kirigami.OverlaySheet sizes itself from its
+        // own y and its y from its size (a binding loop on every load), and
+        // the page inside carries its own title and Close/Done anyway.
+        modal: true
+        padding: 0
+        anchors.centerIn: Overlay.overlay
+        width: Math.min(implicitWidth, root.width - 32)
+        height: Math.min(implicitHeight, root.height - 32)
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.4) }
 
         background: Rectangle {
             color: Theme.panel
@@ -516,7 +534,7 @@ Kirigami.ApplicationWindow {
         // directly here would turn the camera on at AppShell construction
         // time, before this sheet is ever opened. the old MobileRoot.qml avoids this
         // naturally since its equivalent lives inside a Component{} only
-        // instantiated by pageStack.push(); OverlaySheet has no push-style
+        // instantiated by pageStack.push(); a Popup has no push-style
         // API, so a Loader gated on this sheet's own opened()/closed()
         // signals is the equivalent here -- also releases the camera again
         // once the sheet closes, rather than leaving it running.
@@ -526,9 +544,8 @@ Kirigami.ApplicationWindow {
         Loader {
             id: pgpScanContactKeyLoader
             active: false
+            anchors.fill: parent // the popup clamps to small windows
             sourceComponent: PgpScanContactKey {
-                implicitWidth: 360
-                implicitHeight: 640
                 onClosed: pgpScanContactKeySheet.close()
                 onKeyScanned: function (name, publicKey) {
                     if (pgpScanContactKeySheet.targetContactDetail) {

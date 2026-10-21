@@ -48,8 +48,7 @@ Rectangle {
         anchors.rightMargin: 6
         anchors.verticalCenter: parent.verticalCenter
         visible: root.icon !== ""
-        width: 20
-        height: 20
+        size: 20
         name: root.icon
     }
     Text {

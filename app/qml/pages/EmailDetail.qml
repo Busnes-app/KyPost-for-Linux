@@ -1048,8 +1048,7 @@ Item {
 
                             MaterialIcon {
                                 anchors.verticalCenter: parent.verticalCenter
-                                width: 18
-                                height: 18
+                                size: 18
                                 name: "attach"
                             }
                             Text {

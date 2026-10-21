@@ -508,10 +508,7 @@ Item {
                                     visible: themeDelegate.modelData === Theme.themeName
                                     name: "check"
                                     tint: Theme.accent
-                                    Layout.preferredWidth: 20
-                                    Layout.preferredHeight: 20
-                                    width: 20
-                                    height: 20
+                                    size: 20
                                 }
                             }
 

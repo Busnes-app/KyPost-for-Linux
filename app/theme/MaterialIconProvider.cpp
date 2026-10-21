@@ -13,7 +13,10 @@ MaterialIconProvider::MaterialIconProvider()
 
 QImage MaterialIconProvider::requestImage(const QString& id, QSize* size, const QSize& requestedSize)
 {
-    const QSize out = requestedSize.isValid() && !requestedSize.isEmpty() ? requestedSize : QSize(24, 24);
+    // Icons are never shown above a few hundred pixels; a larger request is a
+    // bug upstream and must not become a gigabyte image.
+    const QSize out = requestedSize.isValid() && !requestedSize.isEmpty()
+        ? requestedSize.boundedTo(QSize(512, 512)) : QSize(24, 24);
     if (size)
         *size = out;
     QImage image(out, QImage::Format_ARGB32_Premultiplied);

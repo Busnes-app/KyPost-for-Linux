@@ -43,8 +43,7 @@ Rectangle {
 
     MaterialIcon {
         anchors.centerIn: parent
-        width: root.iconSize
-        height: root.iconSize
+        size: root.iconSize
         name: root.icon
         tint: root.iconColor
     }

@@ -65,10 +65,7 @@ Item {
 
         MaterialIcon {
             Layout.alignment: Qt.AlignHCenter
-            Layout.preferredWidth: 40
-            Layout.preferredHeight: 40
-            width: 40
-            height: 40
+            size: 40
             name: "lock"
             tint: Theme.accent
         }

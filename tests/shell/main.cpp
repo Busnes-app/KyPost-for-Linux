@@ -7,9 +7,28 @@
 #include <KLocalizedQmlContext>
 #include <KLocalizedString>
 
+#include <QFile>
 #include <QQmlEngine>
 #include <QTemporaryDir>
 #include <QtQuickTest>
+
+#include <chrono>
+#include <thread>
+
+namespace {
+
+long residentMb()
+{
+    QFile status(QStringLiteral("/proc/self/status"));
+    if (!status.open(QIODevice::ReadOnly))
+        return 0;
+    for (const QByteArray& line : status.readAll().split('\n'))
+        if (line.startsWith("VmRSS:"))
+            return line.mid(6).trimmed().split(' ').value(0).toLong() / 1024;
+    return 0;
+}
+
+} // namespace
 
 class Setup : public QObject
 {
@@ -29,6 +48,22 @@ public slots:
         Fixtures::pinFont();
         m_theme = new ThemeController(m_settings, this);
         m_run.qrDataUrl = Fixtures::fakeQr();
+
+        // KYPOST_RSS_LIMIT_MB: abort the moment resident memory passes it.
+        // The shell once grew to 3 GB in two seconds on a 1.6x screen; failing
+        // fast keeps a regression from taking the machine down with it.
+        const long limit = qEnvironmentVariableIntValue("KYPOST_RSS_LIMIT_MB");
+        // Its own thread: a layout loop never returns to the event loop.
+        if (limit > 0) {
+            std::thread([limit] {
+                for (;;) {
+                    const long rss = residentMb();
+                    if (rss > limit)
+                        qFatal("resident memory %ld MB passed the %ld MB limit", rss, limit);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                }
+            }).detach();
+        }
     }
 
     void qmlEngineAvailable(QQmlEngine* engine)

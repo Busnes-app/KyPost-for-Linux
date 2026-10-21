@@ -542,11 +542,18 @@ target_link_libraries(ShellTests PRIVATE kypostcore Qt6::QuickTest Qt6::Quick Qt
 target_compile_definitions(ShellTests PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/shell")
 add_test(NAME ShellTests COMMAND ShellTests)
 set_tests_properties(ShellTests PROPERTIES
-  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu;QT_QUICK_BACKEND=software")
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu;QT_QUICK_BACKEND=software;KYPOST_RSS_LIMIT_MB=800")
+# The same suite on a fractionally scaled screen (KDE's 1.6x laptop default
+# territory). Icons once fed their pixel size back into their layout size,
+# which only grows when devicePixelRatio > 1: 3 GB in two seconds, offscreen
+# at 1x never noticed.
+add_test(NAME ShellTestsScaled COMMAND ShellTests)
+set_tests_properties(ShellTestsScaled PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_SCALE_FACTOR=1.6;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu;QT_QUICK_BACKEND=software;KYPOST_RSS_LIMIT_MB=800")
 if(EXISTS "/.flatpak-info")
   # The shell holds EmailDetail's WebEngineView; same build-sandbox-only
   # setup as ProtectedImageHandlerTest above.
-  set_property(TEST ShellTests APPEND PROPERTY ENVIRONMENT
+  set_property(TEST ShellTests ShellTestsScaled APPEND PROPERTY ENVIRONMENT
     "QTWEBENGINEPROCESS_PATH=/app/lib/libexec/QtWebEngineProcess"
     "QTWEBENGINE_RESOURCES_PATH=/app/resources"
     "QTWEBENGINE_LOCALES_PATH=/app/translations/qtwebengine_locales"

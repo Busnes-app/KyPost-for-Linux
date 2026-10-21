@@ -29,7 +29,7 @@ TestCase {
         color: "white"
         Components.MaterialIcon {
             id: lockIcon
-            anchors.fill: parent
+            size: 48
             name: "lock"
             tint: "#ff0000"
         }
