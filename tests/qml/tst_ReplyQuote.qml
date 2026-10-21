@@ -90,6 +90,8 @@ TestCase {
         verify(handler.indexOf('if (root.detailMode === "compose") {') !== -1, handler)
         verify(handler.indexOf("MailApp.releaseDraft(draft.token)") !== -1, handler)
         verify(handler.indexOf("return") !== -1, handler)
+        // A draft session is refused in C++ before it is touched; the shell only says so.
+        verify(shell.indexOf("function onForwardFinished(composerBusy) {\n            if (composerBusy)\n                root.forwardNotOpened()") !== -1)
         const detail = source("qrc:/qml/pages/EmailDetail.qml")
         verify(detail.indexOf('root.attachmentStatus = i18n("Downloading attachments to forward…")') !== -1)
     }

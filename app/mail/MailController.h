@@ -662,6 +662,9 @@ signals:
     void notificationEmailAmbiguous(const QString& messageId, const QStringList& folders);
     // forwardWithAttachments() finished: open Compose on this draft session.
     void forwardComposeRequested(const QVariantMap& draft);
+    // Every forwardWithAttachments() completion, opened or not. `composerBusy`:
+    // refused because a draft session (a message being written) is live.
+    void forwardFinished(bool composerBusy);
 
 private:
     friend class MailDecryptionTest; // Inspect retained plaintext, not access-filtered getters.

@@ -193,8 +193,9 @@ Item {
                 root.reload()
         }
 
-        function onIsBusyChanged() {
-            if (root.forwarding && !MailApp.isBusy) {
+        // This forward's own completion, not the shared busy state.
+        function onForwardFinished(composerBusy) {
+            if (root.forwarding) {
                 root.forwarding = false
                 root.attachmentStatus = ""
             }

@@ -668,11 +668,14 @@ Item {
             Layout.fillWidth: true
             visible: root.notice !== ""
             spacing: 8
+            // Announced on open: something the user expects is not in the draft.
+            Accessible.role: Accessible.AlertMessage
+            Accessible.name: root.notice
             Text {
                 Layout.fillWidth: true
                 textFormat: Text.PlainText
                 text: root.notice
-                color: Theme.inkStrong
+                color: Theme.warningActionText
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontSender
                 wrapMode: Text.WordWrap

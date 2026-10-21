@@ -54,6 +54,7 @@ QtObject {
     signal folderMutationCompleted(bool ok)
     signal foldersChanged()
     signal forwardComposeRequested(var draft)
+    signal forwardFinished(bool composerBusy)
     signal notificationEmailAmbiguous(string messageId, var folders)
     signal notificationEmailResolved(string messageId, string folder)
     signal openEmailRequested(string messageId)

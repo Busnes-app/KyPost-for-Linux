@@ -136,6 +136,7 @@ private slots:
     void aForwardSaysWhichAttachmentsItCouldNotCarry();
     void aForwardThatOutlivesItsAccountOrTheLockKeepsNothing();
     void aProtectedMessageForwardsNoAttachments();
+    void aLiveDraftSessionSurvivesACompletedForward();
 
 private:
     static void savePairing(PairingStore& pairingStore, quint16 port);
@@ -4016,6 +4017,7 @@ void MailControllerTest::aForwardThatOutlivesItsAccountOrTheLockKeepsNothing()
         RefreshFixture f(fake.port());
         QVERIFY(f.emailDao.insertOrReplace(forwardable()));
         QSignalSpy opened(&f.controller, &MailController::forwardComposeRequested);
+        QSignalSpy finished(&f.controller, &MailController::forwardFinished);
         QVERIFY(f.controller.forwardWithAttachments(QStringLiteral("INBOX"), QStringLiteral("f1"), twoListed(),
                                                     QStringLiteral("Fwd"), QString()));
         if (repair) {
@@ -4033,9 +4035,43 @@ void MailControllerTest::aForwardThatOutlivesItsAccountOrTheLockKeepsNothing()
         f.executor.shutdown();
         QCOMPARE(requestsMatching(fake, "GET /api/mail/attachment?"), 2); // they did come back
         QCOMPARE(opened.count(), 0);
+        QCOMPARE(finished.count(), 1); // the reader's status line still clears
         QVERIFY(f.controller.m_draftToken.isEmpty());
         QVERIFY(f.controller.m_draftAttachments.isEmpty());
     }
+}
+
+// A forward that lands while the user is writing a message with a draft
+// session (a reopened draft and its attachments) never touches that session:
+// releasing it would make the message unsendable.
+void MailControllerTest::aLiveDraftSessionSurvivesACompletedForward()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", "{}"));
+    serveTwoAttachments(fake, "first-bytes", "second-bytes");
+    RefreshFixture f(fake.port());
+    QVERIFY(f.emailDao.insertOrReplace(forwardable()));
+    f.controller.m_draftToken = QStringLiteral("live");
+    f.controller.m_draftIdentity = f.pairingStore.currentIdentity();
+    f.controller.m_draftAttachments = { { QStringLiteral("draft.pdf"), QStringLiteral("application/pdf"), QString(),
+                                          QByteArray("draft-bytes") } };
+    f.controller.m_draftSourceId = QStringLiteral("d1");
+
+    QSignalSpy opened(&f.controller, &MailController::forwardComposeRequested);
+    QSignalSpy finished(&f.controller, &MailController::forwardFinished);
+    QVERIFY(f.controller.forwardWithAttachments(QStringLiteral("INBOX"), QStringLiteral("f1"), twoListed(),
+                                                QStringLiteral("Fwd"), QString()));
+    QTRY_VERIFY_WITH_TIMEOUT(finished.count() == 1, 10000);
+    f.executor.shutdown();
+
+    QVERIFY(finished.at(0).at(0).toBool()); // refused because a message is being written
+    QCOMPARE(opened.count(), 0);
+    QCOMPARE(f.controller.m_draftToken, QStringLiteral("live"));
+    QCOMPARE(f.controller.m_draftSourceId, QStringLiteral("d1"));
+    QCOMPARE(f.controller.m_draftAttachments.size(), 1);
+    QCOMPARE(f.controller.m_draftAttachments.at(0).data, QByteArray("draft-bytes"));
+    QVector<MailAttachmentUpload> uploads;
+    QVERIFY(f.controller.readAttachments({ QStringLiteral("kypost-draft:0") }, uploads, QStringLiteral("live")));
+    QCOMPARE(uploads.at(0).data, QByteArray("draft-bytes"));
 }
 
 // Decrypted content never rides along on a send that may go out in the clear.

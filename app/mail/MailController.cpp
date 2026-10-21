@@ -3049,11 +3049,18 @@ bool MailController::forwardWithAttachments(const QString& mailbox, const QStrin
             m_forwardInFlight = false;
             // The bytes belong to the account and the unlocked session that
             // asked (AGENTS.md 6g); otherwise nothing is kept or shown.
-            if (generation != m_forwardGeneration || m_appLocked || !m_pairingStore.stillCurrent(requestedBy))
+            if (generation != m_forwardGeneration || m_appLocked || !m_pairingStore.stillCurrent(requestedBy)) {
+                emit forwardFinished(false);
                 return;
-            // One draft session at a time. No source id: nothing is deleted
-            // when this session saves or sends.
-            releaseDraft(m_draftToken);
+            }
+            // One draft session at a time, and a live one is a message the user
+            // is writing: refused here, before anything of it is touched.
+            if (!m_draftToken.isEmpty()) {
+                emit forwardFinished(true);
+                return;
+            }
+            // No source id: nothing is deleted when this session saves or sends.
+            releaseDraft(m_draftToken); // clears the source fields
             m_draftToken = QUuid::createUuid().toString(QUuid::WithoutBraces);
             m_draftIdentity = requestedBy;
             m_draftAttachments = fetched.kept;
@@ -3083,6 +3090,7 @@ bool MailController::forwardWithAttachments(const QString& mailbox, const QStrin
                                            { QStringLiteral("names"), names },
                                            { QStringLiteral("encrypted"), false },
                                            { QStringLiteral("forwarded"), true } });
+            emit forwardFinished(false);
         });
     return true;
 }

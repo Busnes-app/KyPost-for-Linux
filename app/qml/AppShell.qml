@@ -172,6 +172,10 @@ Kirigami.ApplicationWindow {
         root.detailMode = "compose"
     }
 
+    function forwardNotOpened() {
+        sendWarningToast.show(i18n("The forward was not opened: finish or close the message you are writing first."))
+    }
+
     function closeDetail() {
         root.detailMode = "empty"
         root.selectedMessageId = ""
@@ -263,13 +267,19 @@ Kirigami.ApplicationWindow {
         // A Forward whose attachments are now held in memory (EmailDetail's
         // Forward). Here, not in EmailDetail: the reader may have moved on.
         // Never over a message already being written: that would lose it.
+        // MailController refuses first when that message holds a draft
+        // session; a plain compose pane is checked here.
         function onForwardComposeRequested(draft) {
             if (root.detailMode === "compose") {
                 MailApp.releaseDraft(draft.token)
-                sendWarningToast.show(i18n("The forward was not opened: finish or close the message you are writing first."))
+                root.forwardNotOpened()
                 return
             }
             root.openRestoredDraft(draft)
+        }
+        function onForwardFinished(composerBusy) {
+            if (composerBusy)
+                root.forwardNotOpened()
         }
 
         function onNotificationEmailResolved(messageId, folder) {
