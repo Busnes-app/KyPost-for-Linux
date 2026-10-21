@@ -504,3 +504,17 @@ else()
   message(WARNING "Qt's qmllint not found -- QmlPropertyLint will not run. "
                   "A .qml file assigning a non-existent property will not be caught.")
 endif()
+
+# Screenshot harness (scripts/screenshots.sh): the shipped QML with fixture
+# singletons, rendered offscreen. A tool, not a test, so no add_test().
+find_package(Qt6 REQUIRED COMPONENTS Widgets)
+add_executable(KyPostScreens
+  screenshots/main.cpp
+  screenshots/screens.qrc
+  ${CMAKE_SOURCE_DIR}/app/theme/ThemeController.cpp
+  ${CMAKE_SOURCE_DIR}/app/qml/qml.qrc
+  ${CMAKE_SOURCE_DIR}/app/resources/fonts.qrc
+)
+target_include_directories(KyPostScreens PRIVATE ${CMAKE_SOURCE_DIR}/app)
+target_link_libraries(KyPostScreens PRIVATE kypostcore Qt6::Quick Qt6::Qml Qt6::Widgets Qt6::Gui
+  KF6::I18n KF6::I18nQml)

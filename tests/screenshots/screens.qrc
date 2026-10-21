@@ -1,0 +1,18 @@
+<RCC>
+  <qresource prefix="/screens">
+    <file>fakes/Fixture.js</file>
+    <file>fakes/FakeAppLock.qml</file>
+    <file>fakes/FakeContactsApp.qml</file>
+    <file>fakes/FakeGeneral.qml</file>
+    <file>fakes/FakeMailApp.qml</file>
+    <file>fakes/FakeMfa.qml</file>
+    <file>fakes/FakePairing.qml</file>
+    <file>fakes/FakePgpEnrollment.qml</file>
+    <file>fakes/FakePgpQr.qml</file>
+    <file>fakes/FakePgpQrScanner.qml</file>
+    <file>fakes/FakeProtectedImages.qml</file>
+    <file>fakes/FakeRemoteContentInterceptor.qml</file>
+    <file>fakes/FakeScheduled.qml</file>
+    <file>fakes/FakeUpdateCheck.qml</file>
+  </qresource>
+</RCC>
