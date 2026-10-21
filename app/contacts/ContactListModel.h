@@ -64,6 +64,9 @@ public:
         // badge) and uses it to sort the flagged contact to the front of
         // the list (see ContactsController::load()).
         IsSelfRole,
+        // Whether the contact has a PGP public key on file (a non-blank
+        // pgpKey): the list's "Secure key" / "No key" chip.
+        HasPgpKeyRole,
     };
 
     explicit ContactListModel(QObject* parent = nullptr);

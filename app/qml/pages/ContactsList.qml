@@ -39,68 +39,62 @@ Item {
     // reaching in and blanking properties it doesn't own.
     property bool showSyncStatus: false
 
+    function sync() {
+        ContactsApp.sync()
+        root.showSyncStatus = true
+        syncStatusTimer.restart()
+    }
+
+    function findDuplicates() {
+        ContactsApp.dedupe()
+        root.showSyncStatus = true
+        syncStatusTimer.restart()
+    }
+
+    // Sync, Find duplicates and Scan PGP key, Android's overflow menu. The
+    // host's header owns the "more" button and anchors the menu to it.
+    function openActions(anchor) {
+        actionsMenu.popup(anchor, 0, anchor.height)
+    }
+
+    // A Menu stacks above the lock overlay, so it closes when the app locks
+    // and its items refuse while locked.
+    Connections {
+        target: AppLock
+        function onLockedChanged() {
+            if (AppLock.locked)
+                actionsMenu.close()
+        }
+    }
+
+    Menu {
+        id: actionsMenu
+
+        MenuItem {
+            text: i18n("Sync")
+            enabled: !ContactsApp.isBusy && !AppLock.locked
+            onTriggered: root.sync()
+        }
+        MenuItem {
+            text: i18n("Find duplicates")
+            enabled: !ContactsApp.isBusy && !AppLock.locked
+            onTriggered: root.findDuplicates()
+        }
+        MenuItem {
+            text: i18n("Scan PGP key")
+            enabled: !AppLock.locked
+            onTriggered: root.scanPgpKeyRequested()
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 16
-        spacing: 10
-
-        // Title + the screen's one primary action (Add), same "single
-        // PrimaryButton" convention the rest of the app follows (e.g.
-        // Compose in DesktopRoot's top bar) -- kept on its own row so it
-        // never has to compete with the secondary actions below for width.
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
-
-            Text {
-                Layout.fillWidth: true
-                text: i18n("Contacts")
-                color: Theme.inkStrong
-                font.family: Theme.fontUi
-                font.pixelSize: Math.round(20 * Theme.fontScale)
-                font.weight: Font.Bold
-            }
-            PrimaryButton {
-                text: i18n("Add")
-                onClicked: root.contactSelected("")
-            }
-        }
-
-        // Secondary actions in a Flow (not a RowLayout): a fixed row can't
-        // fit three text buttons in this column's ~300px width without
-        // clipping or overlapping the row above it -- Flow wraps to as many
-        // lines as needed instead, so nothing is ever cut off or occluded
-        // regardless of window width.
-        Flow {
-            Layout.fillWidth: true
-            spacing: 8
-
-            GhostButton {
-                text: i18n("Sync")
-                enabled: !ContactsApp.isBusy
-                onClicked: {
-                    ContactsApp.sync()
-                    root.showSyncStatus = true
-                    syncStatusTimer.restart()
-                }
-            }
-            GhostButton {
-                text: i18n("Find Duplicates")
-                enabled: !ContactsApp.isBusy
-                onClicked: {
-                    ContactsApp.dedupe()
-                    root.showSyncStatus = true
-                    syncStatusTimer.restart()
-                }
-            }
-            GhostButton {
-                text: i18n("Scan PGP Key")
-                onClicked: root.scanPgpKeyRequested()
-            }
-        }
+        spacing: 8
 
         Text {
             Layout.fillWidth: true
+            Layout.leftMargin: 20
+            Layout.rightMargin: 20
             visible: root.showSyncStatus && (ContactsApp.lastError !== "" || ContactsApp.statusMessage !== "")
             textFormat: Text.PlainText
             text: ContactsApp.lastError !== "" ? ContactsApp.lastError : ContactsApp.statusMessage
@@ -113,62 +107,60 @@ Item {
         EmptyState {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.margins: 16
             visible: listView.count === 0
             text: i18n("No contacts yet — sync or add one.")
         }
 
+        // Android's item_contact.xml: a card per contact with a 40px
+        // avatar, the name over the organisation (or email), and the key
+        // chip on the right.
         ListView {
             id: listView
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: count > 0
             clip: true
-            spacing: 4
+            spacing: 12
+            topMargin: 12
+            bottomMargin: 88 // clear of the add button
+            leftMargin: 16
+            rightMargin: 16
             model: ContactsApp.contactModel
             ScrollBar.vertical: ThemedScrollBar {}
 
-            delegate: Rectangle {
-                width: listView.width
-                height: rowContent.implicitHeight + 20
-                radius: Theme.shapeButton
-                color: tapHandler.pressed ? Theme.panel : "transparent"
-
-                Behavior on color {
-                    ColorAnimation { duration: 120 }
-                }
+            delegate: Card {
+                id: contactCard
+                width: listView.width - 32
+                height: Math.max(76, rowContent.implicitHeight + 28)
+                color: tapHandler.pressed ? Theme.selection : Theme.panel
 
                 RowLayout {
                     id: rowContent
-                    anchors.fill: parent
-                    anchors.margins: 10
-                    spacing: 12
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: 16
+                    anchors.rightMargin: 16
+                    spacing: 14
 
                     Avatar {
                         initials: Format.initialsFromName(model.fn)
-                        // extended-contact-fields Task 3: lazy fetch on
-                        // list-row become-visible -- ListView only
-                        // instantiates delegates for (roughly) visible
-                        // rows, so this call naturally fires per row as it
-                        // scrolls into view, not for the whole contact
-                        // list up front. Guarded on model.photoRef so rows
-                        // with no photo never make the ContactsApp call at
-                        // all (photoPathFor() itself also short-circuits on
-                        // an empty photoRef, but skipping the call here
-                        // avoids it entirely for the common no-photo case).
+                        // Lazy photo fetch as the row scrolls into view; rows
+                        // with no photoRef never call ContactsApp at all.
                         // ContactsApp.photoRevision is read for its binding
-                        // dependency, not its value. photoPathFor() is a
-                        // function call and is now cache-only, so on a miss it
-                        // returns "" and starts a background fetch -- without
-                        // something notifying to depend on, this binding would
-                        // never re-run and the photo would never appear.
+                        // dependency, not its value: photoPathFor() is
+                        // cache-only, returns "" on a miss and starts a
+                        // background fetch, so without something notifying
+                        // this binding would never re-run.
                         photoSource: model.photoRef !== "" && ContactsApp.photoRevision >= 0
                                      ? ContactsApp.photoPathFor(model.uid) : ""
-                        size: 34
+                        size: 40
                     }
 
                     ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 2
+                        spacing: 4
 
                         Text {
                             Layout.fillWidth: true
@@ -177,20 +169,25 @@ Item {
                                 + (model.isSelf ? " · " + i18n("You") : "")
                             color: Theme.inkStrong
                             font.family: Theme.fontUi
-                            font.pixelSize: Math.round(15 * Theme.fontScale)
+                            font.pixelSize: Math.round(18 * Theme.fontScale)
                             font.weight: Font.Medium
                             elide: Text.ElideRight
                         }
                         Text {
                             Layout.fillWidth: true
-                            visible: model.primaryEmail !== ""
+                            visible: text !== ""
                             textFormat: Text.PlainText
-                            text: model.primaryEmail
+                            text: model.org !== "" ? model.org : model.primaryEmail
                             color: Theme.ink
                             font.family: Theme.fontUi
-                            font.pixelSize: Theme.fontPreview
+                            font.pixelSize: Theme.fontSender
                             elide: Text.ElideRight
                         }
+                    }
+
+                    StatusBadge {
+                        active: model.hasPgpKey
+                        text: model.hasPgpKey ? i18n("Secure key") : i18n("No key")
                     }
                 }
 
@@ -199,6 +196,26 @@ Item {
                     onTapped: root.contactSelected(model.uid)
                 }
             }
+        }
+    }
+
+    // Android's add FAB.
+    Card {
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 16
+        width: 56
+        height: 56
+        radius: 28
+        color: Theme.accent
+
+        IconButton {
+            anchors.fill: parent
+            objectName: "addContact"
+            icon: "add"
+            variant: "primary"
+            tooltip: i18n("Add contact")
+            onClicked: root.contactSelected("")
         }
     }
 

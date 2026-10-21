@@ -823,6 +823,15 @@ Kirigami.ApplicationWindow {
                             tooltip: i18n("Folders")
                             onClicked: folderDrawer.open()
                         }
+                        IconButton {
+                            id: contactsMoreButton
+                            objectName: "contactsMore"
+                            visible: root.currentSection === "contacts"
+                            enabled: !AppLock.locked
+                            icon: "more-vert"
+                            tooltip: i18n("More")
+                            onClicked: contactsList.openActions(contactsMoreButton)
+                        }
                     }
 
                     ColumnLayout {
@@ -919,6 +928,7 @@ Kirigami.ApplicationWindow {
                     }
 
                     ContactsList {
+                        id: contactsList
                         visible: root.currentSection === "contacts"
                         Layout.fillWidth: true
                         Layout.fillHeight: true

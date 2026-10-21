@@ -19,7 +19,7 @@ Rectangle {
 
     implicitWidth: buttonSize
     implicitHeight: buttonSize
-    radius: buttonSize / 2
+    radius: Math.min(width, height) / 2
 
     readonly property color restColor: variant === "primary" ? Theme.accent
         : (variant === "danger" ? Theme.dangerActionFill : "transparent")
