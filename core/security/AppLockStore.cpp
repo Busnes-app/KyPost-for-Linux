@@ -200,13 +200,13 @@ bool AppLockStore::verifyPin(const QString& pin, bool* couldNotEvaluate)
         QStringView body(*record);
         if (body.startsWith(kArgon2Prefix)) {
             legacyKdf = false;
-            body = body.sliced(kArgon2Prefix.size());
+            body = body.mid(kArgon2Prefix.size());
         }
         const qsizetype sep = body.indexOf(QLatin1Char(':'));
         if (sep < 0)
             return false;
         saltB64 = body.left(sep).toString();
-        hashB64 = body.sliced(sep + 1).toString();
+        hashB64 = body.mid(sep + 1).toString();
     } else {
         const std::optional<QString> legacySalt = m_secureStore.get(kPinSalt);
         const std::optional<QString> legacyHash = m_secureStore.get(kPinHash);

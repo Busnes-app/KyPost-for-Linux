@@ -3,7 +3,11 @@
 #include <QList>
 #include <QPair>
 #include <QRegularExpression>
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+#include <QTextCodec>
+#else
 #include <QStringDecoder>
+#endif
 #include <QUrl>
 #include <optional>
 
@@ -140,16 +144,16 @@ QByteArray parameterOf(const QByteArray& headerValue, const char* name)
         }
         const QByteArray key = headerValue.mid(at, equals - at).trimmed().toLower();
         qsizetype valueStart = equals + 1;
-        while (valueStart < headerValue.size() && (headerValue[valueStart] == ' ' || headerValue[valueStart] == '\t'))
+        while (valueStart < headerValue.size() && (headerValue.at(valueStart) == ' ' || headerValue.at(valueStart) == '\t'))
             ++valueStart;
 
         QByteArray value;
-        if (valueStart < headerValue.size() && headerValue[valueStart] == '"') {
+        if (valueStart < headerValue.size() && headerValue.at(valueStart) == '"') {
             qsizetype closing = valueStart + 1;
-            for (; closing < headerValue.size() && headerValue[closing] != '"'; ++closing) {
-                if (headerValue[closing] == '\\' && closing + 1 < headerValue.size())
+            for (; closing < headerValue.size() && headerValue.at(closing) != '"'; ++closing) {
+                if (headerValue.at(closing) == '\\' && closing + 1 < headerValue.size())
                     ++closing;
-                value += headerValue[closing];
+                value += headerValue.at(closing);
             }
             if (closing == headerValue.size())
                 return {};
@@ -220,17 +224,19 @@ QByteArray decodeTransfer(const QByteArray& body, const QByteArray& encoding)
 
 QString decodeText(const QByteArray& bytes, const QByteArray& charset)
 {
+    // A byte sequence that is not valid in the charset the sender named keeps
+    // the decoder's own replacement characters. Falling through to UTF-8
+    // would just produce different mojibake; these at least came from the
+    // charset the sender claimed.
     if (!charset.isEmpty()) {
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+        if (QTextCodec* codec = QTextCodec::codecForName(charset))
+            return codec->toUnicode(bytes);
+#else
         QStringDecoder decoder(charset.constData());
-        if (decoder.isValid()) {
-            QString decoded = decoder(bytes);
-            // hasError() catches a byte sequence that is not valid in the
-            // charset the sender named. Falling through to UTF-8 would just
-            // produce different mojibake, so the decoder's own replacement
-            // characters are kept -- they at least came from the charset the
-            // sender claimed.
-            return decoded;
-        }
+        if (decoder.isValid())
+            return decoder(bytes);
+#endif
     }
     // No charset, or one this build has no codec for. UTF-8 is the only
     // defensible default: it is what modern mail uses, and it degrades to
@@ -337,12 +343,12 @@ std::optional<QByteArray> attachmentBytes(const QByteArray& body, const QByteArr
         // For files, preserve-or-guess would silently corrupt bytes. Prose
         // retains the legacy tolerant decoder, but attachments fail closed.
         for (qsizetype i = 0; i < body.size(); ++i) {
-            if (body[i] != '=')
+            if (body.at(i) != '=')
                 continue;
             if (body.mid(i + 1, 2) == "\r\n") { i += 2; continue; }
             if (body.mid(i + 1, 1) == "\n") { ++i; continue; }
             const auto hex = [](char c) { return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f'); };
-            if (i + 2 >= body.size() || !hex(body[i + 1]) || !hex(body[i + 2]))
+            if (i + 2 >= body.size() || !hex(body.at(i + 1)) || !hex(body.at(i + 2)))
                 return std::nullopt;
             i += 2;
         }
@@ -401,7 +407,7 @@ QList<QByteArray> splitOnBoundary(const QByteArray& body, const QByteArray& boun
         const bool closing = body.mid(cursor, 2) == "--";
         if (closing) {
             cursor += 2;
-            while (cursor < body.size() && (body[cursor] == ' ' || body[cursor] == '\t'))
+            while (cursor < body.size() && (body.at(cursor) == ' ' || body.at(cursor) == '\t'))
                 ++cursor;
         }
         const bool terminated = cursor >= body.size() || body.at(cursor) == '\n'

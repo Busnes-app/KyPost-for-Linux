@@ -3,7 +3,7 @@
 
 function(kypost_add_test test_name)
   add_executable(${test_name} ${ARGN})
-  target_link_libraries(${test_name} PRIVATE kypostcore Qt6::Test)
+  target_link_libraries(${test_name} PRIVATE kypostcore Qt${QT_VERSION_MAJOR}::Test)
   add_test(NAME ${test_name} COMMAND ${test_name})
 endfunction()
 
@@ -149,6 +149,11 @@ kypost_add_test(VCardContactTest core/vcard/VCardContactTest.cpp)
 kypost_add_test(ThemePaletteTest core/theme/ThemePaletteTest.cpp)
 kypost_add_test(AppThemeTest core/theme/AppThemeTest.cpp)
 kypost_add_test(ThemeManagerTest core/theme/ThemeManagerTest.cpp)
+
+# Everything below tests app/ code, which is Qt 6/KF6 only.
+if(KYPOST_CORE_ONLY)
+  return()
+endif()
 
 # SecureStoreKeychain needs QtKeychain + app/ headers, so its LIBS list adds
 # Qt6Keychain::Qt6Keychain on top of kypost_add_app_test()'s usual

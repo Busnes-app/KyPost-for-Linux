@@ -11,6 +11,7 @@
 #include <QProcess>
 #include <algorithm>
 #include <cmath>
+#include <string_view>
 #include <vector>
 #include <QTemporaryDir>
 
@@ -231,14 +232,14 @@ public:
 private:
     void space()
     {
-        while (m_pos < m_bytes.size() && (m_bytes[m_pos] == ' ' || m_bytes[m_pos] == '\t'
-               || m_bytes[m_pos] == '\r' || m_bytes[m_pos] == '\n'))
+        while (m_pos < m_bytes.size() && (m_bytes.at(m_pos) == ' ' || m_bytes.at(m_pos) == '\t'
+               || m_bytes.at(m_pos) == '\r' || m_bytes.at(m_pos) == '\n'))
             ++m_pos;
     }
     bool take(char c)
     {
         space();
-        if (m_pos == m_bytes.size() || m_bytes[m_pos] != c)
+        if (m_pos == m_bytes.size() || m_bytes.at(m_pos) != c)
             return false;
         ++m_pos;
         return true;
@@ -248,10 +249,10 @@ private:
         if (!take('"'))
             return false;
         // Allocate once, so growth cannot leave an uncleansed private-key copy.
-        out = SecureBytes(QByteArray(std::min(limit, m_bytes.size() - m_pos), '\0'));
+        out = SecureBytes(QByteArray(std::min<qsizetype>(limit, m_bytes.size() - m_pos), '\0'));
         qsizetype used = 0;
         while (m_pos < m_bytes.size()) {
-            unsigned char c = static_cast<unsigned char>(m_bytes[m_pos++]);
+            unsigned char c = static_cast<unsigned char>(m_bytes.at(m_pos++));
             if (c == '"') {
                 out.bytes().resize(used);
                 return true;
@@ -261,7 +262,7 @@ private:
             if (c == '\\') {
                 if (m_pos == m_bytes.size())
                     return false;
-                c = static_cast<unsigned char>(m_bytes[m_pos++]);
+                c = static_cast<unsigned char>(m_bytes.at(m_pos++));
                 switch (c) {
                 case '"': case '\\': case '/': break;
                 case 'b': c = '\b'; break;
@@ -274,7 +275,7 @@ private:
                     for (int i = 0; i < 4; ++i) {
                         if (m_pos == m_bytes.size())
                             return false;
-                        const char h = m_bytes[m_pos++];
+                        const char h = m_bytes.at(m_pos++);
                         const int digit = h >= '0' && h <= '9' ? h - '0'
                             : h >= 'a' && h <= 'f' ? h - 'a' + 10
                             : h >= 'A' && h <= 'F' ? h - 'A' + 10 : -1;
@@ -292,7 +293,7 @@ private:
             }
             if (used == out.bytes().size())
                 return false;
-            out.bytes()[used++] = static_cast<char>(c);
+            out.bytes().data()[used++] = static_cast<char>(c);
         }
         return false;
     }
@@ -317,7 +318,7 @@ private:
     {
         space();
         const auto start = m_pos;
-        while (m_pos < m_bytes.size() && QByteArrayView("0123456789.eE+-").contains(m_bytes[m_pos]))
+        while (m_pos < m_bytes.size() && std::string_view("0123456789.eE+-").find(m_bytes.at(m_pos)) != std::string_view::npos)
             ++m_pos;
         // Only the public numeric token enters Qt's JSON parser. Accept JSON
         // integer-valued exponents/decimals too, matching Number.isSafeInteger.
@@ -365,14 +366,22 @@ private:
 // so a 128 KiB JSON input cannot expand without bound inside the import engine.
 // GnuPG still validates packet bodies, fingerprints, signatures and armor CRC.
 // This stricter JSON-ring admission does not change legacy single-key imports.
+// A view, not QByteArray::mid/trimmed: those would leave unwiped heap copies
+// of the private-key armor outside SecureBytes.
+std::string_view trimmed(std::string_view v)
+{
+    constexpr std::string_view space(" \t\n\v\f\r");
+    const auto begin = v.find_first_not_of(space);
+    return begin == std::string_view::npos ? std::string_view() : v.substr(begin, v.find_last_not_of(space) - begin + 1);
+}
+
 bool boundedKeyPackets(const SecureBytes& armor)
 {
-    QByteArrayView remaining(armor.bytes());
-    remaining = remaining.trimmed();
+    std::string_view remaining = trimmed(std::string_view(armor.bytes().constData(), armor.bytes().size()));
     auto line = [&]() {
-        const qsizetype end = remaining.indexOf('\n');
-        const auto out = remaining.first(end < 0 ? remaining.size() : end).trimmed();
-        remaining = end < 0 ? QByteArrayView() : remaining.sliced(end + 1);
+        const auto end = remaining.find('\n');
+        const auto out = trimmed(remaining.substr(0, end));
+        remaining = end == std::string_view::npos ? std::string_view() : remaining.substr(end + 1);
         return out;
     };
     if (line() != "-----BEGIN PGP PRIVATE KEY BLOCK-----")
@@ -381,7 +390,7 @@ bool boundedKeyPackets(const SecureBytes& armor)
     while (!remaining.empty()) {
         const auto header = line();
         if (header.empty()) { separator = true; break; }
-        if (!header.contains(':'))
+        if (header.find(':') == std::string_view::npos)
             return false;
     }
     if (!separator)
@@ -392,7 +401,7 @@ bool boundedKeyPackets(const SecureBytes& armor)
     while (!remaining.empty()) {
         const auto part = line();
         if (part == "-----END PGP PRIVATE KEY BLOCK-----") { ended = true; break; }
-        if (part.startsWith('=')) {
+        if (part.starts_with('=')) {
             if (crc || part.size() != 5)
                 return false;
             crc = true;
@@ -404,10 +413,10 @@ bool boundedKeyPackets(const SecureBytes& armor)
             if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
                   || c == '+' || c == '/' || c == '='))
                 return false;
-            base64.bytes()[used++] = c;
+            base64.bytes().data()[used++] = c;
         }
     }
-    if (!ended || !remaining.trimmed().empty())
+    if (!ended || !trimmed(remaining).empty())
         return false;
     base64.bytes().resize(used);
     auto decoded = QByteArray::fromBase64Encoding(base64.bytes(), QByteArray::AbortOnBase64DecodingErrors);
@@ -417,7 +426,7 @@ bool boundedKeyPackets(const SecureBytes& armor)
     const auto& bytes = packets.bytes();
     qsizetype pos = 0;
     int primaries = 0;
-    auto octet = [&]() { return static_cast<unsigned char>(bytes[pos++]); };
+    auto octet = [&]() { return static_cast<unsigned char>(bytes.at(pos++)); };
     while (pos < bytes.size()) {
         const unsigned header = octet();
         if (!(header & 0x80))
@@ -465,7 +474,7 @@ struct KeyInfo {
 gpgme_error_t keyInfoStatus(void* opaque, const char* status, const char* args)
 {
     auto& info = *static_cast<KeyInfo*>(opaque);
-    if (QByteArrayView(status) == "KEYINFO") {
+    if (qstrcmp(status, "KEYINFO") == 0) {
         ++info.replies;
         const auto fields = QByteArray(args).split(' ');
         info.clear = fields.size() >= 6 && fields[0] == info.grip

@@ -148,10 +148,10 @@ void DeviceEnrollmentCryptoTest::rejectsV3BindingAndFramingChanges()
         return crypto.openKeyringEnvelope(QJsonDocument(bad).toJson(), id, fingerprint).isEmpty();
     };
     auto ciphertext = decoded(envelope, "ct");
-    ciphertext[ciphertext.size() - 1] ^= 1;
+    ciphertext.data()[ciphertext.size() - 1] ^= 1;
     QVERIFY(reject("ct", ciphertext));
     ciphertext = decoded(envelope, "ct");
-    ciphertext[0] ^= 1;
+    ciphertext.data()[0] ^= 1;
     QVERIFY(reject("ct", ciphertext));
     QVERIFY(reject("ct", QByteArray(16, '\0')));
     QVERIFY(reject("iv", QByteArray(11, '\0')));

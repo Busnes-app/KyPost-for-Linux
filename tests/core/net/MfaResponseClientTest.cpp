@@ -8,6 +8,9 @@
 #include <QNetworkAccessManager>
 #include <QTest>
 
+// Qt 5 needs this declared to use it as test data; Qt 6 does it implicitly.
+Q_DECLARE_METATYPE(MfaResponseOutcome)
+
 // Contract: kypost-server push_mfa_handlers.go handlePushRespond.
 class MfaResponseClientTest : public QObject
 {

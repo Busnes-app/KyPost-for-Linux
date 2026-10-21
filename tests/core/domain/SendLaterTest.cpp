@@ -86,7 +86,7 @@ void SendLaterTest::presetsStayInTheUsersZoneAcrossDst()
     const QDateTime now = berlin(10, 24, 10);
     const QVector<SendLaterChoice> choices = sendLaterChoices(now);
     QCOMPARE(choices.last().preset, SendLaterPreset::NextWeek);
-    QCOMPARE(choices.last().at.toUTC(), QDateTime(QDate(2026, 10, 26), QTime(7, 0), QTimeZone::UTC));
+    QCOMPARE(choices.last().at.toUTC(), QDateTime(QDate(2026, 10, 26), QTime(7, 0), QTimeZone::utc()));
     QCOMPARE(choices.last().at.timeZone(), kBerlin);
 }
 

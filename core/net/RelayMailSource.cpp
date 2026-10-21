@@ -4,6 +4,7 @@
 #include "net/RelayAuth.h"
 
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QRegularExpression>

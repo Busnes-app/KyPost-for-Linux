@@ -4,18 +4,19 @@
 
 KyPost is a **relay-only** Qt/C++/QML email client: there is no IMAP or
 SMTP anywhere on-device, and the paired KyPost relay is the sole
-transport for mail, contacts, and push. It targets **Qt6/Kirigami KF6
-only** across two surfaces from one codebase — **Linux Desktop** (KDE
-Plasma primary, packaged as a Flatpak) and **KDE Mobile** (Plasma Mobile,
-same Flatpak, mobile UI root). **Ubuntu Touch (Lomiri) support is
-deferred** — Qt5 is EOL and this codebase no longer builds against it; see
-Section 4 for the re-check trigger. It is the fourth sibling client after
+transport for mail, contacts, and push. The app (`app/`) targets
+**Qt6/Kirigami KF6 only** across two surfaces from one codebase — **Linux
+Desktop** (KDE Plasma primary, packaged as a Flatpak) and **KDE Mobile**
+(Plasma Mobile, same Flatpak, mobile UI root). **Ubuntu Touch (Lomiri)** gets
+a separate Qt 5.15 app that shares `core/`, so `core/` builds and passes its
+tests on both Qt 5.15 and Qt 6 (Section 5). The Qt 6 and Ubuntu Touch apps
+share one look, matching Android. It is the fourth sibling client after
 the Android app (`~/git/busnes.app/kypost-android`) and the SwiftUI macOS/iOS
 app (`~/git/busnes.app/kypost-for-Mac`); the relay is
 `~/git/busnes.app/kypost-server`. **This file and `docs/PARITY.md` describe
 what exists today.** `Linux_QT_Client_Plan.md` at the repo root is the
 original architectural design record and is worth reading for the
-reasoning, but it predates the Qt5-drop, the parity matrix and the
+reasoning, but it predates the Qt5 decisions, the parity matrix and the
 client-side OpenPGP reversal; where it disagrees with this file or
 `docs/PARITY.md`, it is the stale one. It says so itself in its own
 header — do not resolve a conflict in its favour.
@@ -30,7 +31,7 @@ map, not a duplicate:
 core/       — libkypostcore: models/net/db/stores/domain/theme/version, QtCore+Network+Sql only
 app/        — main.cpp, push/ (KUnifiedPush glue, Qt6-only), platform/ (SecureStore backends), qml/ (MobileRoot, DesktopRoot, pages, components)
 tests/      — QtTest, stubbed HttpClient; ctest-driven. tests/qml/ is the QML suite (QmlTests); tests/guards.tsv is the security-guard manifest (§5a)
-packaging/  — flatpak/ (manifest, desktop file, metainfo, notifyrc, icons), dbus/ (session D-Bus activation .service), click/ (empty .gitkeep placeholder — Ubuntu Touch is deferred, there is no Clickable manifest)
+packaging/  — flatpak/ (manifest, desktop file, metainfo, notifyrc, icons), dbus/ (session D-Bus activation .service), click/ (empty .gitkeep placeholder — the Ubuntu Touch app does not exist yet, there is no Clickable manifest)
 po/         — gettext catalogs
 scripts/    — build-sqlcipher.sh, verify-guards.sh, verify-version.sh, verify-pgp-against-relay.sh
 docs/       — local tooling/setup notes (see docs/SETUP.md); docs/PARITY.md is the authoritative Android-parity matrix; docs/THREADING.md records the async-controller constraints
@@ -38,7 +39,7 @@ docs/       — local tooling/setup notes (see docs/SETUP.md); docs/PARITY.md is
 
 ## 3. Build instructions
 
-A single out-of-tree build directory, Qt6-only:
+The app build, Qt6/KF6:
 
 ```sh
 cmake -B build -S . -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -47,6 +48,21 @@ ctest --test-dir build
 ```
 
 A change is not verified until this builds cleanly and `ctest` is green.
+
+`core/` and `tests/core` alone, on Qt 5.15 (the shared core of the Ubuntu
+Touch app). Drop `-DQT_DIR` to get Qt 6 if both are installed; configure prints
+`kypostcore: Qt <version>`. CI's `core-qt5` job runs this on stock noble:
+
+```sh
+cmake -B build-qt5 -S . -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DKYPOST_CORE_ONLY=ON \
+  -DQT_DIR=/usr/lib/cmake/Qt5 -DKYPOST_SQLCIPHER_ROOT=/tmp/sqlcipher
+cmake --build build-qt5
+ctest --test-dir build-qt5 --output-on-failure
+```
+
+A change to `core/` or `tests/core` is not verified until both builds pass.
+`KYPOST_CORE_ONLY` never builds `app/`, `po/` or an app/QML test, and without
+it the build is always Qt 6.
 
 `RelWithDebInfo` is part of the command, not decoration: the hardening flags
 in `CMakeLists.txt` include `_FORTIFY_SOURCE=3`, which does nothing without
@@ -143,16 +159,13 @@ Carried forward verbatim (in substance) from `Linux_QT_Client_Plan.md`'s own
   entry have now been wrong in opposite directions; the Go source above is
   the tiebreaker, not this file.
 - **License: MIT** (fine with Qt LGPL / KDE).
-- **Qt5/Ubuntu Touch (Clickable) support is dropped, not merely paused.**
-  Qt5 is EOL upstream, so this codebase now hard-requires Qt6 and has no
-  Qt5 build path at all (previously a dual-Qt CMake toggle selected between
-  two separate build trees; that toggle and both trees are gone — see
-  Section 3 for the current single build directory). This was a deliberate
-  call, not an oversight: Ubuntu Touch is deferred until UBports ships a
-  usable Qt6/KF6 track (the 24.04-2.0 beta, slated ~2026-07-20, or the
-  further-out 26.04-1.x/Qt 6.9 line) — see Section 1. Re-check when UT
-  ships that track; the plan is to target it directly with this same Qt6
-  codebase, no separate build path.
+- **The app is Qt6/KF6 only; Ubuntu Touch is a separate Qt 5.15 app.**
+  `app/` (desktop and Plasma Mobile) never builds against Qt5. Ubuntu Touch
+  is still on Qt 5.15, so it gets its own stopgap app that shares `core/`,
+  rather than waiting for a UBports Qt6 track (decided
+  2026-10-11; `docs/superpowers/specs/2026-10-12-ubuntu-touch-spike.md`).
+  `core/` therefore builds and passes its tests on Qt 5.15 and Qt 6 —
+  Section 5.
 
 Added 2026-07-25 (parity work with `kypost-android`):
 
@@ -290,7 +303,7 @@ Added 2026-07-26:
   deviceToken) was removed — `core/net/NtfySubscriber`,
   `app/push/NtfyTopicProvisioner`, `SettingsStore::pushServerBaseUrl` and the
   `ntfy-topic` SecureStore key all went with it. It was written as the
-  Ubuntu Touch story (deferred) and was otherwise redundant with polling,
+  Ubuntu Touch story (then deferred) and was otherwise redundant with polling,
   which covers the same no-distributor case without sending the sender and
   subject of every mail through a third party. Don't reintroduce it; if
   no-distributor latency ever needs improving, shorten the poll interval.
@@ -424,14 +437,22 @@ primary key. A fragment never reaches the server.
 - **No "confirmed" flag is stored.** `Contact::pgpKey` is a plain string, so
   "verified" exists only on the scan screen.
 
-## 5. Single-Qt rules
+## 5. Qt version rules
 
-Qt5/KF5 support was dropped (Qt5 is EOL); Ubuntu Touch is deferred until it
-ships its own Qt6/KF6 track — see Section 1 and the locked decision in
-Section 4. There is no longer a KF5/KF6 divergence to guard against, so
-most of what used to live in this section (dual-Qt QML-type restrictions, a
-`Compat` singleton escape hatch) is moot and has been removed. One rule
-carries forward unchanged, independent of the Qt5 decision:
+`app/` is Qt6/KF6 only; `core/` is shared with the Qt 5.15 Ubuntu Touch app
+(Section 1 and the locked decision in Section 4). There is no KF5/KF6
+divergence to guard against: KF is never used in `core/`.
+
+- **`core/` builds and passes its tests on Qt 5.15 and Qt 6 from one
+  source.** A Qt 6-only API in `core/` or `tests/core` needs a
+  Qt 5.15-compatible form, or a `#if QT_VERSION` guard where no common API
+  exists (today only `MimeBodyReader.cpp`'s charset decoder). Typical traps:
+  `QByteArray::operator[]` with a `qsizetype` index is ambiguous on Qt 5 (use
+  `at()`), `std::min` of `qsizetype` and Qt 5's `int` `size()` does not deduce,
+  a test-data type needs `Q_DECLARE_METATYPE`, and Qt 6 headers pull in
+  includes Qt 5 needs spelled out. The `core-qt5` CI job is the proof, not a
+  grep. `core/` stays on C++20: noble's gcc 13 compiles Qt 5.15 headers under
+  it.
 
 - `core/`'s **QtCore/QtNetwork/QtSql-only boundary** is the rule most likely
   to be accidentally violated in a single commit: nothing in `core/` may

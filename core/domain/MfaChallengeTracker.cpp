@@ -79,5 +79,7 @@ void MfaChallengeTracker::clear()
 
 void MfaChallengeTracker::prune(qint64 nowMs)
 {
-    m_entries.removeIf([nowMs](const Entry& e) { return nowMs >= e.pending.expiresAtMs; });
+    m_entries.erase(std::remove_if(m_entries.begin(), m_entries.end(),
+                                   [nowMs](const Entry& e) { return nowMs >= e.pending.expiresAtMs; }),
+                    m_entries.end());
 }

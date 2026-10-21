@@ -19,6 +19,8 @@ private slots:
     void quotedPrintableIsDecoded();
     void aNamedCharsetIsHonoured();
     void anUnknownCharsetFallsBackRatherThanFailing();
+    void charsetsDecodeAlikeOnQt5AndQt6_data();
+    void charsetsDecodeAlikeOnQt5AndQt6();
     void anUnknownTransferEncodingIsLeftAlone();
     void foldedHeadersAreUnfolded();
     void attachmentsOnlyLeaveNothingToRead();
@@ -183,6 +185,32 @@ void MimeBodyReaderTest::anUnknownCharsetFallsBackRatherThanFailing()
                                 "\r\n"
                                 "still readable\r\n";
     QCOMPARE(readMimeBody(message).plain.trimmed(), QStringLiteral("still readable"));
+}
+
+// Qt 5 and Qt 6 decode with different classes (see decodeText()), which know
+// different charsets. These are the results both must agree on.
+void MimeBodyReaderTest::charsetsDecodeAlikeOnQt5AndQt6_data()
+{
+    QTest::addColumn<QByteArray>("charset");
+    QTest::addColumn<QByteArray>("body");
+    QTest::addColumn<QString>("expected");
+
+    QTest::newRow("latin-1") << QByteArray("ISO-8859-1") << QByteArray("caf\xE9") << QStringLiteral("café");
+    // UTF-8 bytes, so a Latin-1 fallback would read "cafÃ©".
+    QTest::newRow("unknown is UTF-8") << QByteArray("x-not-a-real-charset") << QByteArray("caf\xC3\xA9")
+                                      << QStringLiteral("café");
+    // A named charset keeps its own replacement character for a bad byte.
+    QTest::newRow("invalid in named") << QByteArray("utf-8") << QByteArray("caf\xFF")
+                                      << QStringLiteral("caf") + QChar(QChar::ReplacementCharacter);
+}
+
+void MimeBodyReaderTest::charsetsDecodeAlikeOnQt5AndQt6()
+{
+    QFETCH(QByteArray, charset);
+    QFETCH(QByteArray, body);
+    QFETCH(QString, expected);
+    const QByteArray message = "Content-Type: text/plain; charset=" + charset + "\r\n\r\n" + body + "\r\n";
+    QCOMPARE(readMimeBody(message).plain.trimmed(), expected);
 }
 
 void MimeBodyReaderTest::anUnknownTransferEncodingIsLeftAlone()

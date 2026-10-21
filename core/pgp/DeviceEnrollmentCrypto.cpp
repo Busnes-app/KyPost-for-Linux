@@ -169,8 +169,8 @@ QString formatEnrollmentCode(const QString& code)
 QByteArray deviceEnvelopeAad(const QString& deviceId, const QString& fingerprint)
 {
     const QByteArray id = deviceId.toUtf8();
-    QString normalized = fingerprint.toUpper();
-    normalized.removeIf([](QChar c) { return c.isSpace(); });
+    // simplified() turns every whitespace run into one ' ', then those go.
+    const QString normalized = fingerprint.toUpper().simplified().remove(QLatin1Char(' '));
     const QByteArray fp = normalized.toLatin1();
     if (id.size() > 0xffff || fp.isEmpty() || fp.size() > 0xffff
         || !std::all_of(fp.cbegin(), fp.cend(), [](char c) {

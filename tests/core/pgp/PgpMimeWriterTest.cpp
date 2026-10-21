@@ -11,7 +11,7 @@ OutgoingMessage sampleMessage()
 {
     OutgoingMessage message;
     message.from = QStringLiteral("me@example.com");
-    message.to = { QStringLiteral("you@example.com") };
+    message.to = QStringList{ QStringLiteral("you@example.com") };
     message.subject = QStringLiteral("Quarterly numbers");
     message.body = QStringLiteral("Attached.");
     message.mode = QStringLiteral("plain");
@@ -94,7 +94,7 @@ void PgpMimeWriterTest::theDeliveryCarriesEveryHeaderTheRelayRequires()
 void PgpMimeWriterTest::theDeliveryCarriesNoHeaderTheRelayForbids()
 {
     OutgoingMessage message = sampleMessage();
-    message.cc = { QStringLiteral("cc@example.com") };
+    message.cc = QStringList{ QStringLiteral("cc@example.com") };
     const QByteArray headers = headerBlockOf(pgpMimeDelivery(message, kArmor, randomMimeBoundary()));
 
     QVERIFY2(!hasHeader(headers, "Bcc:"), "a Bcc header was emitted");
@@ -146,7 +146,7 @@ void PgpMimeWriterTest::aSubjectCannotInjectAnotherHeader()
 void PgpMimeWriterTest::anAddressCannotInjectAnotherHeader()
 {
     OutgoingMessage message = sampleMessage();
-    message.to = { QStringLiteral("you@example.com\r\nBcc: attacker@evil.example") };
+    message.to = QStringList{ QStringLiteral("you@example.com\r\nBcc: attacker@evil.example") };
 
     const QByteArray headers = headerBlockOf(pgpMimeDelivery(message, kArmor, randomMimeBoundary()));
 
