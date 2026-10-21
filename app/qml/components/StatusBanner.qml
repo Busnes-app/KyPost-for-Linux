@@ -19,7 +19,7 @@ import com.kysecurity.mail 1.0
 // BOUNDED AND COLLAPSIBLE, because anchoring means every pixel here is
 // painted OVER the app rather than beside it. Seven of the rows below can be
 // active at once and the stack used to grow without any limit: two were
-// already enough to swallow DesktopRoot's 66px top bar, which carries the
+// already enough to swallow AppShell's 66px top bar, which carries the
 // Settings button -- so the pairing strip sat there telling the user to
 // "pair this device again in Settings" while covering the only way to reach
 // Settings. A warning that blocks its own remedy is worse than no warning.

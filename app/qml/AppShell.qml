@@ -169,6 +169,8 @@ Kirigami.ApplicationWindow {
     }
 
     function closeOverlays() {
+        settingsPane.closePopups()
+        pairingConfirmPopup.close()
         folderDrawer.close()
         folderActionsMenu.close()
         scheduledSheet.close()
@@ -331,7 +333,7 @@ Kirigami.ApplicationWindow {
     // MimeType), so a kypost://native-pair link clicked anywhere on
     // the system reaches PairingController without any of this app's own
     // UI ever having been on screen -- including here, where (unlike
-    // MobileRoot.qml's pageStack) there's no page to auto-push. This is a
+    // the old MobileRoot.qml's pageStack) there's no page to auto-push. This is a
     // small dedicated Popup rather than reusing the full Pairing.qml/
     // Settings flow (Settings.qml's own pairingPopup is nested inside
     // the Settings destination, which isn't shown by default): it only needs to show
@@ -482,7 +484,7 @@ Kirigami.ApplicationWindow {
         // this sheet -- null means "create a brand-new contact from the
         // scan" (the contacts-list entry point); non-null means "write
         // into the persistently-embedded ContactDetail pane instead" (the
-        // ContactDetail pane's own entry point, unlike MobileRoot there is
+        // ContactDetail pane's own entry point, unlike the old MobileRoot there is
         // only ever one ContactDetail instance here, not one per push, so
         // this can point at it directly rather than capturing a per-push
         // reference).
@@ -491,8 +493,8 @@ Kirigami.ApplicationWindow {
         // Loader, not a direct child -- PgpScanContactKey's Camera defaults
         // to active as soon as it's constructed (see its own "active:
         // PgpQr.scannedFingerprint === ''" binding), so instantiating it
-        // directly here would turn the camera on at DesktopRoot construction
-        // time, before this sheet is ever opened. MobileRoot.qml avoids this
+        // directly here would turn the camera on at AppShell construction
+        // time, before this sheet is ever opened. the old MobileRoot.qml avoids this
         // naturally since its equivalent lives inside a Component{} only
         // instantiated by pageStack.push(); OverlaySheet has no push-style
         // API, so a Loader gated on this sheet's own opened()/closed()
@@ -531,9 +533,9 @@ Kirigami.ApplicationWindow {
     // ---- compose: Loader, not a persistent embed -----------------------
     // Unlike EmailDetail/ContactDetail below (which rebind messageId/uid as
     // the selection changes and reload() in response -- see those files'
-    // own doc comments confirming DesktopRoot is expected to do this),
+    // own doc comments confirming AppShell is expected to do this),
     // Compose.qml only seeds its fields once, in Component.onCompleted (it
-    // has no onInitialToChanged-style rebind hook -- MobileRoot doesn't
+    // has no onInitialToChanged-style rebind hook -- the old MobileRoot doesn't
     // need one either, since pageStack.push() always creates a fresh
     // instance). A persistently-embedded Compose would only ever read
     // initialTo/initialSubject/initialBody on this file's own startup, so a
@@ -1263,6 +1265,8 @@ Kirigami.ApplicationWindow {
             pgpScanContactKeySheet.close();
             folderDrawer.close();
             folderActionsMenu.close();
+            pairingConfirmPopup.close();
+            settingsPane.closePopups();
         }
     }
 

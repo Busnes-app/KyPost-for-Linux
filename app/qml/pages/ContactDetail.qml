@@ -6,8 +6,8 @@ import "../components"
 import "../utils/format.js" as Format
 
 // Task 36 -- plain reusable Item, deliberately NOT a Kirigami.Page (see
-// Phase 6 global constraint 4): MobileRoot wraps this in a thin
-// Kirigami.Page shell when it pushes it (Task 38); DesktopRoot embeds it
+// Phase 6 global constraint 4): the old MobileRoot wraps this in a thin
+// Kirigami.Page shell when it pushes it (Task 38); AppShell embeds it
 // directly inside its detail-pane Item, rebinding `uid` as the selected
 // contact changes rather than re-instantiating this component (Task 39) --
 // that's why both Component.onCompleted AND onUidChanged reload below,
@@ -50,11 +50,11 @@ Item {
     // Detach into a standalone top-level window (Desktop mode only -- see
     // the pop-out IconButton below, gated on General.isDesktopMode). Same
     // "host owns the actual Window" shape as EmailDetail.popOutRequested/
-    // Compose.popOutRequested -- DesktopRoot creates the window and clears
+    // Compose.popOutRequested -- AppShell creates the window and clears
     // its own embedded selection in response.
     signal popOutRequested(string uid)
 
-    // True for the instance DesktopRoot's contactWindowComponent embeds
+    // True for the instance AppShell's contactWindowComponent embeds
     // inside an already-standalone pop-out Window -- hides the "Open in New
     // Window" button there, same reasoning as EmailDetail.isPoppedOut.
     property bool isPoppedOut: false
@@ -332,7 +332,7 @@ Item {
     // edit form's five fields plus its two buttons, can exceed whatever
     // fixed-size pane/Kirigami.Page ends up hosting this component on a
     // short window -- scrolling internally means this component behaves
-    // correctly regardless of how MobileRoot/DesktopRoot (Task 38/39) size
+    // correctly regardless of how AppShell (Task 38/39) size
     // it.
     Flickable {
         id: flickable

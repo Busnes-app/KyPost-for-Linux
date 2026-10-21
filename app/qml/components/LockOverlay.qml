@@ -4,7 +4,7 @@ import com.kysecurity.mail 1.0
 // The app-lock PIN gate, as one drop-in item.
 //
 // Exists as a component because the overlay used to be written out by hand,
-// once, anchored to DesktopRoot's own contentItem -- while DesktopRoot also
+// once, anchored to AppShell's own contentItem -- while AppShell also
 // creates genuine top-level Windows for popped-out email, compose and
 // contact views via createObject(null, ...). Those windows are not children
 // of root, so `anchors.fill: parent` never covered them: popping an email

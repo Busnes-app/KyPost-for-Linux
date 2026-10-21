@@ -609,8 +609,8 @@ signals:
     //
     // Deliberately NOT displayed by Compose.qml: a successful send makes the
     // hosts destroy that component, so a notice parented to it would die in
-    // the same turn it appeared. The sinks live in MobileRoot.qml /
-    // DesktopRoot.qml (and DesktopRoot's pop-out compose Window), which
+    // the same turn it appeared. The sinks live in
+    // AppShell.qml (and AppShell's pop-out compose Window), which
     // outlive the composer. This class is a singleton, so those receive it
     // regardless of which composer sent.
     void sendWarning(const QString& warning);
@@ -623,7 +623,7 @@ signals:
     // pageStack access (same constraint every other controller in this repo
     // respects -- see PairingController's deep-link routing for the closest
     // precedent), so this only carries the bare messageId to QML;
-    // MobileRoot.qml/DesktopRoot.qml each have a
+    // AppShell.qml each have a
     // `Connections { target: MailApp }` block that hydrates the full email
     // via findByMessageId() and does the actual navigation + window
     // raise/focus.

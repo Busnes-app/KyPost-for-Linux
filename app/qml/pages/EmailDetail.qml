@@ -9,8 +9,8 @@ import "../components"
 import "../utils/format.js" as Format
 
 // Task 35 -- plain reusable Item, deliberately NOT a Kirigami.Page (see
-// Phase 6 global constraint 4): MobileRoot wraps this in a thin
-// Kirigami.Page shell when it pushes it (Task 38); DesktopRoot embeds it
+// Phase 6 global constraint 4): the old MobileRoot wraps this in a thin
+// Kirigami.Page shell when it pushes it (Task 38); AppShell embeds it
 // directly inside its detail-pane Item (Task 39). This file itself must not
 // assume which root is hosting it -- Reply/Reply All/Forward surface their
 // pre-filled fields via composeRequested() instead of pushing Compose.qml
@@ -23,7 +23,7 @@ Item {
     // Public API.
     property string messageId: ""
     property string folder: "" // wire folder name, e.g. "INBOX"
-    // True for the instance DesktopRoot's emailWindowComponent embeds inside
+    // True for the instance AppShell's emailWindowComponent embeds inside
     // an already-standalone pop-out Window -- hides the "Open in New Window"
     // button there (see below), since a pop-out of a pop-out has nowhere
     // more standalone to go.
@@ -35,7 +35,7 @@ Item {
     signal actionCompleted(string action) // action: "archive" | "junk" | "delete" | "move"
     // Detach into a standalone top-level window (Desktop mode only -- see
     // the pop-out IconButton below, gated on General.isDesktopMode). The
-    // host (DesktopRoot) owns the actual Window creation and is expected to
+    // host (AppShell) owns the actual Window creation and is expected to
     // clear its own embedded selection in response, same "host decides what
     // to do" shape as composeRequested/actionCompleted above.
     signal popOutRequested()
@@ -159,7 +159,7 @@ Item {
     // Archive/Junk/Delete dispatch and return; the answer arrives here.
     //
     // MailApp is a singleton, so this fires for every EmailDetail alive --
-    // DesktopRoot can have an embedded one and a popped-out Window showing a
+    // AppShell can have an embedded one and a popped-out Window showing a
     // different message at the same time. `messageIds` is what tells them
     // apart: only the instance whose own message was acted on reacts. The
     // old code could rely on "my call is on the stack" instead, because the
@@ -350,7 +350,7 @@ Item {
     // component (a long email plus a full attachment row, on a short
     // window), and plain ColumnLayout doesn't clip or scroll its own
     // overflow. Scrolling here, internally, means this component behaves
-    // correctly regardless of how MobileRoot/DesktopRoot (Task 38/39) end
+    // correctly regardless of how AppShell (Task 38/39) end
     // up sizing it, rather than relying on every future host to remember to
     // wrap it in a scrollable container itself.
     Flickable {
@@ -569,10 +569,12 @@ Item {
                 wrapMode: Text.Wrap
             }
             Text {
-                // Raw ISO string as-is for v1; formatting it for display is
-                // a follow-up.
+                // Local date and time; an unparseable value is shown as sent.
+                readonly property date when: new Date(root.email.atUtc)
                 textFormat: Text.PlainText
-                text: root.email.atUtc || ""
+                text: !root.email.atUtc ? ""
+                    : isNaN(when.getTime()) ? String(root.email.atUtc)
+                    : when.toLocaleString(Qt.locale(), Locale.ShortFormat)
                 color: Theme.ink
                 opacity: 0.7
                 font.family: Theme.fontUi

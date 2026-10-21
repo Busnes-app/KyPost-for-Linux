@@ -312,7 +312,7 @@ function initialsFromName(name) {
 // formatted sender string (and may pass an email local-part instead, or an
 // empty string). Unlike initialsFromName(), an empty/unparseable result
 // comes back as "" rather than "?" -- EmailDetail.qml's initialsFor() and
-// MobileRoot.qml's initialsForSender() each handle that empty case
+// the old MobileRoot.qml's initialsForSender() each handle that empty case
 // differently (one falls back further to the sender's email local-part
 // before ever calling this, the other falls back to "?" itself), so this
 // shared core stays a plain splitter and leaves those decisions to the

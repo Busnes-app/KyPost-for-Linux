@@ -5,8 +5,8 @@ import com.kysecurity.mail 1.0
 import "../components"
 
 // Task 37 -- plain reusable Item, deliberately NOT a Kirigami.Page (see
-// Phase 6 global constraint 4): MobileRoot wraps this in a thin
-// Kirigami.Page shell when it pushes it (Task 38); DesktopRoot hosts it as
+// Phase 6 global constraint 4): the old MobileRoot wraps this in a thin
+// Kirigami.Page shell when it pushes it (Task 38); AppShell hosts it as
 // a modal/overlay (Task 39). State-driven off Pairing.pairingState -- this
 // file never calls pairFromParsedParams/the network directly, it only
 // forwards user input to the Pairing singleton (Task 34) and renders

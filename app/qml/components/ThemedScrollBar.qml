@@ -10,11 +10,10 @@ import com.kysecurity.mail 1.0
 // user-facing Desktop/Mobile mode toggle -- General.isDesktopMode -- so this
 // reuses that instead of a second, possibly-inconsistent signal): a
 // draggable thumb on Desktop (mouse/trackpad idiom), a passive flick-only
-// indicator on Mobile (matches MobileRoot.qml's existing SwipeDelegate touch
+// indicator on Mobile (matches the old MobileRoot.qml's existing SwipeDelegate touch
 // pattern). One component, correct in both hosts, since the page components
 // wrapping content in a Flickable/ListView (EmailDetail/ContactDetail/
-// Compose/ContactsList/Settings/etc.) are shared between DesktopRoot.qml and
-// MobileRoot.qml.
+// Compose/ContactsList/Settings/etc.) are shared between AppShell.qml.
 ScrollBar {
     id: root
 

@@ -207,6 +207,12 @@ SwipeDelegate {
         onTapped: contextMenu.popup()
     }
 
+    // A Menu paints above the lock overlay.
+    Connections {
+        target: AppLock
+        function onLockedChanged() { if (AppLock.locked) contextMenu.close() }
+    }
+
     Menu {
         id: contextMenu
         MenuItem {

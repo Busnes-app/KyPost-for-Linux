@@ -7,8 +7,8 @@ import "../components"
 // this device's pairing account's PGP-key pickup URL (PgpQr.myQrUrl), for
 // someone else's device to scan via PgpScanContactKey.qml. Plain reusable
 // Item, same "parent-agnostic" shape as every other page component in this
-// directory (Compose/ContactDetail/Settings) -- MobileRoot pushes this via
-// pageStack, DesktopRoot hosts it in a Kirigami.OverlaySheet (same choice
+// directory (Compose/ContactDetail/Settings) -- the old MobileRoot pushes this via
+// pageStack, AppShell hosts it in a Kirigami.OverlaySheet (same choice
 // Settings.qml itself already made).
 Item {
     id: root
@@ -33,7 +33,7 @@ Item {
 
     // The code is the previous account's after a pairing change, and a failed
     // refresh never replaces it (myQrDataChanged fires on success only), so
-    // drop it before asking again. DesktopRoot keeps this page alive in a sheet.
+    // drop it before asking again. AppShell keeps this page alive in a sheet.
     Connections {
         target: Pairing
         function onPairingChanged() {

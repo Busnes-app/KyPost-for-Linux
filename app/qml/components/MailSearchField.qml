@@ -12,11 +12,11 @@ import com.kysecurity.mail 1.0
 ThemedTextField {
     id: field
 
-    // DesktopRoot turns this on for the mail section.
+    // AppShell turns this on for the mail section.
     property bool findShortcutEnabled: false
     readonly property alias findShortcut: findShortcut
 
-    // Escape cleared the search; MobileRoot also hides the field.
+    // Escape cleared the search; the old MobileRoot also hides the field.
     signal dismissed()
 
     enabled: !AppLock.locked

@@ -33,7 +33,10 @@ Rectangle {
     implicitHeight: rowContent.implicitHeight + verticalPadding * 2
 
     radius: height / 2
-    color: root.active ? Theme.successFillColor : Theme.panel
+    // The light-green text needs a dark chip on a light palette, as in
+    // Android's contact shots; the 12% tint alone left it near 1.6:1.
+    color: !root.active ? Theme.panel
+        : Theme.isLight ? Qt.tint(Theme.inkStrong, Theme.successFillColor) : Theme.successFillColor
     border.width: 1
     border.color: root.active ? Theme.successBorderColor : Theme.line
 

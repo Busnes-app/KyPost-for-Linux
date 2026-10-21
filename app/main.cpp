@@ -380,7 +380,7 @@ int main(int argc, char* argv[])
     // Task 28: wraps core::ThemeManager (which itself wraps settingsStore
     // above) for QML consumption. Constructed before the engine and
     // registered as a QML singleton instance immediately after, so
-    // MobileRoot.qml (loaded just below) can already bind to Theme.* from
+    // AppShell.qml (loaded just below) can already bind to Theme.* from
     // its very first frame in a later task -- this task only proves the
     // singleton registers and loads cleanly.
     ThemeController themeController(settingsStore);
@@ -1100,7 +1100,7 @@ int main(int argc, char* argv[])
     // signals already carry the same (const QString&) shape. Neither
     // NotificationDispatcher nor MailController has window/pageStack access
     // (by design -- see both classes' doc comments), so this connect only
-    // gets the bare messageId to QML; MobileRoot.qml/DesktopRoot.qml each
+    // gets the bare messageId to QML; AppShell.qml each
     // have their own `Connections { target: MailApp }` block that hydrates
     // the full email via MailApp.findByMessageId() and does the actual
     // navigation + window raise/focus. Deliberately NOT connected here for
@@ -1371,7 +1371,7 @@ int main(int argc, char* argv[])
     // a runtime language change. Must run before engine.load() below --
     // QML resolves i18n() through the root context at parse/binding time,
     // so a context object set afterwards would be too late for
-    // MobileRoot.qml's very first frame. Deliberately not the older
+    // AppShell.qml's very first frame. Deliberately not the older
     // KLocalizedContext class (see app/CMakeLists.txt's KF6::I18nQml comment
     // for why: deprecated since 6.8, this is its replacement).
     // One root for every surface: AppShell.qml follows the window's width at
@@ -1396,7 +1396,7 @@ int main(int argc, char* argv[])
     // and after the isEmpty() bail, because a failed load returns -1 here
     // and there is nothing to activate in that case.
     //
-    // This matters more than it looks on desktop: DesktopRoot's onClosing
+    // This matters more than it looks on desktop: AppShell's onClosing
     // hides to the tray when minimizeToTrayOnClose is set, and a session
     // with no StatusNotifier host silently provides no tray icon
     // ("kf.statusnotifieritem: KDE platform plugin is loaded but SNI
@@ -1405,7 +1405,7 @@ int main(int argc, char* argv[])
     engineForActivation = &engine;
 
     // Desktop-only system tray icon (see GeneralController.trayIconEnabled /
-    // minimizeToTrayOnClose, and DesktopRoot.qml's onClosing handler). Never
+    // minimizeToTrayOnClose, and AppShell.qml's onClosing handler). Never
     // constructed in Mobile mode -- there is no tray concept there.
     std::optional<TrayController> trayController;
     if (!isMobile) {

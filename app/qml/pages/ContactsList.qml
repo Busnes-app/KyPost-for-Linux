@@ -6,8 +6,8 @@ import "../components"
 import "../utils/format.js" as Format
 
 // Task 36 -- plain reusable Item, deliberately NOT a Kirigami.Page (see
-// Phase 6 global constraint 4): MobileRoot wraps this in a thin
-// Kirigami.Page shell when it pushes it (Task 38); DesktopRoot embeds it
+// Phase 6 global constraint 4): the old MobileRoot wraps this in a thin
+// Kirigami.Page shell when it pushes it (Task 38); AppShell embeds it
 // directly inside its list-pane Item (Task 39). Navigation is signal-based,
 // same "don't assume how the host navigates" shape as EmailDetail/Compose
 // (Task 35) -- tapping a row or "Add" both just report a uid, they never
@@ -24,7 +24,7 @@ Item {
     // PGP QR key exchange: same "let the host decide how to navigate" shape
     // as contactSelected() -- the host pushes/opens PgpScanContactKey.qml
     // and, on a successful scan, creates a brand-new contact from it (see
-    // MobileRoot.qml/DesktopRoot.qml's wiring).
+    // AppShell.qml's wiring).
     signal scanPgpKeyRequested()
 
     implicitWidth: 360

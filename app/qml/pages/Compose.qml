@@ -8,7 +8,7 @@ import "../utils/format.js" as Format
 import "../utils/layout.js" as Breakpoints
 
 // Task 35 -- plain reusable Item, deliberately NOT a Kirigami.Page (see
-// Phase 6 global constraint 4); MobileRoot/DesktopRoot each host this
+// Phase 6 global constraint 4); AppShell each host this
 // directly (Tasks 38/39). Body is a RichBodyEditor (WYSIWYG HTML,
 // see docs/superpowers/specs/2026-07-18-html-compose-design.md) --
 // the earlier "plain text only" constraint no longer applies.
@@ -21,7 +21,7 @@ Item {
     property string initialTo: ""
     property string initialSubject: ""
     property string initialBody: ""
-    // True only for the pop-out flow (DesktopRoot's composeWindowComponent
+    // True only for the pop-out flow (AppShell's composeWindowComponent
     // seeds initialBody from currentDraftForPopOut()'s already-sanitized
     // RichBodyEditor HTML). False (the default) covers EmailDetail.qml's
     // Reply/Reply All/Forward flow, which seeds initialBody with plain text
@@ -31,13 +31,12 @@ Item {
     // {messageId, mailbox} of the message a reply answers (EmailDetail's
     // replyReference()), sent so the relay threads it; {} otherwise.
     property var replyTo: ({})
-    // True for the instance DesktopRoot's composeWindowComponent embeds
+    // True for the instance AppShell's composeWindowComponent embeds
     // inside an already-standalone pop-out Window -- hides the pop-out
     // button there (see below), same reasoning as EmailDetail.isPoppedOut.
     property bool isPoppedOut: false
 
-    // Emitted once MailApp.sendMail() reports success -- MobileRoot/
-    // DesktopRoot are expected to pop/close this screen in response; this
+    // Emitted once MailApp.sendMail() reports success -- AppShell are expected to pop/close this screen in response; this
     // component doesn't assume push-navigation vs a pane, per constraint 4.
     signal sendSucceeded()
     // Emitted once MailApp.saveDraft() reports success. Unlike
@@ -315,7 +314,7 @@ Item {
 
     // Explicit, guaranteed-opaque background -- root is a plain Item with
     // none of its own, previously relying entirely on whatever hosts this
-    // component (DesktopRoot's detail-column Rectangle when embedded, the
+    // component (AppShell's detail-column Rectangle when embedded, the
     // pop-out Window's own color when popped out) to paint behind every
     // pixel. That held for the embedded case, but the pop-out window left
     // at least one real gap unpainted (the ColumnLayout's inter-item
@@ -869,7 +868,7 @@ Item {
         // No onSendWarning here on purpose. A warning only ever accompanies a
         // SUCCESSFUL send, and the hosts answer sendSucceeded() by destroying
         // this component -- so a notice shown here would die in the same turn
-        // it appeared. MobileRoot.qml / DesktopRoot.qml own that sink.
+        // it appeared. AppShell.qml own that sink.
     }
 
     Toast {

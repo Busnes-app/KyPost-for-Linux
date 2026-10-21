@@ -17,7 +17,7 @@ import "../utils/layout.js" as Breakpoints
 // with curly-brace syntax), confirmed during this task's manual
 // verification. A qualified EXPLICIT import of "." (this same directory,
 // re-imported under an alias) outranks the implicit import the same way
-// MobileRoot.qml's own explicit `import "pages"` does from outside this
+// the old MobileRoot.qml's own explicit `import "pages"` does from outside this
 // directory, sidestepping the collision entirely.
 import "." as PagesDir
 
@@ -51,6 +51,13 @@ Item {
     function openPairing() {
         root.showPane(0)
         pairingPopup.open()
+    }
+
+    // Popups paint above the lock overlay, and Settings stays alive as a
+    // destination, so the shell closes these when the app locks.
+    function closePopups() {
+        securityPrompt.close()
+        pairingPopup.close()
     }
 
     // Indexed by pane number.
@@ -1267,7 +1274,7 @@ Item {
     // Settings.qml manages its own nested popup rather than asking the host
     // to navigate anywhere -- keeps this file host-agnostic (same reasoning
     // as the signal-based navigation on EmailDetail/ContactsList/etc.)
-    // instead of assuming a pageStack that DesktopRoot doesn't have.
+    // instead of assuming a pageStack that AppShell doesn't have.
     Popup {
         id: pairingPopup
         modal: true
