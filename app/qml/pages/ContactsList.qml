@@ -53,6 +53,8 @@ Item {
 
     // Sync, Find duplicates and Scan PGP key, Android's overflow menu. The
     // host's header owns the "more" button and anchors the menu to it.
+    readonly property alias actionsOpen: actionsMenu.opened
+
     function openActions(anchor) {
         actionsMenu.popup(anchor, 0, anchor.height)
     }

@@ -29,6 +29,9 @@ Kirigami.ApplicationWindow {
     pageStack.globalToolBar.style: Kirigami.ApplicationHeaderStyle.None
 
     readonly property string layoutMode: Breakpoints.mode(width)
+    // Read by tests: these popups paint above the lock overlay.
+    readonly property bool foldersOpen: folderDrawer.opened
+    readonly property bool pairingConfirmOpen: pairingConfirmPopup.opened
     readonly property bool split: layoutMode === "expanded"
 
     // Minimize to tray instead of quitting, when both are enabled (System
@@ -237,7 +240,7 @@ Kirigami.ApplicationWindow {
             // have synced it yet, which used to select a message that was not
             // there and show an empty detail pane. openFromNotification()
             // refreshes first and answers on onNotificationEmailResolved.
-            root.currentSection = "mail"
+            root.destination = "inbox"
             MailApp.openFromNotification(messageId)
             root.raise()
             root.requestActivate()
@@ -246,7 +249,7 @@ Kirigami.ApplicationWindow {
         // Only the user can answer this, so ask instead of rendering the
         // refusal as a blank detail page.
         function onNotificationEmailAmbiguous(messageId, folders) {
-            root.currentSection = "mail"
+            root.destination = "inbox"
             notificationFolderDialog.open(messageId, folders)
         }
 
@@ -931,6 +934,7 @@ Kirigami.ApplicationWindow {
 
                     ContactsList {
                         id: contactsList
+                        objectName: "contactsList"
                         visible: root.currentSection === "contacts"
                         Layout.fillWidth: true
                         Layout.fillHeight: true
@@ -1029,6 +1033,7 @@ Kirigami.ApplicationWindow {
                     }
                     Settings {
                         id: settingsPane
+                        objectName: "settingsPane"
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         onClosed: root.navigate("inbox")
@@ -1292,6 +1297,7 @@ Kirigami.ApplicationWindow {
     // meant. Anchored over everything, like the other overlay dialogs.
     NotificationFolderDialog {
         id: notificationFolderDialog
+        objectName: "notificationFolderDialog"
         anchors.fill: parent
         z: 900
         onChosen: function (messageId, folder) {

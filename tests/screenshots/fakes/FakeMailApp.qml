@@ -95,7 +95,8 @@ QtObject {
     function clearSearch() { setSearchQuery("") }
     function loadSearchBody() {}
     function findByMessageId(id) { return F.find(id) }
-    function openFromNotification() {}
+    property string openedFromNotification: ""
+    function openFromNotification(id) { openedFromNotification = id }
     function markRead() {}
     function markUnread() {}
     function markSpam() {}

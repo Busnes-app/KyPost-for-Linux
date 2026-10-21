@@ -512,6 +512,7 @@ endif()
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 add_executable(KyPostScreens
   screenshots/main.cpp
+  screenshots/Fixtures.h
   screenshots/screens.qrc
   ${CMAKE_SOURCE_DIR}/app/theme/ThemeController.cpp
   ${CMAKE_SOURCE_DIR}/app/theme/MaterialIconProvider.cpp
@@ -521,3 +522,33 @@ add_executable(KyPostScreens
 target_include_directories(KyPostScreens PRIVATE ${CMAKE_SOURCE_DIR}/app)
 target_link_libraries(KyPostScreens PRIVATE kypostcore Qt6::Quick Qt6::Qml Qt6::Widgets Qt6::Gui Qt6::Svg
   KF6::I18n KF6::I18nQml)
+
+# The AppShell root under test, against the screenshot fixtures: QmlTests can
+# only build leaf components, so root handlers (notifications, closing popups
+# on lock) were untested -- and a notification tap once threw silently.
+find_package(Qt6 REQUIRED COMPONENTS QuickTest)
+add_executable(ShellTests
+  shell/main.cpp
+  screenshots/Fixtures.h
+  screenshots/screens.qrc
+  ${CMAKE_SOURCE_DIR}/app/theme/ThemeController.cpp
+  ${CMAKE_SOURCE_DIR}/app/theme/MaterialIconProvider.cpp
+  ${CMAKE_SOURCE_DIR}/app/qml/qml.qrc
+  ${CMAKE_SOURCE_DIR}/app/resources/fonts.qrc
+)
+target_include_directories(ShellTests PRIVATE ${CMAKE_SOURCE_DIR}/app ${CMAKE_CURRENT_SOURCE_DIR}/screenshots)
+target_link_libraries(ShellTests PRIVATE kypostcore Qt6::QuickTest Qt6::Quick Qt6::Qml Qt6::Gui Qt6::Svg
+  KF6::I18n KF6::I18nQml)
+target_compile_definitions(ShellTests PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/shell")
+add_test(NAME ShellTests COMMAND ShellTests)
+set_tests_properties(ShellTests PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu;QT_QUICK_BACKEND=software")
+if(EXISTS "/.flatpak-info")
+  # The shell holds EmailDetail's WebEngineView; same build-sandbox-only
+  # setup as ProtectedImageHandlerTest above.
+  set_property(TEST ShellTests APPEND PROPERTY ENVIRONMENT
+    "QTWEBENGINEPROCESS_PATH=/app/lib/libexec/QtWebEngineProcess"
+    "QTWEBENGINE_RESOURCES_PATH=/app/resources"
+    "QTWEBENGINE_LOCALES_PATH=/app/translations/qtwebengine_locales"
+    "QTWEBENGINE_DISABLE_SANDBOX=1")
+endif()

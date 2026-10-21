@@ -202,9 +202,19 @@ SwipeDelegate {
         }
     }
 
+    function openMenu() { if (!AppLock.locked) contextMenu.popup() }
+
     TapHandler {
         acceptedButtons: Qt.RightButton
-        onTapped: contextMenu.popup()
+        onTapped: card.openMenu()
+    }
+    // The menu without a pointer: the Menu key or Shift+F10.
+    Keys.onMenuPressed: card.openMenu()
+    Keys.onPressed: (event) => {
+        if (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier)) {
+            card.openMenu()
+            event.accepted = true
+        }
     }
 
     // A Menu paints above the lock overlay.
@@ -212,6 +222,8 @@ SwipeDelegate {
         target: AppLock
         function onLockedChanged() { if (AppLock.locked) contextMenu.close() }
     }
+
+    readonly property alias menuOpen: contextMenu.opened
 
     Menu {
         id: contextMenu

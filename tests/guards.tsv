@@ -498,7 +498,7 @@ app/mail/MailController.cpp	    if (sendAt.isValid())	    if (false)	MailControl
 core/net/RelayMailSource.cpp	    if (!isScheduledId(id)) {	    if (false) {	RelayMailSourceTest:cancelScheduledRefusesAnIdThatIsNotTheRelays
 app/mail/ScheduledController.cpp	    m_appLocked = locked;		ScheduledControllerTest:lockingDropsTheListAndRefusesRefreshAndCancel
 app/mail/ScheduledController.cpp	    if (locked)	    if (false)	ScheduledControllerTest:lockingDropsTheListAndRefusesRefreshAndCancel
-app/qml/AppShell.qml	            scheduledSheet.close();		QmlTests:ScheduledList::test_desktop_sheet_closes_on_lock
+app/qml/AppShell.qml	            scheduledSheet.close();		QmlTests:ScheduledList::test_scheduled_sheet_closes_on_lock
 app/mail/MailController.cpp	    if (m_pairingStore.stillCurrent(owner)) {	    if (true) {	MailControllerTest:aMoveReplyForAReplacedAccountLeavesTheCacheAlone
 
 # --- inbox paging (L12): an older page or a resync never crosses accounts,
@@ -516,3 +516,13 @@ core/domain/MailRepository.cpp	        const bool keepOlder = reaches(held, bott
 core/domain/MailRepository.cpp	        if (result.hasMore.value_or(false) && !reaches(held, messageRef(result.nextBefore))) {	        if (false) {	MailPagingTest:aDeltaWithMoreThanAWindowDropsRowsItCannotReach
 core/domain/MailRepository.cpp	    if (oldestHeld(m_emailDao.messageIdsInFolder(plan.folder)) != plan.before)	    if (false)	MailPagingTest:anOlderPageThatNoLongerJoinsOnIsDropped
 core/domain/MailRepository.cpp	        if (!below(email.messageId, anchor))	        if (false)	MailPagingTest:anOlderPageStoresOnlyRowsBelowItsAnchor
+#
+# QQC2 popups, menus and drawers paint ABOVE the lock overlay. Settings is a
+# live destination since the adaptive shell (2026-10-20), so each of these
+# would stay on top of the PIN screen, still working, if its close-on-lock
+# line went. ShellTests loads the real AppShell against the screenshot fakes.
+app/qml/AppShell.qml	            folderDrawer.close();		ShellTests:ShellLock::test_folder_drawer_closes_on_lock
+app/qml/AppShell.qml	            pairingConfirmPopup.close();		ShellTests:ShellLock::test_pairing_confirmation_closes_on_lock
+app/qml/AppShell.qml	            settingsPane.closePopups();		ShellTests:ShellLock::test_settings_popups_close_on_lock
+app/qml/components/MailCard.qml	        function onLockedChanged() { if (AppLock.locked) contextMenu.close() }	        function onLockedChanged() {}	ShellTests:ShellLock::test_mail_row_menu_closes_on_lock
+app/qml/pages/ContactsList.qml	                actionsMenu.close()		ShellTests:ShellLock::test_contacts_menu_closes_on_lock

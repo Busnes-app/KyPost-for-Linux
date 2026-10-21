@@ -55,6 +55,8 @@ Item {
 
     // Popups paint above the lock overlay, and Settings stays alive as a
     // destination, so the shell closes these when the app locks.
+    readonly property bool popupOpen: securityPrompt.opened || pairingPopup.opened
+
     function closePopups() {
         securityPrompt.close()
         pairingPopup.close()
