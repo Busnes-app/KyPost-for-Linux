@@ -356,6 +356,12 @@ app/mail/MailController.cpp	            if (restored && !client) {	            i
 app/mail/MailController.cpp	    if (!draftToken.isEmpty() && (draftToken != m_draftToken || m_draftEncrypted))	    if (false)	MailDecryptionTest:reopenedDraftPreservesRecipientsAndMemoryAttachments
 app/qml/components/RichBodyEditor.qml	            + JSON.stringify(html) + "; clean(template.content); document.body.replaceChildren(template.content); })();"	            + JSON.stringify(html) + "; document.body.replaceChildren(template.content); })();"	ProtectedImageHandlerTest:restoredDraftHtmlIsCleanedBeforeEnteringTheEditor
 
+# A quoted message's style/script/title are removed with their content, not unwrapped into quoted text.
+app/qml/components/RichBodyEditor.qml	                        if (droppedTags.indexOf(child.tagName.toUpperCase()) !== -1) {	                        if (false) {	ProtectedImageHandlerTest:quotedHtmlDropsNonBodyElementsWithTheirContent
+
+# Forwarded attachments belong to the account and unlocked session that asked.
+app/mail/MailController.cpp	            if (generation != m_forwardGeneration || m_appLocked || !m_pairingStore.stillCurrent(requestedBy)) {	            if (false) {	MailControllerTest:aForwardThatOutlivesItsAccountOrTheLockKeepsNothing
+
 # Explicit v3 framing, size admission and authenticated plaintext release.
 core/pgp/DeviceEnrollmentCrypto.cpp	    const int maximum = version == 3 ? kMaxV3EnvelopeBytes : kMaxEnvelopeBytes;	    const int maximum = kMaxEnvelopeBytes;	DeviceEnrollmentCryptoTest:v3LimitsCountUtf8Bytes
 core/pgp/DeviceEnrollmentCrypto.cpp	    if (object.value(QStringLiteral("v")) != QJsonValue(version)	    if (false	DeviceEnrollmentCryptoTest:rejectsV3BindingAndFramingChanges

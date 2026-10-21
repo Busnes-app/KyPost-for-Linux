@@ -271,6 +271,35 @@ Added 2026-07-25 (parity work with `kypost-android`):
   empty body). A page reply is dropped when the pairing or the folder's oldest
   row changed; guards in `tests/guards.tsv`.
 
+- **Inbox preview line (2026-10-21, Android #187).** Only the window asks
+  `preview=1`; `before=` pages and search get none from the relay. The line is
+  plain text: `RelayMailSource` drops Unicode format characters by whole code
+  point, bounds it at 400 UTF-16 units without splitting a pair, and stores
+  none for a `pgpEncrypted` row whatever the wire says. An "updated" delta row
+  keeps the stored line, cached body or not, but never for an encrypted row.
+  It is never rendered or quoted as the message: the reader falls back to
+  nothing, not to the preview.
+
+- **Reply and Forward quoting (2026-10-21).** The quote is the relay's own
+  body (`Format.quotedBodyHtml`), never the preview and never a body this view
+  holds only as local decryption (`hasDecryptedBody`, or a ClientProtected
+  row): those quote nothing and forward no attachments, so protected text
+  cannot reach a send that may go out in the clear. Every seed reaches the
+  editor as HTML through `RichBodyEditor.seedScript` and its `clean()`, never
+  through `shellHtml()`/`loadHtml()` concatenation and never a second
+  sanitizer; `clean()` removes script/style/title/template/noscript with their
+  content (guard in `tests/guards.tsv`). Over 512 KiB quotes nothing. Forward
+  holds the listed attachments in the in-memory draft session (no source id,
+  so nothing is deleted on save or send), checks the dispatch `PairingIdentity`
+  and a lock generation on completion, and refuses an attachment past the
+  25 MB send cap instead of evicting one already kept (guard in
+  `tests/guards.tsv`). A forward that completes while a draft session is held
+  is refused, not opened: the held session is a message being written, so it
+  is never released or replaced for a forward (approved 2026-10-21; the spec's
+  "release the previous session" was the opposite). `MailController` decides
+  before touching it and reports `forwardFinished(true)`; AppShell only says
+  so (`aLiveDraftSessionSurvivesACompletedForward`).
+
 - **Snooze (plan item L9, 2026-10-17).** `snooze` on `/api/inbox/actions` with
   `wakeAt` (whole-second UTC RFC 3339). Presets and the typed time live in
   `core/domain/Snooze.cpp`, read in the local zone and kept between 1 minute and

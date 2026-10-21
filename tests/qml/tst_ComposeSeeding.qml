@@ -52,7 +52,7 @@ TestCase {
         source.open("GET", "qrc:/qml/AppShell.qml", false)
         source.send()
         var desktop = source.responseText
-        compare(desktop.split("onComposeRequested: function (to, subject, body, replyTo) { root.openCompose(to, subject, body, replyTo) }").length, 3)
+        compare(desktop.split("onComposeRequested: function (to, subject, body, replyTo, notice) { root.openCompose(to, subject, body, replyTo, notice) }").length, 3)
         verify(desktop.indexOf("replyTo: root.composeSeed.replyTo || ({})") !== -1)
         verify(desktop.indexOf("replyTo: composeWindow.popReplyTo") !== -1)
         verify(desktop.indexOf("root.popOutCompose(to, subject, body, bodyIsHtml, replyTo)") !== -1)
@@ -64,6 +64,6 @@ TestCase {
         source.open("GET", "qrc:/qml/pages/EmailDetail.qml", false)
         source.send()
         compare(source.responseText.split("root.composeRequested(").length - 1, 3)
-        compare(source.responseText.split("root.replyReference())").length - 1, 2)
+        compare(source.responseText.split("root.replyReference(), root.quoteNotice(false))").length - 1, 2)
     }
 }

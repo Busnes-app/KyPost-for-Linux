@@ -131,6 +131,13 @@ private slots:
     void anOlderRowBodyForAReplacedAccountIsNotWritten();
     void anOlderDraftWithNoReadableBodyIsNotReopened();
 
+    // Forward with the original's attachments.
+    void aForwardCarriesTheOriginalsAttachmentsInMemory();
+    void aForwardSaysWhichAttachmentsItCouldNotCarry();
+    void aForwardThatOutlivesItsAccountOrTheLockKeepsNothing();
+    void aProtectedMessageForwardsNoAttachments();
+    void aLiveDraftSessionSurvivesACompletedForward();
+
 private:
     static void savePairing(PairingStore& pairingStore, quint16 port);
     // downloadAttachment() dispatches and returns; the answer arrives as
@@ -3833,6 +3840,263 @@ void MailControllerTest::anOlderDraftWithNoReadableBodyIsNotReopened()
     const QVariantMap email = f.controller.findByMessageId(QStringLiteral("e1"), QStringLiteral("Drafts"));
     QVERIFY(!email.value(QStringLiteral("bodyNotice")).toString().isEmpty());
     f.executor.shutdown();
+}
+
+namespace {
+
+Email forwardable()
+{
+    Email email;
+    email.messageId = QStringLiteral("f1");
+    email.folder = QStringLiteral("INBOX");
+    email.sender = QStringLiteral("a@example.com");
+    email.subject = QStringLiteral("With files");
+    email.body = QStringLiteral("hello");
+    email.bodyMode = QStringLiteral("plain");
+    email.hasAttachments = true;
+    email.atUtc = QStringLiteral("2026-07-01T00:00:00Z");
+    return email;
+}
+
+// attachmentsListed()'s shape, as EmailDetail passes it back.
+QVariantList twoListed()
+{
+    return { QVariantMap{ { QStringLiteral("index"), 0 }, { QStringLiteral("name"), QStringLiteral("first.txt") },
+                          { QStringLiteral("mimeType"), QStringLiteral("text/plain") } },
+             QVariantMap{ { QStringLiteral("index"), 1 }, { QStringLiteral("name"), QStringLiteral("second.pdf") },
+                          { QStringLiteral("mimeType"), QStringLiteral("application/pdf") } } };
+}
+
+void serveTwoAttachments(FakeRelayServer& fake, const QByteArray& first, const QByteArray& second)
+{
+    fake.setResponseForPath("/api/mail/attachment?mailbox=INBOX&messageId=f1&index=0",
+                            first.isNull() ? httpResponse(500, "Internal Server Error", "boom", "text/plain")
+                                           : httpResponse(200, "OK", first, "text/plain"));
+    fake.setResponseForPath("/api/mail/attachment?mailbox=INBOX&messageId=f1&index=1",
+                            second.isNull() ? httpResponse(500, "Internal Server Error", "boom", "text/plain")
+                                            : httpResponse(200, "OK", second, "application/pdf"));
+}
+
+} // namespace
+
+// Android's ForwardAttachmentHandoff: the forward carries the original's
+// files, in the sender's order, held in memory and never replacing anything.
+void MailControllerTest::aForwardCarriesTheOriginalsAttachmentsInMemory()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", "{}"));
+    serveDraftsAccount(fake);
+    serveTwoAttachments(fake, "first-bytes", "second-bytes");
+    RefreshFixture f(fake.port());
+    QVERIFY(f.emailDao.insertOrReplace(forwardable()));
+    QSignalSpy opened(&f.controller, &MailController::forwardComposeRequested);
+
+    QVERIFY(f.controller.forwardWithAttachments(QStringLiteral("INBOX"), QStringLiteral("f1"), twoListed(),
+                                                QStringLiteral("Fwd: With files"), QStringLiteral("<p>q</p>")));
+    QVERIFY(f.controller.isBusy()); // set before any request
+    QTRY_VERIFY_WITH_TIMEOUT(opened.count() == 1, 10000);
+    QVERIFY(!f.controller.isBusy());
+
+    const QVariantMap draft = opened.at(0).at(0).toMap();
+    const QStringList paths = draft.value(QStringLiteral("paths")).toStringList();
+    QCOMPARE(paths, (QStringList{ QStringLiteral("kypost-draft:0"), QStringLiteral("kypost-draft:1") }));
+    const QVariantMap names = draft.value(QStringLiteral("names")).toMap();
+    QCOMPARE(names.value(QStringLiteral("kypost-draft:0")).toString(), QStringLiteral("first.txt"));
+    QCOMPARE(names.value(QStringLiteral("kypost-draft:1")).toString(), QStringLiteral("second.pdf"));
+    QCOMPARE(draft.value(QStringLiteral("subject")).toString(), QStringLiteral("Fwd: With files"));
+    QCOMPARE(draft.value(QStringLiteral("body")).toString(), QStringLiteral("<p>q</p>"));
+    QVERIFY(draft.value(QStringLiteral("forwarded")).toBool());
+    QVERIFY(!draft.value(QStringLiteral("encrypted")).toBool());
+    const QString token = draft.value(QStringLiteral("token")).toString();
+    QCOMPARE(token, f.controller.m_draftToken);
+    QVERIFY(f.controller.m_draftSourceId.isEmpty());
+    QVERIFY(f.controller.lastError().isEmpty());
+
+    QVector<MailAttachmentUpload> uploads;
+    QVERIFY(f.controller.readAttachments(paths, uploads, token));
+    QCOMPARE(uploads.size(), 2);
+    QCOMPARE(uploads.at(0).name, QStringLiteral("first.txt"));
+    QCOMPARE(uploads.at(0).data, QByteArray("first-bytes"));
+    QCOMPARE(uploads.at(1).name, QStringLiteral("second.pdf"));
+    QCOMPARE(uploads.at(1).mimeType, QStringLiteral("application/pdf"));
+    QCOMPARE(uploads.at(1).data, QByteArray("second-bytes"));
+
+    QSignalSpy sent(&f.controller, &MailController::sendCompleted);
+    QVERIFY(f.controller.sendMail(QStringLiteral("jane@example.com"), {}, {}, QStringLiteral("Fwd: With files"),
+                                  QStringLiteral("<p>q</p>"), paths, false, false, token) != 0);
+    QTRY_VERIFY_WITH_TIMEOUT(sent.count() == 1, 10000);
+    f.executor.shutdown();
+    QVERIFY2(sent.at(0).at(1).toBool(), qPrintable(f.controller.lastError()));
+    const QByteArray send = firstRequestMatching(fake, "POST /api/mail/send ");
+    QVERIFY(send.contains(QByteArray("first-bytes").toBase64()));
+    QVERIFY(send.contains(QByteArray("second-bytes").toBase64()));
+    // No source: the session replaces nothing.
+    QCOMPARE(requestsMatching(fake, "/api/inbox/actions"), 0);
+}
+
+// Android's two toasts: a failed download and an over-budget refusal are
+// different things to tell the user, and Compose opens with the rest.
+void MailControllerTest::aForwardSaysWhichAttachmentsItCouldNotCarry()
+{
+    {
+        FakeRelayServer fake(httpResponse(200, "OK", "{}"));
+        serveTwoAttachments(fake, QByteArray(), "second-bytes");
+        RefreshFixture f(fake.port());
+        QVERIFY(f.emailDao.insertOrReplace(forwardable()));
+        QSignalSpy opened(&f.controller, &MailController::forwardComposeRequested);
+        QVERIFY(f.controller.forwardWithAttachments(QStringLiteral("INBOX"), QStringLiteral("f1"), twoListed(),
+                                                    QStringLiteral("Fwd"), QString()));
+        QTRY_VERIFY_WITH_TIMEOUT(opened.count() == 1, 10000);
+        f.executor.shutdown();
+        const QVariantMap draft = opened.at(0).at(0).toMap();
+        QCOMPARE(draft.value(QStringLiteral("paths")).toStringList(), QStringList{ QStringLiteral("kypost-draft:0") });
+        QCOMPARE(draft.value(QStringLiteral("names")).toMap().value(QStringLiteral("kypost-draft:0")).toString(),
+                 QStringLiteral("second.pdf"));
+        QCOMPARE(f.controller.m_draftAttachments.size(), 1);
+        QCOMPARE(f.controller.m_draftAttachments.at(0).data, QByteArray("second-bytes"));
+        // In the session, which Compose shows until dismissed; a refresh
+        // clears lastError while the user is still writing.
+        const QString notice = draft.value(QStringLiteral("notice")).toString();
+        QVERIFY2(notice.contains(QStringLiteral("1 attachment could not be downloaded")), qPrintable(notice));
+        QVERIFY(!notice.contains(QStringLiteral("too large")));
+        QVERIFY(f.controller.lastError().isEmpty());
+    }
+    {
+        // 13 MB + 13 MB passes the 25 MB send cap: the second is refused,
+        // the first is never evicted for it.
+        const QByteArray first(13 * 1024 * 1024, 'a');
+        FakeRelayServer fake(httpResponse(200, "OK", "{}"));
+        serveTwoAttachments(fake, first, QByteArray(13 * 1024 * 1024, 'b'));
+        RefreshFixture f(fake.port());
+        QVERIFY(f.emailDao.insertOrReplace(forwardable()));
+        QSignalSpy opened(&f.controller, &MailController::forwardComposeRequested);
+        QVERIFY(f.controller.forwardWithAttachments(QStringLiteral("INBOX"), QStringLiteral("f1"), twoListed(),
+                                                    QStringLiteral("Fwd"), QString()));
+        QTRY_VERIFY_WITH_TIMEOUT(opened.count() == 1, 20000);
+        f.executor.shutdown();
+        const QVariantMap draft = opened.at(0).at(0).toMap();
+        QCOMPARE(draft.value(QStringLiteral("paths")).toStringList(), QStringList{ QStringLiteral("kypost-draft:0") });
+        QCOMPARE(f.controller.m_draftAttachments.size(), 1);
+        QCOMPARE(f.controller.m_draftAttachments.at(0).name, QStringLiteral("first.txt"));
+        QVERIFY(f.controller.m_draftAttachments.at(0).data == first);
+        const QString notice = draft.value(QStringLiteral("notice")).toString();
+        QVERIFY2(notice.contains(QStringLiteral("1 attachment is too large")), qPrintable(notice));
+        QVERIFY(!notice.contains(QStringLiteral("could not be downloaded")));
+    }
+    {
+        // A listed size past what is left is refused without a download, and
+        // the caller's quote notice leads the session's own.
+        FakeRelayServer fake(httpResponse(200, "OK", "{}"));
+        serveTwoAttachments(fake, "first-bytes", "second-bytes");
+        RefreshFixture f(fake.port());
+        QVERIFY(f.emailDao.insertOrReplace(forwardable()));
+        QVariantList listed = twoListed();
+        QVariantMap second = listed.at(1).toMap();
+        second.insert(QStringLiteral("size"), 26LL * 1024 * 1024);
+        listed[1] = second;
+        QSignalSpy opened(&f.controller, &MailController::forwardComposeRequested);
+        QVERIFY(f.controller.forwardWithAttachments(QStringLiteral("INBOX"), QStringLiteral("f1"), listed,
+                                                    QStringLiteral("Fwd"), QString(), QStringLiteral("Quote note.")));
+        QTRY_VERIFY_WITH_TIMEOUT(opened.count() == 1, 10000);
+        f.executor.shutdown();
+        QCOMPARE(requestsMatching(fake, "index=0"), 1);
+        QCOMPARE(requestsMatching(fake, "index=1"), 0);
+        QCOMPARE(f.controller.m_draftAttachments.size(), 1);
+        const QString notice = opened.at(0).at(0).toMap().value(QStringLiteral("notice")).toString();
+        QVERIFY2(notice.startsWith(QStringLiteral("Quote note. 1 attachment is too large")), qPrintable(notice));
+    }
+}
+
+// AGENTS.md 6g: the bytes belong to the account and the unlocked session that
+// asked. A lock (even one already lifted) or a re-pair while the downloads run
+// leaves nothing behind and opens nothing.
+void MailControllerTest::aForwardThatOutlivesItsAccountOrTheLockKeepsNothing()
+{
+    for (const bool repair : { false, true }) {
+        FakeRelayServer fake(httpResponse(200, "OK", "{}"));
+        serveTwoAttachments(fake, "first-bytes", "second-bytes");
+        RefreshFixture f(fake.port());
+        QVERIFY(f.emailDao.insertOrReplace(forwardable()));
+        QSignalSpy opened(&f.controller, &MailController::forwardComposeRequested);
+        QSignalSpy finished(&f.controller, &MailController::forwardFinished);
+        QVERIFY(f.controller.forwardWithAttachments(QStringLiteral("INBOX"), QStringLiteral("f1"), twoListed(),
+                                                    QStringLiteral("Fwd"), QString()));
+        if (repair) {
+            DevicePairing replacement;
+            replacement.subscriberId = QStringLiteral("sub-2");
+            replacement.deviceId = QStringLiteral("dev-2");
+            replacement.deviceSecret = QStringLiteral("secret-2");
+            replacement.serverBaseUrl = QStringLiteral("http://127.0.0.1:%1").arg(fake.port());
+            QVERIFY(f.pairingStore.save(replacement));
+        } else {
+            f.controller.setAppLocked(true);
+            f.controller.setAppLocked(false);
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+        f.executor.shutdown();
+        QCOMPARE(requestsMatching(fake, "GET /api/mail/attachment?"), 2); // they did come back
+        QCOMPARE(opened.count(), 0);
+        QCOMPARE(finished.count(), 1); // the reader's status line still clears
+        QVERIFY(f.controller.m_draftToken.isEmpty());
+        QVERIFY(f.controller.m_draftAttachments.isEmpty());
+    }
+}
+
+// A forward that lands while the user is writing a message with a draft
+// session (a reopened draft and its attachments) never touches that session:
+// releasing it would make the message unsendable.
+void MailControllerTest::aLiveDraftSessionSurvivesACompletedForward()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", "{}"));
+    serveTwoAttachments(fake, "first-bytes", "second-bytes");
+    RefreshFixture f(fake.port());
+    QVERIFY(f.emailDao.insertOrReplace(forwardable()));
+    f.controller.m_draftToken = QStringLiteral("live");
+    f.controller.m_draftIdentity = f.pairingStore.currentIdentity();
+    f.controller.m_draftAttachments = { { QStringLiteral("draft.pdf"), QStringLiteral("application/pdf"), QString(),
+                                          QByteArray("draft-bytes") } };
+    f.controller.m_draftSourceId = QStringLiteral("d1");
+
+    QSignalSpy opened(&f.controller, &MailController::forwardComposeRequested);
+    QSignalSpy finished(&f.controller, &MailController::forwardFinished);
+    QVERIFY(f.controller.forwardWithAttachments(QStringLiteral("INBOX"), QStringLiteral("f1"), twoListed(),
+                                                QStringLiteral("Fwd"), QString()));
+    QTRY_VERIFY_WITH_TIMEOUT(finished.count() == 1, 10000);
+    f.executor.shutdown();
+
+    QVERIFY(finished.at(0).at(0).toBool()); // refused because a message is being written
+    QCOMPARE(opened.count(), 0);
+    QCOMPARE(f.controller.m_draftToken, QStringLiteral("live"));
+    QCOMPARE(f.controller.m_draftSourceId, QStringLiteral("d1"));
+    QCOMPARE(f.controller.m_draftAttachments.size(), 1);
+    QCOMPARE(f.controller.m_draftAttachments.at(0).data, QByteArray("draft-bytes"));
+    QVector<MailAttachmentUpload> uploads;
+    QVERIFY(f.controller.readAttachments({ QStringLiteral("kypost-draft:0") }, uploads, QStringLiteral("live")));
+    QCOMPARE(uploads.at(0).data, QByteArray("draft-bytes"));
+}
+
+// Decrypted content never rides along on a send that may go out in the clear.
+void MailControllerTest::aProtectedMessageForwardsNoAttachments()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", "{}"));
+    serveTwoAttachments(fake, "first-bytes", "second-bytes");
+    RefreshFixture f(fake.port());
+
+    Email clientProtected = forwardable();
+    clientProtected.body = QString();
+    clientProtected.pgpEncrypted = true;
+    QVERIFY(f.emailDao.insertOrReplace(clientProtected));
+    QVERIFY(!f.controller.forwardWithAttachments(QStringLiteral("INBOX"), QStringLiteral("f1"), twoListed(),
+                                                 QStringLiteral("Fwd"), QString()));
+
+    QVERIFY(f.emailDao.insertOrReplace(forwardable()));
+    f.controller.m_decryptedMessageId = QStringLiteral("f1"); // shown here only as local decryption
+    f.controller.m_decryptedFolder = QStringLiteral("INBOX");
+    QVERIFY(!f.controller.forwardWithAttachments(QStringLiteral("INBOX"), QStringLiteral("f1"), twoListed(),
+                                                 QStringLiteral("Fwd"), QString()));
+    QVERIFY(!f.controller.isBusy());
+    QTest::qWait(100);
+    QCOMPARE(fake.connectionCount(), 0);
+    QVERIFY(f.controller.m_draftAttachments.isEmpty());
 }
 
 QTEST_GUILESS_MAIN(MailControllerTest)

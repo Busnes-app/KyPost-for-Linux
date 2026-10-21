@@ -303,21 +303,25 @@ MailFetchOutcome MailRepository::applyRefresh(const MailRefreshPlan& plan, const
         // incoming row has no body, and a cached body actually exists. A
         // genuinely client-protected message has no cached body to restore,
         // so it still classifies correctly.
+        //
+        // An "updated" row carries no preview either (server_inbox.go), so the
+        // stored one is kept, cached body or not -- but never for an
+        // encrypted row.
         for (const Email& email : emails) {
             Email toStore = email;
             const bool incomingHasBody = toStore.body.has_value() && !toStore.body->isEmpty();
-            if (!incomingHasBody && updatedIds.contains(toStore.messageId)) {
+            if ((!incomingHasBody || toStore.preview.isEmpty()) && updatedIds.contains(toStore.messageId)) {
                 const std::optional<Email> cached = m_emailDao.findById(folder, toStore.messageId);
-                if (cached.has_value() && cached->body.has_value() && !cached->body->isEmpty()) {
+                if (!incomingHasBody && cached.has_value() && cached->body.has_value() && !cached->body->isEmpty()) {
                     toStore.body = cached->body;
                     // The mode travels with the body it describes. Restoring
                     // one without the other leaves a body whose form nothing
                     // knows, which sends the renderer back to sniffing the
                     // characters -- see Email::bodyMode.
                     toStore.bodyMode = cached->bodyMode;
-                    if (toStore.preview.isEmpty())
-                        toStore.preview = cached->preview;
                 }
+                if (cached.has_value() && toStore.preview.isEmpty() && !toStore.pgpEncrypted)
+                    toStore.preview = cached->preview;
             }
             persisted = m_emailDao.insertOrReplace(toStore) && persisted;
         }

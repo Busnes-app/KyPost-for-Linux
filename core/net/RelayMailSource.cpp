@@ -18,10 +18,34 @@ namespace {
 // changeType?}
 // -- onto
 // InboxEmailItem. atUtc is a direct pass-through (core/models/Email::atUtc
-// already matches the wire key exactly, no casing translation). There is no
-// distinct "preview" key on the wire, so Email::preview is left empty here
-// (deferred, not guessed). folder is not itself a wire field on the item --
-// it's set by the caller from the enclosing byTab map key.
+// already matches the wire key exactly, no casing translation). `preview` is
+// sent only when asked (`preview=1`), see previewText(). folder is not itself
+// a wire field on the item -- it's set by the caller from the enclosing byTab
+// map key.
+
+// Android's MAX_PREVIEW_CHARS: the relay sends at most 200 code points.
+constexpr qsizetype kMaxPreviewUnits = 400;
+
+// Display text from the server: format characters (bidi overrides, zero-width,
+// tags) can reorder what the row shows, so they go. Walked by whole code point
+// so neither the filter nor the bound sees half a surrogate pair.
+QString previewText(const QString& raw)
+{
+    QString out;
+    for (qsizetype i = 0; i < raw.size();) {
+        const bool pair = raw.at(i).isHighSurrogate() && i + 1 < raw.size() && raw.at(i + 1).isLowSurrogate();
+        const qsizetype units = pair ? 2 : 1;
+        const uint cp = pair ? QChar::surrogateToUcs4(raw.at(i), raw.at(i + 1)) : raw.at(i).unicode();
+        if (QChar::category(cp) != QChar::Other_Format) {
+            if (out.size() + units > kMaxPreviewUnits)
+                break;
+            out.append(raw.mid(i, units));
+        }
+        i += units;
+    }
+    return out;
+}
+
 InboxEmailItem inboxItemFromJson(const QJsonObject& obj)
 {
     InboxEmailItem item;
@@ -64,6 +88,9 @@ InboxEmailItem inboxItemFromJson(const QJsonObject& obj)
     item.email.pgpEncrypted = obj.value(QStringLiteral("pgpEncrypted")).toBool();
     item.email.pgpSigned = obj.value(QStringLiteral("pgpSigned")).toBool();
     item.email.pgpDecryptError = obj.value(QStringLiteral("pgpDecryptError")).toString();
+    // The relay withholds it for encrypted rows; never trust that it did.
+    if (!item.email.pgpEncrypted)
+        item.email.preview = previewText(obj.value(QStringLiteral("preview")).toString());
 
     if (obj.contains(QStringLiteral("detail")))
         item.detail = obj.value(QStringLiteral("detail")).toString();
@@ -238,6 +265,9 @@ InboxFetchResult RelayMailSource::fetchInbox(const QUrl& serverBaseUrl, const Re
     query.append({ QStringLiteral("mailbox"), mailbox });
     if (since.has_value())
         query.append({ QStringLiteral("since"), QString::number(*since) });
+    // The inbox row's snippet. The relay sends none for `before=` pages or
+    // search, so only this request asks.
+    query.append({ QStringLiteral("preview"), QStringLiteral("1") });
 
     // The one route that needs more than HttpClient's default ceiling: the
     // window carries complete HTML bodies, which the relay does not truncate.

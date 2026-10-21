@@ -44,6 +44,7 @@ private slots:
     void applyRefreshReportsFailureWhenTheCursorCannotBePersisted();
     void applyRefreshDiscardsAReplyTheCurrentPairingDidNotAuthorise();
     void applyRefreshUpdatedRowSetsAndClearsTheSnoozePin();
+    void applyRefreshUpdatedRowKeepsThePreviewWithOrWithoutABody();
 
 private:
     static void savePairing(PairingStore& pairingStore, quint16 port);
@@ -1255,6 +1256,97 @@ void MailRepositoryTest::applyRefreshUpdatedRowSetsAndClearsTheSnoozePin()
     QVERIFY(!stored->wokenAt.has_value());
     QCOMPARE(*stored->body, QStringLiteral("cached body"));
     QCOMPARE(firstId(), QStringLiteral("m-newer"));
+}
+
+
+// An "updated" delta row never carries a preview (server_inbox.go). Keeping the
+// stored one used to happen only when a body was cached too, so metadata-only
+// rows lost their line on every flag change.
+void MailRepositoryTest::applyRefreshUpdatedRowKeepsThePreviewWithOrWithoutABody()
+{
+    Database db;
+    QVERIFY(db.open(QStringLiteral(":memory:")));
+    EmailDao emailDao(db.handle());
+
+    QTemporaryDir secureDir;
+    QVERIFY(secureDir.isValid());
+    SecureStoreFile secureStore(secureDir.path());
+    PairingStore pairingStore(secureStore);
+    savePairing(pairingStore, 1); // nothing is sent
+
+    QTemporaryDir cursorDir;
+    QVERIFY(cursorDir.isValid());
+    CursorStore cursorStore(cursorDir.filePath(QStringLiteral("cursor.ini")));
+
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+    MailRepository repository(source, emailDao, pairingStore, cursorStore);
+
+    const auto seed = [&](const QString& id, std::optional<QString> body) {
+        Email email;
+        email.messageId = id;
+        email.folder = QStringLiteral("INBOX");
+        email.preview = QStringLiteral("Stored %1").arg(id);
+        email.body = body;
+        email.atUtc = QStringLiteral("2026-01-01T00:00:00Z");
+        QVERIFY(emailDao.insertOrReplace(email));
+    };
+    seed(QStringLiteral("bodiless"), std::nullopt);
+    seed(QStringLiteral("withBody"), QStringLiteral("cached body"));
+    seed(QStringLiteral("encrypted"), QStringLiteral("server-decrypted body")); // the old restore path kept its preview
+    seed(QStringLiteral("replaced"), std::nullopt);
+
+    const auto row = [](const QString& id) {
+        Email email;
+        email.messageId = id;
+        email.folder = QStringLiteral("INBOX");
+        email.atUtc = QStringLiteral("2026-01-02T00:00:00Z");
+        return email;
+    };
+    Email encrypted = row(QStringLiteral("encrypted"));
+    encrypted.pgpEncrypted = true;
+    Email replaced = row(QStringLiteral("replaced")); // not "updated": takes what the server sent, empty included
+
+    const QString updated = QStringLiteral("updated");
+    InboxFetchResult result;
+    result.tabs = QStringList{ QStringLiteral("INBOX") };
+    result.byTab[QStringLiteral("INBOX")] = QVector<InboxEmailItem>{
+        InboxEmailItem{ row(QStringLiteral("bodiless")), QString(), updated },
+        InboxEmailItem{ row(QStringLiteral("withBody")), QString(), updated },
+        InboxEmailItem{ encrypted, QString(), updated },
+        InboxEmailItem{ replaced, QString(), std::nullopt },
+    };
+    result.isDelta = true;
+    result.cursor = 7;
+
+    MailRefreshPlan plan;
+    plan.folder = QStringLiteral("INBOX");
+    plan.subscriberId = QStringLiteral("sub-1");
+    plan.endpoint.auth.deviceId = QStringLiteral("dev-1");
+    QCOMPARE(repository.applyRefresh(plan, result).outcome, MailRepositoryOutcome::Success);
+
+    const auto preview = [&](const QString& id) {
+        const std::optional<Email> stored = emailDao.findById(QStringLiteral("INBOX"), id);
+        return stored.has_value() ? stored->preview : QStringLiteral("<missing>");
+    };
+    QCOMPARE(preview(QStringLiteral("bodiless")), QStringLiteral("Stored bodiless"));
+    QCOMPARE(preview(QStringLiteral("withBody")), QStringLiteral("Stored withBody"));
+    QCOMPARE(emailDao.findById(QStringLiteral("INBOX"), QStringLiteral("withBody"))->body,
+             std::optional<QString>(QStringLiteral("cached body")));
+    QCOMPARE(preview(QStringLiteral("encrypted")), QString());
+    QCOMPARE(preview(QStringLiteral("replaced")), QString());
+
+    // A new row takes the server's preview over the stored one.
+    Email fresh = row(QStringLiteral("bodiless"));
+    fresh.preview = QStringLiteral("From the server");
+    InboxFetchResult second;
+    second.tabs = QStringList{ QStringLiteral("INBOX") };
+    second.byTab[QStringLiteral("INBOX")] = QVector<InboxEmailItem>{ InboxEmailItem{ fresh, QString(), std::nullopt } };
+    second.isDelta = true;
+    second.cursor = 8;
+    QCOMPARE(repository.applyRefresh(plan, second).outcome, MailRepositoryOutcome::Success);
+    QCOMPARE(preview(QStringLiteral("bodiless")), QStringLiteral("From the server"));
 }
 
 QTEST_GUILESS_MAIN(MailRepositoryTest)

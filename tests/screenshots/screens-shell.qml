@@ -11,6 +11,16 @@ QtObject {
         Pairing.pairingState = "idle"; Pairing.isPaired = true
         root.closeOverlays(); root.selectFolder("INBOX"); root.navigate("inbox")
     }
+    function findReader(item, id) {
+        if (item.replyQuote !== undefined && item.messageId === id)
+            return item
+        const kids = item.contentItem ? [item.contentItem] : (item.children || [])
+        for (let i = 0; i < kids.length; ++i) {
+            const found = findReader(kids[i], id)
+            if (found) return found
+        }
+        return null
+    }
     property var screens: [
         {name: "inbox-all", setup: function (root) {}},
         {name: "inbox-primary", setup: function (root) { MailApp.selectKeyword("Primary") }},
@@ -18,7 +28,22 @@ QtObject {
         {name: "folders", setup: function (root) { root.openFolders() }},
         {name: "folder-sent", setup: function (root) { root.selectFolder("Sent") }},
         {name: "email-detail", wait: 1800, setup: function (root) { root.selectEmail("<playshot-1@kypost-demo.local>", "INBOX") }},
-        {name: "compose", setup: function (root) { root.openCompose("Maya Chen <maya.chen@example.com>", "Re: Saturday hike", "Count me in! I will bring the trail mix and an extra headlamp.\n\nSee you at 7:30.\n\nSam", ({})) }},
+        {name: "compose", setup: function (root) { root.openCompose("Maya Chen <maya.chen@example.com>", "Re: Saturday hike", "Count me in! I will bring the trail mix and an extra headlamp.<br><br>See you at 7:30.<br><br>Sam", ({})) }},
+        // The reader's own Reply: the composer opens on the quoted body.
+        {name: "reply", wait: 1800, setup: function (root) {
+            const id = "<playshot-1@kypost-demo.local>"
+            root.selectEmail(id, "INBOX")
+            const detail = findReader(root, id)
+            root.openCompose(detail.extractAddress(detail.email.sender), detail.withPrefix(detail.email.subject, "Re:"),
+                             detail.replyQuote(), detail.replyReference())
+        }},
+        // A forward that could not carry everything says so until dismissed.
+        {name: "forward-notice", setup: function (root) {
+            root.openRestoredDraft({ token: "fwd", subject: "Fwd: Q4 roadmap draft", forwarded: true,
+                body: "<br><br><div>---------- Forwarded message ----------</div><div>From: Jordan Ellis</div><div>Subject: Q4 roadmap draft</div><br>Thanks for pulling this together.",
+                paths: ["kypost-draft:0"], names: { "kypost-draft:0": "roadmap.pdf" },
+                notice: "1 attachment is too large to forward and is not included." })
+        }},
         {name: "compose-empty", setup: function (root) { root.navigate("compose") }},
         {name: "contacts-list", setup: function (root) { root.navigate("contacts") }},
         {name: "contact-detail", setup: function (root) { root.navigate("contacts"); root.selectContact("c4") }},

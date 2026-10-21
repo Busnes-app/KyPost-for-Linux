@@ -22,6 +22,7 @@ class ProtectedImageHandlerTest : public QObject
 private slots:
     void rendersLocalImagesWithoutFetchingRemoteContent();
     void restoredDraftHtmlIsCleanedBeforeEnteringTheEditor();
+    void quotedHtmlDropsNonBodyElementsWithTheirContent();
     void linkAnchorScriptReadsLinksWithPageJavaScriptOff();
 };
 
@@ -87,38 +88,46 @@ void ProtectedImageHandlerTest::rendersLocalImagesWithoutFetchingRemoteContent()
     QTRY_COMPARE_WITH_TIMEOUT(width, 0, 5000);
 }
 
-void ProtectedImageHandlerTest::restoredDraftHtmlIsCleanedBeforeEnteringTheEditor()
+// RichBodyEditor.seedScript(html), evaluated from the shipped source: the
+// exact script the composer runs on its live page. Empty if the source moved.
+static QString editorSeedScript(const QString& html)
 {
     QFile file(QStringLiteral(KYPOST_SOURCE_DIR "/app/qml/components/RichBodyEditor.qml"));
-    QVERIFY(file.open(QIODevice::ReadOnly));
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
     const QString source = QString::fromUtf8(file.readAll());
     const QRegularExpression cleanPattern(QStringLiteral("readonly property string cleanScript: \"(.*?)\""),
                                           QRegularExpression::DotMatchesEverythingOption);
     const auto clean = cleanPattern.match(source);
-    QVERIFY(clean.hasMatch());
     const int start = source.indexOf(QStringLiteral("function seedScript(html)"));
     const int end = source.indexOf(QStringLiteral("\n    }"), start);
-    QVERIFY(start >= 0 && end > start);
+    if (!clean.hasMatch() || start < 0 || end <= start)
+        return {};
     QJSEngine js;
     auto root = js.newObject();
     root.setProperty(QStringLiteral("cleanScript"), clean.captured(1));
     js.globalObject().setProperty(QStringLiteral("root"), root);
     const auto fn = js.evaluate(QLatin1Char('(') + source.mid(start, end + 6 - start) + QLatin1Char(')'));
-    QVERIFY2(fn.isCallable(), qPrintable(fn.toString()));
+    const auto script = fn.isCallable() ? fn.call({html}) : QJSValue();
+    return script.isString() ? script.toString() : QString();
+}
+
+void ProtectedImageHandlerTest::restoredDraftHtmlIsCleanedBeforeEnteringTheEditor()
+{
     FakeRelayServer tracker(httpResponse(200, "OK", "tracked"));
     const QString hostile = QStringLiteral("<p onclick='window.pwned=1'>draft <b>bold</b></p>"
         "<img src='http://127.0.0.1:%1/pixel' onerror='window.pwned=2'>"
         "<svg onload='window.pwned=3'></svg><script>window.pwned=4</script>"
         "<a href='javascript:window.pwned=5'>unsafe</a>").arg(tracker.port());
-    const auto script = fn.call({hostile});
-    QVERIFY(!script.isError());
+    const QString script = editorSeedScript(hostile);
+    QVERIFY(!script.isEmpty());
     QWebEngineProfile profile;
     QWebEnginePage page(&profile);
     QSignalSpy loaded(&page, &QWebEnginePage::loadFinished);
     page.setHtml(QStringLiteral("<html><body contenteditable='true'></body></html>"));
     QTRY_COMPARE_WITH_TIMEOUT(loaded.size(), 1, 15000);
     bool done = false;
-    page.runJavaScript(script.toString(), [&](const QVariant&) { done = true; });
+    page.runJavaScript(script, [&](const QVariant&) { done = true; });
     QTRY_VERIFY_WITH_TIMEOUT(done, 5000);
     QString html;
     page.runJavaScript(QStringLiteral("document.body.innerHTML"), [&](const QVariant& result) { html = result.toString(); });
@@ -131,6 +140,45 @@ void ProtectedImageHandlerTest::restoredDraftHtmlIsCleanedBeforeEnteringTheEdito
     QString executed;
     page.runJavaScript(QStringLiteral("typeof window.pwned"), [&](const QVariant& result) { executed = result.toString(); });
     QTRY_COMPARE_WITH_TIMEOUT(executed, QStringLiteral("undefined"), 5000);
+    QCOMPARE(tracker.receivedRequests().size(), 0);
+}
+
+// A quoted message's <style>, <script> and <title> are not body text. Unwrapped
+// rather than removed, their content showed up in the reply as quoted text.
+void ProtectedImageHandlerTest::quotedHtmlDropsNonBodyElementsWithTheirContent()
+{
+    FakeRelayServer tracker(httpResponse(200, "OK", "tracked"));
+    const QString quoted = QStringLiteral("<style>p{color:red}</style><script>alert(1)</script><title>T</title>"
+        "<p>Hi <img src=\"http://127.0.0.1:%1/t.png\"> <a href=\"javascript:alert(1)\">l</a> "
+        "<a href=\"https://ok.example/\">o</a></p>").arg(tracker.port());
+    const QString script = editorSeedScript(quoted);
+    QVERIFY(!script.isEmpty());
+    QWebEngineProfile profile;
+    QWebEnginePage page(&profile);
+    QSignalSpy loaded(&page, &QWebEnginePage::loadFinished);
+    page.setHtml(QStringLiteral("<html><body contenteditable='true'></body></html>"));
+    QTRY_COMPARE_WITH_TIMEOUT(loaded.size(), 1, 15000);
+    bool done = false;
+    page.runJavaScript(script, [&](const QVariant&) { done = true; });
+    QTRY_VERIFY_WITH_TIMEOUT(done, 5000);
+    QVariantMap dom;
+    page.runJavaScript(QStringLiteral("(function() { var a = document.body.querySelectorAll('a'); return {"
+        "text: document.body.textContent,"
+        "banned: document.body.querySelectorAll('img, style, script, title').length,"
+        "links: a.length,"
+        "firstHref: a.length > 0 && a[0].hasAttribute('href'),"
+        "secondHref: a.length > 1 ? a[1].getAttribute('href') : '' }; })()"),
+        [&](const QVariant& result) { dom = result.toMap(); });
+    QTRY_VERIFY_WITH_TIMEOUT(!dom.isEmpty(), 5000);
+    const QString text = dom.value(QStringLiteral("text")).toString();
+    QVERIFY2(text.contains(QStringLiteral("Hi")), qPrintable(text));
+    QVERIFY2(!text.contains(QStringLiteral("color:red")), qPrintable(text));
+    QVERIFY2(!text.contains(QStringLiteral("alert")), qPrintable(text));
+    QVERIFY2(!text.contains(QLatin1Char('T')), qPrintable(text));
+    QCOMPARE(dom.value(QStringLiteral("banned")).toInt(), 0);
+    QCOMPARE(dom.value(QStringLiteral("links")).toInt(), 2);
+    QCOMPARE(dom.value(QStringLiteral("firstHref")).toBool(), false);
+    QCOMPARE(dom.value(QStringLiteral("secondHref")).toString(), QStringLiteral("https://ok.example/"));
     QCOMPARE(tracker.receivedRequests().size(), 0);
 }
 

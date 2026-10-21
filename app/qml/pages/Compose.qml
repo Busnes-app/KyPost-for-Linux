@@ -21,13 +21,15 @@ Item {
     property string initialTo: ""
     property string initialSubject: ""
     property string initialBody: ""
-    // True only for the pop-out flow (AppShell's composeWindowComponent
-    // seeds initialBody from currentDraftForPopOut()'s already-sanitized
-    // RichBodyEditor HTML). False (the default) covers EmailDetail.qml's
-    // Reply/Reply All/Forward flow, which seeds initialBody with plain text
-    // that still needs escaping + quoting -- see quotedInitialBodyHtml()
-    // and Component.onCompleted below.
+    // True for the hosts' seeds: Reply/Reply All/Forward quotes (built by
+    // Format.replyQuoteHtml/forwardQuoteHtml) and the pop-out's editor HTML.
+    // Either way the HTML enters the editor only through seedScript's clean().
+    // False escapes initialBody as plain text.
     property bool initialBodyIsHtml: false
+    // Why the quote or attachments were left out (EmailDetail's quoteNotice,
+    // or a forward session's own). Shown until dismissed.
+    property string initialNotice: ""
+    property string notice: ""
     // {messageId, mailbox} of the message a reply answers (EmailDetail's
     // replyReference()), sent so the relay threads it; {} otherwise.
     property var replyTo: ({})
@@ -115,17 +117,6 @@ Item {
     // picked address into.
     property var activeField: null
 
-    // Reply/Forward seed initialBody with a plain-text quote block
-    // (EmailDetail.qml's composeRequested() -- unchanged by this feature).
-    // HTML-escape it and preserve line breaks so it renders correctly inside
-    // the rich editor while staying fully editable/deletable, same as
-    // before.
-    function quotedInitialBodyHtml(text) {
-        if (text === "")
-            return ""
-        return "<blockquote>" + Format.escapeHtml(text).replace(/\n/g, "<br>") + "</blockquote>"
-    }
-
     function seedTokensFromString(field, value) {
         // Commas inside quoted display names or angle addresses are not separators.
         const parts = []
@@ -185,11 +176,11 @@ Item {
         seedTokensFromString(bccField, root.restoredDraft.bcc || "")
         root.attachmentPaths = root.restoredDraft.paths || []
         subjectField.text = root.restoredDraft.subject || root.initialSubject
-        // Pop-out drafts arrive as already-sanitized HTML (see
-        // initialBodyIsHtml above) and must be loaded as-is -- escaping or
-        // blockquote-wrapping it would corrupt the formatting. Reply/Forward
-        // drafts are plain text and still need quotedInitialBodyHtml().
-        bodyEditor.loadInitialHtml(root.restoredDraft.token ? root.restoredDraft.body : (root.initialBodyIsHtml ? root.initialBody : root.quotedInitialBodyHtml(root.initialBody)))
+        root.notice = root.restoredDraft.notice || root.initialNotice
+        // Every path goes through loadInitialHtml, so through seedScript's
+        // clean(): a quote of sender HTML never reaches the live page uncleaned.
+        bodyEditor.loadInitialHtml(root.restoredDraft.token ? root.restoredDraft.body
+            : (root.initialBodyIsHtml ? root.initialBody : Format.escapeHtml(root.initialBody).replace(/\n/g, "<br>")))
         // Which PGP controls may appear at all depends on the account's key
         // custody, which only the relay knows. A failure leaves every control
         // hidden -- "couldn't check" is never "no PGP".
@@ -458,7 +449,7 @@ Item {
 
             Text {
                 Layout.fillWidth: true
-                visible: !!root.restoredDraft.token
+                visible: !!root.restoredDraft.token && !root.restoredDraft.forwarded
                 textFormat: Text.PlainText
                 // Mirrors MailController::settleDraftReplacement.
                 text: root.restoredDraft.sourceHasAttachments
@@ -670,6 +661,30 @@ Item {
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontSender
             wrapMode: Text.WordWrap
+        }
+
+        RowLayout {
+            objectName: "composeNotice"
+            Layout.fillWidth: true
+            visible: root.notice !== ""
+            spacing: 8
+            // Announced on open: something the user expects is not in the draft.
+            Accessible.role: Accessible.AlertMessage
+            Accessible.name: root.notice
+            Text {
+                Layout.fillWidth: true
+                textFormat: Text.PlainText
+                text: root.notice
+                color: Theme.warningActionText
+                font.family: Theme.fontUi
+                font.pixelSize: Theme.fontSender
+                wrapMode: Text.WordWrap
+            }
+            IconButton {
+                icon: "close"
+                tooltip: i18n("Dismiss")
+                onClicked: root.notice = ""
+            }
         }
 
         Text {
