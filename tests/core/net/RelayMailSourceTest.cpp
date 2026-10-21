@@ -25,6 +25,9 @@ private slots:
     void fetchInboxUnauthorizedFrom401PassesErrorThrough();
     void fetchInboxReadsHasMoreOnlyWhenTheRelaySendsIt();
     void fetchOlderKeepsTheDefaultResponseCeiling();
+    void onlyTheWindowAsksForPreviews();
+    void previewIsReadPlainAndBounded();
+    void anEncryptedRowNeverGetsAPreview();
 
     void performActionMoveIncludesTargetMailboxInRequestBody();
     void performActionReadOmitsTargetMailboxFromRequestBodyButResponseCarriesEmptyString();
@@ -103,6 +106,7 @@ void RelayMailSourceTest::fetchInboxMapsTwoTabsWithAtUtcPassthroughAndOptionalFi
             "hasAttachments": true,
             "label": "important",
             "keywords": ["Primary", "$Phishing"],
+            "preview": "Hello there",
             "detail": "queued",
             "changeType": "updated"
           }
@@ -161,9 +165,7 @@ void RelayMailSourceTest::fetchInboxMapsTwoTabsWithAtUtcPassthroughAndOptionalFi
     // Email::bodyMode.
     QVERIFY(item1.email.bodyMode.has_value());
     QCOMPARE(*item1.email.bodyMode, QStringLiteral("plain"));
-    // No distinct "preview" key exists on the wire (confirmed against the Go
-    // backend) -- preview must stay empty, not be populated from body.
-    QVERIFY(item1.email.preview.isEmpty());
+    QCOMPARE(item1.email.preview, QStringLiteral("Hello there"));
     QCOMPARE(item1.email.status, QStringLiteral("unread"));
     // atUtc is a direct pass-through of the wire key of the same name -- no
     // casing translation, assert it is unchanged.
@@ -190,6 +192,7 @@ void RelayMailSourceTest::fetchInboxMapsTwoTabsWithAtUtcPassthroughAndOptionalFi
     // "body"/"bodyMode"/"detail"/"changeType" absent from the wire ->
     // nullopt/empty, not a parse error.
     QVERIFY(item2.email.keywords.isEmpty());
+    QVERIFY(item2.email.preview.isEmpty());
     QVERIFY(!item2.email.body.has_value());
     // Absent bodyMode stays absent -- "the server did not say" is a distinct
     // state from "plain", and only it falls back to the sniff.
@@ -276,6 +279,92 @@ void RelayMailSourceTest::fetchOlderKeepsTheDefaultResponseCeiling()
                           RelayAuth{ QStringLiteral("device-1"), QStringLiteral("secret-1") }, 50,
                           QStringLiteral("INBOX"), QStringLiteral("9"));
     QCOMPARE(result.error, std::optional<NetworkError>(NetworkError::ResponseTooLarge));
+}
+
+// The relay sends `preview` only when asked, and only on the window: older
+// pages and search carry none, so they do not ask.
+void RelayMailSourceTest::onlyTheWindowAsksForPreviews()
+{
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+    const RelayAuth auth{ QStringLiteral("device-1"), QStringLiteral("secret-1") };
+    const auto base = [](const FakeRelayServer& fake) { return QUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port())); };
+
+    FakeRelayServer window(httpResponse(200, "OK", R"({"tabs":[],"byTab":{}})"));
+    source.fetchInbox(base(window), auth, 50, QStringLiteral("INBOX"), qint64(0));
+    const QByteArray windowRequest = window.receivedRequest();
+    QVERIFY2(windowRequest.contains("preview=1"), windowRequest.constData());
+    QVERIFY(!windowRequest.contains("bodies="));
+
+    FakeRelayServer older(httpResponse(200, "OK", R"({"tabs":[],"byTab":{}})"));
+    source.fetchOlder(base(older), auth, 50, QStringLiteral("INBOX"), QStringLiteral("9"));
+    const QByteArray olderRequest = older.receivedRequest();
+    QVERIFY2(olderRequest.contains("bodies=0"), olderRequest.constData());
+    QVERIFY(!olderRequest.contains("preview"));
+
+    FakeRelayServer search(httpResponse(200, "OK", R"({"results":[]})"));
+    source.searchMail(base(search), auth, QStringLiteral("invoice"), QStringLiteral("INBOX"));
+    const QByteArray searchRequest = search.receivedRequest();
+    QVERIFY2(searchRequest.startsWith("GET /api/mail/search?"), searchRequest.constData());
+    QVERIFY(!searchRequest.contains("preview"));
+}
+
+static Email firstInboxRow(RelayMailSource& source, const QJsonObject& row)
+{
+    QJsonObject byTab;
+    byTab.insert(QStringLiteral("INBOX"), QJsonArray{ row });
+    const QJsonObject body{ { QStringLiteral("tabs"), QJsonArray{ QStringLiteral("INBOX") } },
+                            { QStringLiteral("byTab"), byTab } };
+    FakeRelayServer fake(httpResponse(200, "OK", QJsonDocument(body).toJson(QJsonDocument::Compact)));
+    const InboxFetchResult result = source.fetchInbox(QUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port())),
+        RelayAuth{ QStringLiteral("device-1"), QStringLiteral("secret-1") }, 50, QStringLiteral("INBOX"), qint64(0));
+    const QVector<InboxEmailItem> rows = result.byTab.value(QStringLiteral("INBOX"));
+    return rows.isEmpty() ? Email{} : rows.first().email;
+}
+
+// Format characters can visually reorder a row; the bound is the client's,
+// whatever the server sends, and never splits a surrogate pair.
+void RelayMailSourceTest::previewIsReadPlainAndBounded()
+{
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+
+    const QString tag = QString::fromUcs4(U"\U000E0001"); // LANGUAGE TAG, supplementary, Cf
+    QCOMPARE(tag.size(), 2);
+    const QString hostile = QStringLiteral("Pay ") + QChar(0x202E) + QStringLiteral("now") + QChar(0x200B)
+        + QStringLiteral(" ok") + tag + QStringLiteral(" \u00e9");
+    const Email cleaned = firstInboxRow(source, { { QStringLiteral("messageId"), QStringLiteral("1") },
+                                                  { QStringLiteral("preview"), hostile } });
+    QCOMPARE(cleaned.preview, QStringLiteral("Pay now ok \u00e9"));
+
+    // 399 units then a pair: the pair would be units 400 and 401, so it goes.
+    const QString emoji = QString::fromUcs4(U"\U0001F600");
+    const QString split = QString(399, QLatin1Char('a')) + emoji;
+    QCOMPARE(split.size(), 401);
+    const Email bounded = firstInboxRow(source, { { QStringLiteral("messageId"), QStringLiteral("2") },
+                                                  { QStringLiteral("preview"), split } });
+    QCOMPARE(bounded.preview, QString(399, QLatin1Char('a')));
+
+    const Email longOne = firstInboxRow(source, { { QStringLiteral("messageId"), QStringLiteral("3") },
+                                                  { QStringLiteral("preview"), QString(1000, QLatin1Char('b')) } });
+    QCOMPARE(longOne.preview.size(), 400);
+}
+
+// The relay withholds the preview for encrypted rows; the client does not
+// rely on it.
+void RelayMailSourceTest::anEncryptedRowNeverGetsAPreview()
+{
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+    const Email row = firstInboxRow(source, { { QStringLiteral("messageId"), QStringLiteral("1") },
+                                              { QStringLiteral("pgpEncrypted"), true },
+                                              { QStringLiteral("preview"), QStringLiteral("secret plaintext") } });
+    QCOMPARE(row.messageId, QStringLiteral("1"));
+    QVERIFY(row.pgpEncrypted);
+    QVERIFY(row.preview.isEmpty());
 }
 
 void RelayMailSourceTest::fetchInboxUnauthorizedFrom401PassesErrorThrough()
