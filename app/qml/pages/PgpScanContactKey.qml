@@ -55,7 +55,7 @@ Item {
 
             Text {
                 Layout.fillWidth: true
-                text: i18n("Scan to Add Contact Key")
+                text: i18n("Scan to add contact key")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
                 font.pixelSize: Math.round(20 * Theme.fontScale)

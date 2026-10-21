@@ -1261,7 +1261,7 @@ Item {
         }
     }
 
-    // ---- "Pair This Device…" overlay -------------------------------------
+    // ---- "Pair this device…" overlay -------------------------------------
     // Settings.qml manages its own nested popup rather than asking the host
     // to navigate anywhere -- keeps this file host-agnostic (same reasoning
     // as the signal-based navigation on EmailDetail/ContactsList/etc.)

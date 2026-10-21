@@ -60,7 +60,7 @@ Item {
             }
             Text {
                 Layout.fillWidth: true
-                text: i18n("Pair Device")
+                text: i18n("Pair device")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
                 font.pixelSize: Math.round(22 * Theme.fontScale)
@@ -303,7 +303,7 @@ Item {
             }
             GhostButton {
                 Layout.alignment: Qt.AlignHCenter
-                text: i18n("Try Again")
+                text: i18n("Try again")
                 onClicked: Pairing.reset()
             }
         }

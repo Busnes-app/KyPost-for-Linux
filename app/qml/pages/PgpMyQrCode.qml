@@ -79,7 +79,7 @@ Item {
 
             Text {
                 Layout.fillWidth: true
-                text: i18n("My PGP QR Code")
+                text: i18n("My PGP QR code")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
                 font.pixelSize: Math.round(20 * Theme.fontScale)

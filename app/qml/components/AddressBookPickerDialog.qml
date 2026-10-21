@@ -89,7 +89,7 @@ Item {
 
                 Text {
                     Layout.fillWidth: true
-                    text: i18n("Address Book")
+                    text: i18n("Address book")
                     color: Theme.inkStrong
                     font.family: Theme.fontUi
                     font.pixelSize: Math.round(16 * Theme.fontScale)

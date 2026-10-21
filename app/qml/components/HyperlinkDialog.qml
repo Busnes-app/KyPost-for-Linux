@@ -84,7 +84,7 @@ Item {
             spacing: 10
 
             Text {
-                text: i18n("Insert Link")
+                text: i18n("Insert link")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
                 font.pixelSize: Math.round(16 * Theme.fontScale)
