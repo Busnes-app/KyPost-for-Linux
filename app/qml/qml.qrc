@@ -47,6 +47,11 @@
     <file>components/Chip.qml</file>
     <file>components/MailCard.qml</file>
     <file>icons/add.svg</file>
+    <file>icons/check.svg</file>
+    <file>icons/chevron-right.svg</file>
+    <file>icons/notifications.svg</file>
+    <file>icons/label.svg</file>
+    <file>icons/palette.svg</file>
     <file>icons/archive.svg</file>
     <file>icons/arrow-back.svg</file>
     <file>icons/attach.svg</file>

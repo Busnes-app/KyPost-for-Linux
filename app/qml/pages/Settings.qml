@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import com.kysecurity.mail 1.0
 import "../components"
+import "../utils/layout.js" as Breakpoints
 // Qualified import of this same directory, aliased to PairingPage -- the
 // bare name "Pairing" is ambiguous in this file: the automatic IMPLICIT
 // same-directory import (every .qml file in pages/ is implicitly visible by
@@ -20,53 +21,47 @@ import "../components"
 // directory, sidestepping the collision entirely.
 import "." as PagesDir
 
-// Task 39 -- plain reusable Item, deliberately NOT a Kirigami.Page (same
-// "parent-agnostic" shape as Tasks 35-37's page components, per Phase 6
-// global constraint 4): MobileRoot wraps this in a thin Kirigami.Page shell
-// when it pushes it from the globalDrawer's "Settings" action (previously a
-// stub, see MobileRoot.qml); DesktopRoot hosts it inside a
-// Kirigami.OverlaySheet instead of a second ApplicationWindow -- Global
-// Constraint 4 leaves that choice open, and OverlaySheet was picked because
-// it needs no second top-level window/event-loop lifetime to manage, unlike
-// a real separate ApplicationWindow.
-//
-// Settings panes selected via PillTabs, not QtQuick.Controls
-// TabBar/TabButton -- keeps this screen themed via the same "PillTab as a
-// segmented selector" convention MobileRoot.qml's keyword pill row already
-// established, rather than introducing a second, unthemed tab-chrome
-// component into the app.
+// Settings as Android draws it: a list of section cards and, per section,
+// eyebrow labels over rounded panel cards. Below 840px the list fills the
+// page and a section opens over it with a back arrow; from 840 the list sits
+// on the left and the open section on the right. The shell's AppHeader is
+// the page title, so this component draws none of its own.
 Item {
     id: root
 
-    // Emitted from the header's "Done" button -- same "don't assume
-    // push-navigation vs. a pane/sheet" shape as every other page component
-    // this phase (EmailDetail/Compose/ContactDetail/Pairing): whichever
-    // root hosts this decides what "close" means (pageStack.pop() for
-    // Mobile, sheet.close() for Desktop).
+    // The shell connects this; ConnectionStatus emits it when a history row
+    // opens a message.
     signal closed()
-    // PGP QR key exchange: same "let the host decide how to navigate" shape
-    // as closed() -- MobileRoot pushes PgpMyQrCode.qml via pageStack,
-    // DesktopRoot opens it in a Kirigami.OverlaySheet (same choice it
-    // already made for this Settings screen itself).
+    // PGP QR key exchange: the host decides how to show it.
     signal myPgpQrCodeRequested()
 
     implicitWidth: 480
     implicitHeight: 560
 
     property int currentPane: 5 // 0 Connection, 1 Appearance, 2 Keywords, 3 Contacts, 4 Notifications, 5 General, 6 Security
+    readonly property bool wide: width >= Breakpoints.splitMin
+    // Narrow only: whether a section covers the list.
+    property bool paneOpen: false
+
+    function showPane(pane) {
+        root.currentPane = pane
+        root.paneOpen = true
+    }
 
     function openPairing() {
-        root.currentPane = 0
+        root.showPane(0)
         pairingPopup.open()
     }
-    readonly property var paneTabs: [
-        { "name": i18n("General"), "pane": 5 },
-        { "name": i18n("Appearance"), "pane": 1 },
-        { "name": i18n("Notifications"), "pane": 4 },
-        { "name": i18n("Contacts"), "pane": 3 },
-        { "name": i18n("Keywords"), "pane": 2 },
-        { "name": i18n("Security"), "pane": 6 },
-        { "name": i18n("Connection"), "pane": 0 }
+
+    // Indexed by pane number.
+    readonly property var sections: [
+        { "name": i18n("Connection"), "icon": "link", "hint": i18n("Pairing and sync status") },
+        { "name": i18n("Appearance"), "icon": "palette", "hint": i18n("Theme") },
+        { "name": i18n("Keywords"), "icon": "label", "hint": i18n("Order and visibility of keyword tabs") },
+        { "name": i18n("Contacts"), "icon": "person", "hint": i18n("Sync and your PGP QR code") },
+        { "name": i18n("Notifications"), "icon": "notifications", "hint": i18n("How new mail reaches this device") },
+        { "name": i18n("General"), "icon": "settings", "hint": i18n("Interface, tray and about") },
+        { "name": i18n("Security"), "icon": "lock", "hint": i18n("App lock, erasing and OpenPGP") }
     ]
 
     ListModel {
@@ -100,11 +95,12 @@ Item {
 
     Component.onCompleted: refreshKeywordSettings()
 
-    // Called by a host that keeps this component alive between showings
-    // (DesktopRoot's sheet), so copies taken earlier are not shown again.
+    // Called by the host each time Settings is shown, so copies taken
+    // earlier are not shown again. A fresh visit starts at the section list.
     function refreshSnapshots() {
         refreshKeywordSettings()
         connectionStatus.reloadHistory()
+        root.paneOpen = false
     }
 
     // The keyword list is a copy of the INBOX cache, which an account
@@ -120,84 +116,240 @@ Item {
             securityFlickable.contentY = 0
     }
 
-    // Settings is used inside an OverlaySheet on desktop. Consume otherwise
-    // unhandled input here so a button press cannot also activate the mail
-    // row occupying the same coordinates behind the sheet.
+    // Consume otherwise unhandled input so a press here cannot also reach
+    // whatever sits behind this component.
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.AllButtons
         onWheel: function (wheel) { wheel.accepted = true }
     }
 
-    ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: 16
-        spacing: 12
+    // ---- building blocks ---------------------------------------------------
+    // A scrolling section body.
+    component PaneBody: Flickable {
+        default property alias rows: paneColumn.data
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        contentWidth: width
+        contentHeight: paneColumn.implicitHeight + 40
+        ScrollBar.vertical: ThemedScrollBar {}
 
-        // ---- header ------------------------------------------------------
-        RowLayout {
-            Layout.fillWidth: true
-            visible: General.isDesktopMode
+        ColumnLayout {
+            id: paneColumn
+            x: 16
+            y: 8
+            width: Math.min(parent.width - 32, 800)
             spacing: 8
+        }
+    }
 
-            Text {
-                Layout.fillWidth: true
-                text: i18n("Settings")
-                color: Theme.inkStrong
-                font.family: Theme.fontUi
-                font.pixelSize: Math.round(20 * Theme.fontScale)
-                font.weight: Font.Bold
+    // Android's panelBackground() card holding a group of rows.
+    component Panel: Card {
+        default property alias rows: panelColumn.data
+        Layout.fillWidth: true
+        Layout.bottomMargin: 12
+        implicitHeight: panelColumn.implicitHeight + 32
+
+        ColumnLayout {
+            id: panelColumn
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 16
+            spacing: 12
+        }
+    }
+
+    // Android's accent switch row ("Require unlock to open").
+    component ToggleRow: Rectangle {
+        id: toggle
+        property string text: ""
+        property bool checked: false
+        signal toggled()
+
+        Layout.fillWidth: true
+        implicitHeight: Math.max(52, toggleLabel.implicitHeight + 24)
+        radius: Theme.shapeButton
+        color: Theme.accent
+        opacity: enabled ? 1.0 : 0.5
+
+        Accessible.role: Accessible.CheckBox
+        Accessible.name: toggle.text
+        Accessible.checked: toggle.checked
+        Accessible.onPressAction: if (toggle.enabled && !AppLock.locked) toggle.toggled()
+
+        Text {
+            id: toggleLabel
+            anchors.left: parent.left
+            anchors.right: track.left
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.leftMargin: 16
+            anchors.rightMargin: 12
+            textFormat: Text.PlainText
+            text: toggle.text
+            color: Theme.readableOnAccent
+            font.family: Theme.fontUi
+            font.pixelSize: Theme.fontSender
+            wrapMode: Text.WordWrap
+        }
+        Rectangle {
+            id: track
+            anchors.right: parent.right
+            anchors.rightMargin: 16
+            anchors.verticalCenter: parent.verticalCenter
+            width: 40
+            height: 22
+            radius: height / 2
+            color: Qt.rgba(Theme.readableOnAccent.r, Theme.readableOnAccent.g, Theme.readableOnAccent.b,
+                           toggle.checked ? 0.45 : 0.2)
+
+            Rectangle {
+                x: toggle.checked ? parent.width - width - 3 : 3
+                anchors.verticalCenter: parent.verticalCenter
+                width: 16
+                height: 16
+                radius: 8
+                color: Theme.readableOnAccent
+                opacity: toggle.checked ? 1.0 : 0.7
+                Behavior on x { NumberAnimation { duration: 120 } }
             }
-            GhostButton {
-                text: i18n("Done")
-                onClicked: root.closed()
+        }
+        TapHandler {
+            enabled: toggle.enabled
+            onTapped: toggle.toggled()
+        }
+    }
+
+    // Explanation text under a row, as Android's 14sp body copy.
+    component Explain: MutedHint {
+        Layout.fillWidth: true
+        font.pixelSize: Theme.fontPreview
+        wrapMode: Text.WordWrap
+    }
+
+    // A label over a monospace value (server, device id, transport).
+    component ValueRow: ColumnLayout {
+        property string label: ""
+        property string value: ""
+        Layout.fillWidth: true
+        spacing: 2
+        MutedHint { text: parent.label }
+        Text {
+            Layout.fillWidth: true
+            textFormat: Text.PlainText
+            text: parent.value
+            color: Theme.inkStrong
+            font.family: Theme.fontMono
+            font.pixelSize: Theme.fontSender
+            wrapMode: Text.WrapAnywhere
+        }
+    }
+
+    RowLayout {
+        anchors.fill: parent
+        spacing: 0
+
+        // ---- section list ------------------------------------------------
+        Flickable {
+            id: sectionList
+            objectName: "settingsSections"
+            visible: root.wide || !root.paneOpen
+            Layout.fillHeight: true
+            Layout.fillWidth: !root.wide
+            Layout.preferredWidth: root.wide ? 320 : -1
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            contentWidth: width
+            contentHeight: sectionColumn.implicitHeight + 40
+            ScrollBar.vertical: ThemedScrollBar {}
+
+            ColumnLayout {
+                id: sectionColumn
+                x: 16
+                y: 8
+                width: parent.width - 32
+                spacing: 12
+
+                Repeater {
+                    model: root.sections
+                    delegate: Card {
+                        id: sectionCard
+                        required property var modelData
+                        required property int index
+                        readonly property bool current: root.wide && root.currentPane === index
+                        Layout.fillWidth: true
+                        implicitHeight: sectionRow.implicitHeight + 28
+                        color: current ? Theme.selection : Theme.panel
+
+                        Accessible.role: Accessible.Button
+                        Accessible.name: modelData.name
+                        Accessible.onPressAction: if (!AppLock.locked) root.showPane(index)
+
+                        RowLayout {
+                            id: sectionRow
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 12
+                            spacing: 16
+
+                            MaterialIcon {
+                                name: sectionCard.modelData.icon
+                                tint: Theme.accent
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2
+                                Text {
+                                    Layout.fillWidth: true
+                                    textFormat: Text.PlainText
+                                    text: sectionCard.modelData.name
+                                    color: Theme.inkStrong
+                                    font.family: Theme.fontUi
+                                    font.pixelSize: Math.round(16 * Theme.fontScale)
+                                    font.weight: Font.Medium
+                                    elide: Text.ElideRight
+                                }
+                                MutedHint {
+                                    Layout.fillWidth: true
+                                    text: sectionCard.modelData.hint
+                                    elide: Text.ElideRight
+                                }
+                            }
+                            MaterialIcon {
+                                name: "chevron-right"
+                                tint: Theme.ink
+                                visible: !root.wide
+                            }
+                        }
+
+                        TapHandler { onTapped: root.showPane(sectionCard.index) }
+                    }
+                }
             }
         }
 
-        RowLayout {
+        Rectangle {
+            visible: root.wide
+            Layout.fillHeight: true
+            implicitWidth: 1
+            color: Theme.line
+        }
+
+        // ---- open section ------------------------------------------------
+        ColumnLayout {
+            visible: root.wide || root.paneOpen
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 16
+            Layout.minimumWidth: 0
+            spacing: 0
 
-            // A settings sidebar is predictable at every sheet width and is
-            // the conventional desktop layout. The old chip Flow/Grid sized
-            // itself wider than the OverlaySheet and clipped both ends.
-            ColumnLayout {
-                visible: General.isDesktopMode
-                Layout.fillWidth: false
-                Layout.minimumWidth: 140
-                Layout.preferredWidth: 140
-                Layout.maximumWidth: 140
-                Layout.alignment: Qt.AlignTop
-                spacing: 4
-
-                Repeater {
-                    model: root.paneTabs
-                    delegate: Rectangle {
-                        Layout.fillWidth: true
-                        implicitHeight: 38
-                        radius: Theme.shapeButton
-                        color: root.currentPane === modelData.pane ? Theme.accentSoft : "transparent"
-
-                        Text {
-                            anchors.fill: parent
-                            anchors.leftMargin: 12
-                            anchors.rightMargin: 12
-                            verticalAlignment: Text.AlignVCenter
-                            textFormat: Text.PlainText
-                            text: modelData.name
-                            elide: Text.ElideRight
-                            color: root.currentPane === modelData.pane ? Theme.accent : Theme.ink
-                            font.family: Theme.fontUi
-                            font.pixelSize: Theme.fontPreview
-                            font.weight: root.currentPane === modelData.pane ? Font.DemiBold : Font.Normal
-                        }
-
-                        TapHandler {
-                            onTapped: root.currentPane = modelData.pane
-                        }
-                    }
-                }
+            SubHeader {
+                Layout.fillWidth: true
+                title: root.sections[root.currentPane].name
+                showBack: !root.wide
+                onBackRequested: root.paneOpen = false
             }
 
             StackLayout {
@@ -207,104 +359,63 @@ Item {
                 currentIndex: root.currentPane
 
             // ---- 1. Connection ----------------------------------------
-            // Wrapped in a Flickable (same reasoning as EmailDetail.qml/
-            // ContactDetail.qml's own Flickable wraps): this pane's content
-            // can exceed the sheet's available height on a short window, and
-            // a plain ColumnLayout doesn't clip or scroll its own overflow.
-            Flickable {
-                clip: true
-                boundsBehavior: Flickable.StopAtBounds
-                contentWidth: width
-                contentHeight: connectionColumn.implicitHeight
-                ScrollBar.vertical: ThemedScrollBar {}
+            PaneBody {
+                SectionLabel { text: i18n("This device") }
 
-                ColumnLayout {
-                    id: connectionColumn
-                    width: parent.width
-                    spacing: 12
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        StatusBadge {
-                            active: Pairing.isPaired
-                            text: Pairing.isPaired ? i18n("Paired") : i18n("Not paired")
-                        }
-                        Item { Layout.fillWidth: true }
+                Panel {
+                    StatusBadge {
+                        active: Pairing.isPaired
+                        text: Pairing.isPaired ? i18n("Paired") : i18n("Not paired")
                     }
 
-                    ColumnLayout {
-                        Layout.fillWidth: true
+                    ValueRow {
                         visible: Pairing.isPaired
-                        spacing: 6
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 12
-                            SectionLabel { Layout.preferredWidth: 70; text: i18n("Server") }
-                            Text {
-                                Layout.fillWidth: true
-                                textFormat: Text.PlainText
-                                text: Pairing.pairedServerHost
-                                color: Theme.inkStrong
-                                font.family: Theme.fontMono
-                                font.pixelSize: Theme.fontSender
-                                wrapMode: Text.WordWrap
-                            }
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 12
-                            SectionLabel { Layout.preferredWidth: 70; text: i18n("Device") }
-                            Text {
-                                Layout.fillWidth: true
-                                textFormat: Text.PlainText
-                                text: Pairing.deviceId
-                                color: Theme.inkStrong
-                                font.family: Theme.fontMono
-                                font.pixelSize: Theme.fontSender
-                                wrapMode: Text.WordWrap
-                            }
-                        }
-
-                        ConnectionStatus {
-                            id: connectionStatus
-                            Layout.fillWidth: true
-                            distributorActive: Pairing.distributorActive
-                            pushServerHost: Pairing.pushServerHost
-                            pushEncrypted: Pairing.pushEncrypted
-                            lastSyncAt: MailApp.lastSyncAt
-                            lastError: MailApp.lastError
-                            // Re-read when the pane is shown, the sheet opens or the
-                            // pairing changes; see ConnectionStatus.
-                            active: root.currentPane === 0
-                            onHistoryWanted: connectionStatus.history = MailApp.notificationHistory()
-                            onOpenRequested: (messageId) => {
-                                root.closed()
-                                MailApp.openEmailRequested(messageId)
-                            }
-                        }
+                        label: i18n("Server")
+                        value: Pairing.pairedServerHost
+                    }
+                    ValueRow {
+                        visible: Pairing.isPaired
+                        label: i18n("Device")
+                        value: Pairing.deviceId
                     }
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
+                    // No "Test connection" / desktop-session pairing here:
+                    // this client family only does sub/hash native pairing.
+                    PrimaryButton {
+                        text: i18n("Pair this device…")
+                        visible: !Pairing.isPaired
+                        onClicked: pairingPopup.open()
+                    }
+                    DangerButton {
+                        text: i18n("Remove pairing")
+                        visible: Pairing.isPaired
+                        onClicked: Pairing.removePairing()
+                    }
+                }
 
-                        // No "Test Connection" / desktop-session pairing here --
-                        // both explicitly out of scope, see Phase 6 global
-                        // constraint 6 (this client family only ever does
-                        // sub/hash native pairing, no separate desktop-session
-                        // flow) and the task-39 brief's Connection pane spec.
-                        PrimaryButton {
-                            text: i18n("Pair This Device…")
-                            visible: !Pairing.isPaired
-                            onClicked: pairingPopup.open()
-                        }
-                        DangerButton {
-                            text: i18n("Remove Pairing")
-                            visible: Pairing.isPaired
-                            onClicked: Pairing.removePairing()
+                SectionLabel {
+                    visible: Pairing.isPaired
+                    text: i18n("Status")
+                }
+
+                Panel {
+                    visible: Pairing.isPaired
+
+                    ConnectionStatus {
+                        id: connectionStatus
+                        Layout.fillWidth: true
+                        distributorActive: Pairing.distributorActive
+                        pushServerHost: Pairing.pushServerHost
+                        pushEncrypted: Pairing.pushEncrypted
+                        lastSyncAt: MailApp.lastSyncAt
+                        lastError: MailApp.lastError
+                        // Re-read when the pane is shown, the sheet opens or the
+                        // pairing changes; see ConnectionStatus.
+                        active: root.currentPane === 0
+                        onHistoryWanted: connectionStatus.history = MailApp.notificationHistory()
+                        onOpenRequested: (messageId) => {
+                            root.closed()
+                            MailApp.openEmailRequested(messageId)
                         }
                     }
                 }
@@ -312,80 +423,94 @@ Item {
 
             // ---- 2. Appearance ------------------------------------------
             // Name-only list + checkmark, not per-theme color swatches:
-            // ThemeController only ever exposes the CURRENTLY ACTIVE
-            // theme's palette as live QColor properties (see its own doc
-            // comment) -- there is no QML-reachable way to peek another
-            // theme's bg/panel/accent today without adding new core-to-QML
-            // plumbing (an AppTheme::palette(name) bridge) purely for this
-            // one swatch row. The task-39 brief explicitly sanctions this
-            // exact fallback rather than blocking on that plumbing.
-            ListView {
-                id: themeListView
-                clip: true
-                spacing: 2
-                model: Theme.themeNames
-                ScrollBar.vertical: ThemedScrollBar {}
+            // ThemeController only exposes the ACTIVE theme's palette, so
+            // there is no QML-reachable way to preview another theme.
+            PaneBody {
+                SectionLabel { text: i18n("Theme") }
 
-                delegate: Rectangle {
-                    id: themeDelegate
-                    width: themeListView.width
-                    height: themeRow.implicitHeight + 16
-                    radius: Theme.shapeButton
-                    color: modelData === Theme.themeName ? Theme.panel
-                        : (themeHover.hovered ? Theme.bg : "transparent")
-
-                    Behavior on color {
-                        ColorAnimation { duration: 120 }
-                    }
-
-                    RowLayout {
-                        id: themeRow
-                        anchors.fill: parent
-                        anchors.margins: 10
-                        spacing: 8
-
-                        Text {
+                Panel {
+                    Repeater {
+                        model: Theme.themeNames
+                        delegate: Rectangle {
+                            id: themeDelegate
+                            required property string modelData
                             Layout.fillWidth: true
-                            // modelData is a theme's proper name (e.g. "Dark
-                            // Matter", "Cyber Punk" -- see core/theme/
-                            // AppTheme.cpp), NOT wrapped in i18n(): these are
-                            // brand-style palette names (same "don't
-                            // translate the product name" reasoning as
-                            // "KyPost" itself), AND they live in core/,
-                            // which the Phase 8 global-constraints boundary
-                            // (item 3) forbids linking KI18n into -- they're
-                            // also the literal identifier Theme.setTheme()
-                            // stores/compares, not just display text.
-                            textFormat: Text.PlainText
-                            text: modelData
-                            color: Theme.inkStrong
-                            font.family: Theme.fontUi
-                            font.pixelSize: Theme.fontSender
-                        }
-                        Text {
-                            visible: modelData === Theme.themeName
-                            text: "✓"
-                            color: Theme.accent
-                            font.family: Theme.fontUi
-                            font.pixelSize: Theme.fontSender
-                            font.weight: Font.Bold
-                        }
-                    }
+                            implicitHeight: themeRow.implicitHeight + 20
+                            radius: Theme.shapeButton
+                            color: modelData === Theme.themeName ? Theme.selection
+                                : (themeHover.hovered ? Theme.bg : "transparent")
 
-                    HoverHandler {
-                        id: themeHover
-                    }
+                            Behavior on color {
+                                ColorAnimation { duration: 120 }
+                            }
 
-                    TapHandler {
-                        onTapped: Theme.setTheme(modelData)
+                            Accessible.role: Accessible.RadioButton
+                            Accessible.name: modelData
+                            Accessible.checked: modelData === Theme.themeName
+                            Accessible.onPressAction: if (!AppLock.locked) Theme.setTheme(modelData)
+
+                            RowLayout {
+                                id: themeRow
+                                anchors.fill: parent
+                                anchors.leftMargin: 12
+                                anchors.rightMargin: 12
+                                spacing: 8
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    // A theme's proper name (core/theme/AppTheme.cpp), not
+                                    // translated: it is also the identifier
+                                    // Theme.setTheme() stores and compares.
+                                    textFormat: Text.PlainText
+                                    text: themeDelegate.modelData
+                                    color: Theme.inkStrong
+                                    font.family: Theme.fontUi
+                                    font.pixelSize: Theme.fontSender
+                                }
+                                MaterialIcon {
+                                    visible: themeDelegate.modelData === Theme.themeName
+                                    name: "check"
+                                    tint: Theme.accent
+                                    implicitWidth: 20
+                                    implicitHeight: 20
+                                }
+                            }
+
+                            HoverHandler {
+                                id: themeHover
+                            }
+
+                            TapHandler {
+                                onTapped: Theme.setTheme(themeDelegate.modelData)
+                            }
+                        }
                     }
                 }
             }
 
             // ---- 3. Keywords ---------------------------------------------
-            Item {
+            // A ListView, not a Pane: drag-to-reorder scrolls it from its
+            // edges.
+            ColumnLayout {
+                spacing: 8
+
+                SectionLabel {
+                    Layout.leftMargin: 16
+                    Layout.topMargin: 8
+                    text: i18n("Keyword tabs")
+                }
+
+                Card {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.maximumWidth: 800
+                    Layout.leftMargin: 16
+                    Layout.rightMargin: 16
+                    Layout.bottomMargin: 16
+
                 EmptyState {
                     anchors.fill: parent
+                    anchors.margins: 8
                     visible: keywordListView.count === 0
                     text: i18n("No keywords yet.")
                 }
@@ -397,6 +522,7 @@ Item {
                     property real dragY: -1
                     property int dropIndex: -1
                     anchors.fill: parent
+                    anchors.margins: 8
                     visible: count > 0
                     clip: true
                     spacing: 4
@@ -430,7 +556,7 @@ Item {
                         height: keywordRowContent.implicitHeight + 16
                         radius: Theme.shapeButton
                         color: keywordDrag.active || keywordListView.dropIndex === index || keywordHover.hovered
-                               ? Theme.panel : "transparent"
+                               ? Theme.bg : "transparent"
                         border.width: keywordListView.dropIndex === index && !keywordDrag.active ? 2 : 0
                         border.color: Theme.accent
                         Drag.active: keywordDrag.active
@@ -511,131 +637,69 @@ Item {
                         }
                     }
                 }
+                }
             }
 
             // ---- 4. Contacts ------------------------------------------------
-            // No "Sync to system contacts" toggle: that's the Mac/Android
-            // apps' OS-level Contacts-app export integration, and this repo
-            // has no Linux equivalent anywhere in core/ or app/ (nothing
-            // this plan has built through Phase 6 talks to a system address
-            // book) -- a toggle here would do nothing when flipped, which
-            // this task's brief explicitly forbids. This pane shows real
-            // sync status/action instead (reusing ContactsApp exactly as
-            // ContactsList.qml's own header does).
-            Flickable {
-                clip: true
-                boundsBehavior: Flickable.StopAtBounds
-                contentWidth: width
-                contentHeight: contactsColumn.implicitHeight
-                ScrollBar.vertical: ThemedScrollBar {}
+            // No "Sync to system contacts" toggle: Linux has no system
+            // address book this app talks to, and a toggle that does nothing
+            // is worse than none. Real sync status and action instead.
+            PaneBody {
+                SectionLabel { text: i18n("Address book") }
 
-                ColumnLayout {
-                    id: contactsColumn
-                    width: parent.width
-                    spacing: 12
-
-                    Text {
-                        Layout.fillWidth: true
-                        textFormat: Text.PlainText
+                Panel {
+                    Explain {
                         text: ContactsApp.lastError !== "" ? ContactsApp.lastError
                             : (ContactsApp.statusMessage !== "" ? ContactsApp.statusMessage : i18n("No sync yet."))
                         color: ContactsApp.lastError !== "" ? Theme.dangerActionText : Theme.ink
-                        font.family: Theme.fontUi
-                        font.pixelSize: Theme.fontPreview
-                        wrapMode: Text.WordWrap
                     }
+                    PrimaryButton {
+                        text: i18n("Sync now")
+                        enabled: !ContactsApp.isBusy
+                        onClicked: ContactsApp.sync()
+                    }
+                }
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
+                SectionLabel { text: i18n("Key exchange") }
 
-                        PrimaryButton {
-                            text: i18n("Sync Now")
-                            enabled: !ContactsApp.isBusy
-                            onClicked: ContactsApp.sync()
-                        }
-                        GhostButton {
-                            text: i18n("My PGP QR Code")
-                            onClicked: root.myPgpQrCodeRequested()
-                        }
-                        Item { Layout.fillWidth: true }
+                Panel {
+                    Explain {
+                        text: i18n("Show your PGP key as a QR code for a contact to scan in person.")
+                    }
+                    GhostButton {
+                        text: i18n("My PGP QR code")
+                        onClicked: root.myPgpQrCodeRequested()
                     }
                 }
             }
 
             // ---- 5. Notifications -------------------------------------------
-            // Read-only display only -- no editable push-server-URL field.
-            // Global constraint 6's deviceToken gap means live re-
-            // registration isn't wired this phase anyway (see
+            // Read-only: live re-registration is not wired (see
             // PairingController.h's known-gap comment), so an editable
-            // field here would look functional while doing nothing; a
-            // Phase 7 follow-up once real registration lands end-to-end.
-            Flickable {
-                clip: true
-                boundsBehavior: Flickable.StopAtBounds
-                contentWidth: width
-                contentHeight: notificationsColumn.implicitHeight
-                ScrollBar.vertical: ThemedScrollBar {}
+            // push-server field would look functional while doing nothing.
+            PaneBody {
+                SectionLabel { text: i18n("Delivery") }
 
-                ColumnLayout {
-                    id: notificationsColumn
-                    width: parent.width
-                    spacing: 10
-
-                    Text {
-                        Layout.fillWidth: true
+                Panel {
+                    Explain {
                         visible: Pairing.deliveryMode === "" && Pairing.transport === ""
                         text: i18n("Not yet registered")
-                        color: Theme.ink
-                        font.family: Theme.fontUi
-                        font.pixelSize: Theme.fontPreview
                     }
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
+                    ValueRow {
                         visible: Pairing.deliveryMode !== "" || Pairing.transport !== ""
-                        spacing: 6
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 12
-                            SectionLabel { Layout.preferredWidth: 100; text: i18n("Delivery Mode") }
-                            Text {
-                                Layout.fillWidth: true
-                                textFormat: Text.PlainText
-                                text: Pairing.deliveryMode
-                                color: Theme.inkStrong
-                                font.family: Theme.fontMono
-                                font.pixelSize: Theme.fontSender
-                            }
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 12
-                            SectionLabel { Layout.preferredWidth: 100; text: i18n("Transport") }
-                            Text {
-                                Layout.fillWidth: true
-                                textFormat: Text.PlainText
-                                text: Pairing.transport
-                                color: Theme.inkStrong
-                                font.family: Theme.fontMono
-                                font.pixelSize: Theme.fontSender
-                            }
-                        }
+                        label: i18n("Delivery mode")
+                        value: Pairing.deliveryMode
+                    }
+                    ValueRow {
+                        visible: Pairing.deliveryMode !== "" || Pairing.transport !== ""
+                        label: i18n("Transport")
+                        value: Pairing.transport
                     }
 
-                    // The "Push Server" row that used to sit here displayed the
-                    // embedded ntfy subscriber's base URL. Both it and the
-                    // subscriber were removed on 2026-07-26 -- see
-                    // core/domain/TransportStateMachine.h. What replaces it is
-                    // the honest description of where notifications now come
-                    // from: a system UnifiedPush distributor if one is
-                    // installed, otherwise polling the relay directly, which
-                    // involves no third party at all.
-                    MutedHint {
-                        Layout.fillWidth: true
-                        Layout.topMargin: 4
-                        wrapMode: Text.WordWrap
+                    // Where notifications come from: a system UnifiedPush
+                    // distributor if one is installed, otherwise polling the
+                    // relay directly (core/domain/TransportStateMachine.h).
+                    Explain {
                         // Unpaired: any pairing made now registers keys.
                         text: !Pairing.isPaired || Pairing.pushEncrypted
                             ? i18n("KyPost receives notifications through your system's UnifiedPush "
@@ -653,26 +717,13 @@ Item {
             }
 
             // ---- 6. General ---------------------------------------------
-            // Wrapped in a Flickable, same as the panes above -- this is the
-            // tallest pane (Interface Mode + hint + conditionally-visible
-            // System Tray section with 2 more rows), the most likely to
-            // exceed the sheet's available height on a short/shrunk window.
-            Flickable {
-                clip: true
-                boundsBehavior: Flickable.StopAtBounds
-                contentWidth: width
-                contentHeight: generalColumn.implicitHeight
-                ScrollBar.vertical: ThemedScrollBar {}
+            PaneBody {
+                SectionLabel { text: i18n("Interface mode") }
 
-                ColumnLayout {
-                    id: generalColumn
-                    width: parent.width
-                    spacing: 16
-
-                    SectionLabel { text: i18n("Interface Mode") }
-
-                    Row {
+                Panel {
+                    Flow {
                         Layout.fillWidth: true
+                        Layout.preferredHeight: childrenRect.height
                         spacing: 8
 
                         PillTab {
@@ -691,59 +742,35 @@ Item {
                             onClicked: General.setPreferredMode("mobile")
                         }
                     }
+                }
 
-                    // Desktop-only: gated on the mode THIS process actually
-                    // resolved to at startup, not the pending preference above --
-                    // never shown mid-session in a Mobile launch even if the
-                    // user just picked "Desktop" for next time.
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        visible: General.isDesktopMode
-                        spacing: 16
+                // Desktop-only: gated on the mode THIS process resolved to at
+                // startup, not the pending preference above.
+                SectionLabel {
+                    visible: General.isDesktopMode
+                    text: i18n("System tray")
+                }
 
-                        SectionLabel { text: i18n("System Tray") }
+                Panel {
+                    visible: General.isDesktopMode
 
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-                            Text {
-                                Layout.fillWidth: true
-                                text: i18n("Enable Tray Icon")
-                                color: Theme.inkStrong
-                                font.family: Theme.fontUi
-                                font.pixelSize: Theme.fontSender
-                            }
-                            PillTab {
-                                text: General.trayIconEnabled ? i18n("On") : i18n("Off")
-                                selected: General.trayIconEnabled
-                                onClicked: General.setTrayIconEnabled(!General.trayIconEnabled)
-                            }
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-                            enabled: General.trayIconEnabled
-                            opacity: enabled ? 1.0 : 0.5
-                            Text {
-                                Layout.fillWidth: true
-                                text: i18n("Minimize to Tray on Close")
-                                color: Theme.inkStrong
-                                font.family: Theme.fontUi
-                                font.pixelSize: Theme.fontSender
-                            }
-                            PillTab {
-                                text: General.minimizeToTrayOnClose ? i18n("On") : i18n("Off")
-                                selected: General.minimizeToTrayOnClose
-                                onClicked: General.setMinimizeToTrayOnClose(!General.minimizeToTrayOnClose)
-                            }
-                        }
+                    ToggleRow {
+                        text: i18n("Enable tray icon")
+                        checked: General.trayIconEnabled
+                        onToggled: General.setTrayIconEnabled(!General.trayIconEnabled)
                     }
+                    ToggleRow {
+                        enabled: General.trayIconEnabled
+                        text: i18n("Minimize to tray on close")
+                        checked: General.minimizeToTrayOnClose
+                        onToggled: General.setMinimizeToTrayOnClose(!General.minimizeToTrayOnClose)
+                    }
+                }
 
-                    SectionLabel { text: i18n("About") }
+                SectionLabel { text: i18n("About") }
 
+                Panel {
                     GhostButton {
-                        Layout.alignment: Qt.AlignLeft
                         text: i18n("Support KyPost")
                         onClicked: Qt.openUrlExternally("https://buymeacoffee.com/yoshiofthewire")
                     }
@@ -758,45 +785,24 @@ Item {
             // Every toggle here needs the current PIN, including turning
             // things OFF: a lock that can be removed by whoever already has
             // the window open protects nothing.
-            Flickable {
+            PaneBody {
                 id: securityFlickable
-                contentWidth: width
-                contentHeight: securityColumn.implicitHeight
-                clip: true
-                boundsBehavior: Flickable.StopAtBounds
-                ScrollBar.vertical: ThemedScrollBar {}
 
-                ColumnLayout {
-                    id: securityColumn
-                    width: parent.width
-                    spacing: 16
+                SectionLabel { text: i18n("App lock") }
 
-                    SectionLabel { text: i18n("App Lock") }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        Text {
-                            Layout.fillWidth: true
-                            text: i18n("Require Unlock to Open")
-                            color: Theme.inkStrong
-                            font.family: Theme.fontUi
-                            font.pixelSize: Theme.fontSender
-                        }
-                        PillTab {
-                            text: AppLock.lockEnabled ? i18n("On") : i18n("Off")
-                            selected: AppLock.lockEnabled
-                            onClicked: {
-                                if (AppLock.lockEnabled)
-                                    securityPrompt.begin("disableLock", i18n("Enter your PIN to turn off the lock"))
-                                else
-                                    securityPrompt.begin("setPin", i18n("Choose a PIN"))
-                            }
+                Panel {
+                    ToggleRow {
+                        text: i18n("Require unlock to open")
+                        checked: AppLock.lockEnabled
+                        onToggled: {
+                            if (AppLock.lockEnabled)
+                                securityPrompt.begin("disableLock", i18n("Enter your PIN to turn off the lock"))
+                            else
+                                securityPrompt.begin("setPin", i18n("Choose a PIN"))
                         }
                     }
 
-                    MutedHint {
-                        Layout.fillWidth: true
+                    Explain {
                         text: i18n("A PIN is required every time KyPost starts, and whenever the window is hidden or minimised. After 10 failed attempts all local data is erased.")
                     }
 
@@ -809,55 +815,42 @@ Item {
                     // below is the setting that guards the disk. Leaving
                     // that unsaid let a PIN prompt imply at-rest protection
                     // it has never provided.
-                    MutedHint {
-                        Layout.fillWidth: true
+                    Explain {
                         text: i18n("The PIN protects this app while it is running. It does not encrypt the cached mail and contacts stored on this computer — for that, turn on Keep nothing on this device below.")
                     }
 
                     GhostButton {
+                        Layout.fillWidth: true
                         visible: AppLock.lockEnabled
                         text: i18n("Change PIN…")
                         onClicked: securityPrompt.begin("changePin", i18n("Enter your current PIN, then a new one"))
                     }
+                }
 
-                    Item { Layout.preferredHeight: 4 }
+                SectionLabel { text: i18n("Hostile location protection") }
 
-                    SectionLabel { text: i18n("Hostile Location Protection") }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
+                Panel {
+                    ToggleRow {
                         // Same dependency as the credential gate: only
                         // meaningful alongside a PIN.
                         enabled: AppLock.lockEnabled
-                        opacity: enabled ? 1.0 : 0.5
-                        Text {
-                            Layout.fillWidth: true
-                            text: i18n("Keep nothing on this device")
-                            color: Theme.inkStrong
-                            font.family: Theme.fontUi
-                            font.pixelSize: Theme.fontSender
-                        }
-                        PillTab {
-                            text: AppLock.hostileLocationEnabled ? i18n("On") : i18n("Off")
-                            selected: AppLock.hostileLocationEnabled
-                            onClicked: securityPrompt.begin(
-                                AppLock.hostileLocationEnabled ? "hlpOff" : "hlpOn",
-                                AppLock.hostileLocationEnabled
-                                    ? i18n("Enter your PIN to turn this off. KyPost will restart.")
-                                    : i18n("Enter your PIN. KyPost will erase its local data and restart."))
-                        }
+                        text: i18n("Keep nothing on this device")
+                        checked: AppLock.hostileLocationEnabled
+                        onToggled: securityPrompt.begin(
+                            AppLock.hostileLocationEnabled ? "hlpOff" : "hlpOn",
+                            AppLock.hostileLocationEnabled
+                                ? i18n("Enter your PIN to turn this off. KyPost will restart.")
+                                : i18n("Enter your PIN. KyPost will erase its local data and restart."))
                     }
 
-                    MutedHint {
-                        Layout.fillWidth: true
+                    Explain {
                         text: i18n("Mail, contacts and folders are held in memory only and are gone when KyPost closes. Turning this on erases what is already stored and restarts the app. Attachments open in a temporary location instead of being saved to Downloads.")
                     }
+                }
 
-                    Item { Layout.preferredHeight: 4 }
+                SectionLabel { text: i18n("Lock when KyPost is not in front") }
 
-                    SectionLabel { text: i18n("Lock when KyPost is not in front") }
-
+                Panel {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 8
@@ -901,17 +894,16 @@ Item {
                         }
                     }
 
-                    MutedHint {
-                        Layout.fillWidth: true
+                    Explain {
                         text: AppLock.backgroundGraceSeconds === 0
                             ? i18n("KyPost locks the moment its window is minimised, hidden or sent to the background.")
                             : i18n("KyPost stays unlocked for this long after its window goes away, so switching to another app briefly does not mean typing your PIN again. Anyone who reaches this computer within that time can read your mail. Lock now, from the menu, always locks straight away.")
                     }
+                }
 
-                    Item { Layout.preferredHeight: 4 }
+                SectionLabel { text: i18n("Erase after failed attempts") }
 
-                    SectionLabel { text: i18n("Erase after failed attempts") }
-
+                Panel {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 8
@@ -960,19 +952,17 @@ Item {
                     // the erase that stops, not the rate limiting -- and
                     // being explicit here is the difference between an
                     // informed choice and a surprise.
-                    MutedHint {
-                        Layout.fillWidth: true
+                    Explain {
                         text: AppLock.wipeAfterAttempts === 0
                             ? i18n("KyPost will not erase itself, however many attempts fail. Repeated failures are still slowed down and eventually refused until you restart the app. Anyone who takes this computer can keep guessing.")
                             : i18n("Cached mail, contacts and this device's pairing are erased after this many consecutive failed attempts. Your mail on the server is not affected.")
                     }
+                }
 
-                    Item { Layout.preferredHeight: 4 }
+                SectionLabel { text: i18n("OpenPGP private key") }
 
-                    SectionLabel { text: i18n("OpenPGP private key") }
-
-                    MutedHint {
-                        Layout.fillWidth: true
+                Panel {
+                    Explain {
                         text: i18n("Enroll this computer from webmail. KyPost creates a temporary device key, webmail seals your OpenPGP private key to it, and the imported key remains under GnuPG's control.")
                     }
 
@@ -982,7 +972,7 @@ Item {
                         implicitHeight: enrollmentCode.implicitHeight + 28
                         radius: Theme.shapeField
                         color: Theme.bg
-                        border.width: 1
+                        border.width: Theme.fieldStroke
                         border.color: Theme.accent
 
                         Text {
@@ -1003,9 +993,9 @@ Item {
                         spacing: 12
 
                         PrimaryButton {
-                            text: PgpEnrollment.state === 3 ? i18n("Check Again")
-                                  : PgpEnrollment.state === 5 ? i18n("Enroll Again")
-                                  : i18n("Enroll This Device")
+                            text: PgpEnrollment.state === 3 ? i18n("Check again")
+                                  : PgpEnrollment.state === 5 ? i18n("Enroll again")
+                                  : i18n("Enroll this device")
                             enabled: Pairing.isPaired && !PgpEnrollment.busy
                             onClicked: PgpEnrollment.state === 3
                                 ? PgpEnrollment.checkAgain() : PgpEnrollment.start()
@@ -1017,41 +1007,27 @@ Item {
                         }
                     }
 
-                    MutedHint {
-                        Layout.fillWidth: true
+                    Explain {
                         visible: PgpEnrollment.status.length > 0
                         text: PgpEnrollment.status
                     }
+                }
 
-                    Item { Layout.preferredHeight: 4 }
+                SectionLabel { text: i18n("Push and MFA") }
 
-                    SectionLabel { text: i18n("Push and MFA") }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        // Meaningless without a PIN to gate on, so the whole
-                        // row is inert until the lock is enabled.
+                Panel {
+                    ToggleRow {
+                        // Meaningless without a PIN to gate on, so the row
+                        // is inert until the lock is enabled.
                         enabled: AppLock.lockEnabled
-                        opacity: enabled ? 1.0 : 0.5
-                        Text {
-                            Layout.fillWidth: true
-                            text: i18n("Require unlock to receive push and MFA")
-                            color: Theme.inkStrong
-                            font.family: Theme.fontUi
-                            font.pixelSize: Theme.fontSender
-                        }
-                        PillTab {
-                            text: AppLock.credentialPinGateEnabled ? i18n("On") : i18n("Off")
-                            selected: AppLock.credentialPinGateEnabled
-                            onClicked: securityPrompt.begin(
-                                AppLock.credentialPinGateEnabled ? "gateOff" : "gateOn",
-                                i18n("Enter your PIN"))
-                        }
+                        text: i18n("Require unlock to receive push and MFA")
+                        checked: AppLock.credentialPinGateEnabled
+                        onToggled: securityPrompt.begin(
+                            AppLock.credentialPinGateEnabled ? "gateOff" : "gateOn",
+                            i18n("Enter your PIN"))
                     }
 
-                    MutedHint {
-                        Layout.fillWidth: true
+                    Explain {
                         text: i18n("When on, the pairing credential is encrypted with your PIN. Mail, push and MFA stop working until you unlock the app — that is the point, and it is a real tradeoff.")
                     }
 
@@ -1062,7 +1038,7 @@ Item {
                         visible: Pairing.isPaired && !Pairing.pushEncrypted
                         Layout.fillWidth: true
                         implicitHeight: pushWarningText.implicitHeight + 24
-                        radius: Theme.shapePanel
+                        radius: Theme.shapeButton
                         color: Theme.dangerActionFill
                         border.width: 1
                         border.color: Theme.dangerActionBorder
@@ -1074,7 +1050,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             anchors.margins: 12
                             text: i18n("This pairing predates push encryption: notifications send the sender and subject through a relay server (UnifiedPush/ntfy) in the clear, even with the settings above enabled. Pair this device again to encrypt them, or ask your server admin to switch it to Pull mode. Sign-in approvals reach this device only after it is paired again.")
-                            color: Theme.ink
+                            color: Theme.dangerActionText
                             font.family: Theme.fontUi
                             font.pixelSize: Theme.fontDate
                             wrapMode: Text.WordWrap

@@ -24,6 +24,7 @@ QtObject {
         {name: "contact-detail", setup: function (root) { root.navigate("contacts"); root.selectContact("c4") }},
         {name: "contact-new", setup: function (root) { root.navigate("contacts"); root.selectContact("") }},
         {name: "contacts-empty", setup: function (root) { ContactsApp.empty = true; ContactsApp.reload(); root.navigate("contacts") }},
+        {name: "settings", setup: function (root) { root.navigate("settings") }},
         {name: "settings-connection", setup: function (root) { root.openSettingsPane(0) }},
         {name: "settings-appearance", setup: function (root) { root.openSettingsPane(1) }},
         {name: "settings-keywords", setup: function (root) { root.openSettingsPane(2) }},

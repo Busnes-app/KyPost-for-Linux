@@ -186,7 +186,7 @@ Kirigami.ApplicationWindow {
     }
     function openSettingsPane(pane) {
         root.navigate("settings")
-        settingsPane.currentPane = pane
+        settingsPane.showPane(pane)
     }
     function openPairing() {
         root.navigate("settings")
