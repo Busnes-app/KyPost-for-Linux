@@ -16,6 +16,7 @@
 #include "push/NotificationDispatcher.h"
 #include "push/PushArrival.h"
 #include "push/UnifiedPushConnector.h"
+#include "theme/MaterialIconProvider.h"
 #include "theme/ThemeController.h"
 #include "tray/TrayController.h"
 #include "update/UpdateCheckController.h"
@@ -418,6 +419,7 @@ int main(int argc, char* argv[])
     // exactly one QML engine, so the startup and real windows must share it.
     QQmlApplicationEngine engine;
     KLocalization::setupLocalizedContext(&engine);
+    engine.addImageProvider(QStringLiteral("icon"), new MaterialIconProvider); // engine owns it
     engine.load(QUrl(QStringLiteral("qrc:/qml/Startup.qml")));
     QPointer<QObject> startupWindow = engine.rootObjects().isEmpty()
         ? nullptr

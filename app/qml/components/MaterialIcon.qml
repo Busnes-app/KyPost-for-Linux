@@ -1,18 +1,19 @@
 import QtQuick
-import org.kde.kirigami as Kirigami
+import QtQuick.Window
 import com.kysecurity.mail 1.0
 
-// A bundled Material Icons (filled) glyph from qrc:/qml/icons, tinted.
-Kirigami.Icon {
+// A bundled Material Icons (filled) glyph, tinted by MaterialIconProvider
+// (image://icon/<name>/<colour>). The colour is part of the URL, so a theme
+// change fetches a freshly tinted image.
+Image {
     property string name: ""
     property color tint: Theme.inkStrong
 
-    implicitWidth: 24
-    implicitHeight: 24
-    source: name ? "qrc:/qml/icons/" + name + ".svg" : ""
-    isMask: true
-    // Static glyphs: no crossfade. With it on, some instances painted the
-    // untinted black glyph in offscreen renders.
-    animated: false
-    color: tint
+    width: 24
+    height: 24
+    source: name ? "image://icon/" + name + "/" + tint.toString().slice(1) : ""
+    sourceSize: Qt.size(Math.ceil(width * Screen.devicePixelRatio), Math.ceil(height * Screen.devicePixelRatio))
+    fillMode: Image.PreserveAspectFit
+    smooth: true
+    Accessible.ignored: true
 }

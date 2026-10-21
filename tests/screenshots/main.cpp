@@ -11,6 +11,7 @@
 // the real ThemeController so the shots carry the real palette.
 #include "models/StandardFolder.h"
 #include "stores/SettingsStore.h"
+#include "theme/MaterialIconProvider.h"
 #include "theme/ThemeController.h"
 
 #include <KLocalizedQmlContext>
@@ -152,6 +153,7 @@ int main(int argc, char* argv[])
 
     QQmlApplicationEngine engine;
     KLocalization::setupLocalizedContext(&engine);
+    engine.addImageProvider(QStringLiteral("icon"), new MaterialIconProvider);
     qmlRegisterSingletonInstance("KyPostScreens", 1, 0, "ScreenRun", &run);
     qmlRegisterSingletonInstance<ThemeController>("com.kysecurity.mail", 1, 0, "Theme", &theme);
     for (const char* name : {"General", "MailApp", "ProtectedImages", "AppLock", "ContactsApp", "PgpQr",

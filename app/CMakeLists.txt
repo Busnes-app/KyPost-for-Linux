@@ -34,8 +34,12 @@ target_link_libraries(kypost PRIVATE Qt6::WebEngineQuick)
 target_sources(kypost PRIVATE
   theme/ThemeController.cpp
   theme/ThemeController.h
+  theme/MaterialIconProvider.cpp
+  theme/MaterialIconProvider.h
   resources/fonts.qrc
 )
+find_package(Qt6 REQUIRED COMPONENTS Svg)
+target_link_libraries(kypost PRIVATE Qt6::Svg)
 
 # GeneralController wraps SettingsStore's Desktop/Mobile mode preference and
 # desktop-only tray settings as a QML singleton ("General") -- plain QObject/

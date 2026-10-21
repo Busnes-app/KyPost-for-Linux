@@ -459,16 +459,18 @@ kypost_add_app_test(NotificationDispatcherTest
 # missing from the resource bundle fails here rather than at runtime.
 find_package(Qt6 REQUIRED COMPONENTS QuickTest Quick Qml)
 
+find_package(Qt6 REQUIRED COMPONENTS Svg)
 add_executable(QmlTests
   qml/main.cpp
   qml/FakeSingletons.h
+  ${CMAKE_SOURCE_DIR}/app/theme/MaterialIconProvider.cpp
   ${CMAKE_SOURCE_DIR}/app/qml/qml.qrc
 )
-target_include_directories(QmlTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/qml)
+target_include_directories(QmlTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/qml ${CMAKE_SOURCE_DIR}/app)
 # KF6::I18nQml: the pages under test call i18n(), which needs the same
 # KLocalizedQmlContext main.cpp installs -- without it they fail to
 # construct with ReferenceError rather than testing anything.
-target_link_libraries(QmlTests PRIVATE Qt6::QuickTest Qt6::Quick Qt6::Qml KF6::I18n KF6::I18nQml)
+target_link_libraries(QmlTests PRIVATE Qt6::QuickTest Qt6::Quick Qt6::Qml Qt6::Svg KF6::I18n KF6::I18nQml)
 # QUICK_TEST_SOURCE_DIR tells the runner where the tst_*.qml files live.
 target_compile_definitions(QmlTests PRIVATE
   QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml"
@@ -512,9 +514,10 @@ add_executable(KyPostScreens
   screenshots/main.cpp
   screenshots/screens.qrc
   ${CMAKE_SOURCE_DIR}/app/theme/ThemeController.cpp
+  ${CMAKE_SOURCE_DIR}/app/theme/MaterialIconProvider.cpp
   ${CMAKE_SOURCE_DIR}/app/qml/qml.qrc
   ${CMAKE_SOURCE_DIR}/app/resources/fonts.qrc
 )
 target_include_directories(KyPostScreens PRIVATE ${CMAKE_SOURCE_DIR}/app)
-target_link_libraries(KyPostScreens PRIVATE kypostcore Qt6::Quick Qt6::Qml Qt6::Widgets Qt6::Gui
+target_link_libraries(KyPostScreens PRIVATE kypostcore Qt6::Quick Qt6::Qml Qt6::Widgets Qt6::Gui Qt6::Svg
   KF6::I18n KF6::I18nQml)

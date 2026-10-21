@@ -471,8 +471,10 @@ Item {
                                     visible: themeDelegate.modelData === Theme.themeName
                                     name: "check"
                                     tint: Theme.accent
-                                    implicitWidth: 20
-                                    implicitHeight: 20
+                                    Layout.preferredWidth: 20
+                                    Layout.preferredHeight: 20
+                                    width: 20
+                                    height: 20
                                 }
                             }
 
