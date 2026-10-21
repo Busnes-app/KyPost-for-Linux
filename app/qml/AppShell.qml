@@ -32,6 +32,7 @@ Kirigami.ApplicationWindow {
     // Read by tests: these popups paint above the lock overlay.
     readonly property bool foldersOpen: folderDrawer.opened
     readonly property bool pairingConfirmOpen: pairingConfirmPopup.opened
+    readonly property bool folderActionsOpen: folderActionsMenu.opened
     readonly property bool split: layoutMode === "expanded"
 
     // Minimize to tray instead of quitting, when both are enabled (System
@@ -100,7 +101,9 @@ Kirigami.ApplicationWindow {
     }
 
     // What the header's monospace line says.
-    readonly property string place: detailMode === "compose" ? i18n("Compose")
+    // At 840px+ compose opens beside the list, so the header keeps naming
+    // the list; below that compose covers it and the header says so.
+    readonly property string place: detailMode === "compose" && !split ? i18n("Compose")
         : destination === "contacts" ? i18n("Contacts")
         : destination === "settings" ? i18n("Settings")
         : root.folderDisplayName(root.currentFolder)
@@ -311,6 +314,10 @@ Kirigami.ApplicationWindow {
 
     Kirigami.OverlaySheet {
         id: scheduledSheet
+        // The page inside carries its own title and Close/Done; Kirigami's
+        // header would add an empty band above it.
+        header: null
+        showCloseButton: false
         modal: true
 
         background: Rectangle {
@@ -348,6 +355,8 @@ Kirigami.ApplicationWindow {
         modal: true
         focus: true
         closePolicy: Popup.CloseOnEscape
+        // Dim what is behind, so it reads as a question, not a stray card.
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.4) }
         x: (root.width - width) / 2
         y: (root.height - height) / 2
         width: Math.min(380, root.width - 32)
@@ -459,6 +468,10 @@ Kirigami.ApplicationWindow {
     // the scheduled sheet above (no second top-level window/event-loop to manage).
     Kirigami.OverlaySheet {
         id: pgpMyQrCodeSheet
+        // The page inside carries its own title and Close/Done; Kirigami's
+        // header would add an empty band above it.
+        header: null
+        showCloseButton: false
 
         background: Rectangle {
             color: Theme.panel
@@ -476,6 +489,10 @@ Kirigami.ApplicationWindow {
 
     Kirigami.OverlaySheet {
         id: pgpScanContactKeySheet
+        // The page inside carries its own title and Close/Done; Kirigami's
+        // header would add an empty band above it.
+        header: null
+        showCloseButton: false
 
         background: Rectangle {
             color: Theme.panel
@@ -887,17 +904,34 @@ Kirigami.ApplicationWindow {
                             implicitHeight: 28
                         }
 
-                        Text {
+                        // The last sync failure as a danger card in the row
+                        // rhythm, not a thin line between chips and mail.
+                        // (StatusBanner is for standing conditions with a
+                        // remedy; a failed refresh clears on the next one.)
+                        Rectangle {
+                            objectName: "syncErrorCard"
                             Layout.fillWidth: true
                             Layout.leftMargin: 8
                             Layout.rightMargin: 8
                             visible: MailApp.lastError !== ""
-                            textFormat: Text.PlainText
-                            text: MailApp.lastError
-                            color: Theme.dangerActionText
-                            font.family: Theme.fontUi
-                            font.pixelSize: Theme.fontDate
-                            wrapMode: Text.WordWrap
+                            implicitHeight: syncError.implicitHeight + 24
+                            radius: Theme.shapePanel
+                            color: Theme.dangerActionFill
+                            border.width: 1
+                            border.color: Theme.dangerActionBorder
+
+                            Text {
+                                id: syncError
+                                anchors.fill: parent
+                                anchors.margins: 12
+                                verticalAlignment: Text.AlignVCenter
+                                textFormat: Text.PlainText
+                                text: MailApp.lastError
+                                color: Theme.dangerActionText
+                                font.family: Theme.fontUi
+                                font.pixelSize: Theme.fontSender
+                                wrapMode: Text.WordWrap
+                            }
                         }
 
                         EmptyState {
@@ -1266,8 +1300,8 @@ Kirigami.ApplicationWindow {
     // are modal, their dimmer also swallowed clicks aimed at the PIN field, so
     // they blocked unlocking as well as sitting on top of it.
     //
-    // Only root-scope ids are reachable here; menus declared inside delegates
-    // are transient and close on their own.
+    // Popups owned by components close themselves on lock (MailCard's menu,
+    // ContactsList's menu) or through a function here (Settings).
     Connections {
         target: AppLock
         function onLockedChanged() {

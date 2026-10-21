@@ -526,3 +526,5 @@ app/qml/AppShell.qml	            pairingConfirmPopup.close();		ShellTests:ShellL
 app/qml/AppShell.qml	            settingsPane.closePopups();		ShellTests:ShellLock::test_settings_popups_close_on_lock
 app/qml/components/MailCard.qml	        function onLockedChanged() { if (AppLock.locked) contextMenu.close() }	        function onLockedChanged() {}	ShellTests:ShellLock::test_mail_row_menu_closes_on_lock
 app/qml/pages/ContactsList.qml	                actionsMenu.close()		ShellTests:ShellLock::test_contacts_menu_closes_on_lock
+app/qml/AppShell.qml	            folderActionsMenu.close();		ShellTests:ShellLock::test_folder_actions_menu_closes_on_lock
+app/qml/pages/Settings.qml	        securityPrompt.close()		ShellTests:ShellLock::test_pin_prompt_closes_on_lock

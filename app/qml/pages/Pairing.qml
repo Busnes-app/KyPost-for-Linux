@@ -51,12 +51,14 @@ Item {
             visible: Pairing.pairingState === "idle"
             spacing: 16
 
-            Text {
-                Layout.fillWidth: true
-                text: "✦" // sparkle glyph -- no image asset exists in this repo
-                color: Theme.accent
-                font.pixelSize: Math.round(40 * Theme.fontScale)
-                horizontalAlignment: Text.AlignHCenter
+            Image {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: 64
+                Layout.preferredHeight: 64
+                source: "qrc:/qml/icons/logo.png"
+                sourceSize: Qt.size(128, 128)
+                mipmap: true
+                Accessible.ignored: true
             }
             Text {
                 Layout.fillWidth: true

@@ -61,6 +61,9 @@ Item {
             + "body { font-family: '" + Theme.fontUi.replace(/[^A-Za-z0-9 -]/g, "") + "', system-ui, sans-serif;"
             + " font-size: " + Math.round(16 * Theme.fontScale) + "px; line-height: 1.5; padding: 10px; "
             + "box-sizing: border-box; color: " + Theme.inkStrong + "; }"
+            // A quoted reply reads as a quote: a rule at the field edge, not
+            // Chromium's 40px indent (display only; the sent HTML is unchanged).
+            + "blockquote { margin: 0; padding-left: 10px; border-left: 3px solid " + Theme.line + "; }"
             + "</style></head><body contenteditable=\"true\">" + bodyHtml + "</body></html>"
     }
 

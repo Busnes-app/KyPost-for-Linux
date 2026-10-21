@@ -19,8 +19,8 @@ QtObject {
     property string draftsFolder: "Drafts"
     property string archiveFolder: "Archive"
     property string snoozedFolder: "Snoozed"
-    property var keywordTabs: F.keywords.map(function (k) { return {name: k, unread: F.unread(k)} })
-    property int currentFolderUnread: F.unread("")
+    property var keywordTabs: F.keywords.map(function (k) { return {name: k, unread: empty ? 0 : F.unread(k)} })
+    property int currentFolderUnread: empty ? 0 : F.unread("")
     property var unreadCounts: ({"INBOX": F.unread(""), "Drafts": 0, "Junk": 0, "Sent": 0, "Trash": 0, "Archive": 0, "Snoozed": 0})
     property bool empty: false
 

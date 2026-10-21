@@ -56,6 +56,10 @@ Item {
     // Popups paint above the lock overlay, and Settings stays alive as a
     // destination, so the shell closes these when the app locks.
     readonly property bool popupOpen: securityPrompt.opened || pairingPopup.opened
+    readonly property bool securityPromptOpen: securityPrompt.opened
+
+    // The PIN prompt in one of its modes ("setPin", "changePin", ...).
+    function promptPin(mode, heading) { securityPrompt.begin(mode, heading) }
 
     function closePopups() {
         securityPrompt.close()
@@ -146,7 +150,7 @@ Item {
         ColumnLayout {
             id: paneColumn
             x: 16
-            y: 8
+            y: 16
             width: Math.min(parent.width - 32, 800)
             spacing: 8
         }
@@ -272,7 +276,7 @@ Item {
             visible: root.wide || !root.paneOpen
             Layout.fillHeight: true
             Layout.fillWidth: !root.wide
-            Layout.preferredWidth: root.wide ? 320 : -1
+            Layout.preferredWidth: root.wide ? 360 : -1
             clip: true
             boundsBehavior: Flickable.StopAtBounds
             contentWidth: width
@@ -334,6 +338,8 @@ Item {
                                 MutedHint {
                                     Layout.fillWidth: true
                                     text: sectionCard.modelData.hint
+                                    wrapMode: Text.WordWrap
+                                    maximumLineCount: 2
                                     elide: Text.ElideRight
                                 }
                             }
@@ -1304,18 +1310,15 @@ Item {
         modal: true
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        x: (root.width - width) / 2
-        y: (root.height - height) / 2
-        width: Math.min(380, root.width - 32)
-        height: Math.min(560, root.height - 32)
+        // A page of its own on the cream background, like Unlock, rather
+        // than a card over a scrim.
+        x: 0
+        y: 0
+        width: root.width
+        height: root.height
         padding: 0
 
-        background: Rectangle {
-            color: Theme.panel
-            radius: Theme.shapeSheet
-            border.width: 1
-            border.color: Theme.line
-        }
+        background: Rectangle { color: Theme.bg }
 
         contentItem: PagesDir.Pairing {
             anchors.fill: parent

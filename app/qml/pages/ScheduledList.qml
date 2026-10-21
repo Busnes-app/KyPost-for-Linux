@@ -105,7 +105,7 @@ Item {
                         text: modelData.to
                         color: Theme.ink
                         font.family: Theme.fontUi
-                        font.pixelSize: Theme.fontDate
+                        font.pixelSize: Theme.fontSender
                         elide: Text.ElideRight
                     }
                     Text {
@@ -114,7 +114,7 @@ Item {
                         text: [modelData.when, modelData.status, modelData.reason].filter(s => s !== "").join(" · ")
                         color: Theme.ink
                         font.family: Theme.fontUi
-                        font.pixelSize: Theme.fontDate
+                        font.pixelSize: Theme.fontPreview
                         wrapMode: Text.WordWrap
                     }
                     RowLayout {

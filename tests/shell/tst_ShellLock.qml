@@ -52,6 +52,22 @@ TestCase {
         tryVerify(() => !settings.popupOpen)
     }
 
+    function test_folder_actions_menu_closes_on_lock() {
+        shell.openFolderActions({wireName: "Archive", displayName: "Archive", deletable: false})
+        tryVerify(() => shell.folderActionsOpen)
+        AppLock.locked = true
+        tryVerify(() => !shell.folderActionsOpen)
+    }
+
+    function test_pin_prompt_closes_on_lock() {
+        shell.openSettingsPane(6)
+        const settings = findChild(shell.contentItem, "settingsPane")
+        settings.promptPin("changePin", "Change PIN")
+        tryVerify(() => settings.securityPromptOpen)
+        AppLock.locked = true
+        tryVerify(() => !settings.securityPromptOpen)
+    }
+
     function test_mail_row_menu_closes_on_lock() {
         const list = findChild(shell.contentItem, "emailList")
         verify(list)

@@ -127,12 +127,25 @@ Item {
                 inputField.inputMethodHints = Qt.ImhDigitsOnly
                 // The placeholder vanishes while typing; the name does not.
                 inputField.Accessible.name = i18n("PIN")
-                // Android's unlock field: large centred digits.
+                // Android's unlock field: centred digits, at the height of
+                // every other field.
                 inputField.horizontalAlignment = TextInput.AlignHCenter
-                inputField.font.pixelSize = Math.round(28 * Theme.fontScale)
+                inputField.font.pixelSize = Theme.fontSubject
                 // Keys typed after the lock land here, never in whatever had
                 // focus underneath.
                 inputField.forceActiveFocus()
+            }
+
+            // The style hides a centred field's placeholder once it has
+            // focus, and this one always does; keep "PIN" until typing.
+            Text {
+                anchors.centerIn: parent
+                visible: pinField.text.length === 0
+                text: i18n("PIN")
+                color: Theme.ink
+                opacity: 0.7
+                font.family: Theme.fontUi
+                font.pixelSize: Theme.fontBody
             }
         }
 
