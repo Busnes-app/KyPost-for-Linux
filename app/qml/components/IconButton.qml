@@ -30,15 +30,15 @@ Rectangle {
     radius: Theme.shapeButton
 
     readonly property color restColor: variant === "primary" ? Theme.accent
-        : (variant === "danger" ? Theme.dangerFillColor : "transparent")
+        : (variant === "danger" ? Theme.dangerActionFill : "transparent")
     readonly property color hoverColor: variant === "primary" ? Theme.accent
-        : (variant === "danger" ? Theme.dangerFillColor : Theme.panel)
+        : (variant === "danger" ? Theme.dangerActionFill : Theme.panel)
     readonly property color iconColor: variant === "primary" ? Theme.readableOnAccent
-        : (variant === "danger" ? Theme.dangerColor : Theme.inkStrong)
+        : (variant === "danger" ? Theme.dangerActionText : Theme.inkStrong)
 
     color: (hoverHandler.hovered && !tapHandler.pressed) ? hoverColor : restColor
     border.width: variant === "primary" ? 0 : 1
-    border.color: variant === "danger" ? Theme.dangerBorderColor : Theme.line
+    border.color: variant === "danger" ? Theme.dangerActionBorder : Theme.line
     opacity: !root.enabled ? 0.5 : (tapHandler.pressed ? 0.85 : (hoverHandler.hovered ? 0.92 : 1.0))
 
     Behavior on color {

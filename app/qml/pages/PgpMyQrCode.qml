@@ -82,7 +82,7 @@ Item {
                 text: i18n("My PGP QR Code")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 20
+                font.pixelSize: Math.round(20 * Theme.fontScale)
                 font.weight: Font.Bold
             }
             GhostButton {
@@ -98,7 +98,7 @@ Item {
             text: PgpQr.lastError
             color: Theme.dangerColor
             font.family: Theme.fontUi
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontPreview
             wrapMode: Text.WordWrap
         }
 
@@ -128,7 +128,7 @@ Item {
             text: i18n("Expires %1", PgpQr.myQrExpiresAt)
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontDate
         }
 
         SectionLabel {
@@ -142,7 +142,7 @@ Item {
             text: PgpQr.myFingerprint
             color: Theme.inkStrong
             font.family: Theme.fontMono
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontPreview
             wrapMode: Text.WrapAnywhere
         }
         Text {
@@ -150,9 +150,9 @@ Item {
             visible: root.qrDataUrl !== "" && !PgpQr.myFingerprintIsLocal
             textFormat: Text.PlainText
             text: i18n("This device holds no private key for your account, so this code can't be verified in person.")
-            color: Theme.warningColor
+            color: Theme.warningActionText
             font.family: Theme.fontUi
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontDate
             wrapMode: Text.WordWrap
         }
 

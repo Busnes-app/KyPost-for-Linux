@@ -40,7 +40,7 @@ Item {
                 text: i18n("Scheduled")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 18
+                font.pixelSize: Theme.fontSubject
                 font.bold: true
             }
             GhostButton {
@@ -63,7 +63,7 @@ Item {
                 : (!Scheduled.busy && Scheduled.items.length === 0 ? i18n("Nothing is scheduled.") : "")
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontPreview
             wrapMode: Text.WordWrap
         }
 
@@ -87,7 +87,7 @@ Item {
                     text: modelData.subject
                     color: Theme.inkStrong
                     font.family: Theme.fontUi
-                    font.pixelSize: 14
+                    font.pixelSize: Theme.fontSender
                     font.bold: true
                     elide: Text.ElideRight
                 }
@@ -97,7 +97,7 @@ Item {
                     text: modelData.to
                     color: Theme.ink
                     font.family: Theme.fontUi
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontDate
                     elide: Text.ElideRight
                 }
                 Text {
@@ -106,7 +106,7 @@ Item {
                     text: [modelData.when, modelData.status, modelData.reason].filter(s => s !== "").join(" · ")
                     color: Theme.ink
                     font.family: Theme.fontUi
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontDate
                     wrapMode: Text.WordWrap
                 }
                 RowLayout {

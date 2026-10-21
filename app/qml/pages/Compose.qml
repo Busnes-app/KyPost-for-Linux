@@ -449,13 +449,13 @@ Item {
                             text: root.fileNameOf(modelData)
                             color: Theme.inkStrong
                             font.family: Theme.fontUi
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontDate
                         }
                         Text {
                             text: "✕"
                             color: Theme.ink
                             font.family: Theme.fontUi
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontDate
 
                             TapHandler {
                                 onTapped: {
@@ -489,7 +489,7 @@ Item {
                     text: encryptToggle.text
                     color: Theme.inkStrong
                     font.family: Theme.fontUi
-                    font.pixelSize: 14
+                    font.pixelSize: Theme.fontSender
                     verticalAlignment: Text.AlignVCenter
                     leftPadding: encryptToggle.indicator.width + encryptToggle.spacing
                 }
@@ -514,7 +514,7 @@ Item {
                     text: signToggle.text
                     color: Theme.inkStrong
                     font.family: Theme.fontUi
-                    font.pixelSize: 14
+                    font.pixelSize: Theme.fontSender
                     verticalAlignment: Text.AlignVCenter
                     leftPadding: signToggle.indicator.width + signToggle.spacing
                 }
@@ -538,7 +538,7 @@ Item {
                         MailApp.pgpKeylessRecipients.join(", "))
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontDate
             wrapMode: Text.WordWrap
         }
 
@@ -558,7 +558,7 @@ Item {
                 text: i18n("This account's PGP key is stored only in your browser, so this app can't encrypt on its behalf.")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap
             }
             RowLayout {
@@ -583,7 +583,7 @@ Item {
                   : i18n("This message will be encrypted and signed on this computer with your own key.")
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontDate
             wrapMode: Text.WordWrap
         }
 
@@ -598,7 +598,7 @@ Item {
             text: i18n("Sent. A copy could not be saved to your Sent folder, because it can only be stored encrypted to your own key.")
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontDate
             wrapMode: Text.WordWrap
         }
 
@@ -609,7 +609,7 @@ Item {
             text: root.validationError !== "" ? root.validationError : MailApp.lastError
             color: Theme.dangerColor
             font.family: Theme.fontUi
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontDate
             wrapMode: Text.WordWrap
         }
 
@@ -627,7 +627,7 @@ Item {
                 text: i18n("Sending…")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontPreview
             }
             Item { Layout.fillWidth: true }
             GhostButton {

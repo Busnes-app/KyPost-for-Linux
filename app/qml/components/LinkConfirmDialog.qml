@@ -94,7 +94,7 @@ Item {
                 text: i18n("Open this link?")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 16
+                font.pixelSize: Math.round(16 * Theme.fontScale)
                 font.weight: Font.Medium
                 textFormat: Text.PlainText
             }
@@ -106,7 +106,7 @@ Item {
                 text: root.target.host || ""
                 color: Theme.inkStrong
                 font.family: Theme.fontMono
-                font.pixelSize: 15
+                font.pixelSize: Math.round(15 * Theme.fontScale)
                 wrapMode: Text.WrapAnywhere
                 textFormat: Text.PlainText
             }
@@ -118,7 +118,7 @@ Item {
                 text: i18n("The link text names a different address. Check the host above, not the text.")
                 color: Theme.dangerColor
                 font.family: Theme.fontUi
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontPreview
                 wrapMode: Text.WordWrap
                 textFormat: Text.PlainText
             }
@@ -130,7 +130,7 @@ Item {
                 text: i18n("This message was flagged as possible phishing. Check the address above, not the link text.")
                 color: Theme.dangerColor
                 font.family: Theme.fontUi
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontPreview
                 wrapMode: Text.WordWrap
                 textFormat: Text.PlainText
             }
@@ -143,7 +143,7 @@ Item {
                 text: (root.target.shownUrl || "").slice(0, 300)
                 color: Theme.ink
                 font.family: Theme.fontMono
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontEyebrow
                 wrapMode: Text.WrapAnywhere
                 textFormat: Text.PlainText
             }

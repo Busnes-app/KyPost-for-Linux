@@ -143,7 +143,7 @@ Item {
                     : i18n("Delete “%1”?", root.displayName)
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontSender
                 font.bold: true
                 wrapMode: Text.WordWrap
             }
@@ -155,7 +155,7 @@ Item {
                 text: i18n("The folder and any messages in it are removed from the server. This cannot be undone.")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap
             }
 
@@ -180,7 +180,7 @@ Item {
                 text: root.errorText
                 color: Theme.dangerColor
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap
             }
 

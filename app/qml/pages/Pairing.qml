@@ -55,7 +55,7 @@ Item {
                 Layout.fillWidth: true
                 text: "✦" // sparkle glyph -- no image asset exists in this repo
                 color: Theme.accent
-                font.pixelSize: 40
+                font.pixelSize: Math.round(40 * Theme.fontScale)
                 horizontalAlignment: Text.AlignHCenter
             }
             Text {
@@ -63,7 +63,7 @@ Item {
                 text: i18n("Pair Device")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 22
+                font.pixelSize: Math.round(22 * Theme.fontScale)
                 font.weight: Font.Bold
                 horizontalAlignment: Text.AlignHCenter
             }
@@ -72,7 +72,7 @@ Item {
                 text: i18n("Open a pairing link from the web app, or paste it below.")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontSender
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
             }
@@ -113,7 +113,7 @@ Item {
                 Layout.fillWidth: true
                 text: "⚠" // warning glyph -- this is a security-sensitive confirmation, not routine chrome
                 color: Theme.accent
-                font.pixelSize: 40
+                font.pixelSize: Math.round(40 * Theme.fontScale)
                 horizontalAlignment: Text.AlignHCenter
             }
             Text {
@@ -121,7 +121,7 @@ Item {
                 text: i18n("Pair with this server?")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 22
+                font.pixelSize: Math.round(22 * Theme.fontScale)
                 font.weight: Font.Bold
                 horizontalAlignment: Text.AlignHCenter
             }
@@ -130,7 +130,7 @@ Item {
                 text: i18n("A pairing request wants to connect this device to:")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontSender
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
             }
@@ -140,7 +140,7 @@ Item {
                 text: Pairing.pendingPairOrigin
                 color: Theme.inkStrong
                 font.family: Theme.fontMono
-                font.pixelSize: 16
+                font.pixelSize: Math.round(16 * Theme.fontScale)
                 font.weight: Font.Bold
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
@@ -154,7 +154,7 @@ Item {
                 text: i18n("This connection is not encrypted (http).")
                 color: Theme.dangerColor
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
             }
@@ -163,7 +163,7 @@ Item {
                 text: i18n("Only confirm this if you expected it. Once paired, this server can deliver mail notifications to this device.")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
             }
@@ -196,7 +196,7 @@ Item {
                 text: i18n("Pairing…")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 15
+                font.pixelSize: Math.round(15 * Theme.fontScale)
                 horizontalAlignment: Text.AlignHCenter
             }
         }
@@ -211,7 +211,7 @@ Item {
                 Layout.fillWidth: true
                 text: "✓" // check mark -- success glyph, no image asset needed
                 color: Theme.successBorderColor
-                font.pixelSize: 40
+                font.pixelSize: Math.round(40 * Theme.fontScale)
                 horizontalAlignment: Text.AlignHCenter
             }
             Text {
@@ -219,7 +219,7 @@ Item {
                 text: i18n("Device paired")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 22
+                font.pixelSize: Math.round(22 * Theme.fontScale)
                 font.weight: Font.Bold
                 horizontalAlignment: Text.AlignHCenter
             }
@@ -237,7 +237,7 @@ Item {
                         text: Pairing.pairedServerHost
                         color: Theme.inkStrong
                         font.family: Theme.fontMono
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.fontSender
                         wrapMode: Text.WordWrap
                     }
                 }
@@ -251,7 +251,7 @@ Item {
                         text: Pairing.deviceId
                         color: Theme.inkStrong
                         font.family: Theme.fontMono
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.fontSender
                         wrapMode: Text.WordWrap
                     }
                 }
@@ -273,7 +273,7 @@ Item {
                 Layout.fillWidth: true
                 text: "⚠" // warning glyph
                 color: Theme.dangerColor
-                font.pixelSize: 40
+                font.pixelSize: Math.round(40 * Theme.fontScale)
                 horizontalAlignment: Text.AlignHCenter
             }
             Text {
@@ -281,7 +281,7 @@ Item {
                 text: i18n("Pairing failed")
                 color: Theme.dangerColor
                 font.family: Theme.fontUi
-                font.pixelSize: 22
+                font.pixelSize: Math.round(22 * Theme.fontScale)
                 font.weight: Font.Bold
                 horizontalAlignment: Text.AlignHCenter
             }
@@ -297,7 +297,7 @@ Item {
                 text: Pairing.pairingError
                 color: Theme.dangerColor
                 font.family: Theme.fontUi
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontSender
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
             }

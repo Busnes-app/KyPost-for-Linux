@@ -22,7 +22,7 @@ ColumnLayout {
         text: i18n("KyPost %1", UpdateCheck.installedVersion)
         color: Theme.inkStrong
         font.family: Theme.fontUi
-        font.pixelSize: 14
+        font.pixelSize: Theme.fontSender
     }
 
     // Three distinct states, deliberately worded apart: an update exists, we
@@ -41,7 +41,7 @@ ColumnLayout {
         wrapMode: Text.WordWrap
         color: UpdateCheck.updateAvailable ? Theme.accent : Theme.ink
         font.family: Theme.fontUi
-        font.pixelSize: 12
+        font.pixelSize: Theme.fontDate
         text: UpdateCheck.updateAvailable
               ? i18n("Version %1 is available.", UpdateCheck.latestVersion)
               : UpdateCheck.latestVersion.length > 0
@@ -61,7 +61,7 @@ ColumnLayout {
         text: i18n("Last checked %1", UpdateCheck.checkedAt)
         color: Theme.ink
         font.family: Theme.fontUi
-        font.pixelSize: 11
+        font.pixelSize: Theme.fontEyebrow
     }
 
     GhostButton {

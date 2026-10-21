@@ -17,10 +17,7 @@ import com.kysecurity.mail 1.0
 // with one extra property, instead of recomputing an alpha-blended QColor
 // by hand on every themeChanged().
 //
-// Judgment call: STYLE_GUIDE doesn't give an exact letter-spacing value --
-// 1 (device-independent pixel) is used as a modest, legible spacing for
-// small uppercase text; it's a one-off typographic detail, not a
-// themeable color/radius, so it isn't sourced from Theme.
+// Size and 0.08 em letter spacing are Android applySectionEyebrowLabel().
 Text {
     id: root
 
@@ -31,8 +28,8 @@ Text {
     color: Theme.inkStrong
     opacity: 0.72
     font.family: Theme.fontUi
-    font.pixelSize: 12
+    font.pixelSize: Theme.fontEyebrow
     font.weight: Font.Medium
     font.capitalization: Font.AllUppercase
-    font.letterSpacing: 1
+    font.letterSpacing: Theme.eyebrowLetterSpacing
 }

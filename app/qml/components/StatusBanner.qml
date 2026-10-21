@@ -197,7 +197,7 @@ Item {
         implicitHeight: summaryRow.implicitHeight + 16
         color: Theme.panel
         border.width: 1
-        border.color: Theme.dangerColor
+        border.color: Theme.dangerActionBorder
 
         RowLayout {
             id: summaryRow
@@ -209,9 +209,9 @@ Item {
                 Layout.fillWidth: true
                 textFormat: Text.PlainText
                 text: root.summaryText
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 font.weight: Font.Medium
                 elide: Text.ElideRight
             }
@@ -223,9 +223,9 @@ Item {
                 objectName: "statusBannerToggle"
                 textFormat: Text.PlainText
                 text: root.collapsed ? i18n("Show") : i18n("Hide")
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 font.underline: toggleArea.containsMouse
 
                 MouseArea {
@@ -281,7 +281,7 @@ Item {
                     implicitHeight: modelData.active ? bannerLabel.implicitHeight + 16 : 0
                     color: Theme.panel
                     border.width: 1
-                    border.color: Theme.dangerColor
+                    border.color: Theme.dangerActionBorder
 
                     RowLayout {
                         id: bannerLabel
@@ -293,9 +293,9 @@ Item {
                             Layout.fillWidth: true
                             textFormat: Text.PlainText
                             text: modelData.message
-                            color: Theme.dangerColor
+                            color: Theme.dangerActionText
                             font.family: Theme.fontUi
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontDate
                             wrapMode: Text.WordWrap
                             verticalAlignment: Text.AlignVCenter
                         }

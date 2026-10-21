@@ -411,7 +411,7 @@ Item {
                     text: root.displaySubject
                     color: Theme.inkStrong
                     font.family: Theme.fontUi
-                    font.pixelSize: 20
+                    font.pixelSize: Math.round(20 * Theme.fontScale)
                     font.weight: Font.Bold
                     wrapMode: Text.WordWrap
                 }
@@ -421,7 +421,7 @@ Item {
                     text: root.email.sender || ""
                     color: Theme.ink
                     font.family: Theme.fontUi
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontPreview
                     elide: Text.ElideRight
                 }
                 Text {
@@ -433,7 +433,7 @@ Item {
                     color: Theme.ink
                     opacity: 0.6
                     font.family: Theme.fontUi
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontEyebrow
                 }
             }
         }
@@ -625,7 +625,7 @@ Item {
             text: i18n("Images are hidden to protect your privacy.")
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontDate
             wrapMode: Text.WordWrap
         }
 
@@ -654,9 +654,9 @@ Item {
             visible: phishingBanner.flagged
             implicitHeight: visible ? phishingBannerLayout.implicitHeight + 24 : 0
             radius: Theme.shapePanel
-            color: Theme.dangerFillColor
+            color: Theme.dangerActionFill
             border.width: 1
-            border.color: Theme.dangerBorderColor
+            border.color: Theme.dangerActionBorder
 
             ColumnLayout {
                 id: phishingBannerLayout
@@ -671,7 +671,7 @@ Item {
                     text: i18n("This message impersonates KyPost")
                     color: Theme.inkStrong
                     font.family: Theme.fontUi
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontPreview
                     font.bold: true
                     wrapMode: Text.WordWrap
                 }
@@ -682,7 +682,7 @@ Item {
                                + "one you did not start yourself, on this device.")
                     color: Theme.ink
                     font.family: Theme.fontUi
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontDate
                     wrapMode: Text.WordWrap
                 }
             }
@@ -713,9 +713,9 @@ Item {
             radius: Theme.shapePanel
             // A problem state gets the warning accent; "the server decrypted
             // this" is disclosure, not a fault, so it stays neutral.
-            color: pgpBanner.isProblem ? Theme.dangerFillColor : Theme.panel
+            color: pgpBanner.isProblem ? Theme.dangerActionFill : Theme.panel
             border.width: 1
-            border.color: pgpBanner.isProblem ? Theme.dangerBorderColor : Theme.line
+            border.color: pgpBanner.isProblem ? Theme.dangerActionBorder : Theme.line
 
             ColumnLayout {
                 id: pgpBannerLayout
@@ -731,7 +731,7 @@ Item {
                     text: root.email.pgpBannerTitle || ""
                     color: Theme.inkStrong
                     font.family: Theme.fontUi
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontPreview
                     font.bold: true
                     wrapMode: Text.WordWrap
                 }
@@ -742,7 +742,7 @@ Item {
                     text: root.email.pgpBannerBody || ""
                     color: Theme.ink
                     font.family: Theme.fontUi
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontDate
                     wrapMode: Text.WordWrap
                 }
 
@@ -760,9 +760,9 @@ Item {
                     textFormat: Text.PlainText
                     visible: root.hasDecryptedBody && !!MailApp.decryptedSignature
                     text: MailApp.decryptedSignature || ""
-                    color: MailApp.decryptedSignatureIsWarning ? Theme.dangerBorderColor : Theme.ink
+                    color: MailApp.decryptedSignatureIsWarning ? Theme.dangerActionText : Theme.ink
                     font.family: Theme.fontUi
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontDate
                     font.bold: MailApp.decryptedSignatureIsWarning
                     wrapMode: Text.WordWrap
                 }
@@ -785,7 +785,7 @@ Item {
                     text: root.email.pgpState === 4 ? i18n("Checking signature…") : i18n("Waiting for your key…")
                     color: Theme.ink
                     font.family: Theme.fontUi
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontDate
                     wrapMode: Text.WordWrap
                 }
 
@@ -800,7 +800,7 @@ Item {
                     text: MailApp.decryptFailure || ""
                     color: Theme.ink
                     font.family: Theme.fontUi
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontDate
                     wrapMode: Text.WordWrap
                 }
 
@@ -1043,7 +1043,7 @@ Item {
                                 text: i18n("%1 (%2)", modelData.name, root.formatSize(modelData.size))
                                 color: Theme.inkStrong
                                 font.family: Theme.fontUi
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontDate
                             }
                         }
 
@@ -1077,7 +1077,7 @@ Item {
                 visible: root.attachmentStatus !== ""
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
             }
         }
         } // contentColumn

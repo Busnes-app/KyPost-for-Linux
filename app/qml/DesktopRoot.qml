@@ -397,7 +397,7 @@ Kirigami.ApplicationWindow {
                 text: i18n("Pair this device?")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 18
+                font.pixelSize: Theme.fontSubject
                 font.weight: Font.Bold
             }
             Text {
@@ -405,7 +405,7 @@ Kirigami.ApplicationWindow {
                 text: i18n("A pairing request wants to connect this device to:")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontSender
                 wrapMode: Text.WordWrap
             }
             Text {
@@ -414,7 +414,7 @@ Kirigami.ApplicationWindow {
                 text: Pairing.pendingPairOrigin
                 color: Theme.inkStrong
                 font.family: Theme.fontMono
-                font.pixelSize: 15
+                font.pixelSize: Math.round(15 * Theme.fontScale)
                 font.weight: Font.Bold
                 wrapMode: Text.WordWrap
             }
@@ -427,7 +427,7 @@ Kirigami.ApplicationWindow {
                 text: i18n("This connection is not encrypted (http).")
                 color: Theme.dangerColor
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap
             }
             Text {
@@ -435,7 +435,7 @@ Kirigami.ApplicationWindow {
                 text: i18n("Only confirm this if you expected it. Once paired, this server can deliver mail notifications to this device.")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap
             }
             RowLayout {
@@ -816,7 +816,7 @@ Kirigami.ApplicationWindow {
                     text: "KyPost" // product name -- not translated, see ApplicationWindow.title above
                     color: Theme.inkStrong
                     font.family: Theme.fontUi
-                    font.pixelSize: 16
+                    font.pixelSize: Math.round(16 * Theme.fontScale)
                     font.weight: Font.Bold
                 }
                 GhostButton {
@@ -935,7 +935,7 @@ Kirigami.ApplicationWindow {
                                 font.family: Theme.fontUi
                                 // Subfolders read as children of the mailbox
                                 // above them, not as peers.
-                                font.pixelSize: modelData.depth > 0 ? 13 : 14
+                                font.pixelSize: modelData.depth > 0 ? Theme.fontPreview : Theme.fontSender
                             }
 
                             HoverHandler {
@@ -1011,7 +1011,7 @@ Kirigami.ApplicationWindow {
                             text: i18n("Contacts")
                             color: Theme.inkStrong
                             font.family: Theme.fontUi
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fontSender
                         }
 
                         HoverHandler {
@@ -1073,7 +1073,7 @@ Kirigami.ApplicationWindow {
                             text: root.folderDisplayName(root.currentFolder)
                             color: Theme.inkStrong
                             font.family: Theme.fontUi
-                            font.pixelSize: 16
+                            font.pixelSize: Math.round(16 * Theme.fontScale)
                             font.weight: Font.Bold
                             elide: Text.ElideRight
                         }
@@ -1151,7 +1151,7 @@ Kirigami.ApplicationWindow {
                         text: MailApp.lastError
                         color: Theme.dangerColor
                         font.family: Theme.fontUi
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontDate
                         wrapMode: Text.WordWrap
                     }
 
@@ -1240,7 +1240,7 @@ Kirigami.ApplicationWindow {
                                             text: model.sender
                                             color: Theme.inkStrong
                                             font.family: Theme.fontUi
-                                            font.pixelSize: 13
+                                            font.pixelSize: Theme.fontPreview
                                             font.weight: model.unread ? Font.Bold : Font.Medium
                                             elide: Text.ElideRight
                                         }
@@ -1264,7 +1264,7 @@ Kirigami.ApplicationWindow {
                                             text: model.pgpMarker || ""
                                             color: Theme.inkStrong
                                             font.family: Theme.fontUi
-                                            font.pixelSize: 13
+                                            font.pixelSize: Theme.fontPreview
                                             // The glyph alone is announced inconsistently (or
                                             // not at all) across AT stacks, so carry the words.
                                             Accessible.role: Accessible.StaticText
@@ -1276,7 +1276,7 @@ Kirigami.ApplicationWindow {
                                             text: model.subject
                                             color: Theme.inkStrong
                                             font.family: Theme.fontUi
-                                            font.pixelSize: 13
+                                            font.pixelSize: Theme.fontPreview
                                             font.weight: model.unread ? Font.Bold : Font.Normal
                                             elide: Text.ElideRight
                                         }
@@ -1287,7 +1287,7 @@ Kirigami.ApplicationWindow {
                                         text: model.preview
                                         color: Theme.ink
                                         font.family: Theme.fontUi
-                                        font.pixelSize: 12
+                                        font.pixelSize: Theme.fontDate
                                         elide: Text.ElideRight
                                     }
                                 }

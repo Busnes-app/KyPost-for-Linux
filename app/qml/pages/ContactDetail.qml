@@ -407,7 +407,7 @@ Item {
                             text: (root.contact.fn && root.contact.fn.length > 0) ? root.contact.fn : i18n("Unnamed")
                             color: Theme.inkStrong
                             font.family: Theme.fontUi
-                            font.pixelSize: 22
+                            font.pixelSize: Math.round(22 * Theme.fontScale)
                             font.weight: Font.Bold
                             wrapMode: Text.WordWrap
                         }
@@ -446,7 +446,7 @@ Item {
                                 text: modelData.value !== "" ? modelData.value : "—"
                                 color: Theme.inkStrong
                                 font.family: Theme.fontMono
-                                font.pixelSize: 14
+                                font.pixelSize: Theme.fontSender
                                 wrapMode: Text.WordWrap
                             }
                         }
@@ -500,7 +500,7 @@ Item {
                     Layout.preferredHeight: 120
                     radius: Theme.shapeField
                     color: Theme.panel
-                    border.width: 1
+                    border.width: Theme.fieldStroke
                     border.color: notesArea.activeFocus ? Theme.accent : Theme.line
 
                     Behavior on border.color {
@@ -522,7 +522,7 @@ Item {
                             color: Theme.inkStrong
                             placeholderTextColor: Theme.ink
                             font.family: Theme.fontUi
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fontSender
                             background: null
                             selectByMouse: true
                             placeholderText: i18n("Notes…")
@@ -557,7 +557,7 @@ Item {
                     Layout.preferredHeight: 120
                     radius: Theme.shapeField
                     color: Theme.panel
-                    border.width: 1
+                    border.width: Theme.fieldStroke
                     border.color: pgpKeyField.activeFocus ? Theme.accent : Theme.line
 
                     Behavior on border.color {
@@ -579,7 +579,7 @@ Item {
                             color: Theme.inkStrong
                             placeholderTextColor: Theme.ink
                             font.family: Theme.fontMono
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontDate
                             background: null
                             selectByMouse: true
                             placeholderText: i18n("PGP Key")
@@ -720,7 +720,7 @@ Item {
                                 text: control.text
                                 color: Theme.inkStrong
                                 font.family: Theme.fontUi
-                                font.pixelSize: 14
+                                font.pixelSize: Theme.fontSender
                                 verticalAlignment: Text.AlignVCenter
                                 leftPadding: control.indicator.width + control.spacing
                             }
@@ -750,7 +750,7 @@ Item {
                     text: ContactsApp.lastError
                     color: Theme.dangerColor
                     font.family: Theme.fontUi
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontDate
                     wrapMode: Text.WordWrap
                 }
 

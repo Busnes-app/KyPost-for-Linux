@@ -47,7 +47,7 @@ Rectangle {
         text: root.text
         color: root.selected ? Theme.readableOnAccent : Theme.ink
         font.family: Theme.fontUi
-        font.pixelSize: 13
+        font.pixelSize: Theme.fontPreview
         font.weight: Font.Medium
 
         Behavior on color {

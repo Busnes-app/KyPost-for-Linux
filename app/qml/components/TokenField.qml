@@ -78,7 +78,7 @@ Item {
         anchors.fill: parent
         radius: Theme.shapeField
         color: Theme.panel
-        border.width: 1
+        border.width: Theme.fieldStroke
         border.color: inputField.activeFocus ? Theme.accent : Theme.line
 
         Behavior on border.color {
@@ -112,13 +112,13 @@ Item {
                         text: modelData.email
                         color: modelData.valid ? Theme.inkStrong : Theme.dangerColor
                         font.family: Theme.fontUi
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontDate
                     }
                     Text {
                         text: "✕"
                         color: Theme.ink
                         font.family: Theme.fontUi
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontDate
 
                         TapHandler {
                             onTapped: root.removeTokenAt(index)
@@ -134,7 +134,7 @@ Item {
             height: 24
             color: Theme.inkStrong
             font.family: Theme.fontUi
-            font.pixelSize: 14
+            font.pixelSize: Theme.fontSender
             selectByMouse: true
             clip: true
 
@@ -144,7 +144,7 @@ Item {
                 visible: inputField.text === "" && !inputField.activeFocus
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontSender
             }
 
             onTextChanged: root.queryChanged(text.trim())

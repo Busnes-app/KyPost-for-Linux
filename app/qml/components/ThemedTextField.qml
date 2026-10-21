@@ -33,7 +33,7 @@ Rectangle {
 
     radius: Theme.shapeField
     color: Theme.panel
-    border.width: 1
+    border.width: Theme.fieldStroke
     border.color: field.activeFocus ? Theme.accent : Theme.line
 
     Behavior on border.color {
@@ -51,7 +51,7 @@ Rectangle {
         color: Theme.inkStrong
         placeholderTextColor: Theme.ink
         font.family: Theme.fontUi
-        font.pixelSize: 14
+        font.pixelSize: Theme.fontSender
         selectByMouse: true
     }
 }

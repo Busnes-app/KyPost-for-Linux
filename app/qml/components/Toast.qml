@@ -39,7 +39,7 @@ Rectangle {
         text: root.text
         color: Theme.inkStrong
         font.family: Theme.fontUi
-        font.pixelSize: 12
+        font.pixelSize: Theme.fontDate
     }
 
     Timer {

@@ -106,7 +106,7 @@ Item {
                 text: i18n("Send at")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 16
+                font.pixelSize: Math.round(16 * Theme.fontScale)
                 font.bold: true
             }
 
@@ -127,7 +127,7 @@ Item {
                 text: i18n("Or pick a date and time")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
             }
 
             RowLayout {
@@ -156,7 +156,7 @@ Item {
                 text: root.error
                 color: Theme.dangerColor
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap
             }
 

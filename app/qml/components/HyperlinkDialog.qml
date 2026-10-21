@@ -87,7 +87,7 @@ Item {
                 text: i18n("Insert Link")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 16
+                font.pixelSize: Math.round(16 * Theme.fontScale)
                 font.weight: Font.Medium
             }
             ThemedTextField {
@@ -112,7 +112,7 @@ Item {
                     text: control.text
                     color: Theme.inkStrong
                     font.family: Theme.fontUi
-                    font.pixelSize: 14
+                    font.pixelSize: Theme.fontSender
                     verticalAlignment: Text.AlignVCenter
                     leftPadding: control.indicator.width + control.spacing
                 }
@@ -125,7 +125,7 @@ Item {
                 text: root.validationError
                 color: Theme.dangerColor
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap
             }
             RowLayout {

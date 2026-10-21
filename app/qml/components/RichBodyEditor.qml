@@ -165,7 +165,7 @@ Item {
             Layout.fillHeight: true
             radius: Theme.shapeField
             color: Theme.panel
-            border.width: 1
+            border.width: Theme.fieldStroke
             border.color: Theme.line
             // The actual reported bug: webView's native render surface was
             // spilling past this Rectangle's own bounds, down into the

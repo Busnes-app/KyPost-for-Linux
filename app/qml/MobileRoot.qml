@@ -630,7 +630,7 @@ Kirigami.ApplicationWindow {
                 text: MailApp.lastError
                 color: Theme.dangerColor
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap
             }
 
@@ -771,7 +771,7 @@ Kirigami.ApplicationWindow {
                                     text: model.sender
                                     color: Theme.inkStrong
                                     font.family: Theme.fontUi
-                                    font.pixelSize: 14
+                                    font.pixelSize: Theme.fontSender
                                     font.weight: model.unread ? Font.Bold : Font.Medium
                                     elide: Text.ElideRight
                                 }
@@ -784,7 +784,7 @@ Kirigami.ApplicationWindow {
                                     text: inboxPage.formatTimestamp(model.atUtc)
                                     color: Theme.ink
                                     font.family: Theme.fontUi
-                                    font.pixelSize: 11
+                                    font.pixelSize: Theme.fontEyebrow
                                 }
                             }
                             // Subject preceded by the OpenPGP marker, when there is
@@ -802,7 +802,7 @@ Kirigami.ApplicationWindow {
                                     text: model.pgpMarker || ""
                                     color: Theme.inkStrong
                                     font.family: Theme.fontUi
-                                    font.pixelSize: 13
+                                    font.pixelSize: Theme.fontPreview
                                     // The glyph alone is announced inconsistently (or
                                     // not at all) across AT stacks, so carry the words.
                                     Accessible.role: Accessible.StaticText
@@ -814,7 +814,7 @@ Kirigami.ApplicationWindow {
                                     text: model.subject
                                     color: Theme.inkStrong
                                     font.family: Theme.fontUi
-                                    font.pixelSize: 13
+                                    font.pixelSize: Theme.fontPreview
                                     font.weight: model.unread ? Font.Bold : Font.Normal
                                     elide: Text.ElideRight
                                 }
@@ -825,7 +825,7 @@ Kirigami.ApplicationWindow {
                                 text: model.preview
                                 color: Theme.ink
                                 font.family: Theme.fontUi
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontDate
                                 elide: Text.ElideRight
                             }
                         }
@@ -857,7 +857,7 @@ Kirigami.ApplicationWindow {
                             // spot.
                             color: Theme.readableOnAccent
                             font.family: Theme.fontUi
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fontSender
                             font.weight: Font.Medium
 
                             SwipeDelegate.onClicked: {
@@ -896,7 +896,7 @@ Kirigami.ApplicationWindow {
                             text: inSnoozed ? i18n("Unsnooze") : i18n("Snooze")
                             color: Theme.readableOnAccent
                             font.family: Theme.fontUi
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fontSender
                             font.weight: Font.Medium
 
                             SwipeDelegate.onClicked: {
@@ -920,7 +920,7 @@ Kirigami.ApplicationWindow {
                             text: i18n("Archive")
                             color: Theme.readableOnAccent
                             font.family: Theme.fontUi
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fontSender
                             font.weight: Font.Medium
 
                             SwipeDelegate.onClicked: {
@@ -1001,7 +1001,7 @@ Kirigami.ApplicationWindow {
                             text: Format.withUnread(modelData.displayName, MailApp.unreadCounts[modelData.wireName])
                             color: Theme.inkStrong
                             font.family: Theme.fontUi
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fontSender
                         }
 
                         TapHandler {

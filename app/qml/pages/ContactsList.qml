@@ -57,7 +57,7 @@ Item {
                 text: i18n("Contacts")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 20
+                font.pixelSize: Math.round(20 * Theme.fontScale)
                 font.weight: Font.Bold
             }
             PrimaryButton {
@@ -106,7 +106,7 @@ Item {
             text: ContactsApp.lastError !== "" ? ContactsApp.lastError : ContactsApp.statusMessage
             color: ContactsApp.lastError !== "" ? Theme.dangerColor : Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontDate
             wrapMode: Text.WordWrap
         }
 
@@ -177,7 +177,7 @@ Item {
                                 + (model.isSelf ? " · " + i18n("You") : "")
                             color: Theme.inkStrong
                             font.family: Theme.fontUi
-                            font.pixelSize: 15
+                            font.pixelSize: Math.round(15 * Theme.fontScale)
                             font.weight: Font.Medium
                             elide: Text.ElideRight
                         }
@@ -188,7 +188,7 @@ Item {
                             text: model.primaryEmail
                             color: Theme.ink
                             font.family: Theme.fontUi
-                            font.pixelSize: 13
+                            font.pixelSize: Theme.fontPreview
                             elide: Text.ElideRight
                         }
                     }

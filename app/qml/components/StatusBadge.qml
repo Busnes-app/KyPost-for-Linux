@@ -5,7 +5,8 @@ import com.kysecurity.mail 1.0
 // `.contacts-status-active/inactive`): pill-outline badge (stadium shape,
 // radius = height / 2, same convention as PillTab) with a small leading
 // circular dot. Active uses the theme-invariant success semantic colors --
-// Theme.successBorderColor for the outline + dot, Theme.successTextColor
+// Theme.successBorderColor for the outline + dot over Theme.successFillColor
+// (Android applySuccessChipTheme()), Theme.successTextColor
 // for the label, per STYLE_GUIDE's two-tone split (dot mirrors the outline
 // color, text is its own tone). Inactive deliberately does NOT use
 // Theme.dangerColor or any other semantic-color constant -- STYLE_GUIDE §1
@@ -32,7 +33,7 @@ Rectangle {
     implicitHeight: rowContent.implicitHeight + verticalPadding * 2
 
     radius: height / 2
-    color: root.active ? "transparent" : Theme.panel
+    color: root.active ? Theme.successFillColor : Theme.panel
     border.width: 1
     border.color: root.active ? Theme.successBorderColor : Theme.line
 
@@ -66,7 +67,7 @@ Rectangle {
             text: root.text
             color: root.active ? Theme.successTextColor : Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontDate
             font.weight: Font.Medium
 
             Behavior on color {

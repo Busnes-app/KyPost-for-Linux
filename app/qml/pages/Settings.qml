@@ -140,7 +140,7 @@ Item {
                 text: i18n("Settings")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 20
+                font.pixelSize: Math.round(20 * Theme.fontScale)
                 font.weight: Font.Bold
             }
             GhostButton {
@@ -184,7 +184,7 @@ Item {
                             elide: Text.ElideRight
                             color: root.currentPane === modelData.pane ? Theme.accent : Theme.ink
                             font.family: Theme.fontUi
-                            font.pixelSize: 13
+                            font.pixelSize: Theme.fontPreview
                             font.weight: root.currentPane === modelData.pane ? Font.DemiBold : Font.Normal
                         }
 
@@ -244,7 +244,7 @@ Item {
                                 text: Pairing.pairedServerHost
                                 color: Theme.inkStrong
                                 font.family: Theme.fontMono
-                                font.pixelSize: 14
+                                font.pixelSize: Theme.fontSender
                                 wrapMode: Text.WordWrap
                             }
                         }
@@ -258,7 +258,7 @@ Item {
                                 text: Pairing.deviceId
                                 color: Theme.inkStrong
                                 font.family: Theme.fontMono
-                                font.pixelSize: 14
+                                font.pixelSize: Theme.fontSender
                                 wrapMode: Text.WordWrap
                             }
                         }
@@ -355,14 +355,14 @@ Item {
                             text: modelData
                             color: Theme.inkStrong
                             font.family: Theme.fontUi
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fontSender
                         }
                         Text {
                             visible: modelData === Theme.themeName
                             text: "✓"
                             color: Theme.accent
                             font.family: Theme.fontUi
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fontSender
                             font.weight: Font.Bold
                         }
                     }
@@ -451,9 +451,9 @@ Item {
 
                             Text {
                                 text: "☰"
-                                color: Theme.inkMuted
+                                color: Theme.ink
                                 font.family: Theme.fontUi
-                                font.pixelSize: 18
+                                font.pixelSize: Theme.fontSubject
                                 Accessible.name: i18n("Drag to reorder")
                             }
 
@@ -463,7 +463,7 @@ Item {
                                 text: keyword
                                 color: Theme.inkStrong
                                 font.family: Theme.fontUi
-                                font.pixelSize: 14
+                                font.pixelSize: Theme.fontSender
                             }
                             PillTab {
                                 text: model.visible ? i18n("Visible") : i18n("Hidden")
@@ -536,7 +536,7 @@ Item {
                             : (ContactsApp.statusMessage !== "" ? ContactsApp.statusMessage : i18n("No sync yet."))
                         color: ContactsApp.lastError !== "" ? Theme.dangerColor : Theme.ink
                         font.family: Theme.fontUi
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.fontPreview
                         wrapMode: Text.WordWrap
                     }
 
@@ -583,7 +583,7 @@ Item {
                         text: i18n("Not yet registered")
                         color: Theme.ink
                         font.family: Theme.fontUi
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.fontPreview
                     }
 
                     ColumnLayout {
@@ -601,7 +601,7 @@ Item {
                                 text: Pairing.deliveryMode
                                 color: Theme.inkStrong
                                 font.family: Theme.fontMono
-                                font.pixelSize: 14
+                                font.pixelSize: Theme.fontSender
                             }
                         }
                         RowLayout {
@@ -614,7 +614,7 @@ Item {
                                 text: Pairing.transport
                                 color: Theme.inkStrong
                                 font.family: Theme.fontMono
-                                font.pixelSize: 14
+                                font.pixelSize: Theme.fontSender
                             }
                         }
                     }
@@ -706,7 +706,7 @@ Item {
                                 text: i18n("Enable Tray Icon")
                                 color: Theme.inkStrong
                                 font.family: Theme.fontUi
-                                font.pixelSize: 14
+                                font.pixelSize: Theme.fontSender
                             }
                             PillTab {
                                 text: General.trayIconEnabled ? i18n("On") : i18n("Off")
@@ -725,7 +725,7 @@ Item {
                                 text: i18n("Minimize to Tray on Close")
                                 color: Theme.inkStrong
                                 font.family: Theme.fontUi
-                                font.pixelSize: 14
+                                font.pixelSize: Theme.fontSender
                             }
                             PillTab {
                                 text: General.minimizeToTrayOnClose ? i18n("On") : i18n("Off")
@@ -776,7 +776,7 @@ Item {
                             text: i18n("Require Unlock to Open")
                             color: Theme.inkStrong
                             font.family: Theme.fontUi
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fontSender
                         }
                         PillTab {
                             text: AppLock.lockEnabled ? i18n("On") : i18n("Off")
@@ -831,7 +831,7 @@ Item {
                             text: i18n("Keep nothing on this device")
                             color: Theme.inkStrong
                             font.family: Theme.fontUi
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fontSender
                         }
                         PillTab {
                             text: AppLock.hostileLocationEnabled ? i18n("On") : i18n("Off")
@@ -863,7 +863,7 @@ Item {
                             text: i18n("Lock after")
                             color: Theme.inkStrong
                             font.family: Theme.fontUi
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fontSender
                         }
                         Flow {
                             Layout.fillWidth: true
@@ -918,7 +918,7 @@ Item {
                             text: i18n("Erase this device after")
                             color: Theme.inkStrong
                             font.family: Theme.fontUi
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fontSender
                         }
                         Flow {
                             Layout.fillWidth: true
@@ -987,7 +987,7 @@ Item {
                             textFormat: Text.PlainText
                             color: Theme.inkStrong
                             font.family: Theme.fontMono
-                            font.pixelSize: 20
+                            font.pixelSize: Math.round(20 * Theme.fontScale)
                             font.letterSpacing: 2
                         }
                     }
@@ -1034,7 +1034,7 @@ Item {
                             text: i18n("Require unlock to receive push and MFA")
                             color: Theme.inkStrong
                             font.family: Theme.fontUi
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fontSender
                         }
                         PillTab {
                             text: AppLock.credentialPinGateEnabled ? i18n("On") : i18n("Off")
@@ -1058,9 +1058,9 @@ Item {
                         Layout.fillWidth: true
                         implicitHeight: pushWarningText.implicitHeight + 24
                         radius: Theme.shapePanel
-                        color: Theme.dangerFillColor
+                        color: Theme.dangerActionFill
                         border.width: 1
-                        border.color: Theme.dangerBorderColor
+                        border.color: Theme.dangerActionBorder
 
                         Text {
                             id: pushWarningText
@@ -1071,7 +1071,7 @@ Item {
                             text: i18n("This pairing predates push encryption: notifications send the sender and subject through a relay server (UnifiedPush/ntfy) in the clear, even with the settings above enabled. Pair this device again to encrypt them, or ask your server admin to switch it to Pull mode. Sign-in approvals reach this device only after it is paired again.")
                             color: Theme.ink
                             font.family: Theme.fontUi
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontDate
                             wrapMode: Text.WordWrap
                         }
                     }
@@ -1152,7 +1152,7 @@ Item {
                 text: securityPrompt.headingText
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontSender
                 font.bold: true
                 wrapMode: Text.WordWrap
             }
@@ -1212,7 +1212,7 @@ Item {
                 text: securityPrompt.errorText
                 color: Theme.dangerColor
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap
             }
 

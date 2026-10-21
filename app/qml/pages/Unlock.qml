@@ -68,7 +68,7 @@ Item {
             text: i18n("KyPost is locked")
             color: Theme.inkStrong
             font.family: Theme.fontUi
-            font.pixelSize: 20
+            font.pixelSize: Math.round(20 * Theme.fontScale)
             font.bold: true
             horizontalAlignment: Text.AlignHCenter
         }
@@ -79,7 +79,7 @@ Item {
             text: i18n("Enter your PIN to continue.")
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontPreview
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }
@@ -97,7 +97,7 @@ Item {
                        + "restart KyPost.")
             color: Theme.dangerColor
             font.family: Theme.fontUi
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontPreview
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }
@@ -133,7 +133,7 @@ Item {
             text: root.errorText
             color: Theme.dangerColor
             font.family: Theme.fontUi
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontDate
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }
@@ -145,7 +145,7 @@ Item {
             text: i18n("Too many attempts. Try again in %1 seconds.", root.secondsLeft)
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontDate
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }
@@ -158,7 +158,7 @@ Item {
             text: i18n("Warning: after 10 failed attempts, all local data is erased.")
             color: Theme.dangerColor
             font.family: Theme.fontUi
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontDate
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }

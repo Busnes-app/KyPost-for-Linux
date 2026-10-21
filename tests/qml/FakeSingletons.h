@@ -114,19 +114,63 @@ class FakeTheme : public QObject
     Q_PROPERTY(QColor dangerFillColor MEMBER m_colour CONSTANT)
     Q_PROPERTY(QColor dangerBorderColor MEMBER m_colour CONSTANT)
     Q_PROPERTY(QColor readableOnAccent MEMBER m_colour CONSTANT)
+    Q_PROPERTY(QColor accentSoft MEMBER m_colour CONSTANT)
+    Q_PROPERTY(QColor warningColor MEMBER m_colour CONSTANT)
+    Q_PROPERTY(QColor successBorderColor MEMBER m_colour CONSTANT)
+    Q_PROPERTY(QColor successTextColor MEMBER m_colour CONSTANT)
+    Q_PROPERTY(QColor successFillColor MEMBER m_colour CONSTANT)
+    Q_PROPERTY(QColor dangerActionFill MEMBER m_colour CONSTANT)
+    Q_PROPERTY(QColor dangerActionBorder MEMBER m_colour CONSTANT)
+    Q_PROPERTY(QColor dangerActionText MEMBER m_colour CONSTANT)
+    Q_PROPERTY(QColor warningActionFill MEMBER m_colour CONSTANT)
+    Q_PROPERTY(QColor warningActionBorder MEMBER m_colour CONSTANT)
+    Q_PROPERTY(QColor warningActionText MEMBER m_colour CONSTANT)
+    // Distinct, so a test can tell which stop is which.
+    Q_PROPERTY(QColor avatarStart MEMBER m_avatarStart CONSTANT)
+    Q_PROPERTY(QColor avatarEnd MEMBER m_avatarEnd CONSTANT)
+    Q_PROPERTY(QColor avatarBorder MEMBER m_avatarBorder CONSTANT)
+    Q_PROPERTY(QString themeName MEMBER m_themeName CONSTANT)
+    Q_PROPERTY(QStringList themeNames MEMBER m_themeNames CONSTANT)
     Q_PROPERTY(QString fontUi MEMBER m_font CONSTANT)
     Q_PROPERTY(QString fontMono MEMBER m_font CONSTANT)
     Q_PROPERTY(int shapeField MEMBER m_shape CONSTANT)
     Q_PROPERTY(int shapeSheet MEMBER m_shape CONSTANT)
     Q_PROPERTY(int shapeButton MEMBER m_shape CONSTANT)
+    Q_PROPERTY(int shapePanel MEMBER m_shape CONSTANT)
+    Q_PROPERTY(int shapeEmptyState MEMBER m_shape CONSTANT)
+    Q_PROPERTY(int fieldStroke MEMBER m_fieldStroke CONSTANT)
+    // The real type scale at a stock 10 pt system font.
+    Q_PROPERTY(double fontScale MEMBER m_fontScale CONSTANT)
+    Q_PROPERTY(int fontWordmark MEMBER m_fontWordmark CONSTANT)
+    Q_PROPERTY(int fontSubject MEMBER m_fontSubject CONSTANT)
+    Q_PROPERTY(int fontSender MEMBER m_fontSender CONSTANT)
+    Q_PROPERTY(int fontPreview MEMBER m_fontPreview CONSTANT)
+    Q_PROPERTY(int fontDate MEMBER m_fontDate CONSTANT)
+    Q_PROPERTY(int fontEyebrow MEMBER m_fontEyebrow CONSTANT)
+    Q_PROPERTY(double eyebrowLetterSpacing MEMBER m_eyebrowLetterSpacing CONSTANT)
 
 public:
     using QObject::QObject;
+    Q_INVOKABLE void setTheme(const QString&) { }
 
 private:
     QColor m_colour = QColor(QStringLiteral("#202020"));
+    QColor m_avatarStart = QColor(QStringLiteral("#bf3f18"));
+    QColor m_avatarEnd = QColor(QStringLiteral("#e65124"));
+    QColor m_avatarBorder = QColor(QStringLiteral("#123456"));
+    QString m_themeName = QStringLiteral("Follow system");
+    QStringList m_themeNames = {QStringLiteral("Follow system")};
     QString m_font = QStringLiteral("sans-serif");
     int m_shape = 4;
+    int m_fieldStroke = 2;
+    double m_fontScale = 1.0;
+    int m_fontWordmark = 32;
+    int m_fontSubject = 18;
+    int m_fontSender = 14;
+    int m_fontPreview = 13;
+    int m_fontDate = 12;
+    int m_fontEyebrow = 11;
+    double m_eyebrowLetterSpacing = 0.88;
 };
 
 class FakeGeneral : public QObject

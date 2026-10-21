@@ -70,7 +70,7 @@ ColumnLayout {
                 text: modelData.value
                 color: modelData.name === "errorRow" ? Theme.dangerColor : Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontSender
                 wrapMode: Text.WordWrap
             }
         }
@@ -95,7 +95,7 @@ ColumnLayout {
                 + (modelData.subject !== "" ? modelData.subject : i18n("(message not synced yet)"))
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontPreview
             elide: Text.ElideRight
             TapHandler { onTapped: root.openRequested(modelData.messageId) }
         }

@@ -103,7 +103,7 @@ Item {
                 text: i18n("Which copy do you want?")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 16
+                font.pixelSize: Math.round(16 * Theme.fontScale)
                 font.bold: true
                 wrapMode: Text.WordWrap
             }
@@ -117,7 +117,7 @@ Item {
                 text: i18n("This message is in more than one mailbox, and the notification didn't say which one it came from.")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap
             }
 

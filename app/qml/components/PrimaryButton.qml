@@ -39,7 +39,7 @@ Rectangle {
         text: root.text
         color: Theme.readableOnAccent
         font.family: Theme.fontUi
-        font.pixelSize: 15
+        font.pixelSize: Math.round(15 * Theme.fontScale)
         font.weight: Font.Medium
     }
 
