@@ -26,6 +26,10 @@ Item {
     // Either way the HTML enters the editor only through seedScript's clean().
     // False escapes initialBody as plain text.
     property bool initialBodyIsHtml: false
+    // Why the quote or attachments were left out (EmailDetail's quoteNotice,
+    // or a forward session's own). Shown until dismissed.
+    property string initialNotice: ""
+    property string notice: ""
     // {messageId, mailbox} of the message a reply answers (EmailDetail's
     // replyReference()), sent so the relay threads it; {} otherwise.
     property var replyTo: ({})
@@ -172,6 +176,7 @@ Item {
         seedTokensFromString(bccField, root.restoredDraft.bcc || "")
         root.attachmentPaths = root.restoredDraft.paths || []
         subjectField.text = root.restoredDraft.subject || root.initialSubject
+        root.notice = root.restoredDraft.notice || root.initialNotice
         // Every path goes through loadInitialHtml, so through seedScript's
         // clean(): a quote of sender HTML never reaches the live page uncleaned.
         bodyEditor.loadInitialHtml(root.restoredDraft.token ? root.restoredDraft.body
@@ -656,6 +661,27 @@ Item {
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontSender
             wrapMode: Text.WordWrap
+        }
+
+        RowLayout {
+            objectName: "composeNotice"
+            Layout.fillWidth: true
+            visible: root.notice !== ""
+            spacing: 8
+            Text {
+                Layout.fillWidth: true
+                textFormat: Text.PlainText
+                text: root.notice
+                color: Theme.inkStrong
+                font.family: Theme.fontUi
+                font.pixelSize: Theme.fontSender
+                wrapMode: Text.WordWrap
+            }
+            IconButton {
+                icon: "close"
+                tooltip: i18n("Dismiss")
+                onClicked: root.notice = ""
+            }
         }
 
         Text {

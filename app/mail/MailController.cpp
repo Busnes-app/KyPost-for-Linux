@@ -2974,7 +2974,7 @@ QVariantMap MailController::reopenDraft(const QString& folder, const QString& me
 
 bool MailController::forwardWithAttachments(const QString& mailbox, const QString& messageId,
                                             const QVariantList& attachments, const QString& subject,
-                                            const QString& bodyHtml)
+                                            const QString& bodyHtml, const QString& notice)
 {
     if (m_appLocked || m_forwardInFlight || attachments.isEmpty())
         return false;
@@ -2995,11 +2995,13 @@ bool MailController::forwardWithAttachments(const QString& mailbox, const QStrin
     // reader showed.
     QVector<MimeAttachment> listed;
     QVector<int> indexes;
+    QVector<qint64> sizes;
     for (const QVariant& entry : attachments) {
         const QVariantMap map = entry.toMap();
         listed.append({ safeAttachmentName(map.value(QStringLiteral("name")).toString()),
                         map.value(QStringLiteral("mimeType")).toString(), QString(), QByteArray() });
         indexes.append(map.value(QStringLiteral("index")).toInt());
+        sizes.append(map.value(QStringLiteral("size")).toLongLong());
     }
 
     struct Fetched {
@@ -3011,7 +3013,7 @@ bool MailController::forwardWithAttachments(const QString& mailbox, const QStrin
     pushBusy();
     m_executor.run(
         this,
-        [serverBaseUrl, auth, mailbox, messageId, listed, indexes](HttpClient& http) {
+        [serverBaseUrl, auth, mailbox, messageId, listed, indexes, sizes](HttpClient& http) {
             // readAttachments' cap. Checked as each arrives, so no more than
             // the cap plus one attachment is ever held; one that would push
             // the total over is refused, never one already kept.
@@ -3020,6 +3022,11 @@ bool MailController::forwardWithAttachments(const QString& mailbox, const QStrin
             Fetched out;
             qint64 total = 0;
             for (qsizetype i = 0; i < listed.size(); ++i) {
+                // The listing already says it cannot fit: not worth fetching.
+                if (total + sizes[i] > kMaxForwardBytes) {
+                    ++out.tooLarge;
+                    continue;
+                }
                 const DownloadAttachmentResult result =
                     source.downloadAttachment(serverBaseUrl, auth, mailbox, messageId, indexes[i]);
                 if (result.error.has_value()) {
@@ -3037,7 +3044,7 @@ bool MailController::forwardWithAttachments(const QString& mailbox, const QStrin
             }
             return out;
         },
-        [this, requestedBy, generation, subject, bodyHtml](const Fetched& fetched) {
+        [this, requestedBy, generation, subject, bodyHtml, notice](const Fetched& fetched) {
             popBusy();
             m_forwardInFlight = false;
             // The bytes belong to the account and the unlocked session that
@@ -3057,15 +3064,19 @@ bool MailController::forwardWithAttachments(const QString& mailbox, const QStrin
                 paths.append(path);
                 names.insert(path, m_draftAttachments[i].name);
             }
+            // In the session, not lastError: a later refresh would clear
+            // that while the user is still writing.
             QStringList notices;
+            if (!notice.isEmpty())
+                notices.append(notice);
             if (fetched.failed > 0)
                 notices.append(i18np("%1 attachment could not be downloaded and is not included.",
                                      "%1 attachments could not be downloaded and are not included.", fetched.failed));
             if (fetched.tooLarge > 0)
                 notices.append(i18np("%1 attachment is too large to forward and is not included.",
                                      "%1 attachments are too large to forward and are not included.", fetched.tooLarge));
-            setLastError(notices.join(QLatin1Char(' ')));
             emit forwardComposeRequested({ { QStringLiteral("token"), m_draftToken },
+                                           { QStringLiteral("notice"), notices.join(QLatin1Char(' ')) },
                                            { QStringLiteral("subject"), subject },
                                            { QStringLiteral("body"), bodyHtml },
                                            { QStringLiteral("paths"), paths },

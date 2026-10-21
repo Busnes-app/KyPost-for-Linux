@@ -319,9 +319,11 @@ public slots:
     // emits forwardComposeRequested with an in-memory draft session that has
     // no source to replace. False when refused before any request: locked,
     // one already in flight, unpaired, or a client-protected message.
+    // `notice` (why the quote was left out, or "") leads the session's own
+    // notice about attachments that could not come along.
     Q_INVOKABLE bool forwardWithAttachments(const QString& mailbox, const QString& messageId,
                                             const QVariantList& attachments, const QString& subject,
-                                            const QString& bodyHtml);
+                                            const QString& bodyHtml, const QString& notice = QString());
 
     // Debounced by kSearchDebounceMs. Text the relay would refuse (blank, or
     // over its byte limit) clears the results instead of searching. Ignored

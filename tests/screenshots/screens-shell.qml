@@ -37,6 +37,13 @@ QtObject {
             root.openCompose(detail.extractAddress(detail.email.sender), detail.withPrefix(detail.email.subject, "Re:"),
                              detail.replyQuote(), detail.replyReference())
         }},
+        // A forward that could not carry everything says so until dismissed.
+        {name: "forward-notice", setup: function (root) {
+            root.openRestoredDraft({ token: "fwd", subject: "Fwd: Q4 roadmap draft", forwarded: true,
+                body: "<br><br><div>---------- Forwarded message ----------</div><div>From: Jordan Ellis</div><div>Subject: Q4 roadmap draft</div><br>Thanks for pulling this together.",
+                paths: ["kypost-draft:0"], names: { "kypost-draft:0": "roadmap.pdf" },
+                notice: "1 attachment is too large to forward and is not included." })
+        }},
         {name: "compose-empty", setup: function (root) { root.navigate("compose") }},
         {name: "contacts-list", setup: function (root) { root.navigate("contacts") }},
         {name: "contact-detail", setup: function (root) { root.navigate("contacts"); root.selectContact("c4") }},

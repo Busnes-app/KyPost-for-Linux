@@ -31,7 +31,8 @@ Item {
 
     signal draftRequested(var draft)
     // replyTo: {messageId, mailbox} for Reply/Reply All, {} for Forward.
-    signal composeRequested(string to, string subject, string body, var replyTo)
+    // notice: why the quote or attachments were left out, or "".
+    signal composeRequested(string to, string subject, string body, var replyTo, string notice)
     signal actionCompleted(string action) // action: "archive" | "junk" | "delete" | "move"
     // Detach into a standalone top-level window (Desktop mode only -- see
     // the pop-out IconButton below, gated on General.isDesktopMode). The
@@ -53,6 +54,8 @@ Item {
     readonly property var visibleAttachments: root.hasProtectedMessage ? MailApp.decryptedAttachments : root.attachments
     readonly property string localImageBase: root.hasProtectedMessage ? MailApp.decryptedImageBase : ""
     property string attachmentStatus: ""
+    // A Forward is downloading this message's attachments.
+    property bool forwarding: false
     // Remote images are blocked by default (see WebEngineView's
     // settings.autoLoadImages below) -- true once the user has explicitly
     // opted in via the "Show images" affordance, for the message currently
@@ -190,6 +193,13 @@ Item {
                 root.reload()
         }
 
+        function onIsBusyChanged() {
+            if (root.forwarding && !MailApp.isBusy) {
+                root.forwarding = false
+                root.attachmentStatus = ""
+            }
+        }
+
         function onAttachmentsListed(mailbox, messageId, attachments) {
             if (mailbox === root.folder && messageId === root.messageId)
                 root.attachments = attachments
@@ -272,6 +282,16 @@ Item {
     // tests/qml/tst_AddressText.qml for why a display name must never win.
     function extractAddress(raw) {
         return Format.addressFromHeader(raw)
+    }
+
+    // What the composer says about a quote or attachments left out.
+    function quoteNotice(attachmentsLeftOut) {
+        switch (Format.quoteWithheld(root.email, root.hasDecryptedBody)) {
+        case "protected": return i18n("Protected content is not quoted or attached.")
+        case "unloaded": return i18n("The original message is not quoted: its text had not loaded yet.")
+        case "tooLarge": return i18n("The original message is too long to quote.")
+        }
+        return attachmentsLeftOut ? i18n("The original's attachments are not included.") : ""
     }
 
     // Reply and Reply All quote the real body, as HTML for Compose's seedScript.
@@ -434,7 +454,7 @@ Item {
                     onClicked: {
                         const to = root.extractAddress(root.email.sender)
                         const subject = root.withPrefix(root.displaySubject, "Re:")
-                        root.composeRequested(to, subject, root.replyQuote(), root.replyReference())
+                        root.composeRequested(to, subject, root.replyQuote(), root.replyReference(), root.quoteNotice(false))
                     }
                 }
                 IconButton {
@@ -444,7 +464,7 @@ Item {
                     onClicked: {
                         const to = MailApp.replyAllRecipients(root.email.sender || "", root.email.sentTo || "", root.email.cc || "")
                         const subject = root.withPrefix(root.displaySubject, "Re:")
-                        root.composeRequested(to.join(", "), subject, root.replyQuote(), root.replyReference())
+                        root.composeRequested(to.join(", "), subject, root.replyQuote(), root.replyReference(), root.quoteNotice(false))
                     }
                 }
                 IconButton {
@@ -459,9 +479,13 @@ Item {
                         // Attachments arrive through forwardComposeRequested,
                         // which AppShell opens. Never a decrypted message's.
                         if (root.attachments.length > 0 && !root.hasDecryptedBody && root.email.pgpState !== 1
-                                && MailApp.forwardWithAttachments(root.folder, root.messageId, root.attachments, subject, body))
+                                && MailApp.forwardWithAttachments(root.folder, root.messageId, root.attachments, subject, body,
+                                                                  root.quoteNotice(false))) {
+                            root.forwarding = true
+                            root.attachmentStatus = i18n("Downloading attachments to forward…")
                             return
-                        root.composeRequested("", subject, body, ({}))
+                        }
+                        root.composeRequested("", subject, body, ({}), root.quoteNotice(root.attachments.length > 0))
                     }
                 }
         }

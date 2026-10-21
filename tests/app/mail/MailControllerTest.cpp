@@ -3952,9 +3952,12 @@ void MailControllerTest::aForwardSaysWhichAttachmentsItCouldNotCarry()
                  QStringLiteral("second.pdf"));
         QCOMPARE(f.controller.m_draftAttachments.size(), 1);
         QCOMPARE(f.controller.m_draftAttachments.at(0).data, QByteArray("second-bytes"));
-        QVERIFY2(f.controller.lastError().contains(QStringLiteral("1 attachment could not be downloaded")),
-                 qPrintable(f.controller.lastError()));
-        QVERIFY(!f.controller.lastError().contains(QStringLiteral("too large")));
+        // In the session, which Compose shows until dismissed; a refresh
+        // clears lastError while the user is still writing.
+        const QString notice = draft.value(QStringLiteral("notice")).toString();
+        QVERIFY2(notice.contains(QStringLiteral("1 attachment could not be downloaded")), qPrintable(notice));
+        QVERIFY(!notice.contains(QStringLiteral("too large")));
+        QVERIFY(f.controller.lastError().isEmpty());
     }
     {
         // 13 MB + 13 MB passes the 25 MB send cap: the second is refused,
@@ -3969,14 +3972,36 @@ void MailControllerTest::aForwardSaysWhichAttachmentsItCouldNotCarry()
                                                     QStringLiteral("Fwd"), QString()));
         QTRY_VERIFY_WITH_TIMEOUT(opened.count() == 1, 20000);
         f.executor.shutdown();
-        QCOMPARE(opened.at(0).at(0).toMap().value(QStringLiteral("paths")).toStringList(),
-                 QStringList{ QStringLiteral("kypost-draft:0") });
+        const QVariantMap draft = opened.at(0).at(0).toMap();
+        QCOMPARE(draft.value(QStringLiteral("paths")).toStringList(), QStringList{ QStringLiteral("kypost-draft:0") });
         QCOMPARE(f.controller.m_draftAttachments.size(), 1);
         QCOMPARE(f.controller.m_draftAttachments.at(0).name, QStringLiteral("first.txt"));
         QVERIFY(f.controller.m_draftAttachments.at(0).data == first);
-        QVERIFY2(f.controller.lastError().contains(QStringLiteral("1 attachment is too large")),
-                 qPrintable(f.controller.lastError()));
-        QVERIFY(!f.controller.lastError().contains(QStringLiteral("could not be downloaded")));
+        const QString notice = draft.value(QStringLiteral("notice")).toString();
+        QVERIFY2(notice.contains(QStringLiteral("1 attachment is too large")), qPrintable(notice));
+        QVERIFY(!notice.contains(QStringLiteral("could not be downloaded")));
+    }
+    {
+        // A listed size past what is left is refused without a download, and
+        // the caller's quote notice leads the session's own.
+        FakeRelayServer fake(httpResponse(200, "OK", "{}"));
+        serveTwoAttachments(fake, "first-bytes", "second-bytes");
+        RefreshFixture f(fake.port());
+        QVERIFY(f.emailDao.insertOrReplace(forwardable()));
+        QVariantList listed = twoListed();
+        QVariantMap second = listed.at(1).toMap();
+        second.insert(QStringLiteral("size"), 26LL * 1024 * 1024);
+        listed[1] = second;
+        QSignalSpy opened(&f.controller, &MailController::forwardComposeRequested);
+        QVERIFY(f.controller.forwardWithAttachments(QStringLiteral("INBOX"), QStringLiteral("f1"), listed,
+                                                    QStringLiteral("Fwd"), QString(), QStringLiteral("Quote note.")));
+        QTRY_VERIFY_WITH_TIMEOUT(opened.count() == 1, 10000);
+        f.executor.shutdown();
+        QCOMPARE(requestsMatching(fake, "index=0"), 1);
+        QCOMPARE(requestsMatching(fake, "index=1"), 0);
+        QCOMPARE(f.controller.m_draftAttachments.size(), 1);
+        const QString notice = opened.at(0).at(0).toMap().value(QStringLiteral("notice")).toString();
+        QVERIFY2(notice.startsWith(QStringLiteral("Quote note. 1 attachment is too large")), qPrintable(notice));
     }
 }
 

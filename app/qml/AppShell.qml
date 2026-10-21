@@ -157,11 +157,12 @@ Kirigami.ApplicationWindow {
 
     // Seeds composeSeed BEFORE flipping detailMode: the compose Loader reads
     // the seed only when it instantiates a fresh Compose.
-    function openCompose(to, subject, body, replyTo) {
+    function openCompose(to, subject, body, replyTo, notice) {
         if (root.destination === "settings")
             root.destination = "inbox"
         root.detailMode = "empty" // recreate the editor before applying another seed
-        root.composeSeed = { to: to || "", subject: subject || "", body: body || "", replyTo: replyTo || ({}) }
+        root.composeSeed = { to: to || "", subject: subject || "", body: body || "", replyTo: replyTo || ({}),
+                             notice: notice || "" }
         root.detailMode = "compose"
     }
 
@@ -261,7 +262,15 @@ Kirigami.ApplicationWindow {
 
         // A Forward whose attachments are now held in memory (EmailDetail's
         // Forward). Here, not in EmailDetail: the reader may have moved on.
-        function onForwardComposeRequested(draft) { root.openRestoredDraft(draft) }
+        // Never over a message already being written: that would lose it.
+        function onForwardComposeRequested(draft) {
+            if (root.detailMode === "compose") {
+                MailApp.releaseDraft(draft.token)
+                sendWarningToast.show(i18n("The forward was not opened: finish or close the message you are writing first."))
+                return
+            }
+            root.openRestoredDraft(draft)
+        }
 
         function onNotificationEmailResolved(messageId, folder) {
             // Empty folder: not found even after a refresh. MailController
@@ -603,6 +612,7 @@ Kirigami.ApplicationWindow {
             initialBody: root.composeSeed.body
             initialBodyIsHtml: true // EmailDetail's quotes; seedScript cleans them
             replyTo: root.composeSeed.replyTo || ({})
+            initialNotice: root.composeSeed.notice || ""
             onSendSucceeded: root.closeDetail()
             onPopOutRequested: function (to, subject, body, bodyIsHtml, replyTo) {
                 root.popOutCompose(to, subject, body, bodyIsHtml, replyTo)
@@ -654,7 +664,7 @@ Kirigami.ApplicationWindow {
                 folder: emailWindow.popFolder
                 isPoppedOut: true
                 onDraftRequested: function (draft) { root.openRestoredDraft(draft) }
-                onComposeRequested: function (to, subject, body, replyTo) { root.openCompose(to, subject, body, replyTo) }
+                onComposeRequested: function (to, subject, body, replyTo, notice) { root.openCompose(to, subject, body, replyTo, notice) }
                 onActionCompleted: emailWindow.close()
             }
 
@@ -1060,7 +1070,7 @@ Kirigami.ApplicationWindow {
                             messageId: root.detailMode === "email" ? root.selectedMessageId : ""
                             folder: root.detailMode === "email" ? root.selectedEmailFolder : ""
                             onDraftRequested: function (draft) { root.openRestoredDraft(draft) }
-                            onComposeRequested: function (to, subject, body, replyTo) { root.openCompose(to, subject, body, replyTo) }
+                            onComposeRequested: function (to, subject, body, replyTo, notice) { root.openCompose(to, subject, body, replyTo, notice) }
                             onActionCompleted: root.closeDetail()
                             onPopOutRequested: root.popOutEmail(root.selectedMessageId, root.selectedEmailFolder)
                         }

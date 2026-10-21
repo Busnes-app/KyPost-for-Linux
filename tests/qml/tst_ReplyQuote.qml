@@ -40,9 +40,10 @@ TestCase {
         verify(html.indexOf("<div>Subject: 1 &lt; 2 &amp; more</div><br><p>body</p>") >= 0, html)
     }
 
-    // Attribution only: nothing to quote, too long to clean, or only a preview.
+    // Attribution only, with no empty quote bar: nothing to quote, too long
+    // to clean, or only a preview.
     function test_noQuotedContentWithoutAQuotableBody() {
-        const attributionOnly = "<br><br><div>me wrote:</div><blockquote></blockquote>"
+        const attributionOnly = "<br><br><div>me wrote:</div>"
         compare(Format.replyQuoteHtml("me wrote:", Format.quotedBodyHtml({ body: "", bodyMode: "plain" }, false)),
                 attributionOnly)
         compare(Format.replyQuoteHtml("me wrote:", Format.quotedBodyHtml({}, false)), attributionOnly)
@@ -62,12 +63,43 @@ TestCase {
         compare(Format.quotedBodyHtml({ body: "cached", bodyMode: "plain", pgpState: 0 }, false), "cached")
     }
 
+    // The composer says why a quote is missing, instead of leaving the user to guess.
+    function test_aWithheldQuoteHasAReason() {
+        compare(Format.quoteWithheld({ body: "x", pgpState: 1 }, false), "protected")
+        compare(Format.quoteWithheld({ body: "x", pgpState: 0 }, true), "protected")
+        compare(Format.quoteWithheld({ body: "", bodyPending: true }, false), "unloaded")
+        compare(Format.quoteWithheld({ body: "x".repeat(524289) }, false), "tooLarge")
+        compare(Format.quoteWithheld({ body: "x".repeat(524288) }, false), "")
+        compare(Format.quoteWithheld({ body: "" }, false), "")
+        const detail = source("qrc:/qml/pages/EmailDetail.qml")
+        verify(detail.indexOf('case "protected": return i18n("Protected content is not quoted or attached.")') !== -1)
+        verify(detail.indexOf('root.composeRequested("", subject, body, ({}), root.quoteNotice(root.attachments.length > 0))') !== -1)
+        const compose = source("qrc:/qml/pages/Compose.qml")
+        verify(compose.indexOf("root.notice = root.restoredDraft.notice || root.initialNotice") !== -1)
+        verify(compose.indexOf("onClicked: root.notice = \"\"") !== -1)
+        const shell = source("qrc:/qml/AppShell.qml")
+        verify(shell.indexOf('initialNotice: root.composeSeed.notice || ""') !== -1)
+    }
+
+    // A finished forward never replaces a message the user is writing.
+    function test_aForwardNeverReplacesAnOpenComposer() {
+        const shell = source("qrc:/qml/AppShell.qml")
+        const start = shell.indexOf("function onForwardComposeRequested(draft) {")
+        verify(start !== -1)
+        const handler = shell.slice(start, shell.indexOf("root.openRestoredDraft(draft)", start))
+        verify(handler.indexOf('if (root.detailMode === "compose") {') !== -1, handler)
+        verify(handler.indexOf("MailApp.releaseDraft(draft.token)") !== -1, handler)
+        verify(handler.indexOf("return") !== -1, handler)
+        const detail = source("qrc:/qml/pages/EmailDetail.qml")
+        verify(detail.indexOf('root.attachmentStatus = i18n("Downloading attachments to forward…")') !== -1)
+    }
+
     function test_theReaderNeverRendersOrQuotesThePreview() {
         const detail = source("qrc:/qml/pages/EmailDetail.qml")
         verify(detail.indexOf("email.preview") === -1)
         compare(detail.split("Format.quotedBodyHtml(root.email, root.hasDecryptedBody)").length - 1, 2)
-        verify(detail.indexOf("root.composeRequested(to, subject, root.replyQuote(), root.replyReference())") !== -1)
-        verify(detail.indexOf("root.composeRequested(to.join(\", \"), subject, root.replyQuote(), root.replyReference())") !== -1)
+        verify(detail.indexOf("root.composeRequested(to, subject, root.replyQuote(), root.replyReference(), root.quoteNotice(false))") !== -1)
+        verify(detail.indexOf("root.composeRequested(to.join(\", \"), subject, root.replyQuote(), root.replyReference(), root.quoteNotice(false))") !== -1)
         verify(detail.indexOf("const body = Format.forwardQuoteHtml(") !== -1)
         // Forward attachments are refused for protected messages before any download.
         verify(detail.indexOf("root.attachments.length > 0 && !root.hasDecryptedBody && root.email.pgpState !== 1") !== -1)
@@ -77,7 +109,8 @@ TestCase {
     function test_quotesEnterTheEditorThroughSeedScript() {
         const shell = source("qrc:/qml/AppShell.qml")
         verify(shell.indexOf("initialBody: root.composeSeed.body\n            initialBodyIsHtml: true") !== -1)
-        verify(shell.indexOf("function onForwardComposeRequested(draft) { root.openRestoredDraft(draft) }") !== -1)
+        verify(shell.indexOf("function onForwardComposeRequested(draft) {") !== -1)
+        verify(shell.indexOf("            root.openRestoredDraft(draft)\n        }") !== -1)
         const compose = source("qrc:/qml/pages/Compose.qml")
         verify(compose.indexOf("quotedInitialBodyHtml") === -1)
         verify(compose.indexOf("bodyEditor.loadInitialHtml(root.restoredDraft.token ? root.restoredDraft.body\n"

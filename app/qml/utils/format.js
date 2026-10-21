@@ -137,10 +137,26 @@ function quotedBodyHtml(email, locallyDecrypted) {
     return emailBodyIsHtml(email.bodyMode, body) ? body : escapeHtml(body).replace(/\n/g, "<br>")
 }
 
+// Why quotedBodyHtml() gave nothing, so the composer can say so:
+// "protected", "unloaded" (a body fetched on open, not here yet), "tooLarge",
+// or "" when there is nothing to explain.
+function quoteWithheld(email, locallyDecrypted) {
+    if (!email)
+        return ""
+    if (locallyDecrypted || email.pgpState === 1)
+        return "protected"
+    if (email.bodyPending)
+        return "unloaded"
+    var body = email.body === undefined || email.body === null ? "" : String(email.body)
+    return body.length > maxQuotedBodyLength ? "tooLarge" : ""
+}
+
 // Android's quoteForReply / quoteForForward. The text lines arrive already
 // translated and are escaped here; `quoted` is quotedBodyHtml()'s result.
+// Nothing quoted means no empty quote bar in the draft.
 function replyQuoteHtml(attribution, quoted) {
-    return "<br><br><div>" + escapeHtml(attribution) + "</div><blockquote>" + quoted + "</blockquote>"
+    return "<br><br><div>" + escapeHtml(attribution) + "</div>"
+        + (quoted === "" ? "" : "<blockquote>" + quoted + "</blockquote>")
 }
 
 function forwardQuoteHtml(heading, fromLine, subjectLine, quoted) {
