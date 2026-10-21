@@ -183,8 +183,8 @@ core/       — libkypostcore: models, SQLite DAOs, stores, relay networking, do
               repositories, theme data. QtCore/QtNetwork/QtSql only — no QtGui/QtQuick/
               QtDBus/KUnifiedPush/KNotifications.
 app/        — main.cpp, push/ (KUnifiedPush + KNotifications glue), platform/ (SecureStore
-              backends), pgp/, contacts/, mail/, pairing/, qml/ (MobileRoot, DesktopRoot,
-              pages, reusable components)
+              backends), pgp/, contacts/, mail/, pairing/, qml/ (AppShell, pages,
+              reusable components, bundled icons)
 tests/      — QtTest, stubbed HttpClient/FakeRelayServer; ctest-driven, plus the QML suite
               (QmlTests) and tests/guards.tsv, the list of security guards proven load-bearing
 packaging/  — flatpak/ (manifest, desktop file, AppStream metainfo, notifyrc, icons),

@@ -75,8 +75,8 @@ default/bare User-Agent strings (see `AGENTS.md` Section 8).
 ## Mail
 
 - [ ] **Inbox loads on open.** `MailController::refresh()` runs a
-      full-snapshot fetch (`since=0`) on `Component.onCompleted` in both
-      `MobileRoot.qml` and `DesktopRoot.qml`. Expected: cached emails
+      full-snapshot fetch (`since=0`) on `Component.onCompleted` in
+      `AppShell.qml`. Expected: cached emails
       render immediately (from `MailRepository`'s local cache), followed by
       a live refresh once the network call returns.
 - [ ] **Manual refresh works.** Tapping the refresh action
@@ -101,8 +101,8 @@ default/bare User-Agent strings (see `AGENTS.md` Section 8).
       body loads ("Loading message…", then the text). Refresh: the older
       rows stay. In search, under the PIN overlay, or on a relay without
       paging (no `hasMore` in the reply), no older page is stored.
-- [ ] **Swipe actions apply** (`app/qml/MobileRoot.qml`'s `SwipeDelegate`
-      rows). Swipe an inbox row left to reveal Archive, right to reveal
+- [ ] **Swipe actions apply** (`app/qml/components/MailCard.qml`, a
+      `SwipeDelegate`). Swipe an inbox row left to reveal Archive, right to reveal
       Delete; both call `MailApp.archiveEmails([messageId])` /
       `MailApp.deleteEmails([messageId])` synchronously and expect a
       `true` return before the row visually resolves the swipe action.
@@ -655,11 +655,18 @@ every message as undecryptable — check that first, it is the cheapest of these
       Dark; switch System Settings → Colours to a light scheme and it
       repaints Busnes Light without a restart. A user who had saved a theme
       (e.g. "Patina Ky") keeps it.
+- [ ] **The layout follows the window width.** Drag a desktop window from
+      wide to narrow: list and detail side by side at 840px and up, the
+      left rail from 600px, the bottom bar below 600px, with no restart and
+      no minimum width above 320px. On a phone the bottom bar shows.
+- [ ] **Screens match Android.** Run `scripts/screenshots.sh` and open
+      `build-shots/compare.html`; every screen with a Play Store shot sits
+      beside it.
 - [ ] **Text follows the system font size.** At the stock 10 pt font, text
       looks as before; raise System Settings → Fonts → General to 12 pt and
       the app's text grows by 1.2× without a restart.
 - [ ] **App name and icon read "KyPost" everywhere it's user-visible**:
-      window title (`DesktopRoot.qml`/`MobileRoot.qml`), the About-style
+      window title (`AppShell.qml`), the About-style
       sidebar text, and the launcher/Dock/taskbar icon and app-switcher
       entry (sourced from `packaging/flatpak/icons/hicolor/*/apps/
       com.kysecurity.mail.png` + `.svg`, regenerated from the new `ky.png` mark
