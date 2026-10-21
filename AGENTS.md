@@ -293,7 +293,12 @@ Added 2026-07-25 (parity work with `kypost-android`):
   so nothing is deleted on save or send), checks the dispatch `PairingIdentity`
   and a lock generation on completion, and refuses an attachment past the
   25 MB send cap instead of evicting one already kept (guard in
-  `tests/guards.tsv`).
+  `tests/guards.tsv`). A forward that completes while a draft session is held
+  is refused, not opened: the held session is a message being written, so it
+  is never released or replaced for a forward (approved 2026-10-21; the spec's
+  "release the previous session" was the opposite). `MailController` decides
+  before touching it and reports `forwardFinished(true)`; AppShell only says
+  so (`aLiveDraftSessionSurvivesACompletedForward`).
 
 - **Snooze (plan item L9, 2026-10-17).** `snooze` on `/api/inbox/actions` with
   `wakeAt` (whole-second UTC RFC 3339). Presets and the typed time live in
