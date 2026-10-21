@@ -215,6 +215,14 @@ kypost_add_app_test(ThemeControllerTest
 )
 set_tests_properties(ThemeControllerTest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+kypost_add_app_test(AppIconTest
+  SOURCES
+    app/theme/AppIconTest.cpp
+    ${CMAKE_SOURCE_DIR}/app/resources/appicon.qrc
+  LIBS Qt6::Gui
+)
+set_tests_properties(AppIconTest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 kypost_add_app_test(PgpMessagePresentationTest
   SOURCES
     app/mail/PgpMessagePresentationTest.cpp
@@ -465,6 +473,7 @@ add_executable(QmlTests
   qml/FakeSingletons.h
   ${CMAKE_SOURCE_DIR}/app/theme/MaterialIconProvider.cpp
   ${CMAKE_SOURCE_DIR}/app/qml/qml.qrc
+  ${CMAKE_SOURCE_DIR}/app/resources/appicon.qrc
 )
 target_include_directories(QmlTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/qml ${CMAKE_SOURCE_DIR}/app)
 # KF6::I18nQml: the pages under test call i18n(), which needs the same
@@ -511,6 +520,7 @@ endif()
 # singletons, rendered offscreen. A tool, not a test, so no add_test().
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 add_executable(KyPostScreens
+  ${CMAKE_SOURCE_DIR}/app/resources/appicon.qrc
   screenshots/main.cpp
   screenshots/Fixtures.h
   screenshots/screens.qrc
@@ -528,6 +538,7 @@ target_link_libraries(KyPostScreens PRIVATE kypostcore Qt6::Quick Qt6::Qml Qt6::
 # on lock) were untested -- and a notification tap once threw silently.
 find_package(Qt6 REQUIRED COMPONENTS QuickTest)
 add_executable(ShellTests
+  ${CMAKE_SOURCE_DIR}/app/resources/appicon.qrc
   shell/main.cpp
   screenshots/Fixtures.h
   screenshots/screens.qrc

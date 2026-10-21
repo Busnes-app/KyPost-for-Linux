@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 import com.kysecurity.mail 1.0
 import "../components"
 
@@ -55,8 +56,9 @@ Item {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: 64
                 Layout.preferredHeight: 64
-                source: "qrc:/qml/icons/logo.png"
-                sourceSize: Qt.size(128, 128)
+                source: "qrc:/appicon/256.png"
+                sourceSize: Qt.size(Math.ceil(64 * Math.max(2, Screen.devicePixelRatio)),
+                                    Math.ceil(64 * Math.max(2, Screen.devicePixelRatio)))
                 mipmap: true
                 Accessible.ignored: true
             }

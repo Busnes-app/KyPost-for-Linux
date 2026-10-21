@@ -71,7 +71,9 @@ bool isBlank(const QImage& image)
 int main(int argc, char* argv[])
 {
     qputenv("QT_QPA_PLATFORM", "offscreen");
-    qputenv("QT_SCALE_FACTOR", "1");
+    // 1x unless the caller asks for a HiDPI check (QT_SCALE_FACTOR=2).
+    if (!qEnvironmentVariableIsSet("QT_SCALE_FACTOR"))
+        qputenv("QT_SCALE_FACTOR", "1");
     qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("kypost-screens"));

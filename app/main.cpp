@@ -16,6 +16,7 @@
 #include "push/NotificationDispatcher.h"
 #include "push/PushArrival.h"
 #include "push/UnifiedPushConnector.h"
+#include "theme/AppIcon.h"
 #include "theme/MaterialIconProvider.h"
 #include "theme/ThemeController.h"
 #include "tray/TrayController.h"
@@ -196,7 +197,7 @@ int main(int argc, char* argv[])
     app.setDesktopFileName(QStringLiteral("com.kysecurity.mail"));
     // Icon-only buttons need named icons outside a KDE session too.
     QIcon::setFallbackThemeName(QStringLiteral("breeze"));
-    app.setWindowIcon(QIcon::fromTheme(QStringLiteral("com.kysecurity.mail")));
+    app.setWindowIcon(bundledAppIcon());
 
     // Task 48: KI18n translation domain. Per KLocalizedString::
     // setApplicationDomain()'s own doc comment ("This function should be

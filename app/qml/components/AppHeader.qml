@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Window
 import com.kysecurity.mail 1.0
 
 // Android's header: launcher logo, the "KyPost" wordmark in accent and,
@@ -21,8 +22,11 @@ Item {
         Image {
             Layout.preferredWidth: 44
             Layout.preferredHeight: 44
-            source: "qrc:/qml/icons/logo.png"
-            sourceSize: Qt.size(88, 88)
+            // Rendered from the 256 px envelope at the screen's density (at
+            // least 2x); the display size stays the explicit 44 above.
+            source: "qrc:/appicon/256.png"
+            sourceSize: Qt.size(Math.ceil(44 * Math.max(2, Screen.devicePixelRatio)),
+                                Math.ceil(44 * Math.max(2, Screen.devicePixelRatio)))
             smooth: true
             mipmap: true
             Accessible.ignored: true

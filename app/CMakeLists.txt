@@ -36,7 +36,9 @@ target_sources(kypost PRIVATE
   theme/ThemeController.h
   theme/MaterialIconProvider.cpp
   theme/MaterialIconProvider.h
+  theme/AppIcon.h
   resources/fonts.qrc
+  resources/appicon.qrc
 )
 find_package(Qt6 REQUIRED COMPONENTS Svg)
 target_link_libraries(kypost PRIVATE Qt6::Svg)

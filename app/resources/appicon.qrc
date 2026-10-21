@@ -1,0 +1,13 @@
+<RCC>
+  <!-- The packaging copies themselves, not duplicates (see AppIcon.h). -->
+  <qresource prefix="/appicon">
+    <file alias="16.png">../../packaging/flatpak/icons/hicolor/16x16/apps/com.kysecurity.mail.png</file>
+    <file alias="22.png">../../packaging/flatpak/icons/hicolor/22x22/apps/com.kysecurity.mail.png</file>
+    <file alias="24.png">../../packaging/flatpak/icons/hicolor/24x24/apps/com.kysecurity.mail.png</file>
+    <file alias="32.png">../../packaging/flatpak/icons/hicolor/32x32/apps/com.kysecurity.mail.png</file>
+    <file alias="48.png">../../packaging/flatpak/icons/hicolor/48x48/apps/com.kysecurity.mail.png</file>
+    <file alias="64.png">../../packaging/flatpak/icons/hicolor/64x64/apps/com.kysecurity.mail.png</file>
+    <file alias="128.png">../../packaging/flatpak/icons/hicolor/128x128/apps/com.kysecurity.mail.png</file>
+    <file alias="256.png">../../packaging/flatpak/icons/hicolor/256x256/apps/com.kysecurity.mail.png</file>
+  </qresource>
+</RCC>
