@@ -97,22 +97,33 @@ Item {
     // replaces a duplicated rev!=0 formula with).
     readonly property bool synced: root.contact.uid ? ContactsApp.isSynced(root.contact.uid) : false
 
-    // label/value pairs for the read-only card, in the brief's specified
-    // Email/Phone/Org/Notes order, extended (extended-contact-fields Task 5)
-    // with Department/Pronouns/PGP Key/Groups. A Repeater over this avoids
-    // writing the same RowLayout{SectionLabel+Text} block out by hand for
-    // every field.
-    readonly property var detailRows: [
-        { label: i18nc("contact detail field label, the person's email address", "Email"), value: root.joinedValuesText(root.contact.emails) },
-        { label: i18n("Phone"), value: root.joinedValuesText(root.contact.phones) },
-        { label: i18n("Address"), value: root.joinedAddressesText(root.contact.addresses) },
-        { label: i18n("Org"), value: root.contact.org || "" },
-        { label: i18n("Notes"), value: root.contact.notes || "" },
-        { label: i18n("Department"), value: root.contact.department || "" },
-        { label: i18n("Pronouns"), value: root.contact.pronouns || "" },
-        { label: i18n("PGP Key"), value: root.contact.pgpKey || "" },
-        { label: i18n("Groups"), value: root.groupNamesText() },
-    ]
+    // The read-only view's sections, as Android's contact detail: a bold
+    // title over one row per entry (a small label such as "work" over the
+    // value). Empty sections are left out.
+    readonly property var detailSections: [
+        { title: i18nc("contact detail field label, the person's email address", "Email"), entries: root.entriesOf(root.contact.emails) },
+        { title: i18n("Phone"), entries: root.entriesOf(root.contact.phones) },
+        { title: i18n("Address"), entries: (root.contact.addresses || []).map(function (a) {
+            return { label: a.label || "", value: root.addressText(a) }
+        }).filter(function (e) { return e.value !== "" }) },
+        { title: i18n("Department"), entries: root.single(root.contact.department) },
+        { title: i18n("Pronouns"), entries: root.single(root.contact.pronouns) },
+        { title: i18n("Notes"), entries: root.single(root.contact.notes) },
+        { title: i18n("PGP key"), entries: root.single(root.contact.pgpKey), mono: true },
+        { title: i18n("Groups"), entries: root.single(root.groupNamesText()) },
+    ].filter(function (section) { return section.entries.length > 0 })
+
+    readonly property bool hasPgpKey: !!root.contact.pgpKey && root.contact.pgpKey.trim() !== ""
+
+    function entriesOf(list) {
+        return (list || []).filter(function (e) { return e.value !== "" }).map(function (e) {
+            return { label: e.label || "", value: e.value }
+        })
+    }
+
+    function single(value) {
+        return value ? [{ label: "", value: value }] : []
+    }
 
     // Resolves root.contact.groupIds (backend group UUIDs) to display names
     // via ContactsApp.allGroups() (extended-contact-fields Task 5's
@@ -134,21 +145,10 @@ Item {
         return names.join(", ")
     }
 
-    // Joins every entry's .value with "; " for the read-only card's
-    // single-line Email/Phone summary rows -- shows every entry now,
-    // not just the first.
-    function joinedValuesText(entries) {
-        return (entries || []).map(function (e) { return e.value }).filter(function (v) { return v !== "" }).join("; ")
-    }
-
-    // One formatted "street, city region postalCode, country" string per
-    // address (blank components skipped), multiple addresses joined with
-    // "; " for the read-only card's single-line Address summary row.
-    function joinedAddressesText(addresses) {
-        return (addresses || []).map(function (a) {
-            const cityLine = [a.city, a.region, a.postalCode].filter(function (v) { return v; }).join(" ")
-            return [a.street, cityLine, a.country].filter(function (p) { return p; }).join(", ")
-        }).filter(function (s) { return s !== "" }).join("; ")
+    // "street, city region postalCode, country", blank components skipped.
+    function addressText(a) {
+        const cityLine = [a.city, a.region, a.postalCode].filter(function (v) { return v; }).join(" ")
+        return [a.street, cityLine, a.country].filter(function (p) { return p; }).join(", ")
     }
 
     Component.onCompleted: loadContact()
@@ -365,89 +365,120 @@ Item {
                 Item { Layout.fillWidth: true }
                 IconButton {
                     icon: "open-in-new"
-                    tooltip: i18n("Open in New Window")
+                    tooltip: i18n("Open in new window")
                     onClicked: root.popOutRequested(root.uid)
                 }
             }
 
-            // ---- read-only card -------------------------------------
+            // ---- read-only view --------------------------------------
+            // Android's contact detail: centred avatar, name, "title · org",
+            // the key chip, then one titled section per field.
 
             ColumnLayout {
                 Layout.fillWidth: true
                 visible: root.mode === "view"
-                spacing: 16
+                spacing: 8
 
-                RowLayout {
+                Avatar {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.topMargin: 16
+                    initials: Format.initialsFromName(root.contact.fn)
+                    // Fetched lazily on open. ContactsApp.photoRevision is
+                    // read for its binding dependency, not its value -- see
+                    // ContactsList.qml's Avatar for why the call alone is not
+                    // enough.
+                    photoSource: root.contact.photoRef && ContactsApp.photoRevision >= 0
+                                 ? ContactsApp.photoPathFor(root.contact.uid) : ""
+                    size: 72
+                }
+
+                Text {
                     Layout.fillWidth: true
-                    spacing: 12
+                    Layout.topMargin: 4
+                    horizontalAlignment: Text.AlignHCenter
+                    textFormat: Text.PlainText
+                    text: (root.contact.fn && root.contact.fn.length > 0) ? root.contact.fn : i18n("Unnamed")
+                    color: Theme.inkStrong
+                    font.family: Theme.fontUi
+                    font.pixelSize: Math.round(22 * Theme.fontScale)
+                    font.weight: Font.Medium
+                    wrapMode: Text.WordWrap
+                }
 
-                    Avatar {
-                        initials: Format.initialsFromName(root.contact.fn)
-                        // extended-contact-fields Task 3: fetch lazily on
-                        // contact-detail open -- root.contact is already
-                        // ContactsApp.contactAt(uid)'s full result (loaded
-                        // by loadContact() below), so photoRef is available
-                        // here with no extra model wiring, unlike
-                        // ContactsList.qml's row delegate.
-                        // ContactsApp.photoRevision is read for its binding
-                        // dependency, not its value -- see ContactsList.qml's
-                        // Avatar for why the call alone is not enough.
-                        photoSource: root.contact.photoRef && ContactsApp.photoRevision >= 0
-                                     ? ContactsApp.photoPathFor(root.contact.uid) : ""
-                        size: 72
+                Text {
+                    Layout.fillWidth: true
+                    visible: text !== ""
+                    horizontalAlignment: Text.AlignHCenter
+                    textFormat: Text.PlainText
+                    text: [root.contact.title, root.contact.org].filter(function (v) { return v; }).join(" · ")
+                    color: Theme.ink
+                    font.family: Theme.fontUi
+                    font.pixelSize: Theme.fontSender
+                    wrapMode: Text.WordWrap
+                }
+
+                Row {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.topMargin: 4
+                    spacing: 8
+
+                    StatusBadge {
+                        visible: root.hasPgpKey
+                        active: true
+                        text: i18n("PGP key on file")
                     }
+                    StatusBadge {
+                        active: root.synced
+                        text: root.synced ? i18n("Synced") : i18n("Local")
+                    }
+                    StatusBadge {
+                        visible: root.contact.isSelf === true
+                        active: true
+                        text: i18n("Your contact")
+                    }
+                }
 
-                    ColumnLayout {
+                Repeater {
+                    model: root.detailSections
+                    delegate: ColumnLayout {
+                        id: section
+                        required property var modelData
                         Layout.fillWidth: true
-                        spacing: 6
+                        Layout.topMargin: 16
+                        spacing: 10
 
                         Text {
                             Layout.fillWidth: true
                             textFormat: Text.PlainText
-                            text: (root.contact.fn && root.contact.fn.length > 0) ? root.contact.fn : i18n("Unnamed")
+                            text: section.modelData.title
                             color: Theme.inkStrong
                             font.family: Theme.fontUi
-                            font.pixelSize: Math.round(22 * Theme.fontScale)
-                            font.weight: Font.Bold
-                            wrapMode: Text.WordWrap
+                            font.pixelSize: Theme.fontSender
+                            font.weight: Font.DemiBold
                         }
-                        StatusBadge {
-                            active: root.synced
-                            text: root.synced ? i18n("Synced") : i18n("Local")
-                        }
-                        StatusBadge {
-                            visible: root.contact.isSelf === true
-                            active: true
-                            text: i18n("Your contact")
-                        }
-                    }
-                }
 
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 10
-
-                    Repeater {
-                        model: root.detailRows
-                        delegate: RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 12
-
-                            SectionLabel {
-                                Layout.preferredWidth: 70
-                                Layout.alignment: Qt.AlignTop
-                                textFormat: Text.PlainText
-                                text: modelData.label
-                            }
-                            Text {
+                        Repeater {
+                            model: section.modelData.entries
+                            delegate: ColumnLayout {
+                                id: entry
+                                required property var modelData
                                 Layout.fillWidth: true
-                                Layout.alignment: Qt.AlignTop
-                                textFormat: Text.PlainText
-                                text: modelData.value !== "" ? modelData.value : "—"
-                                color: Theme.inkStrong
-                                font.family: Theme.fontMono
-                                font.pixelSize: Theme.fontSender
-                                wrapMode: Text.WordWrap
+                                spacing: 2
+
+                                MutedHint {
+                                    Layout.fillWidth: true
+                                    visible: entry.modelData.label !== ""
+                                    text: entry.modelData.label
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    textFormat: Text.PlainText
+                                    text: entry.modelData.value
+                                    color: Theme.inkStrong
+                                    font.family: section.modelData.mono ? Theme.fontMono : Theme.fontUi
+                                    font.pixelSize: section.modelData.mono ? Theme.fontDate : Theme.fontSender
+                                    wrapMode: section.modelData.mono ? Text.WrapAnywhere : Text.WordWrap
+                                }
                             }
                         }
                     }
@@ -455,6 +486,7 @@ Item {
 
                 RowLayout {
                     Layout.fillWidth: true
+                    Layout.topMargin: 16
                     spacing: 8
 
                     GhostButton {
@@ -582,7 +614,7 @@ Item {
                             font.pixelSize: Theme.fontDate
                             background: null
                             selectByMouse: true
-                            placeholderText: i18n("PGP Key")
+                            placeholderText: i18n("PGP key")
                         }
                     }
                 }
