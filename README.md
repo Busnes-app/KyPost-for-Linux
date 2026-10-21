@@ -58,7 +58,8 @@ use the same Go relay backend.
   chain on first use, anchored to the issuer rather than the leaf so a routine certificate
   renewal is not reported as an impersonation. Hostile Location Protection writes nothing to
   disk, and refuses to turn on at all if it cannot first erase what is already there.
-- **15 themes** — copied byte for byte from the design system that every sibling client shares.
+- **17 themes plus Follow system** — copied byte for byte from the Android app. The default
+  follows your desktop between Busnes Light and Busnes Dark; text follows your system font size.
 - **Device pairing** — paste a link, or use a `kypost://` deep link.
 - **Localized** — the code wraps every user-facing string for translation (`po/`).
 
