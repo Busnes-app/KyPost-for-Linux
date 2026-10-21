@@ -5,6 +5,7 @@
 #   scripts/screenshots.sh [label]
 #
 # label defaults to "after"; shots land in build-shots/<label>/<layout>-<theme>/.
+# Set ANDROID_REF to a folder of Android store shots to compare against.
 # Override the root and screen script per layout with DESKTOP_ROOT, MOBILE_ROOT,
 # DESKTOP_SCRIPT and MOBILE_SCRIPT (the "before" shots used the old roots).
 # Every build and run is capped: the host shares one memory cgroup.
@@ -44,7 +45,8 @@ for theme in "Busnes Light" "Busnes Dark"; do
     run desktop 1920x1080 "" "$theme" "$desktop_root" "$desktop_script" || status=1
 done
 
-python3 -I "$repo/scripts/screenshots-compare.py" "$shots" \
-    /home/yoshi/git/busnes.app/factory/jobs/002-theme-tokens/round-3/android-ref
+# ANDROID_REF: a folder of Android store shots (phoneScreenshots-N.png,
+# sevenInchScreenshots-N.png). Unset, compare.html has no Android column.
+python3 -I "$repo/scripts/screenshots-compare.py" "$shots" ${ANDROID_REF:+"$ANDROID_REF"}
 echo "compare: $shots/compare.html"
 exit $status

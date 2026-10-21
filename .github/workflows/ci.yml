@@ -212,6 +212,7 @@ jobs:
             gettext \
             qt6-base-dev \
             qt6-declarative-dev \
+            qt6-svg-dev \
             qt6-webengine-dev \
             qt6-multimedia-dev \
             libqt6sql6-sqlite \

@@ -109,7 +109,7 @@ cmake --build build
 ctest --test-dir build
 ```
 
-Dependencies, with Arch package names: `qt6-base`, `qt6-declarative`, `qt6-webengine`,
+Dependencies, with Arch package names: `qt6-base`, `qt6-declarative`, `qt6-svg`, `qt6-webengine`,
 `qt6-multimedia`, `kirigami` (KF6), `knotifications` (KF6), `kstatusnotifieritem` (KF6),
 `kdbusaddons` (KF6), `ki18n` (KF6), `qtkeychain-qt6`, `kunifiedpush`, `zxing-cpp`, `openssl`,
 `argon2`, `gpgme`. For the Ubuntu and KDE neon archive equivalents, see
