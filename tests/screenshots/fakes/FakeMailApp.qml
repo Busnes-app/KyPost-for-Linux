@@ -53,6 +53,7 @@ QtObject {
     signal draftSaveCompleted()
     signal folderMutationCompleted(bool ok)
     signal foldersChanged()
+    signal forwardComposeRequested(var draft)
     signal notificationEmailAmbiguous(string messageId, var folders)
     signal notificationEmailResolved(string messageId, string folder)
     signal openEmailRequested(string messageId)
@@ -116,6 +117,7 @@ QtObject {
     function reopenDraft() {}
     function reopenDecryptedDraft() {}
     function releaseDraft() {}
+    function forwardWithAttachments() { return false }
     function discardPendingSend() {}
     function confirmPickupFallbackSend() {}
     function preflightRecipients() { return ({}) }
