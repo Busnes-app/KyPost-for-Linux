@@ -2524,6 +2524,7 @@ void MailController::setAppLocked(bool locked)
     const bool wasLocked = m_appLocked;
     m_appLocked = locked;
     if (locked) {
+        ++m_forwardGeneration; // a forward dispatched before the lock never opens
         releaseDraft(m_draftToken);
         forgetDecrypted();
         // A query typed just before the lock is sent after unlock, not under it.
@@ -2969,6 +2970,110 @@ QVariantMap MailController::reopenDraft(const QString& folder, const QString& me
             {QStringLiteral("names"), QVariantMap()},
             {QStringLiteral("encrypted"), false},
             {QStringLiteral("sourceHasAttachments"), email->hasAttachments}};
+}
+
+bool MailController::forwardWithAttachments(const QString& mailbox, const QString& messageId,
+                                            const QVariantList& attachments, const QString& subject,
+                                            const QString& bodyHtml)
+{
+    if (m_appLocked || m_forwardInFlight || attachments.isEmpty())
+        return false;
+    // Decrypted content never rides along on a send that may go out in the
+    // clear: neither a client-protected message nor one this view decrypted.
+    const std::optional<Email> email = lookupEmail(mailbox, messageId);
+    if (!email.has_value() || pgpMessageStateOf(*email) == PgpMessageState::ClientProtected
+        || (m_decryptedMessageId == messageId && m_decryptedFolder == mailbox))
+        return false;
+    QUrl serverBaseUrl;
+    RelayAuth auth;
+    if (!requirePairing(serverBaseUrl, auth))
+        return false;
+    const PairingIdentity requestedBy = m_pairingStore.currentIdentity();
+    const quint64 generation = m_forwardGeneration;
+
+    // The listing's order is the sender's order, and its names are what the
+    // reader showed.
+    QVector<MimeAttachment> listed;
+    QVector<int> indexes;
+    for (const QVariant& entry : attachments) {
+        const QVariantMap map = entry.toMap();
+        listed.append({ safeAttachmentName(map.value(QStringLiteral("name")).toString()),
+                        map.value(QStringLiteral("mimeType")).toString(), QString(), QByteArray() });
+        indexes.append(map.value(QStringLiteral("index")).toInt());
+    }
+
+    struct Fetched {
+        QVector<MimeAttachment> kept;
+        int failed = 0;
+        int tooLarge = 0;
+    };
+    m_forwardInFlight = true;
+    pushBusy();
+    m_executor.run(
+        this,
+        [serverBaseUrl, auth, mailbox, messageId, listed, indexes](HttpClient& http) {
+            // readAttachments' cap. Checked as each arrives, so no more than
+            // the cap plus one attachment is ever held; one that would push
+            // the total over is refused, never one already kept.
+            static constexpr qint64 kMaxForwardBytes = 25LL * 1024 * 1024;
+            RelayMailSource source(http);
+            Fetched out;
+            qint64 total = 0;
+            for (qsizetype i = 0; i < listed.size(); ++i) {
+                const DownloadAttachmentResult result =
+                    source.downloadAttachment(serverBaseUrl, auth, mailbox, messageId, indexes[i]);
+                if (result.error.has_value()) {
+                    ++out.failed;
+                } else if (total + result.data.size() > kMaxForwardBytes) {
+                    ++out.tooLarge;
+                } else {
+                    total += result.data.size();
+                    MimeAttachment part = listed[i];
+                    if (part.mimeType.isEmpty())
+                        part.mimeType = result.mimeType;
+                    part.data = result.data;
+                    out.kept.append(part);
+                }
+            }
+            return out;
+        },
+        [this, requestedBy, generation, subject, bodyHtml](const Fetched& fetched) {
+            popBusy();
+            m_forwardInFlight = false;
+            // The bytes belong to the account and the unlocked session that
+            // asked (AGENTS.md 6g); otherwise nothing is kept or shown.
+            if (generation != m_forwardGeneration || m_appLocked || !m_pairingStore.stillCurrent(requestedBy))
+                return;
+            // One draft session at a time. No source id: nothing is deleted
+            // when this session saves or sends.
+            releaseDraft(m_draftToken);
+            m_draftToken = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            m_draftIdentity = requestedBy;
+            m_draftAttachments = fetched.kept;
+            QStringList paths;
+            QVariantMap names;
+            for (qsizetype i = 0; i < m_draftAttachments.size(); ++i) {
+                const QString path = QStringLiteral("kypost-draft:") + QString::number(i);
+                paths.append(path);
+                names.insert(path, m_draftAttachments[i].name);
+            }
+            QStringList notices;
+            if (fetched.failed > 0)
+                notices.append(i18np("%1 attachment could not be downloaded and is not included.",
+                                     "%1 attachments could not be downloaded and are not included.", fetched.failed));
+            if (fetched.tooLarge > 0)
+                notices.append(i18np("%1 attachment is too large to forward and is not included.",
+                                     "%1 attachments are too large to forward and are not included.", fetched.tooLarge));
+            setLastError(notices.join(QLatin1Char(' ')));
+            emit forwardComposeRequested({ { QStringLiteral("token"), m_draftToken },
+                                           { QStringLiteral("subject"), subject },
+                                           { QStringLiteral("body"), bodyHtml },
+                                           { QStringLiteral("paths"), paths },
+                                           { QStringLiteral("names"), names },
+                                           { QStringLiteral("encrypted"), false },
+                                           { QStringLiteral("forwarded"), true } });
+        });
+    return true;
 }
 
 void MailController::captureDraftReplacement(quint64 token, const QString& draftToken)

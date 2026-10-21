@@ -314,6 +314,14 @@ public slots:
     // new copy has landed; see settleDraftReplacement().
     Q_INVOKABLE QVariantMap reopenDraft(const QString& folder, const QString& messageId);
     Q_INVOKABLE void releaseDraft(const QString& token);
+    // Forward carrying the original's attachments (Android's
+    // ForwardAttachmentHandoff). Downloads every listed one into memory, then
+    // emits forwardComposeRequested with an in-memory draft session that has
+    // no source to replace. False when refused before any request: locked,
+    // one already in flight, unpaired, or a client-protected message.
+    Q_INVOKABLE bool forwardWithAttachments(const QString& mailbox, const QString& messageId,
+                                            const QVariantList& attachments, const QString& subject,
+                                            const QString& bodyHtml);
 
     // Debounced by kSearchDebounceMs. Text the relay would refuse (blank, or
     // over its byte limit) clears the results instead of searching. Ignored
@@ -650,9 +658,12 @@ signals:
     // blank page -- which is what happened until 2026-08-23 -- gave them
     // nothing to act on for a question only they can answer.
     void notificationEmailAmbiguous(const QString& messageId, const QStringList& folders);
+    // forwardWithAttachments() finished: open Compose on this draft session.
+    void forwardComposeRequested(const QVariantMap& draft);
 
 private:
     friend class MailDecryptionTest; // Inspect retained plaintext, not access-filtered getters.
+    friend class MailControllerTest; // Same, for forwarded attachments.
     // Cache first; then a search hit, if the search still belongs to this account.
     std::optional<Email> lookupEmail(const QString& folder, const QString& messageId) const;
     QVariantMap emailMap(const Email& email) const;
@@ -915,6 +926,8 @@ private:
     bool m_draftEncrypted = false;
     QString m_draftSourceId; // Drafts message the session replaces; empty once replaced
     QString m_draftSourceFolder; // the Drafts path it was reopened from
+    bool m_forwardInFlight = false;
+    quint64 m_forwardGeneration = 0; // advanced by every lock
     QString m_decryptedFolder;
     quint64 m_decryptGeneration = 0;
     bool m_appLocked = false;

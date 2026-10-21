@@ -259,6 +259,10 @@ Kirigami.ApplicationWindow {
             notificationFolderDialog.open(messageId, folders)
         }
 
+        // A Forward whose attachments are now held in memory (EmailDetail's
+        // Forward). Here, not in EmailDetail: the reader may have moved on.
+        function onForwardComposeRequested(draft) { root.openRestoredDraft(draft) }
+
         function onNotificationEmailResolved(messageId, folder) {
             // Empty folder: not found even after a refresh. MailController
             // has set lastError, and selecting nothing leaves that visible
@@ -597,6 +601,7 @@ Kirigami.ApplicationWindow {
             initialTo: root.composeSeed.to
             initialSubject: root.composeSeed.subject
             initialBody: root.composeSeed.body
+            initialBodyIsHtml: true // EmailDetail's quotes; seedScript cleans them
             replyTo: root.composeSeed.replyTo || ({})
             onSendSucceeded: root.closeDetail()
             onPopOutRequested: function (to, subject, body, bodyIsHtml, replyTo) {

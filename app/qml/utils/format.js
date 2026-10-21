@@ -119,6 +119,35 @@ function emailBodyIsHtml(bodyMode, body) {
     return false
 }
 
+// Android's QUOTE_SANITIZE_MAX_LENGTH. A longer body quotes nothing rather
+// than skipping the cleaner or stalling the UI thread.
+var maxQuotedBodyLength = 512 * 1024
+
+// The original a Reply or Forward quotes, as editor-ready HTML: the relay's own
+// body, never the preview (a summary is not the message) and never a body
+// this view only holds as local decryption, which must not reach a send that
+// may go out in the clear. HTML passes on as HTML; the editor's seedScript
+// cleans it. pgpState 1 is ClientProtected.
+function quotedBodyHtml(email, locallyDecrypted) {
+    if (!email || locallyDecrypted || email.pgpState === 1)
+        return ""
+    var body = email.body === undefined || email.body === null ? "" : String(email.body)
+    if (body === "" || body.length > maxQuotedBodyLength)
+        return ""
+    return emailBodyIsHtml(email.bodyMode, body) ? body : escapeHtml(body).replace(/\n/g, "<br>")
+}
+
+// Android's quoteForReply / quoteForForward. The text lines arrive already
+// translated and are escaped here; `quoted` is quotedBodyHtml()'s result.
+function replyQuoteHtml(attribution, quoted) {
+    return "<br><br><div>" + escapeHtml(attribution) + "</div><blockquote>" + quoted + "</blockquote>"
+}
+
+function forwardQuoteHtml(heading, fromLine, subjectLine, quoted) {
+    return "<br><br><div>" + escapeHtml(heading) + "</div><div>" + escapeHtml(fromLine) + "</div><div>"
+        + escapeHtml(subjectLine) + "</div><br>" + quoted
+}
+
 // The full document handed to WebEngineView.loadHtml(). `style` is the
 // caller's already-resolved theme CSS (colours come from a QML singleton
 // this module deliberately does not import).

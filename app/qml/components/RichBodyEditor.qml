@@ -90,12 +90,15 @@ Item {
         });
     "
 
-    // Allowlist DOM sanitizer: unwraps (keeps children, drops the tag) any
-    // element outside the fixed tag list, strips every attribute except
-    // href/style on <a> (further restricted below). Runs against a cloned
-    // subtree so it never mutates what's on screen.
+    // Allowlist DOM sanitizer: removes elements whose content is not body
+    // text (a quoted <style> would otherwise show as text), unwraps (keeps
+    // children, drops the tag) any other element outside the fixed tag list,
+    // strips every attribute except href/style on <a> (further restricted
+    // below). Runs against a cloned subtree so it never mutates what's on
+    // screen. No double quotes inside: tests read it with a regex.
     readonly property string cleanScript: "
             var allowedTags = ['P', 'BR', 'DIV', 'B', 'STRONG', 'I', 'EM', 'U', 'A', 'BLOCKQUOTE'];
+            var droppedTags = ['SCRIPT', 'STYLE', 'TITLE', 'TEMPLATE', 'NOSCRIPT'];
             var allowedStyleProps = ['color', 'background-color', 'padding', 'border-radius',
                                       'display', 'font-weight', 'text-decoration', 'border'];
             function isSafeUrl(url) {
@@ -104,6 +107,10 @@ Item {
             function clean(node) {
                 Array.from(node.childNodes).forEach(function(child) {
                     if (child.nodeType === Node.ELEMENT_NODE) {
+                        if (droppedTags.indexOf(child.tagName.toUpperCase()) !== -1) {
+                            node.removeChild(child);
+                            return;
+                        }
                         clean(child);
                         if (allowedTags.indexOf(child.tagName) === -1) {
                             while (child.firstChild) node.insertBefore(child.firstChild, child);

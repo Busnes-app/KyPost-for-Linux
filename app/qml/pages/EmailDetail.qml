@@ -70,7 +70,7 @@ Item {
     // every startup. Hoisted to one property because the expression was
     // duplicated across the two notices that share it.
     readonly property bool hasRenderableBody: root.hasDecryptedBody
-        || !!(root.email && (root.email.body || root.email.preview))
+        || !!(root.email && root.email.body)
 
     // The decrypted body, but ONLY when the one MailApp is holding belongs to
     // the message this view is showing. MailApp is a singleton and holds at
@@ -274,6 +274,12 @@ Item {
         return Format.addressFromHeader(raw)
     }
 
+    // Reply and Reply All quote the real body, as HTML for Compose's seedScript.
+    function replyQuote() {
+        return Format.replyQuoteHtml(i18n("%1 wrote:", root.email.sender),
+                                     Format.quotedBodyHtml(root.email, root.hasDecryptedBody))
+    }
+
     // The answered message, so the relay can thread the reply.
     function replyReference() {
         return { messageId: root.messageId, mailbox: root.folder }
@@ -428,8 +434,7 @@ Item {
                     onClicked: {
                         const to = root.extractAddress(root.email.sender)
                         const subject = root.withPrefix(root.displaySubject, "Re:")
-                        const body = "\n\n" + i18n("%1 wrote:", root.email.sender) + "\n" + root.email.preview
-                        root.composeRequested(to, subject, body, root.replyReference())
+                        root.composeRequested(to, subject, root.replyQuote(), root.replyReference())
                     }
                 }
                 IconButton {
@@ -439,8 +444,7 @@ Item {
                     onClicked: {
                         const to = MailApp.replyAllRecipients(root.email.sender || "", root.email.sentTo || "", root.email.cc || "")
                         const subject = root.withPrefix(root.displaySubject, "Re:")
-                        const body = "\n\n" + i18n("%1 wrote:", root.email.sender) + "\n" + root.email.preview
-                        root.composeRequested(to.join(", "), subject, body, root.replyReference())
+                        root.composeRequested(to.join(", "), subject, root.replyQuote(), root.replyReference())
                     }
                 }
                 IconButton {
@@ -449,10 +453,14 @@ Item {
                     enabled: !MailApp.isBusy
                     onClicked: {
                         const subject = root.withPrefix(root.displaySubject, "Fwd:")
-                        const body = "\n\n" + i18n("---------- Forwarded message ----------")
-                            + "\n" + i18n("From: %1", root.email.sender)
-                            + "\n" + i18n("Subject: %1", root.displaySubject)
-                            + "\n\n" + root.email.preview
+                        const body = Format.forwardQuoteHtml(i18n("---------- Forwarded message ----------"),
+                            i18n("From: %1", root.email.sender), i18n("Subject: %1", root.displaySubject),
+                            Format.quotedBodyHtml(root.email, root.hasDecryptedBody))
+                        // Attachments arrive through forwardComposeRequested,
+                        // which AppShell opens. Never a decrypted message's.
+                        if (root.attachments.length > 0 && !root.hasDecryptedBody && root.email.pgpState !== 1
+                                && MailApp.forwardWithAttachments(root.folder, root.messageId, root.attachments, subject, body))
+                            return
                         root.composeRequested("", subject, body, ({}))
                     }
                 }
@@ -880,8 +888,8 @@ Item {
                     item.loadHtml(root.renderedHtml(root.decryptedBody, !root.decryptedIsHtml))
                     return
                 }
-                const source = (root.email && root.email.body) ? root.email.body
-                                                                 : (root.email ? root.email.preview : "")
+                // Never the preview: a summary is not the message.
+                const source = (root.email && root.email.body) ? root.email.body : ""
                 // Whether this is HTML comes from the server's own MIME parse
                 // (`bodyMode`, carried on every inbox row), not from sniffing
                 // the characters. The sniff is still the fallback for a row
