@@ -24,7 +24,7 @@ Item {
     signal keyScanned(string name, string publicKey)
 
     implicitWidth: 360
-    implicitHeight: 640
+    implicitHeight: Math.min(640, content.implicitHeight + 32)
 
     Component.onCompleted: PgpQr.clearScanResult()
 
@@ -45,6 +45,7 @@ Item {
     }
 
     ColumnLayout {
+        id: content
         anchors.fill: parent
         anchors.margins: 16
         spacing: 12

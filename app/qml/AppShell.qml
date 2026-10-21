@@ -33,6 +33,9 @@ Kirigami.ApplicationWindow {
     readonly property bool foldersOpen: folderDrawer.opened
     readonly property bool pairingConfirmOpen: pairingConfirmPopup.opened
     readonly property bool folderActionsOpen: folderActionsMenu.opened
+    readonly property bool scheduledOpen: scheduledSheet.opened
+    readonly property bool pgpMyQrCodeOpen: pgpMyQrCodeSheet.opened
+    readonly property bool pgpScanOpen: pgpScanContactKeySheet.opened
     readonly property bool split: layoutMode === "expanded"
 
     // Minimize to tray instead of quitting, when both are enabled (System
@@ -314,8 +317,9 @@ Kirigami.ApplicationWindow {
 
     Popup {
         id: scheduledSheet
+        focus: true // Escape closes it and Tab stays inside
         contentWidth: 480
-        contentHeight: 560
+        contentHeight: scheduledLoader.item ? scheduledLoader.item.implicitHeight : 200
         // A plain centred Popup: Kirigami.OverlaySheet sizes itself from its
         // own y and its y from its size (a binding loop on every load), and
         // the page inside carries its own title and Close/Done anyway.
@@ -334,6 +338,7 @@ Kirigami.ApplicationWindow {
         }
 
         Loader {
+            id: scheduledLoader
             active: scheduledSheet.opened
             anchors.fill: parent // the popup clamps to small windows
             sourceComponent: ScheduledList {
@@ -473,6 +478,7 @@ Kirigami.ApplicationWindow {
     // the scheduled sheet above (no second top-level window/event-loop to manage).
     Popup {
         id: pgpMyQrCodeSheet
+        focus: true // Escape closes it and Tab stays inside
         contentWidth: 360
         contentHeight: 480
         // A plain centred Popup: Kirigami.OverlaySheet sizes itself from its
@@ -500,8 +506,9 @@ Kirigami.ApplicationWindow {
 
     Popup {
         id: pgpScanContactKeySheet
+        focus: true // Escape closes it and Tab stays inside
         contentWidth: 360
-        contentHeight: 640
+        contentHeight: pgpScanContactKeyLoader.item ? pgpScanContactKeyLoader.item.implicitHeight : 360
         // A plain centred Popup: Kirigami.OverlaySheet sizes itself from its
         // own y and its y from its size (a binding loop on every load), and
         // the page inside carries its own title and Close/Done anyway.

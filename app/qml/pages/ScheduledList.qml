@@ -15,7 +15,8 @@ Item {
     property string confirmingId: ""
 
     implicitWidth: 480
-    implicitHeight: 560
+    // Its content, up to the sheet's old 560: one row is a short sheet.
+    implicitHeight: Math.min(560, content.implicitHeight + 32)
 
     Component.onCompleted: Scheduled.refresh()
 
@@ -26,6 +27,7 @@ Item {
     }
 
     ColumnLayout {
+        id: content
         anchors.fill: parent
         anchors.margins: 16
         spacing: 10
@@ -71,6 +73,7 @@ Item {
             id: list
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.preferredHeight: contentHeight
             clip: true
             spacing: 12
             model: Scheduled.items
@@ -123,6 +126,7 @@ Item {
 
                         GhostButton {
                             objectName: "cancelScheduled"
+                            Layout.topMargin: 8
                             // The second tap confirms; the button stays where it was.
                             text: root.confirmingId === modelData.id ? i18n("Return to Drafts") : i18n("Cancel send")
                             enabled: !Scheduled.busy

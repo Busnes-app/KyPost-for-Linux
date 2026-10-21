@@ -55,6 +55,8 @@ public slots:
         const long limit = qEnvironmentVariableIntValue("KYPOST_RSS_LIMIT_MB");
         // Its own thread: a layout loop never returns to the event loop.
         if (limit > 0) {
+            if (residentMb() <= 0)
+                qFatal("KYPOST_RSS_LIMIT_MB is set but VmRSS cannot be read; refusing to pass unchecked");
             std::thread([limit] {
                 for (;;) {
                     const long rss = residentMb();
