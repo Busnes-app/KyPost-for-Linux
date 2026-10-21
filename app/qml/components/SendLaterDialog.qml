@@ -154,7 +154,7 @@ Item {
                 visible: root.error !== ""
                 textFormat: Text.PlainText
                 text: root.error
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap

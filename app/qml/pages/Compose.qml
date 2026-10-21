@@ -607,7 +607,7 @@ Item {
             visible: root.validationError !== "" || MailApp.lastError !== ""
             textFormat: Text.PlainText
             text: root.validationError !== "" ? root.validationError : MailApp.lastError
-            color: Theme.dangerColor
+            color: Theme.dangerActionText
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontDate
             wrapMode: Text.WordWrap

@@ -98,7 +98,7 @@ Item {
                 radius: Theme.shapeButton
                 color: Theme.panel
                 border.width: 1
-                border.color: modelData.valid ? Theme.line : Theme.dangerColor
+                border.color: modelData.valid ? Theme.line : Theme.dangerActionBorder
                 implicitWidth: chipRow.implicitWidth + 18
                 implicitHeight: chipRow.implicitHeight + 10
 
@@ -110,7 +110,7 @@ Item {
                     Text {
                         textFormat: Text.PlainText
                         text: modelData.email
-                        color: modelData.valid ? Theme.inkStrong : Theme.dangerColor
+                        color: modelData.valid ? Theme.inkStrong : Theme.dangerActionText
                         font.family: Theme.fontUi
                         font.pixelSize: Theme.fontDate
                     }

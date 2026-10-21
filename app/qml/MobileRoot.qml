@@ -628,7 +628,7 @@ Kirigami.ApplicationWindow {
                 visible: MailApp.lastError !== ""
                 textFormat: Text.PlainText
                 text: MailApp.lastError
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap
@@ -849,13 +849,9 @@ Kirigami.ApplicationWindow {
                             anchors.leftMargin: 20
                             anchors.verticalCenter: parent.verticalCenter
                             text: i18n("Delete")
-                            // readableOnAccent reuses the same "light text
-                            // on a solid saturated background" pairing
-                            // already established for PillTab's selected
-                            // state / PrimaryButton, rather than inventing
-                            // a new semantic-color pairing for this one
-                            // spot.
-                            color: Theme.readableOnAccent
+                            // Black or white for the swipe surface itself,
+                            // not the accent it no longer sits on.
+                            color: Theme.readableOn(parent.color)
                             font.family: Theme.fontUi
                             font.pixelSize: Theme.fontSender
                             font.weight: Font.Medium
@@ -894,7 +890,7 @@ Kirigami.ApplicationWindow {
                             anchors.verticalCenter: parent.verticalCenter
                             textFormat: Text.PlainText
                             text: inSnoozed ? i18n("Unsnooze") : i18n("Snooze")
-                            color: Theme.readableOnAccent
+                            color: Theme.readableOn(parent.color)
                             font.family: Theme.fontUi
                             font.pixelSize: Theme.fontSender
                             font.weight: Font.Medium
@@ -918,7 +914,7 @@ Kirigami.ApplicationWindow {
                             anchors.rightMargin: 20
                             anchors.verticalCenter: parent.verticalCenter
                             text: i18n("Archive")
-                            color: Theme.readableOnAccent
+                            color: Theme.readableOn(parent.color)
                             font.family: Theme.fontUi
                             font.pixelSize: Theme.fontSender
                             font.weight: Font.Medium

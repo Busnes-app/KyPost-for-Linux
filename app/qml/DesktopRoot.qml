@@ -425,7 +425,7 @@ Kirigami.ApplicationWindow {
                 Layout.fillWidth: true
                 visible: Pairing.pendingPairInsecure
                 text: i18n("This connection is not encrypted (http).")
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap
@@ -1149,7 +1149,7 @@ Kirigami.ApplicationWindow {
                         visible: MailApp.lastError !== ""
                         textFormat: Text.PlainText
                         text: MailApp.lastError
-                        color: Theme.dangerColor
+                        color: Theme.dangerActionText
                         font.family: Theme.fontUi
                         font.pixelSize: Theme.fontDate
                         wrapMode: Text.WordWrap

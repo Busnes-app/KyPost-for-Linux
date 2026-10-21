@@ -116,7 +116,7 @@ Item {
                 Layout.fillWidth: true
                 visible: !!root.target.mismatchHost
                 text: i18n("The link text names a different address. Check the host above, not the text.")
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontPreview
                 wrapMode: Text.WordWrap
@@ -128,7 +128,7 @@ Item {
                 Layout.fillWidth: true
                 visible: root.phishing
                 text: i18n("This message was flagged as possible phishing. Check the address above, not the link text.")
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontPreview
                 wrapMode: Text.WordWrap

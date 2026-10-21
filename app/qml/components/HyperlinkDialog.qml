@@ -123,7 +123,7 @@ Item {
                 visible: root.validationError !== ""
                 textFormat: Text.PlainText
                 text: root.validationError
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap

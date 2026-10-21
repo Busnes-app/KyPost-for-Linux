@@ -81,6 +81,11 @@ void ThemeControllerTest::tokens()
     QCOMPARE(theme.readableOnAccent(), QColor(Qt::white));
     QCOMPARE(theme.successFillColor().rgb() & 0xFFFFFF, 0x7BBF7Bu);
     QCOMPARE(qRound(theme.successFillColor().alphaF() * 100), 12);
+
+    // The mobile swipe surfaces: both are light enough for black text.
+    QCOMPARE(theme.readableOn(theme.warningColor()), QColor(Qt::black));
+    QCOMPARE(theme.readableOn(theme.dangerColor()), QColor(Qt::black));
+    QCOMPARE(theme.readableOn(QColor(QStringLiteral("#182326"))), QColor(Qt::white));
 }
 
 void ThemeControllerTest::dangerAffordanceFollowsPalette()

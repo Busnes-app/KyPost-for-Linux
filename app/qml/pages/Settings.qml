@@ -534,7 +534,7 @@ Item {
                         textFormat: Text.PlainText
                         text: ContactsApp.lastError !== "" ? ContactsApp.lastError
                             : (ContactsApp.statusMessage !== "" ? ContactsApp.statusMessage : i18n("No sync yet."))
-                        color: ContactsApp.lastError !== "" ? Theme.dangerColor : Theme.ink
+                        color: ContactsApp.lastError !== "" ? Theme.dangerActionText : Theme.ink
                         font.family: Theme.fontUi
                         font.pixelSize: Theme.fontPreview
                         wrapMode: Text.WordWrap
@@ -1199,7 +1199,7 @@ Item {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 visible: securityPrompt.newPinProblem !== "" || securityPrompt.confirmMismatch
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 text: securityPrompt.confirmMismatch
                           ? i18n("The two PINs do not match.")
                           : securityPrompt.newPinProblem
@@ -1210,7 +1210,7 @@ Item {
                 visible: securityPrompt.errorText !== ""
                 textFormat: Text.PlainText
                 text: securityPrompt.errorText
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap

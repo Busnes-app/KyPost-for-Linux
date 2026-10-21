@@ -152,6 +152,7 @@ class FakeTheme : public QObject
 public:
     using QObject::QObject;
     Q_INVOKABLE void setTheme(const QString&) { }
+    Q_INVOKABLE QColor readableOn(const QColor&) const { return Qt::black; }
 
 private:
     QColor m_colour = QColor(QStringLiteral("#202020"));

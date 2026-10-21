@@ -151,7 +151,7 @@ Item {
                 text: Pairing.observedCertificateFingerprint.length > 0
                       ? Pairing.observedCertificateFingerprint
                       : i18n("The authority for this server's certificate could not be read at all.")
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontMono
                 font.pixelSize: Theme.fontEyebrow
                 wrapMode: Text.WrapAnywhere

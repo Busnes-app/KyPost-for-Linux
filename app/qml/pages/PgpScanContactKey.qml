@@ -90,7 +90,7 @@ Item {
             visible: PgpQr.lastError !== ""
             textFormat: Text.PlainText
             text: PgpQr.lastError
-            color: Theme.dangerColor
+            color: Theme.dangerActionText
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontPreview
             wrapMode: Text.WordWrap

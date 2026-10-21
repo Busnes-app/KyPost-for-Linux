@@ -104,7 +104,7 @@ Item {
             visible: root.showSyncStatus && (ContactsApp.lastError !== "" || ContactsApp.statusMessage !== "")
             textFormat: Text.PlainText
             text: ContactsApp.lastError !== "" ? ContactsApp.lastError : ContactsApp.statusMessage
-            color: ContactsApp.lastError !== "" ? Theme.dangerColor : Theme.ink
+            color: ContactsApp.lastError !== "" ? Theme.dangerActionText : Theme.ink
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontDate
             wrapMode: Text.WordWrap

@@ -311,6 +311,11 @@ double ThemeController::eyebrowLetterSpacing() const
     return TypeScale::eyebrowLetterSpacingEm * fontEyebrow();
 }
 
+QColor ThemeController::readableOn(const QColor& background) const
+{
+    return fromHex(ThemePalette::readableOn(background.rgb() & 0xFFFFFF));
+}
+
 void ThemeController::setTheme(const QString& name)
 {
     const QString before = m_manager.themeName();

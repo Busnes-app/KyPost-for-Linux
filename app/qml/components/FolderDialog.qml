@@ -178,7 +178,7 @@ Item {
                 visible: root.errorText.length > 0
                 textFormat: Text.PlainText
                 text: root.errorText
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap

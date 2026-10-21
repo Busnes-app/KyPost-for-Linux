@@ -64,6 +64,7 @@ private slots:
     void affordanceOnDarkPalette();
     void affordanceOnLightPalette();
     void lightAffordanceTextMeetsWcagAA();
+    void affordanceTextOnPlainSurfacesMeetsWcagAA();
 };
 
 void SemanticColorsTest::constantsMatchAndroid_data()
@@ -143,6 +144,23 @@ void SemanticColorsTest::lightAffordanceTextMeetsWcagAA()
         }
     }
     QCOMPARE(lightPalettes, 7);
+}
+
+// Error and warning lines are plain Text on panel or bg, every palette.
+void SemanticColorsTest::affordanceTextOnPlainSurfacesMeetsWcagAA()
+{
+    const SemanticColor none{0x000000, 0.0};
+    for (const QString& name : AppTheme::themeNames().mid(1)) {
+        const ThemePalette p = AppTheme::palette(name, false);
+        for (Hue hue : {Hue::Danger, Hue::Warning}) {
+            const quint32 text = SemanticColors::affordance(hue, p).text.rgb;
+            for (quint32 surface : {p.panel, p.bg}) {
+                const double ratio = contrastOver(text, none, surface);
+                QVERIFY2(ratio >= 4.5, qPrintable(QStringLiteral("%1 %2 on %3: %4:1")
+                                                      .arg(name).arg(int(hue)).arg(surface, 6, 16, QLatin1Char('0')).arg(ratio)));
+            }
+        }
+    }
 }
 
 QTEST_APPLESS_MAIN(SemanticColorsTest)

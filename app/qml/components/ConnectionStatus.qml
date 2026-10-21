@@ -68,7 +68,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 textFormat: Text.PlainText
                 text: modelData.value
-                color: modelData.name === "errorRow" ? Theme.dangerColor : Theme.inkStrong
+                color: modelData.name === "errorRow" ? Theme.dangerActionText : Theme.inkStrong
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontSender
                 wrapMode: Text.WordWrap

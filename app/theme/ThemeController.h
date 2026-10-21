@@ -119,6 +119,8 @@ public:
     double eyebrowLetterSpacing() const;
 
     Q_INVOKABLE void setTheme(const QString& name);
+    // Black or white text for an opaque `background` (Android readableOn()).
+    Q_INVOKABLE QColor readableOn(const QColor& background) const;
     // What the platform colour-scheme signal calls.
     void setSystemDark(bool systemDark);
 

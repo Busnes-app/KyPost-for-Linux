@@ -152,7 +152,7 @@ Item {
                 Layout.fillWidth: true
                 visible: Pairing.pendingPairInsecure
                 text: i18n("This connection is not encrypted (http).")
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontDate
                 horizontalAlignment: Text.AlignHCenter
@@ -272,14 +272,14 @@ Item {
             Text {
                 Layout.fillWidth: true
                 text: "⚠" // warning glyph
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.pixelSize: Math.round(40 * Theme.fontScale)
                 horizontalAlignment: Text.AlignHCenter
             }
             Text {
                 Layout.fillWidth: true
                 text: i18n("Pairing failed")
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontUi
                 font.pixelSize: Math.round(22 * Theme.fontScale)
                 font.weight: Font.Bold
@@ -295,7 +295,7 @@ Item {
                 // literal to wrap a second time.
                 textFormat: Text.PlainText
                 text: Pairing.pairingError
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontSender
                 horizontalAlignment: Text.AlignHCenter

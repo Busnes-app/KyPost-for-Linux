@@ -95,7 +95,7 @@ Item {
             text: i18n("KyPost cannot reach your system keyring, so it cannot check your PIN. "
                        + "Start a keyring service (GNOME Keyring or KWallet), unlock it, then "
                        + "restart KyPost.")
-            color: Theme.dangerColor
+            color: Theme.dangerActionText
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontPreview
             horizontalAlignment: Text.AlignHCenter
@@ -131,7 +131,7 @@ Item {
             visible: root.errorText !== ""
             textFormat: Text.PlainText
             text: root.errorText
-            color: Theme.dangerColor
+            color: Theme.dangerActionText
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontDate
             horizontalAlignment: Text.AlignHCenter
@@ -156,7 +156,7 @@ Item {
             // policy's, not a number duplicated here.
             visible: !root.lockedOut && AppLock.failedAttempts >= 5
             text: i18n("Warning: after 10 failed attempts, all local data is erased.")
-            color: Theme.dangerColor
+            color: Theme.dangerActionText
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontDate
             horizontalAlignment: Text.AlignHCenter

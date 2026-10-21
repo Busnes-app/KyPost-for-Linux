@@ -748,7 +748,7 @@ Item {
                     visible: ContactsApp.lastError !== ""
                     textFormat: Text.PlainText
                     text: ContactsApp.lastError
-                    color: Theme.dangerColor
+                    color: Theme.dangerActionText
                     font.family: Theme.fontUi
                     font.pixelSize: Theme.fontDate
                     wrapMode: Text.WordWrap
