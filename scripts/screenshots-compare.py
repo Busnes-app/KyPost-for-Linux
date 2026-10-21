@@ -11,6 +11,7 @@ import sys
 ANDROID = {
     "inbox-all": 1,
     "inbox-primary": 2,
+    "inbox-selected": 3,
     "email-detail": 3,
     "compose": 4,
     "contact-detail": 5,
