@@ -15,6 +15,7 @@ void TypeScaleTest::tokensMatchAndroidSp()
 {
     QCOMPARE(TypeScale::wordmark, 32);
     QCOMPARE(TypeScale::subject, 18);
+    QCOMPARE(TypeScale::body, 16);
     QCOMPARE(TypeScale::sender, 14);
     QCOMPARE(TypeScale::preview, 13);
     QCOMPARE(TypeScale::date, 12);

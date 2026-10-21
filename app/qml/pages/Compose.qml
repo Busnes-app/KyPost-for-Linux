@@ -333,10 +333,10 @@ Item {
     // the editor as on Android's 7-inch layout.
     component FieldLabel: Text {
         textFormat: Text.PlainText
-        Layout.preferredWidth: 60
+        Layout.preferredWidth: 72
         color: Theme.inkStrong
         font.family: Theme.fontUi
-        font.pixelSize: Theme.fontDate
+        font.pixelSize: Theme.fontSender
     }
     component Hairline: Rectangle {
         Layout.fillWidth: true
@@ -608,7 +608,7 @@ Item {
                         MailApp.pgpKeylessRecipients.join(", "))
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: Theme.fontDate
+            font.pixelSize: Theme.fontSender
             wrapMode: Text.WordWrap
         }
 
@@ -628,7 +628,7 @@ Item {
                 text: i18n("This account's PGP key is stored only in your browser, so this app can't encrypt on its behalf.")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: Theme.fontDate
+                font.pixelSize: Theme.fontSender
                 wrapMode: Text.WordWrap
             }
             RowLayout {
@@ -653,7 +653,7 @@ Item {
                   : i18n("This message will be encrypted and signed on this computer with your own key.")
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: Theme.fontDate
+            font.pixelSize: Theme.fontSender
             wrapMode: Text.WordWrap
         }
 
@@ -668,7 +668,7 @@ Item {
             text: i18n("Sent. A copy could not be saved to your Sent folder, because it can only be stored encrypted to your own key.")
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: Theme.fontDate
+            font.pixelSize: Theme.fontSender
             wrapMode: Text.WordWrap
         }
 
@@ -679,7 +679,7 @@ Item {
             text: root.validationError !== "" ? root.validationError : MailApp.lastError
             color: Theme.dangerActionText
             font.family: Theme.fontUi
-            font.pixelSize: Theme.fontDate
+            font.pixelSize: Theme.fontSender
             wrapMode: Text.WordWrap
         }
 

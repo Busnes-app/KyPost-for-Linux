@@ -54,8 +54,9 @@ ColumnLayout {
         horizontalAlignment: Text.AlignHCenter
         visible: !isNaN(new Date(MailApp.lastSyncAt).getTime())
         textFormat: Text.PlainText
-        text: i18np("Updated %1 minute ago", "Updated %1 minutes ago",
-                    Format.minutesSince(MailApp.lastSyncAt, root.now))
+        readonly property int minutes: Format.minutesSince(MailApp.lastSyncAt, root.now)
+        text: minutes < 1 ? i18n("Updated just now")
+                          : i18np("Updated %1 minute ago", "Updated %1 minutes ago", minutes)
         color: Theme.inkStrong
         font.family: Theme.fontUi
         font.pixelSize: Theme.fontDate

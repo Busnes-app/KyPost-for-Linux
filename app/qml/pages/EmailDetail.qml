@@ -633,7 +633,7 @@ Item {
             text: i18n("Images are hidden to protect your privacy.")
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: Theme.fontDate
+            font.pixelSize: Theme.fontSender
             wrapMode: Text.WordWrap
         }
 
@@ -679,7 +679,7 @@ Item {
                     text: i18n("This message impersonates KyPost")
                     color: Theme.inkStrong
                     font.family: Theme.fontUi
-                    font.pixelSize: Theme.fontPreview
+                    font.pixelSize: Theme.fontSender
                     font.bold: true
                     wrapMode: Text.WordWrap
                 }
@@ -690,7 +690,7 @@ Item {
                                + "one you did not start yourself, on this device.")
                     color: Theme.ink
                     font.family: Theme.fontUi
-                    font.pixelSize: Theme.fontDate
+                    font.pixelSize: Theme.fontSender
                     wrapMode: Text.WordWrap
                 }
             }
@@ -739,7 +739,7 @@ Item {
                     text: root.email.pgpBannerTitle || ""
                     color: Theme.inkStrong
                     font.family: Theme.fontUi
-                    font.pixelSize: Theme.fontPreview
+                    font.pixelSize: Theme.fontSender
                     font.bold: true
                     wrapMode: Text.WordWrap
                 }
@@ -750,7 +750,7 @@ Item {
                     text: root.email.pgpBannerBody || ""
                     color: Theme.ink
                     font.family: Theme.fontUi
-                    font.pixelSize: Theme.fontDate
+                    font.pixelSize: Theme.fontSender
                     wrapMode: Text.WordWrap
                 }
 
@@ -770,7 +770,7 @@ Item {
                     text: MailApp.decryptedSignature || ""
                     color: MailApp.decryptedSignatureIsWarning ? Theme.dangerActionText : Theme.ink
                     font.family: Theme.fontUi
-                    font.pixelSize: Theme.fontDate
+                    font.pixelSize: Theme.fontSender
                     font.bold: MailApp.decryptedSignatureIsWarning
                     wrapMode: Text.WordWrap
                 }
@@ -793,7 +793,7 @@ Item {
                     text: root.email.pgpState === 4 ? i18n("Checking signature…") : i18n("Waiting for your key…")
                     color: Theme.ink
                     font.family: Theme.fontUi
-                    font.pixelSize: Theme.fontDate
+                    font.pixelSize: Theme.fontSender
                     wrapMode: Text.WordWrap
                 }
 
@@ -808,7 +808,7 @@ Item {
                     text: MailApp.decryptFailure || ""
                     color: Theme.ink
                     font.family: Theme.fontUi
-                    font.pixelSize: Theme.fontDate
+                    font.pixelSize: Theme.fontSender
                     wrapMode: Text.WordWrap
                 }
 
@@ -1092,7 +1092,7 @@ Item {
                 visible: root.attachmentStatus !== ""
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: Theme.fontDate
+                font.pixelSize: Theme.fontSender
             }
         }
         } // contentColumn

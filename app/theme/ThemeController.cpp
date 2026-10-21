@@ -292,6 +292,11 @@ int ThemeController::fontSubject() const
     return scaled(TypeScale::subject);
 }
 
+int ThemeController::fontBody() const
+{
+    return scaled(TypeScale::body);
+}
+
 int ThemeController::fontSender() const
 {
     return scaled(TypeScale::sender);

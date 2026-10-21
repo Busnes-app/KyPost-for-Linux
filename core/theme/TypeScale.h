@@ -6,6 +6,7 @@ namespace TypeScale
 {
     inline constexpr int wordmark = 32; // bold
     inline constexpr int subject = 18;
+    inline constexpr int body = 16;     // body copy, Material body1
     inline constexpr int sender = 14;
     inline constexpr int preview = 13;
     inline constexpr int date = 12;

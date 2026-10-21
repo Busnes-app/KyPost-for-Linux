@@ -49,5 +49,10 @@ Rectangle {
         }
     }
 
+    activeFocusOnTab: true
+    Keys.onReturnPressed: if (!AppLock.locked) root.clicked()
+    Keys.onSpacePressed: if (!AppLock.locked) root.clicked()
+    FocusRing { cornerRadius: root.radius }
+
     TapHandler { onTapped: root.clicked() }
 }

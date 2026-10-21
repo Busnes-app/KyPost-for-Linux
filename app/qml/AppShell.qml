@@ -843,6 +843,10 @@ Kirigami.ApplicationWindow {
                         visible: root.currentSection === "mail"
                         Layout.fillWidth: true
                         Layout.fillHeight: true
+                        // A 1920px row of 13px text is unreadable; Android's
+                        // 7-inch list is under 1000dp wide.
+                        Layout.maximumWidth: 960
+                        Layout.alignment: Qt.AlignHCenter
                         Layout.leftMargin: 12
                         Layout.rightMargin: 12
                         spacing: 8
@@ -938,6 +942,8 @@ Kirigami.ApplicationWindow {
                         visible: root.currentSection === "contacts"
                         Layout.fillWidth: true
                         Layout.fillHeight: true
+                        Layout.maximumWidth: 960
+                        Layout.alignment: Qt.AlignHCenter
                         onContactSelected: function (uid) { root.selectContact(uid) }
                         onScanPgpKeyRequested: {
                             pgpScanContactKeySheet.targetContactDetail = null
@@ -1027,7 +1033,9 @@ Kirigami.ApplicationWindow {
                     visible: root.destination === "settings"
                     spacing: 0
 
+                    // A narrow window's open section has its own titled bar.
                     AppHeader {
+                        visible: settingsPane.wide || !settingsPane.paneOpen
                         Layout.fillWidth: true
                         place: root.place
                     }

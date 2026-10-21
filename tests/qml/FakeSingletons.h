@@ -144,6 +144,7 @@ class FakeTheme : public QObject
     Q_PROPERTY(double fontScale MEMBER m_fontScale CONSTANT)
     Q_PROPERTY(int fontWordmark MEMBER m_fontWordmark CONSTANT)
     Q_PROPERTY(int fontSubject MEMBER m_fontSubject CONSTANT)
+    Q_PROPERTY(int fontBody MEMBER m_fontBody CONSTANT)
     Q_PROPERTY(int fontSender MEMBER m_fontSender CONSTANT)
     Q_PROPERTY(int fontPreview MEMBER m_fontPreview CONSTANT)
     Q_PROPERTY(int fontDate MEMBER m_fontDate CONSTANT)
@@ -168,6 +169,7 @@ private:
     double m_fontScale = 1.0;
     int m_fontWordmark = 32;
     int m_fontSubject = 18;
+    int m_fontBody = 16;
     int m_fontSender = 14;
     int m_fontPreview = 13;
     int m_fontDate = 12;

@@ -44,6 +44,11 @@ SwipeDelegate {
             anchors.fill: parent
             anchors.margins: 8
             color: card.selected ? Theme.selection : (card.down ? Qt.darker(Theme.panel, 1.03) : Theme.panel)
+
+            FocusRing {
+                cornerRadius: Theme.shapePanel
+                visible: card.visualFocus
+            }
         }
     }
 
@@ -80,7 +85,7 @@ SwipeDelegate {
                 color: model.unread ? Theme.inkStrong : Theme.ink
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontSubject
-                font.weight: model.unread ? Font.Medium : Font.Normal
+                font.weight: model.unread ? Font.Bold : Font.Normal
                 elide: Text.ElideRight
             }
         }

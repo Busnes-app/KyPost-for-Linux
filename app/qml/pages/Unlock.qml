@@ -89,7 +89,7 @@ Item {
             text: i18n("Enter your PIN to continue.")
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: Theme.fontPreview
+            font.pixelSize: Theme.fontSender
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }
@@ -107,7 +107,7 @@ Item {
                        + "restart KyPost.")
             color: Theme.dangerActionText
             font.family: Theme.fontUi
-            font.pixelSize: Theme.fontPreview
+            font.pixelSize: Theme.fontSender
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }
@@ -125,6 +125,8 @@ Item {
             Component.onCompleted: {
                 inputField.echoMode = TextInput.Password
                 inputField.inputMethodHints = Qt.ImhDigitsOnly
+                // The placeholder vanishes while typing; the name does not.
+                inputField.Accessible.name = i18n("PIN")
                 // Android's unlock field: large centred digits.
                 inputField.horizontalAlignment = TextInput.AlignHCenter
                 inputField.font.pixelSize = Math.round(28 * Theme.fontScale)
@@ -146,7 +148,7 @@ Item {
             text: root.errorText
             color: Theme.dangerActionText
             font.family: Theme.fontUi
-            font.pixelSize: Theme.fontDate
+            font.pixelSize: Theme.fontSender
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }
@@ -158,7 +160,7 @@ Item {
             text: i18n("Too many attempts. Try again in %1 seconds.", root.secondsLeft)
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: Theme.fontDate
+            font.pixelSize: Theme.fontSender
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }
@@ -171,7 +173,7 @@ Item {
             text: i18n("Warning: after 10 failed attempts, all local data is erased.")
             color: Theme.dangerActionText
             font.family: Theme.fontUi
-            font.pixelSize: Theme.fontDate
+            font.pixelSize: Theme.fontSender
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }

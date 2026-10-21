@@ -364,3 +364,13 @@ function rowDate(at, now, timeText, dateText) {
     return a.getFullYear() === n.getFullYear() && a.getMonth() === n.getMonth()
         && a.getDate() === n.getDate() ? timeText : dateText
 }
+
+// The whole path of a folder, for where two leaves share a name: the
+// notification folder question must tell Archive/Work from Projects/Work.
+// Splits on "/" and "." like core's standardFolderDisplayName().
+function folderPath(wireName) {
+    const parts = String(wireName).split(/[\/.]/).filter(function (p) { return p.length > 0 })
+    if (parts.length > 0 && parts[0].toUpperCase() === "INBOX")
+        parts[0] = "Inbox"
+    return parts.join(" / ")
+}

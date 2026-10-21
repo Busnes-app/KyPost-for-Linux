@@ -61,6 +61,7 @@ class ThemeController : public QObject
     Q_PROPERTY(double fontScale READ fontScale NOTIFY fontScaleChanged)
     Q_PROPERTY(int fontWordmark READ fontWordmark NOTIFY fontScaleChanged)
     Q_PROPERTY(int fontSubject READ fontSubject NOTIFY fontScaleChanged)
+    Q_PROPERTY(int fontBody READ fontBody NOTIFY fontScaleChanged)
     Q_PROPERTY(int fontSender READ fontSender NOTIFY fontScaleChanged)
     Q_PROPERTY(int fontPreview READ fontPreview NOTIFY fontScaleChanged)
     Q_PROPERTY(int fontDate READ fontDate NOTIFY fontScaleChanged)
@@ -115,6 +116,7 @@ public:
     double fontScale() const;
     int fontWordmark() const;
     int fontSubject() const;
+    int fontBody() const;
     int fontSender() const;
     int fontPreview() const;
     int fontDate() const;

@@ -179,13 +179,20 @@ Item {
         Layout.fillWidth: true
         implicitHeight: Math.max(52, toggleLabel.implicitHeight + 24)
         radius: Theme.shapeButton
-        color: Theme.accent
+        // Off is an outline, so an off switch never reads as an active one.
+        color: checked ? Theme.accent : Theme.panel
+        border.width: checked ? 0 : 2
+        border.color: Theme.accent
         opacity: enabled ? 1.0 : 0.5
 
         Accessible.role: Accessible.CheckBox
         Accessible.name: toggle.text
         Accessible.checked: toggle.checked
         Accessible.onPressAction: if (toggle.enabled && !AppLock.locked) toggle.toggled()
+        activeFocusOnTab: toggle.enabled
+        Keys.onReturnPressed: if (toggle.enabled && !AppLock.locked) toggle.toggled()
+        Keys.onSpacePressed: if (toggle.enabled && !AppLock.locked) toggle.toggled()
+        FocusRing { cornerRadius: toggle.radius }
 
         Text {
             id: toggleLabel
@@ -196,9 +203,9 @@ Item {
             anchors.rightMargin: 12
             textFormat: Text.PlainText
             text: toggle.text
-            color: Theme.readableOnAccent
+            color: toggle.checked ? Theme.readableOnAccent : Theme.inkStrong
             font.family: Theme.fontUi
-            font.pixelSize: Theme.fontSender
+            font.pixelSize: Math.round(17 * Theme.fontScale)
             wrapMode: Text.WordWrap
         }
         Rectangle {
@@ -209,8 +216,9 @@ Item {
             width: 40
             height: 22
             radius: height / 2
-            color: Qt.rgba(Theme.readableOnAccent.r, Theme.readableOnAccent.g, Theme.readableOnAccent.b,
-                           toggle.checked ? 0.45 : 0.2)
+            color: toggle.checked
+                ? Qt.rgba(Theme.readableOnAccent.r, Theme.readableOnAccent.g, Theme.readableOnAccent.b, 0.45)
+                : Qt.rgba(Theme.ink.r, Theme.ink.g, Theme.ink.b, 0.3)
 
             Rectangle {
                 x: toggle.checked ? parent.width - width - 3 : 3
@@ -218,8 +226,7 @@ Item {
                 width: 16
                 height: 16
                 radius: 8
-                color: Theme.readableOnAccent
-                opacity: toggle.checked ? 1.0 : 0.7
+                color: toggle.checked ? Theme.readableOnAccent : Theme.ink
                 Behavior on x { NumberAnimation { duration: 120 } }
             }
         }
@@ -229,10 +236,10 @@ Item {
         }
     }
 
-    // Explanation text under a row, as Android's 14sp body copy.
+    // Explanation text under a row, as Android's 16sp body copy.
     component Explain: MutedHint {
         Layout.fillWidth: true
-        font.pixelSize: Theme.fontPreview
+        font.pixelSize: Theme.fontBody
         wrapMode: Text.WordWrap
     }
 
@@ -293,6 +300,10 @@ Item {
                         Accessible.role: Accessible.Button
                         Accessible.name: modelData.name
                         Accessible.onPressAction: if (!AppLock.locked) root.showPane(index)
+                        activeFocusOnTab: true
+                        Keys.onReturnPressed: if (!AppLock.locked) root.showPane(index)
+                        Keys.onSpacePressed: if (!AppLock.locked) root.showPane(index)
+                        FocusRing { cornerRadius: sectionCard.radius }
 
                         RowLayout {
                             id: sectionRow
@@ -352,6 +363,7 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumWidth: 0
+            Layout.maximumWidth: 760
             spacing: 0
 
             SubHeader {
@@ -457,6 +469,10 @@ Item {
                             Accessible.name: modelData
                             Accessible.checked: modelData === Theme.themeName
                             Accessible.onPressAction: if (!AppLock.locked) Theme.setTheme(modelData)
+                            activeFocusOnTab: true
+                            Keys.onReturnPressed: if (!AppLock.locked) Theme.setTheme(modelData)
+                            Keys.onSpacePressed: if (!AppLock.locked) Theme.setTheme(modelData)
+                            FocusRing { cornerRadius: themeDelegate.radius }
 
                             RowLayout {
                                 id: themeRow
@@ -471,7 +487,13 @@ Item {
                                     // translated: it is also the identifier
                                     // Theme.setTheme() stores and compares.
                                     textFormat: Text.PlainText
-                                    text: themeDelegate.modelData
+                                    // Under Follow system, say which palette is in effect.
+                                    text: themeDelegate.modelData === "Follow system"
+                                          && Theme.themeName === "Follow system"
+                                        ? i18nc("@item theme name, then the palette it currently resolves to",
+                                                "%1 (currently %2)", themeDelegate.modelData,
+                                                Theme.isLight ? i18n("light") : i18n("dark"))
+                                        : themeDelegate.modelData
                                     color: Theme.inkStrong
                                     font.family: Theme.fontUi
                                     font.pixelSize: Theme.fontSender
@@ -1063,7 +1085,7 @@ Item {
                             text: i18n("This pairing predates push encryption: notifications send the sender and subject through a relay server (UnifiedPush/ntfy) in the clear, even with the settings above enabled. Pair this device again to encrypt them, or ask your server admin to switch it to Pull mode. Sign-in approvals reach this device only after it is paired again.")
                             color: Theme.dangerActionText
                             font.family: Theme.fontUi
-                            font.pixelSize: Theme.fontDate
+                            font.pixelSize: Theme.fontSender
                             wrapMode: Text.WordWrap
                         }
                     }
@@ -1204,7 +1226,7 @@ Item {
                 text: securityPrompt.errorText
                 color: Theme.dangerActionText
                 font.family: Theme.fontUi
-                font.pixelSize: Theme.fontDate
+                font.pixelSize: Theme.fontSender
                 wrapMode: Text.WordWrap
             }
 

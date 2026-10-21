@@ -51,7 +51,7 @@ Rectangle {
         color: Theme.inkStrong
         placeholderTextColor: Theme.ink
         font.family: Theme.fontUi
-        font.pixelSize: Theme.fontSender
+        font.pixelSize: Theme.fontBody
         selectByMouse: true
     }
 }

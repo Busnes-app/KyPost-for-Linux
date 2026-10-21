@@ -89,10 +89,15 @@ Rectangle {
                         text: cell.modelData.label
                         color: cell.active ? Theme.inkStrong : Theme.ink
                         font.family: Theme.fontUi
-                        font.pixelSize: Theme.fontDate
+                        font.pixelSize: Theme.fontSender
                         font.weight: cell.active ? Font.Medium : Font.Normal
                     }
                 }
+
+                activeFocusOnTab: cell.available
+                Keys.onReturnPressed: if (cell.available && !AppLock.locked) root.activated(cell.modelData.key)
+                Keys.onSpacePressed: if (cell.available && !AppLock.locked) root.activated(cell.modelData.key)
+                FocusRing { cornerRadius: 12 }
 
                 TapHandler {
                     enabled: cell.available

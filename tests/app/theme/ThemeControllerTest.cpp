@@ -122,6 +122,7 @@ void ThemeControllerTest::fontTokensFollowSystemFont()
     QCOMPARE(theme.fontScale(), 1.0);
     QCOMPARE(theme.fontWordmark(), 32);
     QCOMPARE(theme.fontSubject(), 18);
+    QCOMPARE(theme.fontBody(), 16);
     QCOMPARE(theme.fontSender(), 14);
     QCOMPARE(theme.fontPreview(), 13);
     QCOMPARE(theme.fontDate(), 12);

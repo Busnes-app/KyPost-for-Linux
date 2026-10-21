@@ -136,7 +136,7 @@ Item {
             leftPadding: 4
             color: Theme.inkStrong
             font.family: Theme.fontUi
-            font.pixelSize: Theme.fontSender
+            font.pixelSize: Theme.fontBody
             selectByMouse: true
             clip: true
 
@@ -148,7 +148,7 @@ Item {
                 visible: inputField.text === "" && !inputField.activeFocus
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: Theme.fontSender
+                font.pixelSize: Theme.fontBody
             }
 
             onTextChanged: root.queryChanged(text.trim())

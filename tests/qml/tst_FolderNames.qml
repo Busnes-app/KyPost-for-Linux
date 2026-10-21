@@ -12,6 +12,13 @@ TestCase {
         compare(Format.folderDisplayName(folders, "Archive/2024"), "2024")
     }
 
+    function test_notification_choices_show_the_whole_path() {
+        compare(Format.folderPath("INBOX"), "Inbox")
+        compare(Format.folderPath("Archive/Work"), "Archive / Work")
+        compare(Format.folderPath("Projects.Work"), "Projects / Work")
+        compare(Format.folderPath("INBOX.Receipts"), "Inbox / Receipts")
+    }
+
     function test_fallback_never_shows_raw_inbox() {
         compare(Format.folderDisplayName([], "INBOX"), "Inbox")
         compare(Format.folderDisplayName([], "inbox"), "Inbox")

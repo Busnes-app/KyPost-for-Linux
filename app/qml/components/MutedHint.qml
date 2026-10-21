@@ -14,5 +14,5 @@ Text {
     textFormat: Text.PlainText
     color: Theme.ink
     font.family: Theme.fontUi
-    font.pixelSize: Theme.fontDate
+    font.pixelSize: Theme.fontSender
 }
