@@ -481,7 +481,7 @@ set_tests_properties(QmlTests PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QML_XHR_ALLOW_FILE_READ=1")
 
 # QmlTests above instantiates a handful of leaf components. It cannot load
-# DesktopRoot or MobileRoot -- those need every C++ singleton -- so a property
+# the AppShell root -- it needs every C++ singleton -- so a property
 # assignment that makes a whole root fail to load slips through it entirely.
 # That is not hypothetical: it shipped, and the app would not start.
 #

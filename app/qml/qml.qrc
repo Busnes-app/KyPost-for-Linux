@@ -1,9 +1,9 @@
 <RCC>
   <qresource prefix="/qml">
-    <file>MobileRoot.qml</file>
     <file>Startup.qml</file>
-    <file>DesktopRoot.qml</file>
+    <file>AppShell.qml</file>
     <file>utils/format.js</file>
+    <file>utils/layout.js</file>
     <file>components/PrimaryButton.qml</file>
     <file>components/ConnectionStatus.qml</file>
     <file>components/GhostButton.qml</file>
@@ -38,6 +38,49 @@
     <file>components/SnoozeDialog.qml</file>
     <file>components/FolderDialog.qml</file>
     <file>components/SendLaterDialog.qml</file>
+    <file>components/MaterialIcon.qml</file>
+    <file>components/Card.qml</file>
+    <file>components/AppHeader.qml</file>
+    <file>components/SubHeader.qml</file>
+    <file>components/NavBar.qml</file>
+    <file>components/KeywordChips.qml</file>
+    <file>components/Chip.qml</file>
+    <file>components/MailCard.qml</file>
+    <file>icons/add.svg</file>
+    <file>icons/archive.svg</file>
+    <file>icons/arrow-back.svg</file>
+    <file>icons/attach.svg</file>
+    <file>icons/bold.svg</file>
+    <file>icons/close.svg</file>
+    <file>icons/delete.svg</file>
+    <file>icons/drafts.svg</file>
+    <file>icons/edit.svg</file>
+    <file>icons/folder.svg</file>
+    <file>icons/forward.svg</file>
+    <file>icons/image.svg</file>
+    <file>icons/inbox.svg</file>
+    <file>icons/italic.svg</file>
+    <file>icons/link.svg</file>
+    <file>icons/lock.svg</file>
+    <file>icons/logo.png</file>
+    <file>icons/mail.svg</file>
+    <file>icons/mark-unread.svg</file>
+    <file>icons/menu.svg</file>
+    <file>icons/more-vert.svg</file>
+    <file>icons/move.svg</file>
+    <file>icons/open-in-new.svg</file>
+    <file>icons/person.svg</file>
+    <file>icons/refresh.svg</file>
+    <file>icons/reply-all.svg</file>
+    <file>icons/reply.svg</file>
+    <file>icons/schedule.svg</file>
+    <file>icons/search.svg</file>
+    <file>icons/send.svg</file>
+    <file>icons/settings.svg</file>
+    <file>icons/snooze.svg</file>
+    <file>icons/spam.svg</file>
+    <file>icons/underline.svg</file>
+    <file>icons/undo.svg</file>
     <file>pages/EmailDetail.qml</file>
     <file>pages/Unlock.qml</file>
     <file>pages/MfaApproval.qml</file>

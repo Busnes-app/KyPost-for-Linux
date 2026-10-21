@@ -79,6 +79,8 @@ void ThemeControllerTest::tokens()
     QCOMPARE(theme.avatarEnd(), QColor(QStringLiteral("#e65124")));
     QCOMPARE(theme.avatarBorder(), QColor(QStringLiteral("#bf3f18")));
     QCOMPARE(theme.readableOnAccent(), QColor(Qt::white));
+    // Busnes Light's panel 30 % toward accent is its accentSoft.
+    QCOMPARE(theme.selection(), QColor(QStringLiteral("#ebc5b9")));
     QCOMPARE(theme.successFillColor().rgb() & 0xFFFFFF, 0x7BBF7Bu);
     QCOMPARE(qRound(theme.successFillColor().alphaF() * 100), 12);
 

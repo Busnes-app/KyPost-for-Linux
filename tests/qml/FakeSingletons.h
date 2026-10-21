@@ -115,6 +115,7 @@ class FakeTheme : public QObject
     Q_PROPERTY(QColor dangerBorderColor MEMBER m_colour CONSTANT)
     Q_PROPERTY(QColor readableOnAccent MEMBER m_colour CONSTANT)
     Q_PROPERTY(QColor accentSoft MEMBER m_colour CONSTANT)
+    Q_PROPERTY(QColor selection MEMBER m_colour CONSTANT)
     Q_PROPERTY(QColor warningColor MEMBER m_colour CONSTANT)
     Q_PROPERTY(QColor successBorderColor MEMBER m_colour CONSTANT)
     Q_PROPERTY(QColor successTextColor MEMBER m_colour CONSTANT)

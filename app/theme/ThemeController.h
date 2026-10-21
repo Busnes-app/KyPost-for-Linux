@@ -31,6 +31,8 @@ class ThemeController : public QObject
     Q_PROPERTY(QColor avatarEnd READ avatarEnd NOTIFY themeChanged)
     Q_PROPERTY(QColor avatarBorder READ avatarBorder NOTIFY themeChanged)
     Q_PROPERTY(QColor readableOnAccent READ readableOnAccent NOTIFY themeChanged)
+    // A selected row: panel blended 30 % toward accent (Android's selected card).
+    Q_PROPERTY(QColor selection READ selection NOTIFY themeChanged)
     Q_PROPERTY(bool isLight READ isLight NOTIFY themeChanged)
     // Danger/warning affordances depend on the palette's lightness.
     Q_PROPERTY(QColor dangerActionFill READ dangerActionFill NOTIFY themeChanged)
@@ -82,6 +84,7 @@ public:
     QColor avatarEnd() const;
     QColor avatarBorder() const;
     QColor readableOnAccent() const;
+    QColor selection() const;
     bool isLight() const;
 
     QColor dangerActionFill() const;

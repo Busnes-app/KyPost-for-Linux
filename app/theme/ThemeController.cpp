@@ -161,6 +161,12 @@ QColor ThemeController::readableOnAccent() const
     return fromHex(m_manager.palette().readableOnAccent());
 }
 
+QColor ThemeController::selection() const
+{
+    const ThemePalette p = m_manager.palette();
+    return fromHex(SemanticColors::blend(p.panel, p.accent, 0.3));
+}
+
 bool ThemeController::isLight() const
 {
     return m_manager.palette().isLight();

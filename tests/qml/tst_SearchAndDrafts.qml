@@ -14,15 +14,13 @@ TestCase {
         return source.responseText
     }
 
-    function test_both_roots_show_search_results_in_the_mail_list() {
-        for (var root of ["DesktopRoot", "MobileRoot"]) {
-            var text = read("qrc:/qml/" + root + ".qml")
-            verify(text.indexOf("model: MailApp.searchActive ? MailApp.searchModel : MailApp.emailModel") !== -1, root)
-            // The lock gating lives in the component; tst_SearchLock tests it.
-            verify(text.indexOf("MailSearchField {") !== -1, root)
-            verify(text.indexOf("visible: !MailApp.searchActive // keywords filter the folder") !== -1, root)
-        }
-        verify(read("qrc:/qml/DesktopRoot.qml").indexOf("findShortcutEnabled: root.currentSection === \"mail\"") !== -1)
+    function test_the_shell_shows_search_results_in_the_mail_list() {
+        var text = read("qrc:/qml/AppShell.qml")
+        verify(text.indexOf("model: MailApp.searchActive ? MailApp.searchModel : MailApp.emailModel") !== -1)
+        // The lock gating lives in the component; tst_SearchLock tests it.
+        verify(text.indexOf("MailSearchField {") !== -1)
+        verify(text.indexOf("visible: !MailApp.searchActive // keywords filter the folder") !== -1)
+        verify(text.indexOf("findShortcutEnabled: root.currentSection === \"mail\"") !== -1)
         var field = read("qrc:/qml/components/MailSearchField.qml")
         verify(field.indexOf("function onTextEdited() { MailApp.setSearchQuery(field.text) }") !== -1)
         verify(field.indexOf("MailApp.clearSearch()") !== -1)
@@ -30,15 +28,15 @@ TestCase {
 
     // A window shortcut fires under the PIN overlay whatever has focus.
     function test_no_root_shortcut_fires_while_locked() {
-        var text = read("qrc:/qml/DesktopRoot.qml")
+        var text = read("qrc:/qml/AppShell.qml")
         var blocks = text.split("Shortcut {").slice(1)
         verify(blocks.length >= 3)
         for (var block of blocks) {
             var head = block.slice(0, block.indexOf("onActivated"))
             verify(head.indexOf("!AppLock.locked") !== -1, head)
         }
-        var mobile = read("qrc:/qml/MobileRoot.qml")
-        verify(mobile.indexOf('objectName: "mobileSearchToggle"\n                    enabled: !AppLock.locked') !== -1)
+        verify(text.indexOf('objectName: "searchToggle"\n                            visible: root.currentSection === "mail"\n                            enabled: !AppLock.locked') !== -1)
+        verify(text.indexOf('objectName: "foldersButton"\n                            visible: root.currentSection === "mail"\n                            enabled: !AppLock.locked') !== -1)
     }
 
     function test_reader_loads_search_bodies_and_reopens_plaintext_drafts() {

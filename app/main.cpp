@@ -1372,22 +1372,13 @@ int main(int argc, char* argv[])
     // MobileRoot.qml's very first frame. Deliberately not the older
     // KLocalizedContext class (see app/CMakeLists.txt's KF6::I18nQml comment
     // for why: deprecated since 6.8, this is its replacement).
-    // Convergent root selection: picks MobileRoot.qml vs DesktopRoot.qml
-    // (Tasks 38/39) directly, rather than loading a QML-side Loader-based
-    // dispatcher -- a Loader-wrapped root was tried first and reproducibly
-    // broke window visibility under this Wayland/Kirigami stack (the QML
-    // content loads and runs fine underneath it, but no window ever gets
-    // mapped), confirmed by comparing two otherwise-identical fresh builds
-    // that differed only in root-vs-Loader. Deciding here mirrors
-    // Kirigami.Settings.isMobile's own primary override signal
-    // (QT_QUICK_CONTROLS_MOBILE) without needing its QML-singleton-only
-    // Settings class from C++: a real Plasma Mobile session also flips this
-    // env var on for Qt Quick Controls apps, so this covers the same cases
-    // Linux_QT_Client_Plan.md's "Root selection" section called for. `isMobile`
-    // itself is resolved earlier, right after settingsStore is constructed
-    // (see that comment for the persisted-preference-over-env-var precedence).
-    engine.load(QUrl(isMobile ? QStringLiteral("qrc:/qml/MobileRoot.qml")
-                               : QStringLiteral("qrc:/qml/DesktopRoot.qml")));
+    // One root for every surface: AppShell.qml follows the window's width at
+    // runtime (bottom bar, rail, list-detail split). It is loaded directly, not
+    // through a QML Loader -- a Loader-wrapped root was tried once and never
+    // got its window mapped under this Wayland/Kirigami stack. `isMobile`
+    // still decides platform behaviour (tray, pop-outs, how locking follows
+    // the app leaving the foreground) through GeneralController.
+    engine.load(QUrl(QStringLiteral("qrc:/qml/AppShell.qml")));
 
     // The real root window exists, so the startup window has done its job.
     // Destroying the startup root takes its window with it; leaving it alive

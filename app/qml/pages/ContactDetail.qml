@@ -364,7 +364,7 @@ Item {
 
                 Item { Layout.fillWidth: true }
                 IconButton {
-                    icon: "window-new"
+                    icon: "open-in-new"
                     tooltip: i18n("Open in New Window")
                     onClicked: root.popOutRequested(root.uid)
                 }

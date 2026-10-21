@@ -12,8 +12,8 @@
 # QQC2 CheckBox. Neither type has that property, so both files failed to load
 # -- and each one took its whole root down with it. The app did not start at
 # all, and nothing caught it: the C++ tests never load QML, and the QML tests
-# only instantiate a handful of leaf components, never DesktopRoot or
-# MobileRoot. It was found by running the binary by hand.
+# only instantiate a handful of leaf components, never the AppShell root.
+# It was found by running the binary by hand.
 #
 # WHY IT IS NARROW
 #
@@ -43,7 +43,7 @@ QML_DIR="${2:?usage: qmllint-gate.sh <qmllint> <qml-dir>}"
 #
 # Adding a C++-registered type means adding it here. That is deliberate
 # friction: it is a prompt to give the type real qmltypes instead.
-UNRESOLVABLE='"(Pairing|MailApp|Theme|General|AppLock|PgpQr|Contacts|QObject|QQmlApplication|DesktopRoot|MobileRoot|RemoteContentInterceptor)"'
+UNRESOLVABLE='"(Pairing|MailApp|Theme|General|AppLock|PgpQr|Contacts|QObject|QQmlApplication|AppShell|RemoteContentInterceptor)"'
 
 mapfile -t files < <(find "$QML_DIR" -name '*.qml' | sort)
 
@@ -74,7 +74,7 @@ fi
 # invisible: the last one found (F-01-8) was the timestamp in MobileRoot's
 # inbox delegate, the only one of five Texts there without textFormat,
 # rendering the raw wire atUtc string. No test that runs the app could catch
-# it -- QmlTests cannot load MobileRoot -- so this reads the source instead.
+# it -- QmlTests cannot load the root -- so this reads the source instead.
 #
 # The rule: a Text or Label with no explicit textFormat may bind only a string
 # literal, or an i18n()/qsTr() of literals. A property, a call, or a value

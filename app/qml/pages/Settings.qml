@@ -54,6 +54,11 @@ Item {
     implicitHeight: 560
 
     property int currentPane: 5 // 0 Connection, 1 Appearance, 2 Keywords, 3 Contacts, 4 Notifications, 5 General, 6 Security
+
+    function openPairing() {
+        root.currentPane = 0
+        pairingPopup.open()
+    }
     readonly property var paneTabs: [
         { "name": i18n("General"), "pane": 5 },
         { "name": i18n("Appearance"), "pane": 1 },

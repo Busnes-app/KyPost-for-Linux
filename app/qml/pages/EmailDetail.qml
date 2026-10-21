@@ -473,7 +473,7 @@ Item {
 
             IconButton {
                 objectName: "editProtectedDraft"
-                icon: "document-edit"
+                icon: "edit"
                 tooltip: i18n("Edit draft")
                 visible: root.folder === MailApp.draftsFolder && root.hasProtectedMessage && root.email.pgpState === 1
                 enabled: !MailApp.isBusy && !AppLock.locked
@@ -485,7 +485,7 @@ Item {
 
             IconButton {
                 objectName: "editDraft"
-                icon: "document-edit"
+                icon: "edit"
                 tooltip: i18n("Edit draft")
                 visible: root.folder === MailApp.draftsFolder && root.email.pgpState === 0 && (!root.email.searchOnly || !!root.email.body)
                 enabled: !MailApp.isBusy && !AppLock.locked
@@ -496,7 +496,7 @@ Item {
             }
 
             IconButton {
-                icon: "mail-reply-sender"
+                icon: "reply"
                 tooltip: i18n("Reply")
                 variant: "primary"
                 enabled: !MailApp.isBusy
@@ -508,7 +508,7 @@ Item {
                 }
             }
             IconButton {
-                icon: "mail-reply-all"
+                icon: "reply-all"
                 tooltip: i18n("Reply All")
                 enabled: !MailApp.isBusy
                 onClicked: {
@@ -519,7 +519,7 @@ Item {
                 }
             }
             IconButton {
-                icon: "mail-forward"
+                icon: "forward"
                 tooltip: i18n("Forward")
                 enabled: !MailApp.isBusy
                 onClicked: {
@@ -533,21 +533,21 @@ Item {
             }
             IconButton {
                 objectName: "toggleRead"
-                icon: root.unread ? "mail-mark-read" : "mail-mark-unread"
+                icon: root.unread ? "drafts" : "mark-unread"
                 tooltip: root.unread ? i18n("Mark as read") : i18n("Mark as unread")
                 visible: root.email.messageId !== undefined
                 onClicked: root.unread ? MailApp.markRead(root.folder, [root.messageId])
                                        : MailApp.markUnread(root.folder, [root.messageId])
             }
             IconButton {
-                icon: "mail-archive"
+                icon: "archive"
                 tooltip: i18n("Archive")
                 enabled: !MailApp.isBusy
                 onClicked: MailApp.archiveEmails([root.messageId])
             }
             IconButton {
                 objectName: "moveTo"
-                icon: "edit-move"
+                icon: "move"
                 tooltip: i18n("Move to…")
                 // moveEmails acts on MailApp's current folder, so a pop-out
                 // left behind by a folder switch must not offer it.
@@ -559,20 +559,20 @@ Item {
                 // so the button wakes it instead. Same folder rule as Move.
                 objectName: "snooze"
                 readonly property bool inSnoozed: root.folder === MailApp.snoozedFolder
-                icon: inSnoozed ? "edit-undo" : "chronometer"
+                icon: inSnoozed ? "undo" : "snooze"
                 tooltip: inSnoozed ? i18n("Unsnooze") : i18n("Snooze…")
                 enabled: !MailApp.isBusy && root.folder === MailApp.currentFolder
                 onClicked: inSnoozed ? MailApp.unsnoozeEmails([root.messageId])
                                      : snoozeDialog.open([root.messageId], MailApp.snoozePresets())
             }
             IconButton {
-                icon: "mail-mark-junk"
+                icon: "spam"
                 tooltip: i18n("Junk")
                 enabled: !MailApp.isBusy
                 onClicked: MailApp.markSpam([root.messageId])
             }
             IconButton {
-                icon: "edit-delete"
+                icon: "delete"
                 tooltip: i18n("Delete")
                 variant: "danger"
                 enabled: !MailApp.isBusy
@@ -585,13 +585,13 @@ Item {
                 // opt-in way back for a message the user trusts. Inline with
                 // the other actions rather than its own row, so it reads as
                 // one more toolbar action instead of a separate banner.
-                icon: "image-x-generic"
+                icon: "image"
                 tooltip: i18n("Show images")
                 visible: !root.imagesLoaded && root.hasRenderableBody
                 onClicked: root.showImages()
             }
             IconButton {
-                icon: "window-new"
+                icon: "open-in-new"
                 tooltip: i18n("Open in New Window")
                 visible: General.isDesktopMode && !root.isPoppedOut
                 onClicked: root.popOutRequested()

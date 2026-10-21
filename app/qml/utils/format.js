@@ -349,3 +349,18 @@ function withUnread(label, unread) {
     const n = Math.floor(Number(unread))
     return n > 0 ? "\u2068" + s + "\u2069 · " + n : s
 }
+
+// Whole minutes from `then` to `now`, never negative (a clock step back
+// must not read "Updated -3 minutes ago").
+function minutesSince(then, now) {
+    const ms = new Date(now).getTime() - new Date(then).getTime()
+    return isNaN(ms) || ms < 0 ? 0 : Math.floor(ms / 60000)
+}
+
+// A mail row's date: the time for today, the date otherwise (Android's list).
+function rowDate(at, now, timeText, dateText) {
+    const a = new Date(at)
+    const n = new Date(now)
+    return a.getFullYear() === n.getFullYear() && a.getMonth() === n.getMonth()
+        && a.getDate() === n.getDate() ? timeText : dateText
+}

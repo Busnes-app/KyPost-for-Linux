@@ -43,7 +43,7 @@ function row(m, i) {
         sentTo: m[1] === "Sent" ? "Jordan Ellis <jordan@northwind.example>" : me,
         cc: "", bcc: "", subject: m[6], preview: body.replace(/\s+/g, " ").slice(0, 140),
         body: body, bodyMode: "plain", label: m[2].length ? m[2][0] : "",
-        keywords: m[2].join(","), status: m[3] ? "unread" : "seen", atUtc: ago(m[0]),
+        keywords: m[2], status: m[3] ? "unread" : "seen", atUtc: ago(m[0]),
         hasAttachments: false, sourceMode: "", pgpMarker: "", pgpMarkerAccessibleName: "",
         unread: m[3], woken: false, accessibleName: m[6] + ", " + m[5], pgpState: 0,
         searchOnly: false, bodyPending: false, bodyNotice: "", canDecryptHere: false,

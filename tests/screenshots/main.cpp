@@ -115,6 +115,7 @@ int main(int argc, char* argv[])
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("kypost-screens"));
     KLocalizedString::setApplicationDomain("kypost");
+    QLocale::setDefault(QLocale(QLocale::English, QLocale::UnitedStates)); // Android's shots are en-US
 
     QCommandLineParser parser;
     parser.addOption({QStringLiteral("root"), QStringLiteral("Root QML url"), QStringLiteral("url"),

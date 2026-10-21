@@ -13,7 +13,7 @@ QtObject {
     property string searchQuery: ""
     property bool isBusy: false
     property string lastError: ""
-    property var lastSyncAt: F.now
+    property var lastSyncAt: new Date()
     property string selectedKeyword: ""
     property string currentFolder: "INBOX"
     property string draftsFolder: "Drafts"

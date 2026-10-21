@@ -138,22 +138,22 @@ Item {
             spacing: 4
 
             IconButton {
-                icon: "format-text-bold"
+                icon: "bold"
                 tooltip: i18n("Bold")
                 onClicked: webView.runJavaScript("document.execCommand('bold')")
             }
             IconButton {
-                icon: "format-text-italic"
+                icon: "italic"
                 tooltip: i18n("Italic")
                 onClicked: webView.runJavaScript("document.execCommand('italic')")
             }
             IconButton {
-                icon: "format-text-underline"
+                icon: "underline"
                 tooltip: i18n("Underline")
                 onClicked: webView.runJavaScript("document.execCommand('underline')")
             }
             IconButton {
-                icon: "insert-link"
+                icon: "link"
                 tooltip: i18n("Insert Link")
                 onClicked: linkDialog.open()
             }
