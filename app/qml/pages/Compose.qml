@@ -394,7 +394,7 @@ Item {
 
         ColumnLayout {
             Layout.fillWidth: !composeGrid.sideBySide
-            Layout.preferredWidth: composeGrid.sideBySide ? Math.round(composeGrid.width * 0.4) : -1
+            Layout.preferredWidth: composeGrid.sideBySide ? Math.round(composeColumn.width * 0.4) : -1
             Layout.alignment: Qt.AlignTop
             spacing: 10
 
