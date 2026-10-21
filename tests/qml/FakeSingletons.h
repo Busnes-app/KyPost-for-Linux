@@ -305,6 +305,12 @@ class FakeMailApp : public QObject
     Q_PROPERTY(int searchClears MEMBER m_searchClears NOTIFY searchChanged)
 
 public:
+    // The relay's display names, as MailController::mailFolders() builds them.
+    Q_INVOKABLE QVariantList mailFolders() const
+    {
+        return {QVariantMap{{QStringLiteral("wireName"), QStringLiteral("INBOX")},
+                            {QStringLiteral("displayName"), QStringLiteral("Inbox")}}};
+    }
     Q_INVOKABLE void setSearchQuery(const QString& query)
     {
         ++m_searchEdits;

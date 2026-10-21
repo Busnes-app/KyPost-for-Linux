@@ -331,15 +331,14 @@ function initialsFromNamePart(namePart) {
 // so this stays a plain, dependency-free JS module). Falls back to
 // `wireName` itself when not found -- which is also what makes a
 // just-created subfolder render sanely before the next refresh lands.
-// Shared by DesktopRoot.qml's folderDisplayName() and MobileRoot.qml's
-// currentFolderDisplayName(), which both did this identical linear scan
-// over the same data.
+// The fallback still shows the raw IMAP "INBOX" as "Inbox", matching
+// core's standardFolderDisplayName().
 function folderDisplayName(folders, wireName) {
     for (let i = 0; i < folders.length; i++) {
         if (folders[i].wireName === wireName)
             return folders[i].displayName
     }
-    return wireName
+    return String(wireName).toUpperCase() === "INBOX" ? "Inbox" : wireName
 }
 
 // A tab or folder label with its unread count, "Work · 3" as on Android; the

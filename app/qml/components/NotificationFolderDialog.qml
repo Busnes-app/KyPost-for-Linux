@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import com.kysecurity.mail 1.0
+import "../utils/format.js" as Format
 
 // Asks which copy of a message the user meant, when a notification tap-through
 // cannot tell.
@@ -129,7 +130,7 @@ Item {
                     Layout.fillWidth: true
                     // Bound as PlainText wherever it is rendered: this is a
                     // mailbox name off the wire, not a string this app chose.
-                    text: modelData
+                    text: Format.folderDisplayName(MailApp.mailFolders(), modelData)
                     onClicked: root.choose(modelData)
                 }
             }

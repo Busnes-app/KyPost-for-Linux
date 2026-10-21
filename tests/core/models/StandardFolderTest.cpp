@@ -51,7 +51,10 @@ void StandardFolderTest::displayNameSplitsOnDot()
 
 void StandardFolderTest::displayNameHandlesPlainPath()
 {
-    QCOMPARE(standardFolderDisplayName(QStringLiteral("INBOX")), QStringLiteral("INBOX"));
+    QCOMPARE(standardFolderDisplayName(QStringLiteral("INBOX")), QStringLiteral("Inbox"));
+    QCOMPARE(standardFolderDisplayName(QStringLiteral("inbox")), QStringLiteral("Inbox"));
+    QCOMPARE(standardFolderDisplayName(QStringLiteral("Sent")), QStringLiteral("Sent"));
+    QCOMPARE(standardFolderDisplayName(QStringLiteral("INBOX/Receipts")), QStringLiteral("Receipts"));
 }
 
 // A server can carry both the conventional "Sent" and the real, flagged one.
