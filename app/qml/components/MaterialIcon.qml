@@ -11,5 +11,8 @@ Kirigami.Icon {
     implicitHeight: 24
     source: name ? "qrc:/qml/icons/" + name + ".svg" : ""
     isMask: true
+    // Static glyphs: no crossfade. With it on, some instances painted the
+    // untinted black glyph in offscreen renders.
+    animated: false
     color: tint
 }

@@ -63,13 +63,21 @@ Item {
         width: Math.min(320, root.width - 48)
         spacing: 16
 
+        MaterialIcon {
+            Layout.alignment: Qt.AlignHCenter
+            implicitWidth: 40
+            implicitHeight: 40
+            name: "lock"
+            tint: Theme.accent
+        }
+
         Text {
             Layout.fillWidth: true
             text: i18n("KyPost is locked")
             color: Theme.inkStrong
             font.family: Theme.fontUi
             font.pixelSize: Math.round(20 * Theme.fontScale)
-            font.bold: true
+            font.weight: Font.Medium
             horizontalAlignment: Text.AlignHCenter
         }
 
@@ -115,6 +123,9 @@ Item {
             Component.onCompleted: {
                 inputField.echoMode = TextInput.Password
                 inputField.inputMethodHints = Qt.ImhDigitsOnly
+                // Android's unlock field: large centred digits.
+                inputField.horizontalAlignment = TextInput.AlignHCenter
+                inputField.font.pixelSize = Math.round(28 * Theme.fontScale)
                 // Keys typed after the lock land here, never in whatever had
                 // focus underneath.
                 inputField.forceActiveFocus()
