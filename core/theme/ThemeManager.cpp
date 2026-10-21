@@ -2,18 +2,14 @@
 
 #include "stores/SettingsStore.h"
 
-ThemeManager::ThemeManager(SettingsStore& settingsStore)
+ThemeManager::ThemeManager(SettingsStore& settingsStore, bool systemDark)
     : m_settingsStore(settingsStore)
+    , m_systemDark(systemDark)
 {
-    QString name = m_settingsStore.themeId();
-    if (name.isEmpty() || !AppTheme::themeNames().contains(name))
-        name = AppTheme::defaultThemeName();
-
-    // Read defensively, don't mutate on read (matches PairingStore::load()) --
-    // an invalid/missing themeId is not written back here; only setTheme()
-    // persists.
-    m_themeName = name;
-    m_palette = AppTheme::palette(m_themeName);
+    // The saved id is untrusted: allowlist it, and never write a fallback
+    // back on read -- only setTheme() persists.
+    const QString name = m_settingsStore.themeId();
+    m_themeName = AppTheme::themeNames().contains(name) ? name : AppTheme::defaultThemeName();
 }
 
 QString ThemeManager::themeName() const
@@ -23,7 +19,7 @@ QString ThemeManager::themeName() const
 
 ThemePalette ThemeManager::palette() const
 {
-    return m_palette;
+    return AppTheme::palette(m_themeName, m_systemDark);
 }
 
 void ThemeManager::setTheme(const QString& name)
@@ -32,6 +28,10 @@ void ThemeManager::setTheme(const QString& name)
         return;
 
     m_themeName = name;
-    m_palette = AppTheme::palette(m_themeName);
     m_settingsStore.setThemeId(m_themeName);
+}
+
+void ThemeManager::setSystemDark(bool systemDark)
+{
+    m_systemDark = systemDark;
 }

@@ -7,4 +7,5 @@ namespace Shape
     inline constexpr int panel = 14;
     inline constexpr int sheet = 14;
     inline constexpr int emptyState = 10;
+    inline constexpr int fieldStroke = 2; // Android fieldBackground(): 2dp stroke
 }

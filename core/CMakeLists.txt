@@ -164,8 +164,10 @@ add_library(kypostcore STATIC
   theme/ThemePalette.h
   theme/AppTheme.cpp
   theme/AppTheme.h
+  theme/SemanticColors.cpp
   theme/SemanticColors.h
   theme/Shape.h
+  theme/TypeScale.h
   theme/ThemeManager.cpp
   theme/ThemeManager.h
   version/VersionCompare.cpp

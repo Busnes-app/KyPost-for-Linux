@@ -32,7 +32,7 @@ void SettingsStoreTest::defaultsAreUnset()
     QVERIFY(dir.isValid());
     SettingsStore store(tempFilePath(dir, QStringLiteral("settings.ini")));
 
-    QCOMPARE(store.themeId(), QStringLiteral("Patina Ky"));
+    QCOMPARE(store.themeId(), QStringLiteral("Follow system"));
 }
 
 void SettingsStoreTest::themeIdRoundTrips()

@@ -149,6 +149,8 @@ kypost_add_test(VCardContactTest core/vcard/VCardContactTest.cpp)
 kypost_add_test(ThemePaletteTest core/theme/ThemePaletteTest.cpp)
 kypost_add_test(AppThemeTest core/theme/AppThemeTest.cpp)
 kypost_add_test(ThemeManagerTest core/theme/ThemeManagerTest.cpp)
+kypost_add_test(SemanticColorsTest core/theme/SemanticColorsTest.cpp)
+kypost_add_test(TypeScaleTest core/theme/TypeScaleTest.cpp)
 
 # Everything below tests app/ code, which is Qt 6/KF6 only.
 if(KYPOST_CORE_ONLY)
@@ -202,6 +204,16 @@ kypost_add_app_test(GeneralControllerTest
     ${CMAKE_SOURCE_DIR}/app/general/GeneralControllerTest.cpp
     ${CMAKE_SOURCE_DIR}/app/general/GeneralController.cpp
 )
+
+# ThemeController: system colour scheme and font wiring. QTEST_MAIN needs a
+# QGuiApplication, so it runs offscreen.
+kypost_add_app_test(ThemeControllerTest
+  SOURCES
+    app/theme/ThemeControllerTest.cpp
+    ${CMAKE_SOURCE_DIR}/app/theme/ThemeController.cpp
+  LIBS Qt6::Gui
+)
+set_tests_properties(ThemeControllerTest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
 kypost_add_app_test(PgpMessagePresentationTest
   SOURCES

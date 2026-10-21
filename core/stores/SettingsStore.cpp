@@ -13,7 +13,7 @@ constexpr auto kTransportKey = "push/transport";
 // keyword and must retain an independent visibility value.
 constexpr auto kKeywordOrderKey = "keywordSettings/order";
 
-const QString kDefaultThemeId = QStringLiteral("Patina Ky");
+const QString kDefaultThemeId = QStringLiteral("Follow system");
 const QString kDefaultPreferredMode = QStringLiteral("auto");
 
 QString keywordVisibleKey(const QString& keyword)
