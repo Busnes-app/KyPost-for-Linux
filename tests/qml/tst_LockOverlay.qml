@@ -5,7 +5,7 @@ import "qrc:/qml/components" as Components
 
 // Regression coverage for the app-lock bypass.
 //
-// DesktopRoot creates genuine top-level Windows for popped-out email,
+// AppShell creates genuine top-level Windows for popped-out email,
 // compose and contact views (createObject(null, ...)). The unlock overlay
 // was written out once, by hand, anchored to the main window's own root
 // item -- so it never covered those windows. Popping an email out and then
@@ -29,7 +29,7 @@ TestCase {
     }
 
     // A stand-in for a pop-out: a real top-level Window with no QML parent,
-    // exactly how DesktopRoot creates them.
+    // exactly how AppShell creates them.
     Component {
         id: popOutWindowComponent
         Window {

@@ -2,9 +2,9 @@ import QtQuick
 import com.kysecurity.mail 1.0
 
 // STYLE_GUIDE.md §4 "Danger button" (mirrors web's `.users-action-danger`,
-// `.contacts-action-danger`): 1px Theme.dangerBorderColor stroke +
-// Theme.dangerFillColor fill (already composed as 12%-alpha red by
-// ThemeController), text in the solid Theme.dangerColor. Same
+// `.contacts-action-danger`, Android applyDangerButtonTheme()): 1px
+// Theme.dangerActionBorder stroke, Theme.dangerActionFill fill and
+// Theme.dangerActionText text, darkened on light palettes. Same
 // `text`/`enabled`/`clicked()` API shape as PrimaryButton/GhostButton for
 // interchangeability.
 Rectangle {
@@ -29,9 +29,9 @@ Rectangle {
     implicitHeight: label.implicitHeight + verticalPadding * 2
 
     radius: Theme.shapeButton
-    color: Theme.dangerFillColor
+    color: Theme.dangerActionFill
     border.width: 1
-    border.color: Theme.dangerBorderColor
+    border.color: Theme.dangerActionBorder
     opacity: !root.enabled ? 0.5 : (tapHandler.pressed ? 0.85 : (hoverHandler.hovered ? 0.92 : 1.0))
 
     Behavior on opacity {
@@ -43,9 +43,9 @@ Rectangle {
         anchors.centerIn: parent
         textFormat: Text.PlainText
         text: root.text
-        color: Theme.dangerColor
+        color: Theme.dangerActionText
         font.family: Theme.fontUi
-        font.pixelSize: 15
+        font.pixelSize: Math.round(15 * Theme.fontScale)
         font.weight: Font.Medium
     }
 

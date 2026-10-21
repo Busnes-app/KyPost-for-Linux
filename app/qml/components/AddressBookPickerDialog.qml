@@ -89,10 +89,10 @@ Item {
 
                 Text {
                     Layout.fillWidth: true
-                    text: i18n("Address Book")
+                    text: i18n("Address book")
                     color: Theme.inkStrong
                     font.family: Theme.fontUi
-                    font.pixelSize: 16
+                    font.pixelSize: Math.round(16 * Theme.fontScale)
                     font.weight: Font.Bold
                 }
                 GhostButton {
@@ -153,7 +153,7 @@ Item {
                                 text: modelData.name !== "" ? modelData.name : modelData.email
                                 color: Theme.inkStrong
                                 font.family: Theme.fontUi
-                                font.pixelSize: 13
+                                font.pixelSize: Theme.fontPreview
                                 elide: Text.ElideRight
                             }
                             Text {
@@ -162,7 +162,7 @@ Item {
                                 text: modelData.email
                                 color: Theme.ink
                                 font.family: Theme.fontUi
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontEyebrow
                                 elide: Text.ElideRight
                             }
                             Text {
@@ -172,7 +172,7 @@ Item {
                                 text: modelData.department
                                 color: Theme.ink
                                 font.family: Theme.fontUi
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontEyebrow
                                 elide: Text.ElideRight
                             }
                         }

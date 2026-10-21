@@ -97,7 +97,7 @@ Item {
                 text: i18n("Move to")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 16
+                font.pixelSize: Math.round(16 * Theme.fontScale)
                 font.bold: true
             }
 
@@ -128,7 +128,7 @@ Item {
                         text: modelData.displayName
                         color: Theme.inkStrong
                         font.family: Theme.fontUi
-                        font.pixelSize: modelData.depth > 0 ? 13 : 14
+                        font.pixelSize: modelData.depth > 0 ? Theme.fontPreview : Theme.fontSender
                         elide: Text.ElideRight
                     }
 

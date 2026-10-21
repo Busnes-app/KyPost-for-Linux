@@ -7,8 +7,8 @@ import "qrc:/qml/components" as Components
 //
 // StatusBanner is an anchored overlay (z 950) that reserves no space in its
 // host's layout, so every pixel it occupies is painted OVER the app. In
-// DesktopRoot that host is a ColumnLayout whose first child is the 66px top
-// bar -- the one carrying the Settings button. Two active conditions were
+// the old DesktopRoot that host was a ColumnLayout whose first child was the
+// top bar carrying the Settings button. Two active conditions were
 // enough to swallow it whole on a real window, which left the pairing strip
 // telling the user to "pair this device again in Settings" while covering
 // the only route to Settings. Seven conditions can be active at once; the

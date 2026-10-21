@@ -72,13 +72,13 @@ Item {
     }
 
     implicitWidth: 260
-    implicitHeight: Math.max(flow.implicitHeight, 40)
+    implicitHeight: Math.max(flow.implicitHeight + 4, 48)
 
     Rectangle {
         anchors.fill: parent
         radius: Theme.shapeField
         color: Theme.panel
-        border.width: 1
+        border.width: Theme.fieldStroke
         border.color: inputField.activeFocus ? Theme.accent : Theme.line
 
         Behavior on border.color {
@@ -89,18 +89,18 @@ Item {
     Flow {
         id: flow
         anchors.fill: parent
-        anchors.margins: 6
+        anchors.margins: 8
         spacing: 6
 
         Repeater {
             model: root.tokens
             delegate: Rectangle {
-                radius: Theme.shapeButton
+                radius: height / 2
                 color: Theme.panel
                 border.width: 1
-                border.color: modelData.valid ? Theme.line : Theme.dangerColor
-                implicitWidth: chipRow.implicitWidth + 18
-                implicitHeight: chipRow.implicitHeight + 10
+                border.color: modelData.valid ? Theme.line : Theme.dangerActionBorder
+                implicitWidth: chipRow.implicitWidth + 24
+                implicitHeight: Math.max(32, chipRow.implicitHeight + 12)
 
                 Row {
                     id: chipRow
@@ -110,15 +110,15 @@ Item {
                     Text {
                         textFormat: Text.PlainText
                         text: modelData.email
-                        color: modelData.valid ? Theme.inkStrong : Theme.dangerColor
+                        color: modelData.valid ? Theme.inkStrong : Theme.dangerActionText
                         font.family: Theme.fontUi
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontPreview
                     }
                     Text {
                         text: "✕"
                         color: Theme.ink
                         font.family: Theme.fontUi
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontDate
 
                         TapHandler {
                             onTapped: root.removeTokenAt(index)
@@ -131,20 +131,24 @@ Item {
         TextInput {
             id: inputField
             width: Math.max(80, flow.width - 20)
-            height: 24
+            height: 32
+            verticalAlignment: TextInput.AlignVCenter
+            leftPadding: 4
             color: Theme.inkStrong
             font.family: Theme.fontUi
-            font.pixelSize: 14
+            font.pixelSize: Theme.fontBody
             selectByMouse: true
             clip: true
 
             Text {
+                anchors.verticalCenter: parent.verticalCenter
+                x: inputField.leftPadding
                 textFormat: Text.PlainText
                 text: root.placeholderText
                 visible: inputField.text === "" && !inputField.activeFocus
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontBody
             }
 
             onTextChanged: root.queryChanged(text.trim())

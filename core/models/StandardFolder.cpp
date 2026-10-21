@@ -37,6 +37,10 @@ QString standardFolderPath(StandardFolder folder, const QVector<MailFolder>& top
 
 QString standardFolderDisplayName(const QString& fullPath)
 {
+    // IMAP's INBOX is case-insensitive and spelled in capitals on the wire;
+    // users see "Inbox", like every other folder name in sentence case.
+    if (fullPath.compare(QLatin1String("INBOX"), Qt::CaseInsensitive) == 0)
+        return QStringLiteral("Inbox");
     const QString normalized = QString(fullPath).replace(QLatin1Char('.'), QLatin1Char('/'));
     const QStringList parts = normalized.split(QLatin1Char('/'), Qt::SkipEmptyParts);
     return parts.isEmpty() ? fullPath : parts.last();

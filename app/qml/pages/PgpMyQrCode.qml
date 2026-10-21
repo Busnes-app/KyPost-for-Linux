@@ -7,8 +7,8 @@ import "../components"
 // this device's pairing account's PGP-key pickup URL (PgpQr.myQrUrl), for
 // someone else's device to scan via PgpScanContactKey.qml. Plain reusable
 // Item, same "parent-agnostic" shape as every other page component in this
-// directory (Compose/ContactDetail/Settings) -- MobileRoot pushes this via
-// pageStack, DesktopRoot hosts it in a Kirigami.OverlaySheet (same choice
+// directory (Compose/ContactDetail/Settings) -- the old MobileRoot pushes this via
+// pageStack, AppShell hosts it in a Kirigami.OverlaySheet (same choice
 // Settings.qml itself already made).
 Item {
     id: root
@@ -33,7 +33,7 @@ Item {
 
     // The code is the previous account's after a pairing change, and a failed
     // refresh never replaces it (myQrDataChanged fires on success only), so
-    // drop it before asking again. DesktopRoot keeps this page alive in a sheet.
+    // drop it before asking again. AppShell keeps this page alive in a sheet.
     Connections {
         target: Pairing
         function onPairingChanged() {
@@ -79,10 +79,10 @@ Item {
 
             Text {
                 Layout.fillWidth: true
-                text: i18n("My PGP QR Code")
+                text: i18n("My PGP QR code")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 20
+                font.pixelSize: Math.round(20 * Theme.fontScale)
                 font.weight: Font.Bold
             }
             GhostButton {
@@ -96,9 +96,9 @@ Item {
             visible: PgpQr.lastError !== ""
             textFormat: Text.PlainText
             text: PgpQr.lastError
-            color: Theme.dangerColor
+            color: Theme.dangerActionText
             font.family: Theme.fontUi
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontPreview
             wrapMode: Text.WordWrap
         }
 
@@ -128,7 +128,7 @@ Item {
             text: i18n("Expires %1", PgpQr.myQrExpiresAt)
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontDate
         }
 
         SectionLabel {
@@ -142,7 +142,7 @@ Item {
             text: PgpQr.myFingerprint
             color: Theme.inkStrong
             font.family: Theme.fontMono
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontPreview
             wrapMode: Text.WrapAnywhere
         }
         Text {
@@ -150,9 +150,9 @@ Item {
             visible: root.qrDataUrl !== "" && !PgpQr.myFingerprintIsLocal
             textFormat: Text.PlainText
             text: i18n("This device holds no private key for your account, so this code can't be verified in person.")
-            color: Theme.warningColor
+            color: Theme.warningActionText
             font.family: Theme.fontUi
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontDate
             wrapMode: Text.WordWrap
         }
 

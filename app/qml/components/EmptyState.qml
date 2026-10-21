@@ -95,7 +95,7 @@ Rectangle {
             text: root.text
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: 14
+            font.pixelSize: Theme.fontSender
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }

@@ -52,10 +52,9 @@ Item {
             tryCompare(list, "asked", 2)
         }
 
-        function test_both_roots_ask_at_the_end_of_the_list() {
+        function test_the_shell_asks_at_the_end_of_the_list() {
             var line = "onAtYEndChanged: if (atYEnd) MailApp.loadOlder()"
-            verify(read("qrc:/qml/DesktopRoot.qml").indexOf(line) !== -1, "DesktopRoot")
-            verify(read("qrc:/qml/MobileRoot.qml").indexOf(line) !== -1, "MobileRoot")
+            verify(read("qrc:/qml/AppShell.qml").indexOf(line) !== -1)
         }
     }
 }

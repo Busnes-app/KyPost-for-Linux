@@ -66,7 +66,7 @@ Item {
             text: i18n("Approve sign-in")
             color: Theme.inkStrong
             font.family: Theme.fontUi
-            font.pixelSize: 20
+            font.pixelSize: Math.round(20 * Theme.fontScale)
             font.bold: true
             horizontalAlignment: Text.AlignHCenter
         }
@@ -77,7 +77,7 @@ Item {
             text: i18n("Someone is signing in to your account. If this was not you, deny it.")
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontPreview
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }
@@ -88,9 +88,9 @@ Item {
             textFormat: Text.PlainText
             text: i18n("%1 sign-in requests are waiting. If you did not start them, deny each one and change your password.",
                        Mfa.pendingCount)
-            color: Theme.dangerColor
+            color: Theme.dangerActionText
             font.family: Theme.fontUi
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontDate
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }
@@ -106,7 +106,7 @@ Item {
                 text: i18n("When")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontPreview
             }
             Text {
                 Layout.fillWidth: true
@@ -114,7 +114,7 @@ Item {
                 text: Mfa.issuedAt.toLocaleString(Qt.locale(), Locale.ShortFormat)
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontPreview
                 wrapMode: Text.WrapAnywhere
             }
 
@@ -123,7 +123,7 @@ Item {
                 text: i18n("IP address")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontPreview
             }
             Text {
                 objectName: "mfaIpAddress"
@@ -133,7 +133,7 @@ Item {
                 text: Mfa.ipAddress
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontPreview
                 wrapMode: Text.WrapAnywhere
             }
 
@@ -142,7 +142,7 @@ Item {
                 text: i18n("Browser")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontPreview
             }
             Text {
                 objectName: "mfaUserAgent"
@@ -152,7 +152,7 @@ Item {
                 text: Mfa.userAgent
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontPreview
                 wrapMode: Text.WrapAnywhere
             }
 
@@ -160,7 +160,7 @@ Item {
                 text: i18n("Expires in")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontPreview
             }
             Text {
                 Layout.fillWidth: true
@@ -168,7 +168,7 @@ Item {
                 text: Math.floor(Mfa.secondsRemaining / 60) + ":" + ("0" + (Mfa.secondsRemaining % 60)).slice(-2)
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontPreview
             }
         }
 
@@ -184,7 +184,7 @@ Item {
             text: i18n("Tap the number shown on the screen you are signing in from. One wrong tap locks push approval for this sign-in.")
             color: Theme.inkStrong
             font.family: Theme.fontUi
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontPreview
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }
@@ -233,9 +233,9 @@ Item {
             textFormat: Text.PlainText
             text: Mfa.resultMessage !== "" ? Mfa.resultMessage
                 : (Mfa.hasChallenge ? "" : i18n("No sign-in request is waiting. It expired or was already answered."))
-            color: Mfa.resultIsError ? Theme.dangerColor : Theme.inkStrong
+            color: Mfa.resultIsError ? Theme.dangerActionText : Theme.inkStrong
             font.family: Theme.fontUi
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontPreview
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }
@@ -246,7 +246,7 @@ Item {
             text: i18n("Sending…")
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontDate
             horizontalAlignment: Text.AlignHCenter
         }
 

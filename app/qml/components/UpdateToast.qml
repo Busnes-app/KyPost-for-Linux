@@ -15,10 +15,10 @@ import com.kysecurity.mail 1.0
 // where the plain Toast used to sit (same anchors/z), with no extra
 // Connections block of its own.
 //
-// Pulled out of DesktopRoot/MobileRoot into its own leaf component, not
+// Pulled out of AppShell into its own leaf component, not
 // because either root couldn't hold the extra Connections block, but
 // because neither root is reachable by the QML test harness (see
-// tests/CMakeLists.txt: QmlTests cannot load DesktopRoot or MobileRoot --
+// tests/CMakeLists.txt: QmlTests cannot load AppShell --
 // they need every real C++ singleton) while a leaf component under
 // app/qml/components/ is, via the same FakeAppLock/FakeUpdateCheck
 // singletons tst_LockOverlay.qml and tst_UpdateNotice.qml already use.

@@ -9,8 +9,8 @@ import "../components"
 import "../utils/format.js" as Format
 
 // Task 35 -- plain reusable Item, deliberately NOT a Kirigami.Page (see
-// Phase 6 global constraint 4): MobileRoot wraps this in a thin
-// Kirigami.Page shell when it pushes it (Task 38); DesktopRoot embeds it
+// Phase 6 global constraint 4): the old MobileRoot wraps this in a thin
+// Kirigami.Page shell when it pushes it (Task 38); AppShell embeds it
 // directly inside its detail-pane Item (Task 39). This file itself must not
 // assume which root is hosting it -- Reply/Reply All/Forward surface their
 // pre-filled fields via composeRequested() instead of pushing Compose.qml
@@ -23,7 +23,7 @@ Item {
     // Public API.
     property string messageId: ""
     property string folder: "" // wire folder name, e.g. "INBOX"
-    // True for the instance DesktopRoot's emailWindowComponent embeds inside
+    // True for the instance AppShell's emailWindowComponent embeds inside
     // an already-standalone pop-out Window -- hides the "Open in New Window"
     // button there (see below), since a pop-out of a pop-out has nowhere
     // more standalone to go.
@@ -35,7 +35,7 @@ Item {
     signal actionCompleted(string action) // action: "archive" | "junk" | "delete" | "move"
     // Detach into a standalone top-level window (Desktop mode only -- see
     // the pop-out IconButton below, gated on General.isDesktopMode). The
-    // host (DesktopRoot) owns the actual Window creation and is expected to
+    // host (AppShell) owns the actual Window creation and is expected to
     // clear its own embedded selection in response, same "host decides what
     // to do" shape as composeRequested/actionCompleted above.
     signal popOutRequested()
@@ -159,7 +159,7 @@ Item {
     // Archive/Junk/Delete dispatch and return; the answer arrives here.
     //
     // MailApp is a singleton, so this fires for every EmailDetail alive --
-    // DesktopRoot can have an embedded one and a popped-out Window showing a
+    // AppShell can have an embedded one and a popped-out Window showing a
     // different message at the same time. `messageIds` is what tells them
     // apart: only the instance whose own message was acted on reacts. The
     // old code could rely on "my call is on the stack" instead, because the
@@ -288,25 +288,6 @@ Item {
         return prefix + " " + s
     }
 
-    // First letter(s) of the sender's display name (or, absent a display
-    // name, the local-part of the address), split on whitespace, up to 2
-    // characters -- "reasonable initials logic" per Task 35's brief, same
-    // shape as Avatar's other call sites. The actual whitespace-split-to-
-    // initials core is shared (Format.initialsFromNamePart()); the
-    // "Name <email>" parsing and email-local-part fallback stay here since
-    // MobileRoot.qml's own sender-initials wrapper doesn't need the latter.
-    function initialsFor(sender) {
-        const s = sender || ""
-        const lt = s.indexOf("<")
-        let namePart = (lt !== -1 ? s.substring(0, lt) : s).trim()
-        if (namePart.length === 0) {
-            const addr = extractAddress(s)
-            const at = addr.indexOf("@")
-            namePart = at !== -1 ? addr.substring(0, at) : addr
-        }
-        return Format.initialsFromNamePart(namePart)
-    }
-
     function formatSize(size) {
         if (size < 1024)
             return i18n("%1 B", size)
@@ -342,13 +323,19 @@ Item {
     // (the CSP, the HTML-vs-text decision, the escaping) lives in Format --
     // see utils/format.js. Those three are what a test needs to reach, and
     // they must not require QtWebEngine and the singleton graph to reach.
+    //
+    // The UI font by name only: the app's bundled fonts are invisible to
+    // Chromium and the CSP refuses @font-face, so this falls back to the
+    // system sans where Space Grotesk is not installed.
     function bodyStyle() {
-        return "body { font-family: monospace; font-size: 14px; line-height: 1.5;"
-            + " color: " + colorToHex(Theme.inkStrong) + "; background-color: " + colorToHex(Theme.bg) + ";"
-            + " margin: 0; padding: 12px; word-break: break-word; }"
+        const family = Theme.fontUi.replace(/[^A-Za-z0-9 -]/g, "")
+        return "body { font-family: '" + family + "', system-ui, sans-serif;"
+            + " font-size: " + Math.round(16 * Theme.fontScale) + "px; line-height: 1.5;"
+            + " color: " + colorToHex(Theme.inkStrong) + "; background-color: " + colorToHex(Theme.panel) + ";"
+            + " margin: 0; padding: 4px 0; word-break: break-word; }"
             + "a { color: " + colorToHex(Theme.accent) + "; }"
             + "img { max-width: 100%; height: auto; }"
-            + "pre { white-space: pre-wrap; }"
+            + "pre { white-space: pre-wrap; font-family: inherit; font-size: inherit; margin: 0; }"
     }
 
     function renderedHtml(body, forcePlainText) {
@@ -363,7 +350,7 @@ Item {
     // component (a long email plus a full attachment row, on a short
     // window), and plain ColumnLayout doesn't clip or scroll its own
     // overflow. Scrolling here, internally, means this component behaves
-    // correctly regardless of how MobileRoot/DesktopRoot (Task 38/39) end
+    // correctly regardless of how AppShell (Task 38/39) end
     // up sizing it, rather than relying on every future host to remember to
     // wrap it in a scrollable container itself.
     Flickable {
@@ -392,49 +379,206 @@ Item {
             Layout.fillWidth: true
             spacing: contentColumn.spacing
 
-        RowLayout {
+        // Action row, as Android's: reply, reply all and forward on the
+        // left, mailbox actions on the right. Where both groups do not fit
+        // on one line (a phone), the mailbox actions wrap under the replies.
+        // Pop-out is desktop-only: a phone has no separate window to detach
+        // into.
+        GridLayout {
+            id: actionBar
             Layout.fillWidth: true
-            spacing: 12
+            Layout.leftMargin: -10
+            Layout.rightMargin: -10
+            columns: contentColumn.width + 20 >= replyGroup.implicitWidth + manageGroup.implicitWidth + 16 ? 3 : 1
+            columnSpacing: 0
+            rowSpacing: 0
 
-            Avatar {
-                initials: root.initialsFor(root.email.sender)
-                size: 52
-            }
+        Row {
+            id: replyGroup
+            spacing: 4
 
-            ColumnLayout {
+                IconButton {
+                    objectName: "editProtectedDraft"
+                    icon: "edit"
+                    tooltip: i18n("Edit draft")
+                    visible: root.folder === MailApp.draftsFolder && root.hasProtectedMessage && root.email.pgpState === 1
+                    enabled: !MailApp.isBusy && !AppLock.locked
+                    onClicked: {
+                        const draft = MailApp.reopenDecryptedDraft(MailApp.decryptedToken)
+                        if (draft.token) root.draftRequested(draft)
+                    }
+                }
+
+                IconButton {
+                    objectName: "editDraft"
+                    icon: "edit"
+                    tooltip: i18n("Edit draft")
+                    visible: root.folder === MailApp.draftsFolder && root.email.pgpState === 0 && (!root.email.searchOnly || !!root.email.body)
+                    enabled: !MailApp.isBusy && !AppLock.locked
+                    onClicked: {
+                        const draft = MailApp.reopenDraft(root.folder, root.messageId)
+                        if (draft.token) root.draftRequested(draft)
+                    }
+                }
+
+                IconButton {
+                    icon: "reply"
+                    tooltip: i18n("Reply")
+                    enabled: !MailApp.isBusy
+                    onClicked: {
+                        const to = root.extractAddress(root.email.sender)
+                        const subject = root.withPrefix(root.displaySubject, "Re:")
+                        const body = "\n\n" + i18n("%1 wrote:", root.email.sender) + "\n" + root.email.preview
+                        root.composeRequested(to, subject, body, root.replyReference())
+                    }
+                }
+                IconButton {
+                    icon: "reply-all"
+                    tooltip: i18n("Reply all")
+                    enabled: !MailApp.isBusy
+                    onClicked: {
+                        const to = MailApp.replyAllRecipients(root.email.sender || "", root.email.sentTo || "", root.email.cc || "")
+                        const subject = root.withPrefix(root.displaySubject, "Re:")
+                        const body = "\n\n" + i18n("%1 wrote:", root.email.sender) + "\n" + root.email.preview
+                        root.composeRequested(to.join(", "), subject, body, root.replyReference())
+                    }
+                }
+                IconButton {
+                    icon: "forward"
+                    tooltip: i18n("Forward")
+                    enabled: !MailApp.isBusy
+                    onClicked: {
+                        const subject = root.withPrefix(root.displaySubject, "Fwd:")
+                        const body = "\n\n" + i18n("---------- Forwarded message ----------")
+                            + "\n" + i18n("From: %1", root.email.sender)
+                            + "\n" + i18n("Subject: %1", root.displaySubject)
+                            + "\n\n" + root.email.preview
+                        root.composeRequested("", subject, body, ({}))
+                    }
+                }
+        }
+
+        Item {
+            visible: actionBar.columns === 3
+            Layout.fillWidth: true
+        }
+
+        Row {
+            id: manageGroup
+            spacing: 4
+
+                IconButton {
+                    objectName: "toggleRead"
+                    icon: root.unread ? "drafts" : "mark-unread"
+                    tooltip: root.unread ? i18n("Mark as read") : i18n("Mark as unread")
+                    visible: root.email.messageId !== undefined
+                    onClicked: root.unread ? MailApp.markRead(root.folder, [root.messageId])
+                                           : MailApp.markUnread(root.folder, [root.messageId])
+                }
+                IconButton {
+                    icon: "archive"
+                    tooltip: i18n("Archive")
+                    enabled: !MailApp.isBusy
+                    onClicked: MailApp.archiveEmails([root.messageId])
+                }
+                IconButton {
+                    objectName: "moveTo"
+                    icon: "move"
+                    tooltip: i18n("Move to…")
+                    // moveEmails acts on MailApp's current folder, so a pop-out
+                    // left behind by a folder switch must not offer it.
+                    enabled: !MailApp.isBusy && root.folder === MailApp.currentFolder
+                    onClicked: moveDialog.open([root.messageId], root.folder, MailApp.mailFolders())
+                }
+                IconButton {
+                    // In Snoozed, snoozing again would only move the wake time,
+                    // so the button wakes it instead. Same folder rule as Move.
+                    objectName: "snooze"
+                    readonly property bool inSnoozed: root.folder === MailApp.snoozedFolder
+                    icon: inSnoozed ? "undo" : "snooze"
+                    tooltip: inSnoozed ? i18n("Unsnooze") : i18n("Snooze…")
+                    enabled: !MailApp.isBusy && root.folder === MailApp.currentFolder
+                    onClicked: inSnoozed ? MailApp.unsnoozeEmails([root.messageId])
+                                         : snoozeDialog.open([root.messageId], MailApp.snoozePresets())
+                }
+                IconButton {
+                    icon: "spam"
+                    tooltip: i18n("Junk")
+                    enabled: !MailApp.isBusy
+                    onClicked: MailApp.markSpam([root.messageId])
+                }
+                IconButton {
+                    icon: "delete"
+                    tooltip: i18n("Delete")
+                    enabled: !MailApp.isBusy
+                    onClicked: MailApp.deleteEmails([root.messageId])
+                }
+                IconButton {
+                    // "Images blocked" affordance -- settings.autoLoadImages is
+                    // false by default below (tracking-pixel/read-receipt
+                    // protection, see that property's own comment); this is the
+                    // opt-in way back for a message the user trusts. Inline with
+                    // the other actions rather than its own row, so it reads as
+                    // one more toolbar action instead of a separate banner.
+                    icon: "image"
+                    tooltip: i18n("Show images")
+                    visible: !root.imagesLoaded && root.hasRenderableBody
+                    onClicked: root.showImages()
+                }
+                IconButton {
+                    icon: "open-in-new"
+                    tooltip: i18n("Open in new window")
+                    visible: General.isDesktopMode && !root.isPoppedOut
+                    onClicked: root.popOutRequested()
+                }
+        }
+        }
+
+        Text {
+            Layout.fillWidth: true
+            textFormat: Text.PlainText
+            text: root.displaySubject
+            color: Theme.inkStrong
+            font.family: Theme.fontUi
+            font.pixelSize: Math.round(22 * Theme.fontScale)
+            font.weight: Font.Medium
+            wrapMode: Text.WordWrap
+        }
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 4
+
+            Text {
                 Layout.fillWidth: true
-                spacing: 2
-
-                Text {
-                    Layout.fillWidth: true
-                    textFormat: Text.PlainText
-                    text: root.displaySubject
-                    color: Theme.inkStrong
-                    font.family: Theme.fontUi
-                    font.pixelSize: 20
-                    font.weight: Font.Bold
-                    wrapMode: Text.WordWrap
-                }
-                Text {
-                    Layout.fillWidth: true
-                    textFormat: Text.PlainText
-                    text: root.email.sender || ""
-                    color: Theme.ink
-                    font.family: Theme.fontUi
-                    font.pixelSize: 13
-                    elide: Text.ElideRight
-                }
-                Text {
-                    // Raw ISO string as-is for v1 -- no date-formatting
-                    // library decision needed this task (see Task 35 brief);
-                    // follow-up: format this for display in a later task.
-                    textFormat: Text.PlainText
-                    text: root.email.atUtc || ""
-                    color: Theme.ink
-                    opacity: 0.6
-                    font.family: Theme.fontUi
-                    font.pixelSize: 11
-                }
+                textFormat: Text.PlainText
+                text: i18n("From: %1", root.email.sender || "")
+                color: Theme.ink
+                font.family: Theme.fontUi
+                font.pixelSize: Theme.fontSender
+                wrapMode: Text.Wrap
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: !!root.email.sentTo
+                textFormat: Text.PlainText
+                text: i18n("To: %1", root.email.sentTo || "")
+                color: Theme.ink
+                font.family: Theme.fontUi
+                font.pixelSize: Theme.fontSender
+                wrapMode: Text.Wrap
+            }
+            Text {
+                // Local date and time; an unparseable value is shown as sent.
+                readonly property date when: new Date(root.email.atUtc)
+                textFormat: Text.PlainText
+                text: !root.email.atUtc ? ""
+                    : isNaN(when.getTime()) ? String(root.email.atUtc)
+                    : when.toLocaleString(Qt.locale(), Locale.ShortFormat)
+                color: Theme.ink
+                opacity: 0.7
+                font.family: Theme.fontUi
+                font.pixelSize: Theme.fontDate
             }
         }
 
@@ -456,146 +600,10 @@ Item {
             }
         }
 
-        // Action row -- icon-only buttons (a text-labelled six-button row
-        // read as too heavy for this row) with tooltips carrying the label
-        // instead. Order/grouping unchanged from the original brief:
-        // Reply/Reply All/Forward are non-destructive (Reply gets the
-        // "primary" treatment as the single most likely next action, the
-        // rest "ghost"); Delete alone is "danger". Pop-out is Desktop-only
-        // (General.isDesktopMode) -- popping out a message on Mobile has no
-        // separate-window concept to detach into. Centered via
-        // Layout.alignment rather than left-anchored -- a RowLayout sized
-        // to its own content (no Layout.fillWidth) so the alignment has
-        // slack to center within.
-        RowLayout {
-            Layout.alignment: Qt.AlignHCenter
-            spacing: 8
-
-            IconButton {
-                objectName: "editProtectedDraft"
-                icon: "document-edit"
-                tooltip: i18n("Edit draft")
-                visible: root.folder === MailApp.draftsFolder && root.hasProtectedMessage && root.email.pgpState === 1
-                enabled: !MailApp.isBusy && !AppLock.locked
-                onClicked: {
-                    const draft = MailApp.reopenDecryptedDraft(MailApp.decryptedToken)
-                    if (draft.token) root.draftRequested(draft)
-                }
-            }
-
-            IconButton {
-                objectName: "editDraft"
-                icon: "document-edit"
-                tooltip: i18n("Edit draft")
-                visible: root.folder === MailApp.draftsFolder && root.email.pgpState === 0 && (!root.email.searchOnly || !!root.email.body)
-                enabled: !MailApp.isBusy && !AppLock.locked
-                onClicked: {
-                    const draft = MailApp.reopenDraft(root.folder, root.messageId)
-                    if (draft.token) root.draftRequested(draft)
-                }
-            }
-
-            IconButton {
-                icon: "mail-reply-sender"
-                tooltip: i18n("Reply")
-                variant: "primary"
-                enabled: !MailApp.isBusy
-                onClicked: {
-                    const to = root.extractAddress(root.email.sender)
-                    const subject = root.withPrefix(root.displaySubject, "Re:")
-                    const body = "\n\n" + i18n("%1 wrote:", root.email.sender) + "\n" + root.email.preview
-                    root.composeRequested(to, subject, body, root.replyReference())
-                }
-            }
-            IconButton {
-                icon: "mail-reply-all"
-                tooltip: i18n("Reply All")
-                enabled: !MailApp.isBusy
-                onClicked: {
-                    const to = MailApp.replyAllRecipients(root.email.sender || "", root.email.sentTo || "", root.email.cc || "")
-                    const subject = root.withPrefix(root.displaySubject, "Re:")
-                    const body = "\n\n" + i18n("%1 wrote:", root.email.sender) + "\n" + root.email.preview
-                    root.composeRequested(to.join(", "), subject, body, root.replyReference())
-                }
-            }
-            IconButton {
-                icon: "mail-forward"
-                tooltip: i18n("Forward")
-                enabled: !MailApp.isBusy
-                onClicked: {
-                    const subject = root.withPrefix(root.displaySubject, "Fwd:")
-                    const body = "\n\n" + i18n("---------- Forwarded message ----------")
-                        + "\n" + i18n("From: %1", root.email.sender)
-                        + "\n" + i18n("Subject: %1", root.displaySubject)
-                        + "\n\n" + root.email.preview
-                    root.composeRequested("", subject, body, ({}))
-                }
-            }
-            IconButton {
-                objectName: "toggleRead"
-                icon: root.unread ? "mail-mark-read" : "mail-mark-unread"
-                tooltip: root.unread ? i18n("Mark as read") : i18n("Mark as unread")
-                visible: root.email.messageId !== undefined
-                onClicked: root.unread ? MailApp.markRead(root.folder, [root.messageId])
-                                       : MailApp.markUnread(root.folder, [root.messageId])
-            }
-            IconButton {
-                icon: "mail-archive"
-                tooltip: i18n("Archive")
-                enabled: !MailApp.isBusy
-                onClicked: MailApp.archiveEmails([root.messageId])
-            }
-            IconButton {
-                objectName: "moveTo"
-                icon: "edit-move"
-                tooltip: i18n("Move to…")
-                // moveEmails acts on MailApp's current folder, so a pop-out
-                // left behind by a folder switch must not offer it.
-                enabled: !MailApp.isBusy && root.folder === MailApp.currentFolder
-                onClicked: moveDialog.open([root.messageId], root.folder, MailApp.mailFolders())
-            }
-            IconButton {
-                // In Snoozed, snoozing again would only move the wake time,
-                // so the button wakes it instead. Same folder rule as Move.
-                objectName: "snooze"
-                readonly property bool inSnoozed: root.folder === MailApp.snoozedFolder
-                icon: inSnoozed ? "edit-undo" : "chronometer"
-                tooltip: inSnoozed ? i18n("Unsnooze") : i18n("Snooze…")
-                enabled: !MailApp.isBusy && root.folder === MailApp.currentFolder
-                onClicked: inSnoozed ? MailApp.unsnoozeEmails([root.messageId])
-                                     : snoozeDialog.open([root.messageId], MailApp.snoozePresets())
-            }
-            IconButton {
-                icon: "mail-mark-junk"
-                tooltip: i18n("Junk")
-                enabled: !MailApp.isBusy
-                onClicked: MailApp.markSpam([root.messageId])
-            }
-            IconButton {
-                icon: "edit-delete"
-                tooltip: i18n("Delete")
-                variant: "danger"
-                enabled: !MailApp.isBusy
-                onClicked: MailApp.deleteEmails([root.messageId])
-            }
-            IconButton {
-                // "Images blocked" affordance -- settings.autoLoadImages is
-                // false by default below (tracking-pixel/read-receipt
-                // protection, see that property's own comment); this is the
-                // opt-in way back for a message the user trusts. Inline with
-                // the other actions rather than its own row, so it reads as
-                // one more toolbar action instead of a separate banner.
-                icon: "image-x-generic"
-                tooltip: i18n("Show images")
-                visible: !root.imagesLoaded && root.hasRenderableBody
-                onClicked: root.showImages()
-            }
-            IconButton {
-                icon: "window-new"
-                tooltip: i18n("Open in New Window")
-                visible: General.isDesktopMode && !root.isPoppedOut
-                onClicked: root.popOutRequested()
-            }
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: 1
+            color: Theme.line
         }
 
         // Refused-link notice. A click that does nothing at all reads as a
@@ -625,7 +633,7 @@ Item {
             text: i18n("Images are hidden to protect your privacy.")
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSender
             wrapMode: Text.WordWrap
         }
 
@@ -654,9 +662,9 @@ Item {
             visible: phishingBanner.flagged
             implicitHeight: visible ? phishingBannerLayout.implicitHeight + 24 : 0
             radius: Theme.shapePanel
-            color: Theme.dangerFillColor
+            color: Theme.dangerActionFill
             border.width: 1
-            border.color: Theme.dangerBorderColor
+            border.color: Theme.dangerActionBorder
 
             ColumnLayout {
                 id: phishingBannerLayout
@@ -671,7 +679,7 @@ Item {
                     text: i18n("This message impersonates KyPost")
                     color: Theme.inkStrong
                     font.family: Theme.fontUi
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontSender
                     font.bold: true
                     wrapMode: Text.WordWrap
                 }
@@ -682,7 +690,7 @@ Item {
                                + "one you did not start yourself, on this device.")
                     color: Theme.ink
                     font.family: Theme.fontUi
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSender
                     wrapMode: Text.WordWrap
                 }
             }
@@ -713,9 +721,9 @@ Item {
             radius: Theme.shapePanel
             // A problem state gets the warning accent; "the server decrypted
             // this" is disclosure, not a fault, so it stays neutral.
-            color: pgpBanner.isProblem ? Theme.dangerFillColor : Theme.panel
+            color: pgpBanner.isProblem ? Theme.dangerActionFill : Theme.panel
             border.width: 1
-            border.color: pgpBanner.isProblem ? Theme.dangerBorderColor : Theme.line
+            border.color: pgpBanner.isProblem ? Theme.dangerActionBorder : Theme.line
 
             ColumnLayout {
                 id: pgpBannerLayout
@@ -731,7 +739,7 @@ Item {
                     text: root.email.pgpBannerTitle || ""
                     color: Theme.inkStrong
                     font.family: Theme.fontUi
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontSender
                     font.bold: true
                     wrapMode: Text.WordWrap
                 }
@@ -742,7 +750,7 @@ Item {
                     text: root.email.pgpBannerBody || ""
                     color: Theme.ink
                     font.family: Theme.fontUi
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSender
                     wrapMode: Text.WordWrap
                 }
 
@@ -760,9 +768,9 @@ Item {
                     textFormat: Text.PlainText
                     visible: root.hasDecryptedBody && !!MailApp.decryptedSignature
                     text: MailApp.decryptedSignature || ""
-                    color: MailApp.decryptedSignatureIsWarning ? Theme.dangerBorderColor : Theme.ink
+                    color: MailApp.decryptedSignatureIsWarning ? Theme.dangerActionText : Theme.ink
                     font.family: Theme.fontUi
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSender
                     font.bold: MailApp.decryptedSignatureIsWarning
                     wrapMode: Text.WordWrap
                 }
@@ -785,7 +793,7 @@ Item {
                     text: root.email.pgpState === 4 ? i18n("Checking signature…") : i18n("Waiting for your key…")
                     color: Theme.ink
                     font.family: Theme.fontUi
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSender
                     wrapMode: Text.WordWrap
                 }
 
@@ -800,7 +808,7 @@ Item {
                     text: MailApp.decryptFailure || ""
                     color: Theme.ink
                     font.family: Theme.fontUi
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSender
                     wrapMode: Text.WordWrap
                 }
 
@@ -893,7 +901,7 @@ Item {
             }
 
             sourceComponent: WebEngineView {
-                backgroundColor: Theme.bg
+                backgroundColor: Theme.panel
 
                 // Email body HTML is untrusted content -- it comes from
                 // whatever sender wrote the message, not from this app or
@@ -1026,24 +1034,30 @@ Item {
                 Repeater {
                     model: root.visibleAttachments
                     delegate: Rectangle {
-                        radius: Theme.shapeButton
+                        radius: height / 2
                         color: Theme.panel
                         border.width: 1
                         border.color: Theme.line
-                        implicitWidth: chipRow.implicitWidth + 24
-                        implicitHeight: chipRow.implicitHeight + 16
+                        implicitWidth: chipRow.implicitWidth + 28
+                        implicitHeight: Math.max(36, chipRow.implicitHeight + 12)
 
                         Row {
                             id: chipRow
                             anchors.centerIn: parent
-                            spacing: 8
+                            spacing: 6
 
+                            MaterialIcon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                size: 18
+                                name: "attach"
+                            }
                             Text {
+                                anchors.verticalCenter: parent.verticalCenter
                                 textFormat: Text.PlainText
                                 text: i18n("%1 (%2)", modelData.name, root.formatSize(modelData.size))
                                 color: Theme.inkStrong
                                 font.family: Theme.fontUi
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontDate
                             }
                         }
 
@@ -1077,7 +1091,7 @@ Item {
                 visible: root.attachmentStatus !== ""
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSender
             }
         }
         } // contentColumn

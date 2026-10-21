@@ -29,7 +29,7 @@ map, not a duplicate:
 
 ```
 core/       — libkypostcore: models/net/db/stores/domain/theme/version, QtCore+Network+Sql only
-app/        — main.cpp, push/ (KUnifiedPush glue, Qt6-only), platform/ (SecureStore backends), qml/ (MobileRoot, DesktopRoot, pages, components)
+app/        — main.cpp, push/ (KUnifiedPush glue, Qt6-only), platform/ (SecureStore backends), qml/ (AppShell root, pages, components, icons/)
 tests/      — QtTest, stubbed HttpClient; ctest-driven. tests/qml/ is the QML suite (QmlTests); tests/guards.tsv is the security-guard manifest (§5a)
 packaging/  — flatpak/ (manifest, desktop file, metainfo, notifyrc, icons), dbus/ (session D-Bus activation .service), click/ (empty .gitkeep placeholder — the Ubuntu Touch app does not exist yet, there is no Clickable manifest)
 po/         — gettext catalogs
@@ -102,12 +102,18 @@ Carried forward verbatim (in substance) from `Linux_QT_Client_Plan.md`'s own
   `RelayModels.kt`/`ContactSyncModels.kt` and `kypost-for-Mac`'s
   `Data/Networking/*` (relay-only, live-verified, test-locked clients).
   **Never guess shapes** — guessed shapes have caused live 400s before.
-- **The theme palettes are a binding contract**, sourced from
-  `kypost-for-Mac/Style/AppTheme.swift`'s 7-field `ThemePalette` — not
-  the web's 16-field `theme.ts`. Copy values, don't approximate.
-  (Currently 15; `AppTheme::themeNames()` is the source of truth. This entry
-  said "13" until 2026-07-25 — `Patina Ky`/`Polished Ky` were added later and
-  the count was never updated, so don't trust a hardcoded number here again.)
+- **The theme palettes are a binding contract**, sourced from Android
+  `kypost-android` `app/src/main/java/org/kysecurity/mail/AppTheme.kt`
+  (`origin/main`): the Busnes Light/Dark palettes, every palette's avatar
+  stops, Follow system (the default, resolved by `AppTheme::palette(name,
+  systemDark)`), the semantic colours and their light-palette affordances,
+  and the type scale. Copy values, don't approximate. `accentSoft` is
+  Linux-only (selection highlight): the original 15 keep the Mac
+  `AppTheme.swift` values; the Busnes pair derives it as `panel` blended 30 %
+  toward `accent`. Today 17 palettes plus Follow system, but
+  `AppTheme::themeNames()` is the source of truth, not a number here.
+  QML text sizes come from `Theme.font*` tokens or
+  `Math.round(N * Theme.fontScale)`, never a literal `font.pixelSize`.
 - **StandardFolder wire names**: `INBOX`, `Drafts`, `Junk`, `Sent`, `Trash`,
   `Archive`; display name splits on both `/` and `.`. Since plan L15 these are
   the fallback only: resolve a mailbox with `standardFolderPath()` (or
@@ -549,7 +555,7 @@ already produced a real defect in this repo.
   presentation layer. The PIN policy lives in `core/security/PinPolicy.h`
   and `AppLockManager` enforces it; `Settings.qml` explains it.
 - **Every `Window` that can display mail or contact data instantiates
-  `components/LockOverlay.qml`.** DesktopRoot creates real top-level
+  `components/LockOverlay.qml`.** AppShell creates real top-level
   Windows for pop-outs; an overlay anchored to the main window does not
   cover them. This shipped as a total app-lock bypass.
 - **Anything QML-side that is a security control needs a QML test**
@@ -1251,23 +1257,43 @@ worse than no comment: the next reader stops looking.
   in 14 of 20 mobile launches ("Type Kirigami.GlobalDrawer unavailable"),
   host and Flatpak runtime alike, depending on load order. Measured
   2026-10-11; `QmlPropertyLint` gate 3 now rejects versioned Qt imports.
-- **Mobile pages must be `ThemedPage`, not `Kirigami.Page`.** Kirigami paints
+- **Never `Kirigami.Page`; the shell draws its own chrome.** Kirigami paints
   pages and title bars from the platform palette, and a Window-level
   `Kirigami.Theme` override does not reach items, so the app's light-on-dark
-  text landed on light grey (found 2026-10-12). `components/ThemedPage.qml`
-  paints the page and its ToolBar-style header; the default mobile breadcrumb
-  bar has no theme hook, hence `globalToolBar.style: ToolBar` in MobileRoot.
-  The GlobalDrawer still uses the platform palette. `tst_MobileFit` guards it.
+  text landed on light grey (found 2026-10-12). AppShell sets
+  `globalToolBar.style: None` and draws AppHeader/SubHeader from Theme tokens;
+  `components/ThemedPage.qml` remains for anything that must be a page.
+  `tst_MobileFit` guards it.
 - **A copy of account data in QML must be re-read on `Pairing.pairingChanged`.**
   An account replacement purges the cache on disk, but a list or map copied
   out of a controller (`notificationHistory()`, `mailFolders()`,
   `allKeywordSettings()`, `findByMessageId()`, `contactAt()`, the PGP QR code)
-  lives as long as its component, and DesktopRoot keeps Settings, the sidebar
-  and the detail pane alive. Notification history showed the previous
+  lives as long as its component, and AppShell keeps Settings, the folder
+  drawer and the detail pane alive. Notification history showed the previous
   account's subjects that way (found 2026-10-12). Clear the copy, then re-read
   it; `tst_ConnectionStatus` guards the history.
 - **CI Pipline Failes** Before commiting any change check the CI pipline code.
   EVERY Push to main not ment to fix the CI pipeline has broken the CI pipeline.
+
+- **One root, adaptive by width (2026-10-20).** `app/qml/AppShell.qml` replaced
+  the launch-time DesktopRoot/MobileRoot pair. `utils/layout.js` owns the size
+  classes: bottom bar below 600px, left rail from 600, list | detail at 0.4
+  from 840 (Android's layout-w600dp / list-detail). `General.isDesktopMode`
+  no longer picks a layout; it only picks platform behaviour (tray, pop-out
+  windows, window-visibility vs app-state locking). `tst_Breakpoints` guards
+  the classes; tests that need root wiring read `qrc:/qml/AppShell.qml`.
+- **Look like Android, and prove it with screenshots.** The UI follows
+  kypost-android `origin/main` (store shots, `res/layout*/`, `AppTheme.kt`):
+  AppHeader (logo, "KyPost" wordmark, monospace place line), Card for every
+  panel, Chip for filters, bundled Material Icons (filled, Apache-2.0) in
+  `app/qml/icons/` through MaterialIcon/IconButton, never theme icon names.
+  Labels are sentence case; the only all-caps text is the AppHeader place
+  line and SectionLabel eyebrows. Folder names come from
+  `standardFolderDisplayName()` ("INBOX" shows as "Inbox"). After a UI change
+  run `scripts/screenshots.sh` (offscreen, fixture data from Android's demo
+  mailbox in `tests/screenshots/`, mobile 412x732 and desktop 1920x1080,
+  Busnes Light and Dark) and look at `build-shots/compare.html` beside the
+  Android shots before calling it done.
 
 ## Product icon
 

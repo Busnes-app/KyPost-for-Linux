@@ -115,7 +115,7 @@ Item {
                 text: i18n("A different authority is vouching for this server")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 16
+                font.pixelSize: Math.round(16 * Theme.fontScale)
                 font.weight: Font.Medium
                 textFormat: Text.PlainText
             }
@@ -125,7 +125,7 @@ Item {
                 text: i18n("KyPost pinned the certificate authority that vouched for this server when this device was paired, and a different one is vouching for it now. Routine certificate renewals do not change this; being sent to a different server, or through something intercepting the connection, does. Every request is being refused until you decide.")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontSender
                 wrapMode: Text.WordWrap
                 textFormat: Text.PlainText
             }
@@ -136,7 +136,7 @@ Item {
                 text: Pairing.expectedCertificateFingerprint
                 color: Theme.ink
                 font.family: Theme.fontMono
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontEyebrow
                 wrapMode: Text.WrapAnywhere
                 // Never AutoText on a value like this: a markup-shaped string
                 // would be handed to the StyledText parser, which fetches
@@ -151,9 +151,9 @@ Item {
                 text: Pairing.observedCertificateFingerprint.length > 0
                       ? Pairing.observedCertificateFingerprint
                       : i18n("The authority for this server's certificate could not be read at all.")
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontMono
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontEyebrow
                 wrapMode: Text.WrapAnywhere
                 textFormat: Text.PlainText
             }
@@ -165,7 +165,7 @@ Item {
                 text: i18n("Only continue if you know why it changed — ask whoever runs this server to confirm the fingerprint above. Reconnecting sends this device's credentials to whoever holds that key.")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontPreview
                 wrapMode: Text.WordWrap
                 textFormat: Text.PlainText
             }

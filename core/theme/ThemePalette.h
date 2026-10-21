@@ -10,6 +10,10 @@ struct ThemePalette
     quint32 accent;
     quint32 accentSoft;
     quint32 line;
+    // Avatar gradient stops and 1px ring (Android ThemePalette avatar*).
+    quint32 avatarStart;
+    quint32 avatarEnd;
+    quint32 avatarBorder;
 
     bool operator==(const ThemePalette&) const = default;
 
@@ -26,9 +30,9 @@ struct ThemePalette
     enum class ColorScheme { Light, Dark };
     ColorScheme preferredColorScheme() const; // isLight() ? Light : Dark
 
-    // Readable text/icon color to place ON TOP of `accent` fill (web:
-    // buttonText). 0x1A1A1E when accent is perceptually light, else
-    // 0xFFFFFF -- exact same two constants as AppTheme.swift's
-    // readableOnAccent (Color(hex: 0x1A1A1E) / .white).
+    // Black on a perceptually light colour, else white: Android's readableOn().
+    static quint32 readableOn(quint32 rgbHex);
+
+    // Text/icon colour on an `accent` fill: readableOn(accent).
     quint32 readableOnAccent() const;
 };

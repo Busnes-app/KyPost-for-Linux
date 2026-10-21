@@ -18,6 +18,7 @@
 #include <KLocalizedQmlContext>
 
 #include "FakeSingletons.h"
+#include "theme/MaterialIconProvider.h"
 
 class Setup : public QObject
 {
@@ -33,6 +34,7 @@ public slots:
         // ReferenceError and never finish constructing. Same call main.cpp
         // makes, for the same reason.
         KLocalization::setupLocalizedContext(engine);
+        engine->addImageProvider(QStringLiteral("icon"), new MaterialIconProvider);
         registerFakeSingletons(engine);
     }
 };

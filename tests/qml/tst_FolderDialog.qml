@@ -3,7 +3,7 @@ import QtTest 1.15
 import com.kysecurity.mail 1.0
 import "qrc:/qml/components" as Components
 
-// The create/rename/delete prompt both roots share. Delete must take the
+// The create/rename/delete prompt the shell uses. Delete must take the
 // explicit Delete button, and a failure must keep the dialog and say why.
 TestCase {
     id: testCase

@@ -75,8 +75,8 @@ default/bare User-Agent strings (see `AGENTS.md` Section 8).
 ## Mail
 
 - [ ] **Inbox loads on open.** `MailController::refresh()` runs a
-      full-snapshot fetch (`since=0`) on `Component.onCompleted` in both
-      `MobileRoot.qml` and `DesktopRoot.qml`. Expected: cached emails
+      full-snapshot fetch (`since=0`) on `Component.onCompleted` in
+      `AppShell.qml`. Expected: cached emails
       render immediately (from `MailRepository`'s local cache), followed by
       a live refresh once the network call returns.
 - [ ] **Manual refresh works.** Tapping the refresh action
@@ -101,8 +101,8 @@ default/bare User-Agent strings (see `AGENTS.md` Section 8).
       body loads ("Loading message…", then the text). Refresh: the older
       rows stay. In search, under the PIN overlay, or on a relay without
       paging (no `hasMore` in the reply), no older page is stored.
-- [ ] **Swipe actions apply** (`app/qml/MobileRoot.qml`'s `SwipeDelegate`
-      rows). Swipe an inbox row left to reveal Archive, right to reveal
+- [ ] **Swipe actions apply** (`app/qml/components/MailCard.qml`, a
+      `SwipeDelegate`). Swipe an inbox row left to reveal Archive, right to reveal
       Delete; both call `MailApp.archiveEmails([messageId])` /
       `MailApp.deleteEmails([messageId])` synchronously and expect a
       `true` return before the row visually resolves the swipe action.
@@ -631,10 +631,9 @@ every message as undecryptable — check that first, it is the cheapest of these
       opens in a `Kirigami.OverlaySheet`.
   - **Connection**: paired badge, Server/Device rows, Pair/Remove buttons
     (see Pairing section above).
-  - **Appearance**: a name-only list of all 15 theme palettes (the 13
-    original plus "Patina Ky"/"Polished Ky" appended at the end, per the
-    KyPost brand refresh) with a checkmark on the active one; tapping a row
-    calls `Theme.setTheme(name)`.
+  - **Appearance**: a name-only list of Follow system, Busnes Light,
+    Busnes Dark and the 15 older palettes (Android's order) with a
+    checkmark on the active one; tapping a row calls `Theme.setTheme(name)`.
   - **Keywords**: lists every known keyword with a Visible/Hidden PillTab;
     toggling calls `MailApp.setKeywordVisible(keyword, !visible)` and the
     row updates immediately. Known limitation: a keyword only ever seen on
@@ -646,21 +645,28 @@ every message as undecryptable — check that first, it is the cheapest of these
     `Pairing.transport`, `Pairing.pushServerBaseUrl` — "Not yet
     registered" before first pairing. There is deliberately no editable
     push-server-URL field.
-- [ ] **Theme switching applies live across all 15 palettes.** Selecting
+- [ ] **Theme switching applies live across all 17 palettes.** Selecting
       each theme in Appearance should repaint every screen without a
-      restart — background, panel, ink, accent colors all come from
-      `Theme`'s live `QColor` properties (`core/theme/AppTheme.cpp`'s
-      7-field `ThemePalette`, sourced from the Mac app's
-      `AppTheme.swift`, a binding contract). Palette names themselves are
-      intentionally not translated (product/brand-style names).
+      restart — colours come from `Theme`'s live `QColor` properties
+      (`core/theme/AppTheme.cpp`, sourced from Android `AppTheme.kt`, a
+      binding contract). Palette names are intentionally not translated.
 - [ ] **A fresh install (or cleared `QSettings`/theme storage) launches
-      into "Patina Ky", not "Dark Matter".** `AppTheme::defaultThemeName()`
-      changed as part of the KyPost brand refresh; "Dark Matter" remains a
-      fully valid, selectable preset — this only changed the *default* — so
-      also confirm switching to "Dark Matter" (or any other pre-existing
-      theme) still works exactly as before.
+      into "Follow system".** With the desktop in dark mode it paints Busnes
+      Dark; switch System Settings → Colours to a light scheme and it
+      repaints Busnes Light without a restart. A user who had saved a theme
+      (e.g. "Patina Ky") keeps it.
+- [ ] **The layout follows the window width.** Drag a desktop window from
+      wide to narrow: list and detail side by side at 840px and up, the
+      left rail from 600px, the bottom bar below 600px, with no restart and
+      no minimum width above 320px. On a phone the bottom bar shows.
+- [ ] **Screens match Android.** Run `scripts/screenshots.sh` and open
+      `build-shots/compare.html`; every screen with a Play Store shot sits
+      beside it.
+- [ ] **Text follows the system font size.** At the stock 10 pt font, text
+      looks as before; raise System Settings → Fonts → General to 12 pt and
+      the app's text grows by 1.2× without a restart.
 - [ ] **App name and icon read "KyPost" everywhere it's user-visible**:
-      window title (`DesktopRoot.qml`/`MobileRoot.qml`), the About-style
+      window title (`AppShell.qml`), the About-style
       sidebar text, and the launcher/Dock/taskbar icon and app-switcher
       entry (sourced from `packaging/flatpak/icons/hicolor/*/apps/
       com.kysecurity.mail.png` + `.svg`, regenerated from the new `ky.png` mark

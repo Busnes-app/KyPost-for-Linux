@@ -24,7 +24,7 @@ Item {
     signal keyScanned(string name, string publicKey)
 
     implicitWidth: 360
-    implicitHeight: 640
+    implicitHeight: Math.min(640, content.implicitHeight + 32)
 
     Component.onCompleted: PgpQr.clearScanResult()
 
@@ -45,6 +45,7 @@ Item {
     }
 
     ColumnLayout {
+        id: content
         anchors.fill: parent
         anchors.margins: 16
         spacing: 12
@@ -55,10 +56,10 @@ Item {
 
             Text {
                 Layout.fillWidth: true
-                text: i18n("Scan to Add Contact Key")
+                text: i18n("Scan to add contact key")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 20
+                font.pixelSize: Math.round(20 * Theme.fontScale)
                 font.weight: Font.Bold
             }
             GhostButton {
@@ -90,9 +91,9 @@ Item {
             visible: PgpQr.lastError !== ""
             textFormat: Text.PlainText
             text: PgpQr.lastError
-            color: Theme.dangerColor
+            color: Theme.dangerActionText
             font.family: Theme.fontUi
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontPreview
             wrapMode: Text.WordWrap
         }
 
@@ -119,7 +120,7 @@ Item {
                 textFormat: Text.PlainText
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 16
+                font.pixelSize: Math.round(16 * Theme.fontScale)
                 font.weight: Font.Bold
                 wrapMode: Text.WordWrap
             }
@@ -131,7 +132,7 @@ Item {
                 textFormat: Text.PlainText
                 color: Theme.inkStrong
                 font.family: Theme.fontMono
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontPreview
                 wrapMode: Text.WrapAnywhere
             }
             Text {
@@ -140,9 +141,9 @@ Item {
                 text: PgpQr.scannedVerified
                     ? i18n("This key matches the code they showed you.")
                     : i18n("This code carried no fingerprint, so the key couldn't be verified in person. Compare the fingerprint with theirs before relying on it.")
-                color: PgpQr.scannedVerified ? Theme.ink : Theme.warningColor
+                color: PgpQr.scannedVerified ? Theme.ink : Theme.warningActionText
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap
             }
 

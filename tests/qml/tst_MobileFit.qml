@@ -46,10 +46,10 @@ TestCase {
         compare(page.Kirigami.Theme.textColor, Qt.color("#202020"))
     }
 
-    function test_mobile_root_uses_themed_pages_and_a_compact_header() {
-        var text = read("qrc:/qml/MobileRoot.qml")
+    function test_shell_draws_its_own_header_and_icon_actions() {
+        var text = read("qrc:/qml/AppShell.qml")
         compare(text.indexOf("Kirigami.Page {"), -1)
-        verify(text.indexOf("pageStack.globalToolBar.style: Kirigami.ApplicationHeaderStyle.ToolBar") !== -1)
+        verify(text.indexOf("pageStack.globalToolBar.style: Kirigami.ApplicationHeaderStyle.None") !== -1)
         verify(text.indexOf('text: i18n("Refresh")') === -1)
         verify(text.indexOf('tooltip: i18n("Refresh")') !== -1)
     }

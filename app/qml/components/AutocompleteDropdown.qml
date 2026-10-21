@@ -113,7 +113,7 @@ Item {
                             textFormat: Text.RichText
                             color: index === root.currentIndex ? Theme.readableOnAccent : Theme.inkStrong
                             font.family: Theme.fontUi
-                            font.pixelSize: 13
+                            font.pixelSize: Theme.fontPreview
                             elide: Text.ElideRight
                         }
                         Text {
@@ -123,7 +123,7 @@ Item {
                             textFormat: Text.RichText
                             color: index === root.currentIndex ? Theme.readableOnAccent : Theme.ink
                             font.family: Theme.fontUi
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontDate
                             elide: Text.ElideRight
                         }
                     }
@@ -140,7 +140,7 @@ Item {
                 text: i18n("No contacts found")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 horizontalAlignment: Text.AlignHCenter
                 topPadding: 8
                 bottomPadding: 8

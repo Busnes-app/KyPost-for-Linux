@@ -19,7 +19,12 @@ ThemePalette::ColorScheme ThemePalette::preferredColorScheme() const
     return isLight() ? ColorScheme::Light : ColorScheme::Dark;
 }
 
+quint32 ThemePalette::readableOn(quint32 rgbHex)
+{
+    return isPerceptuallyLight(rgbHex) ? 0x000000 : 0xFFFFFF;
+}
+
 quint32 ThemePalette::readableOnAccent() const
 {
-    return isPerceptuallyLight(accent) ? 0x1A1A1E : 0xFFFFFF;
+    return readableOn(accent);
 }

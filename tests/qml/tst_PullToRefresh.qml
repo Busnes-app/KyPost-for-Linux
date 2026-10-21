@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
 
-// MobileRoot needs every C++ singleton, so its wiring is checked in the shipped
+// AppShell needs every C++ singleton, so its wiring is checked in the shipped
 // source; the gesture it relies on is checked here on a bare, short ListView.
 Item {
     width: 300
@@ -50,8 +50,8 @@ Item {
         }
 
         function test_mobile_list_refreshes_on_pull() {
-            var text = read("qrc:/qml/MobileRoot.qml")
-            verify(text.indexOf("onDragEnded: {\n                    if (verticalOvershoot < -Kirigami.Units.gridUnit * 4)\n                        MailApp.refresh()") !== -1)
+            var text = read("qrc:/qml/AppShell.qml")
+            verify(text.indexOf("onDragEnded: {\n                                if (verticalOvershoot < -Kirigami.Units.gridUnit * 4)\n                                    MailApp.refresh()") !== -1)
         }
     }
 }

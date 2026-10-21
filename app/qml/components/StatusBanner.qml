@@ -19,7 +19,7 @@ import com.kysecurity.mail 1.0
 // BOUNDED AND COLLAPSIBLE, because anchoring means every pixel here is
 // painted OVER the app rather than beside it. Seven of the rows below can be
 // active at once and the stack used to grow without any limit: two were
-// already enough to swallow DesktopRoot's 66px top bar, which carries the
+// already enough to swallow AppShell's 66px top bar, which carries the
 // Settings button -- so the pairing strip sat there telling the user to
 // "pair this device again in Settings" while covering the only way to reach
 // Settings. A warning that blocks its own remedy is worse than no warning.
@@ -197,7 +197,7 @@ Item {
         implicitHeight: summaryRow.implicitHeight + 16
         color: Theme.panel
         border.width: 1
-        border.color: Theme.dangerColor
+        border.color: Theme.dangerActionBorder
 
         RowLayout {
             id: summaryRow
@@ -209,9 +209,9 @@ Item {
                 Layout.fillWidth: true
                 textFormat: Text.PlainText
                 text: root.summaryText
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 font.weight: Font.Medium
                 elide: Text.ElideRight
             }
@@ -223,9 +223,9 @@ Item {
                 objectName: "statusBannerToggle"
                 textFormat: Text.PlainText
                 text: root.collapsed ? i18n("Show") : i18n("Hide")
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 font.underline: toggleArea.containsMouse
 
                 MouseArea {
@@ -281,7 +281,7 @@ Item {
                     implicitHeight: modelData.active ? bannerLabel.implicitHeight + 16 : 0
                     color: Theme.panel
                     border.width: 1
-                    border.color: Theme.dangerColor
+                    border.color: Theme.dangerActionBorder
 
                     RowLayout {
                         id: bannerLabel
@@ -293,9 +293,9 @@ Item {
                             Layout.fillWidth: true
                             textFormat: Text.PlainText
                             text: modelData.message
-                            color: Theme.dangerColor
+                            color: Theme.dangerActionText
                             font.family: Theme.fontUi
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontDate
                             wrapMode: Text.WordWrap
                             verticalAlignment: Text.AlignVCenter
                         }

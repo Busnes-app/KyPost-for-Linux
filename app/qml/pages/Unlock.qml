@@ -7,7 +7,7 @@ import "../components"
 // Full-window PIN gate shown whenever AppLock.locked is true.
 //
 // A plain Item, following the EmailDetail.qml/Compose.qml convention that a
-// page does not assume how it is presented -- both roots overlay it at the
+// page does not assume how it is presented -- the shell overlays it at the
 // top of their own stacking order rather than pushing it as a page, so
 // nothing behind it is reachable while it is up.
 Item {
@@ -63,13 +63,20 @@ Item {
         width: Math.min(320, root.width - 48)
         spacing: 16
 
+        MaterialIcon {
+            Layout.alignment: Qt.AlignHCenter
+            size: 40
+            name: "lock"
+            tint: Theme.accent
+        }
+
         Text {
             Layout.fillWidth: true
             text: i18n("KyPost is locked")
             color: Theme.inkStrong
             font.family: Theme.fontUi
-            font.pixelSize: 20
-            font.bold: true
+            font.pixelSize: Math.round(20 * Theme.fontScale)
+            font.weight: Font.Medium
             horizontalAlignment: Text.AlignHCenter
         }
 
@@ -79,7 +86,7 @@ Item {
             text: i18n("Enter your PIN to continue.")
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontSender
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }
@@ -95,9 +102,9 @@ Item {
             text: i18n("KyPost cannot reach your system keyring, so it cannot check your PIN. "
                        + "Start a keyring service (GNOME Keyring or KWallet), unlock it, then "
                        + "restart KyPost.")
-            color: Theme.dangerColor
+            color: Theme.dangerActionText
             font.family: Theme.fontUi
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontSender
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }
@@ -115,9 +122,27 @@ Item {
             Component.onCompleted: {
                 inputField.echoMode = TextInput.Password
                 inputField.inputMethodHints = Qt.ImhDigitsOnly
+                // The placeholder vanishes while typing; the name does not.
+                inputField.Accessible.name = i18n("PIN")
+                // Android's unlock field: centred digits, at the height of
+                // every other field.
+                inputField.horizontalAlignment = TextInput.AlignHCenter
+                inputField.font.pixelSize = Theme.fontSubject
                 // Keys typed after the lock land here, never in whatever had
                 // focus underneath.
                 inputField.forceActiveFocus()
+            }
+
+            // The style hides a centred field's placeholder once it has
+            // focus, and this one always does; keep "PIN" until typing.
+            Text {
+                anchors.centerIn: parent
+                visible: pinField.text.length === 0
+                text: i18n("PIN")
+                color: Theme.ink
+                opacity: 0.7
+                font.family: Theme.fontUi
+                font.pixelSize: Theme.fontBody
             }
         }
 
@@ -131,9 +156,9 @@ Item {
             visible: root.errorText !== ""
             textFormat: Text.PlainText
             text: root.errorText
-            color: Theme.dangerColor
+            color: Theme.dangerActionText
             font.family: Theme.fontUi
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSender
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }
@@ -145,7 +170,7 @@ Item {
             text: i18n("Too many attempts. Try again in %1 seconds.", root.secondsLeft)
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSender
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }
@@ -156,9 +181,9 @@ Item {
             // policy's, not a number duplicated here.
             visible: !root.lockedOut && AppLock.failedAttempts >= 5
             text: i18n("Warning: after 10 failed attempts, all local data is erased.")
-            color: Theme.dangerColor
+            color: Theme.dangerActionText
             font.family: Theme.fontUi
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSender
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }

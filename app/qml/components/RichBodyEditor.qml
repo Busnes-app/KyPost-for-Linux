@@ -18,6 +18,9 @@ Item {
     implicitWidth: 360
     implicitHeight: 240
 
+    // Extra toolbar items, after the format buttons (Compose's "Attach").
+    default property alias toolbarActions: toolbarRow.data
+
     // Seeds the editor's content. Call exactly once, right after
     // construction (Compose.qml's Component.onCompleted) -- there is no
     // "reload" support, callers only ever seed a fresh draft.
@@ -54,9 +57,13 @@ Item {
         // it's stretched to 100% height.
         return "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\""
             + Format.emailContentSecurityPolicy(false) + "\"><style>"
-            + "html, body { height: 100%; margin: 0; background: " + Theme.panel + "; }"
-            + "body { font-family: sans-serif; font-size: 14px; padding: 8px; "
+            + "html, body { height: 100%; margin: 0; background: " + Theme.bg + "; }"
+            + "body { font-family: '" + Theme.fontUi.replace(/[^A-Za-z0-9 -]/g, "") + "', system-ui, sans-serif;"
+            + " font-size: " + Math.round(16 * Theme.fontScale) + "px; line-height: 1.5; padding: 10px; "
             + "box-sizing: border-box; color: " + Theme.inkStrong + "; }"
+            // A quoted reply reads as a quote: a rule at the field edge, not
+            // Chromium's 40px indent (display only; the sent HTML is unchanged).
+            + "blockquote { margin: 0; padding-left: 10px; border-left: 3px solid " + Theme.line + "; }"
             + "</style></head><body contenteditable=\"true\">" + bodyHtml + "</body></html>"
     }
 
@@ -134,27 +141,33 @@ Item {
         spacing: 4
 
         RowLayout {
+            id: toolbarRow
             Layout.fillWidth: true
-            spacing: 4
+            Layout.bottomMargin: 8
+            spacing: 12
 
             IconButton {
-                icon: "format-text-bold"
+                icon: "bold"
+                variant: "outline"
                 tooltip: i18n("Bold")
                 onClicked: webView.runJavaScript("document.execCommand('bold')")
             }
             IconButton {
-                icon: "format-text-italic"
+                icon: "italic"
+                variant: "outline"
                 tooltip: i18n("Italic")
                 onClicked: webView.runJavaScript("document.execCommand('italic')")
             }
             IconButton {
-                icon: "format-text-underline"
+                icon: "underline"
+                variant: "outline"
                 tooltip: i18n("Underline")
                 onClicked: webView.runJavaScript("document.execCommand('underline')")
             }
             IconButton {
-                icon: "insert-link"
-                tooltip: i18n("Insert Link")
+                icon: "link"
+                variant: "outline"
+                tooltip: i18n("Insert link")
                 onClicked: linkDialog.open()
             }
             Item { Layout.fillWidth: true }
@@ -162,11 +175,15 @@ Item {
 
         Rectangle {
             Layout.fillWidth: true
+            implicitHeight: 1
+            color: Theme.line
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
             Layout.fillHeight: true
-            radius: Theme.shapeField
-            color: Theme.panel
-            border.width: 1
-            border.color: Theme.line
+            Layout.topMargin: 8
+            color: Theme.bg
             // The actual reported bug: webView's native render surface was
             // spilling past this Rectangle's own bounds, down into the
             // sibling "Attach files"/Send button rows in Compose.qml (well
@@ -181,8 +198,7 @@ Item {
             WebEngineView {
                 id: webView
                 anchors.fill: parent
-                anchors.margins: 1
-                backgroundColor: Theme.panel
+                backgroundColor: Theme.bg
                 settings.javascriptEnabled: true
 
                 onLoadingChanged: function(loadRequest) {
@@ -213,14 +229,13 @@ Item {
             // visible transparent flash while that settles, this sits on
             // top in the same Qt Quick scene (ordinary z-ordering, not
             // anything WebEngineView-specific) so the user only ever sees a
-            // solid surface. It's painted the exact same Theme.panel color
+            // solid surface. It's painted the exact same Theme.bg color
             // the page itself uses, so hiding it once the nudge fires is a
             // seamless, imperceptible handoff -- solid from the very first
             // rendered frame, not just "fixed shortly after."
             Rectangle {
                 anchors.fill: parent
-                radius: parent.radius
-                color: Theme.panel
+                color: Theme.bg
                 visible: !startupFocusNudgeTimer.triggered
             }
 

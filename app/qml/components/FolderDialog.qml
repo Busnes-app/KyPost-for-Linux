@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import com.kysecurity.mail 1.0
 
-// Create / rename / delete prompt shared by both roots. The host makes the
+// Create / rename / delete prompt shared by the shell. The host makes the
 // MailApp call on the *Requested signals and reports back with finished():
 // the dialog stays open on failure so the typed name and the reason are kept.
 //
@@ -143,7 +143,7 @@ Item {
                     : i18n("Delete “%1”?", root.displayName)
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontSender
                 font.bold: true
                 wrapMode: Text.WordWrap
             }
@@ -155,7 +155,7 @@ Item {
                 text: i18n("The folder and any messages in it are removed from the server. This cannot be undone.")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap
             }
 
@@ -178,9 +178,9 @@ Item {
                 visible: root.errorText.length > 0
                 textFormat: Text.PlainText
                 text: root.errorText
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap
             }
 

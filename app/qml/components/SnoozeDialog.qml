@@ -126,7 +126,7 @@ Item {
                 text: i18n("Snooze until")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 16
+                font.pixelSize: Math.round(16 * Theme.fontScale)
                 font.bold: true
             }
 
@@ -150,7 +150,7 @@ Item {
                         text: root.presetLabel(modelData)
                         color: Theme.inkStrong
                         font.family: Theme.fontUi
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.fontSender
                         elide: Text.ElideRight
                     }
 
@@ -185,9 +185,9 @@ Item {
                 visible: root.customError !== ""
                 textFormat: Text.PlainText
                 text: root.customError
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontUi
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontPreview
                 wrapMode: Text.WordWrap
             }
 

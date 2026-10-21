@@ -16,6 +16,8 @@
 #include "push/NotificationDispatcher.h"
 #include "push/PushArrival.h"
 #include "push/UnifiedPushConnector.h"
+#include "theme/AppIcon.h"
+#include "theme/MaterialIconProvider.h"
 #include "theme/ThemeController.h"
 #include "tray/TrayController.h"
 #include "update/UpdateCheckController.h"
@@ -195,7 +197,7 @@ int main(int argc, char* argv[])
     app.setDesktopFileName(QStringLiteral("com.kysecurity.mail"));
     // Icon-only buttons need named icons outside a KDE session too.
     QIcon::setFallbackThemeName(QStringLiteral("breeze"));
-    app.setWindowIcon(QIcon::fromTheme(QStringLiteral("com.kysecurity.mail")));
+    app.setWindowIcon(bundledAppIcon());
 
     // Task 48: KI18n translation domain. Per KLocalizedString::
     // setApplicationDomain()'s own doc comment ("This function should be
@@ -379,7 +381,7 @@ int main(int argc, char* argv[])
     // Task 28: wraps core::ThemeManager (which itself wraps settingsStore
     // above) for QML consumption. Constructed before the engine and
     // registered as a QML singleton instance immediately after, so
-    // MobileRoot.qml (loaded just below) can already bind to Theme.* from
+    // AppShell.qml (loaded just below) can already bind to Theme.* from
     // its very first frame in a later task -- this task only proves the
     // singleton registers and loads cleanly.
     ThemeController themeController(settingsStore);
@@ -418,6 +420,7 @@ int main(int argc, char* argv[])
     // exactly one QML engine, so the startup and real windows must share it.
     QQmlApplicationEngine engine;
     KLocalization::setupLocalizedContext(&engine);
+    engine.addImageProvider(QStringLiteral("icon"), new MaterialIconProvider); // engine owns it
     engine.load(QUrl(QStringLiteral("qrc:/qml/Startup.qml")));
     QPointer<QObject> startupWindow = engine.rootObjects().isEmpty()
         ? nullptr
@@ -1098,8 +1101,8 @@ int main(int argc, char* argv[])
     // signals already carry the same (const QString&) shape. Neither
     // NotificationDispatcher nor MailController has window/pageStack access
     // (by design -- see both classes' doc comments), so this connect only
-    // gets the bare messageId to QML; MobileRoot.qml/DesktopRoot.qml each
-    // have their own `Connections { target: MailApp }` block that hydrates
+    // gets the bare messageId to QML; AppShell.qml has
+    // its own `Connections { target: MailApp }` block that hydrates
     // the full email via MailApp.findByMessageId() and does the actual
     // navigation + window raise/focus. Deliberately NOT connected here for
     // NotificationDispatcher::notify() itself (Task 41's Step 3 wiring,
@@ -1369,25 +1372,16 @@ int main(int argc, char* argv[])
     // a runtime language change. Must run before engine.load() below --
     // QML resolves i18n() through the root context at parse/binding time,
     // so a context object set afterwards would be too late for
-    // MobileRoot.qml's very first frame. Deliberately not the older
+    // AppShell.qml's very first frame. Deliberately not the older
     // KLocalizedContext class (see app/CMakeLists.txt's KF6::I18nQml comment
     // for why: deprecated since 6.8, this is its replacement).
-    // Convergent root selection: picks MobileRoot.qml vs DesktopRoot.qml
-    // (Tasks 38/39) directly, rather than loading a QML-side Loader-based
-    // dispatcher -- a Loader-wrapped root was tried first and reproducibly
-    // broke window visibility under this Wayland/Kirigami stack (the QML
-    // content loads and runs fine underneath it, but no window ever gets
-    // mapped), confirmed by comparing two otherwise-identical fresh builds
-    // that differed only in root-vs-Loader. Deciding here mirrors
-    // Kirigami.Settings.isMobile's own primary override signal
-    // (QT_QUICK_CONTROLS_MOBILE) without needing its QML-singleton-only
-    // Settings class from C++: a real Plasma Mobile session also flips this
-    // env var on for Qt Quick Controls apps, so this covers the same cases
-    // Linux_QT_Client_Plan.md's "Root selection" section called for. `isMobile`
-    // itself is resolved earlier, right after settingsStore is constructed
-    // (see that comment for the persisted-preference-over-env-var precedence).
-    engine.load(QUrl(isMobile ? QStringLiteral("qrc:/qml/MobileRoot.qml")
-                               : QStringLiteral("qrc:/qml/DesktopRoot.qml")));
+    // One root for every surface: AppShell.qml follows the window's width at
+    // runtime (bottom bar, rail, list-detail split). It is loaded directly, not
+    // through a QML Loader -- a Loader-wrapped root was tried once and never
+    // got its window mapped under this Wayland/Kirigami stack. `isMobile`
+    // still decides platform behaviour (tray, pop-outs, how locking follows
+    // the app leaving the foreground) through GeneralController.
+    engine.load(QUrl(QStringLiteral("qrc:/qml/AppShell.qml")));
 
     // The real root window exists, so the startup window has done its job.
     // Destroying the startup root takes its window with it; leaving it alive
@@ -1403,7 +1397,7 @@ int main(int argc, char* argv[])
     // and after the isEmpty() bail, because a failed load returns -1 here
     // and there is nothing to activate in that case.
     //
-    // This matters more than it looks on desktop: DesktopRoot's onClosing
+    // This matters more than it looks on desktop: AppShell's onClosing
     // hides to the tray when minimizeToTrayOnClose is set, and a session
     // with no StatusNotifier host silently provides no tray icon
     // ("kf.statusnotifieritem: KDE platform plugin is loaded but SNI
@@ -1412,7 +1406,7 @@ int main(int argc, char* argv[])
     engineForActivation = &engine;
 
     // Desktop-only system tray icon (see GeneralController.trayIconEnabled /
-    // minimizeToTrayOnClose, and DesktopRoot.qml's onClosing handler). Never
+    // minimizeToTrayOnClose, and AppShell.qml's onClosing handler). Never
     // constructed in Mobile mode -- there is no tray concept there.
     std::optional<TrayController> trayController;
     if (!isMobile) {

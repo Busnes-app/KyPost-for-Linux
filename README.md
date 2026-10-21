@@ -58,7 +58,8 @@ use the same Go relay backend.
   chain on first use, anchored to the issuer rather than the leaf so a routine certificate
   renewal is not reported as an impersonation. Hostile Location Protection writes nothing to
   disk, and refuses to turn on at all if it cannot first erase what is already there.
-- **15 themes** — copied byte for byte from the design system that every sibling client shares.
+- **17 themes plus Follow system** — copied byte for byte from the Android app. The default
+  follows your desktop between Busnes Light and Busnes Dark; text follows your system font size.
 - **Device pairing** — paste a link, or use a `kypost://` deep link.
 - **Localized** — the code wraps every user-facing string for translation (`po/`).
 
@@ -108,7 +109,7 @@ cmake --build build
 ctest --test-dir build
 ```
 
-Dependencies, with Arch package names: `qt6-base`, `qt6-declarative`, `qt6-webengine`,
+Dependencies, with Arch package names: `qt6-base`, `qt6-declarative`, `qt6-svg`, `qt6-webengine`,
 `qt6-multimedia`, `kirigami` (KF6), `knotifications` (KF6), `kstatusnotifieritem` (KF6),
 `kdbusaddons` (KF6), `ki18n` (KF6), `qtkeychain-qt6`, `kunifiedpush`, `zxing-cpp`, `openssl`,
 `argon2`, `gpgme`. For the Ubuntu and KDE neon archive equivalents, see
@@ -182,8 +183,8 @@ core/       — libkypostcore: models, SQLite DAOs, stores, relay networking, do
               repositories, theme data. QtCore/QtNetwork/QtSql only — no QtGui/QtQuick/
               QtDBus/KUnifiedPush/KNotifications.
 app/        — main.cpp, push/ (KUnifiedPush + KNotifications glue), platform/ (SecureStore
-              backends), pgp/, contacts/, mail/, pairing/, qml/ (MobileRoot, DesktopRoot,
-              pages, reusable components)
+              backends), pgp/, contacts/, mail/, pairing/, qml/ (AppShell, pages,
+              reusable components, bundled icons)
 tests/      — QtTest, stubbed HttpClient/FakeRelayServer; ctest-driven, plus the QML suite
               (QmlTests) and tests/guards.tsv, the list of security guards proven load-bearing
 packaging/  — flatpak/ (manifest, desktop file, AppStream metainfo, notifyrc, icons),

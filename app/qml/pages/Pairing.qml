@@ -1,12 +1,13 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 import com.kysecurity.mail 1.0
 import "../components"
 
 // Task 37 -- plain reusable Item, deliberately NOT a Kirigami.Page (see
-// Phase 6 global constraint 4): MobileRoot wraps this in a thin
-// Kirigami.Page shell when it pushes it (Task 38); DesktopRoot hosts it as
+// Phase 6 global constraint 4): the old MobileRoot wraps this in a thin
+// Kirigami.Page shell when it pushes it (Task 38); AppShell hosts it as
 // a modal/overlay (Task 39). State-driven off Pairing.pairingState -- this
 // file never calls pairFromParsedParams/the network directly, it only
 // forwards user input to the Pairing singleton (Task 34) and renders
@@ -51,19 +52,22 @@ Item {
             visible: Pairing.pairingState === "idle"
             spacing: 16
 
-            Text {
-                Layout.fillWidth: true
-                text: "✦" // sparkle glyph -- no image asset exists in this repo
-                color: Theme.accent
-                font.pixelSize: 40
-                horizontalAlignment: Text.AlignHCenter
+            Image {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: 64
+                Layout.preferredHeight: 64
+                source: "qrc:/appicon/256.png"
+                sourceSize: Qt.size(Math.ceil(64 * Math.max(2, Screen.devicePixelRatio)),
+                                    Math.ceil(64 * Math.max(2, Screen.devicePixelRatio)))
+                mipmap: true
+                Accessible.ignored: true
             }
             Text {
                 Layout.fillWidth: true
-                text: i18n("Pair Device")
+                text: i18n("Pair device")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 22
+                font.pixelSize: Math.round(22 * Theme.fontScale)
                 font.weight: Font.Bold
                 horizontalAlignment: Text.AlignHCenter
             }
@@ -72,7 +76,7 @@ Item {
                 text: i18n("Open a pairing link from the web app, or paste it below.")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontSender
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
             }
@@ -113,7 +117,7 @@ Item {
                 Layout.fillWidth: true
                 text: "⚠" // warning glyph -- this is a security-sensitive confirmation, not routine chrome
                 color: Theme.accent
-                font.pixelSize: 40
+                font.pixelSize: Math.round(40 * Theme.fontScale)
                 horizontalAlignment: Text.AlignHCenter
             }
             Text {
@@ -121,7 +125,7 @@ Item {
                 text: i18n("Pair with this server?")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 22
+                font.pixelSize: Math.round(22 * Theme.fontScale)
                 font.weight: Font.Bold
                 horizontalAlignment: Text.AlignHCenter
             }
@@ -130,7 +134,7 @@ Item {
                 text: i18n("A pairing request wants to connect this device to:")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontSender
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
             }
@@ -140,7 +144,7 @@ Item {
                 text: Pairing.pendingPairOrigin
                 color: Theme.inkStrong
                 font.family: Theme.fontMono
-                font.pixelSize: 16
+                font.pixelSize: Math.round(16 * Theme.fontScale)
                 font.weight: Font.Bold
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
@@ -152,9 +156,9 @@ Item {
                 Layout.fillWidth: true
                 visible: Pairing.pendingPairInsecure
                 text: i18n("This connection is not encrypted (http).")
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
             }
@@ -163,7 +167,7 @@ Item {
                 text: i18n("Only confirm this if you expected it. Once paired, this server can deliver mail notifications to this device.")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
             }
@@ -196,7 +200,7 @@ Item {
                 text: i18n("Pairing…")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 15
+                font.pixelSize: Math.round(15 * Theme.fontScale)
                 horizontalAlignment: Text.AlignHCenter
             }
         }
@@ -211,7 +215,7 @@ Item {
                 Layout.fillWidth: true
                 text: "✓" // check mark -- success glyph, no image asset needed
                 color: Theme.successBorderColor
-                font.pixelSize: 40
+                font.pixelSize: Math.round(40 * Theme.fontScale)
                 horizontalAlignment: Text.AlignHCenter
             }
             Text {
@@ -219,7 +223,7 @@ Item {
                 text: i18n("Device paired")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 22
+                font.pixelSize: Math.round(22 * Theme.fontScale)
                 font.weight: Font.Bold
                 horizontalAlignment: Text.AlignHCenter
             }
@@ -237,7 +241,7 @@ Item {
                         text: Pairing.pairedServerHost
                         color: Theme.inkStrong
                         font.family: Theme.fontMono
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.fontSender
                         wrapMode: Text.WordWrap
                     }
                 }
@@ -251,7 +255,7 @@ Item {
                         text: Pairing.deviceId
                         color: Theme.inkStrong
                         font.family: Theme.fontMono
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.fontSender
                         wrapMode: Text.WordWrap
                     }
                 }
@@ -272,16 +276,16 @@ Item {
             Text {
                 Layout.fillWidth: true
                 text: "⚠" // warning glyph
-                color: Theme.dangerColor
-                font.pixelSize: 40
+                color: Theme.dangerActionText
+                font.pixelSize: Math.round(40 * Theme.fontScale)
                 horizontalAlignment: Text.AlignHCenter
             }
             Text {
                 Layout.fillWidth: true
                 text: i18n("Pairing failed")
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontUi
-                font.pixelSize: 22
+                font.pixelSize: Math.round(22 * Theme.fontScale)
                 font.weight: Font.Bold
                 horizontalAlignment: Text.AlignHCenter
             }
@@ -295,15 +299,15 @@ Item {
                 // literal to wrap a second time.
                 textFormat: Text.PlainText
                 text: Pairing.pairingError
-                color: Theme.dangerColor
+                color: Theme.dangerActionText
                 font.family: Theme.fontUi
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontSender
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
             }
             GhostButton {
                 Layout.alignment: Qt.AlignHCenter
-                text: i18n("Try Again")
+                text: i18n("Try again")
                 onClicked: Pairing.reset()
             }
         }

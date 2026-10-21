@@ -91,7 +91,7 @@ core/net/PgpResolveClient.cpp	    key.usable = object.value(QStringLiteral("usab
 core/pgp/MimeBodyReader.cpp	        if (!terminated) {	        if (false) {	MimeBodyReaderTest:nestedBoundariesThatPrefixEachOtherDoNotTruncate
 
 # --- sender text is never treated as trusted compose HTML ----------------
-app/qml/DesktopRoot.qml	                initialBodyIsHtml: composeWindow.popInitialBodyIsHtml	                initialBodyIsHtml: true	QmlTests:ComposeSeeding::test_popout_compose_preserves_body_trust
+app/qml/AppShell.qml	                initialBodyIsHtml: composeWindow.popInitialBodyIsHtml	                initialBodyIsHtml: true	QmlTests:ComposeSeeding::test_popout_compose_preserves_body_trust
 # A decrypted MIME entity cannot make the recursive walker copy arbitrary bytes.
 core/pgp/MimeBodyReader.cpp	    if (depth > kMaxDepth || partBudget <= 0 || raw.size() > byteBudget) {	    if (false) {	MimeBodyReaderTest:walkedBytesAreBounded
 
@@ -253,9 +253,9 @@ app/qml/components/PillTab.qml	        textFormat: Text.PlainText		QmlTests:Plai
 #
 # NOT LISTED, deliberately: the other forty textFormat lines in app/qml,
 # including the one this section was written for -- the inbox timestamp at
-# MobileRoot.qml, which rendered the relay's raw atUtc string. Neutralisation
+# the old MobileRoot.qml, which rendered the relay's raw atUtc string. Neutralisation
 # cannot reach them. QmlTests instantiates leaf components; the sites that
-# matter live in MobileRoot's inbox delegate and EmailDetail's headers, which
+# matter live in MailCard (the inbox row) and EmailDetail's headers, which
 # need every C++ singleton to load, and QML cannot read a file at runtime to
 # check them statically (XMLHttpRequest refuses local and qrc URLs unless
 # QML_XHR_ALLOW_FILE_READ is set).
@@ -263,7 +263,7 @@ app/qml/components/PillTab.qml	        textFormat: Text.PlainText		QmlTests:Plai
 # They are gated statically instead, by the textFormat check in
 # tests/qml/qmllint-gate.sh (ctest QmlPropertyLint): a Text or Label that
 # binds anything other than a literal without declaring a SAFE format fails
-# it. Delete the textFormat at MobileRoot.qml's timestamp and that test goes
+# it. Delete the textFormat at MailCard.qml's date and that test goes
 # red. This harness cannot say so -- it neutralises a line and runs a compiled
 # test binary, and QmlPropertyLint is a shell script -- which is why it is
 # written down here instead.
@@ -498,7 +498,7 @@ app/mail/MailController.cpp	    if (sendAt.isValid())	    if (false)	MailControl
 core/net/RelayMailSource.cpp	    if (!isScheduledId(id)) {	    if (false) {	RelayMailSourceTest:cancelScheduledRefusesAnIdThatIsNotTheRelays
 app/mail/ScheduledController.cpp	    m_appLocked = locked;		ScheduledControllerTest:lockingDropsTheListAndRefusesRefreshAndCancel
 app/mail/ScheduledController.cpp	    if (locked)	    if (false)	ScheduledControllerTest:lockingDropsTheListAndRefusesRefreshAndCancel
-app/qml/DesktopRoot.qml	            scheduledSheet.close();		QmlTests:ScheduledList::test_desktop_sheet_closes_on_lock
+app/qml/AppShell.qml	            scheduledSheet.close();		QmlTests:ScheduledList::test_scheduled_sheet_closes_on_lock
 app/mail/MailController.cpp	    if (m_pairingStore.stillCurrent(owner)) {	    if (true) {	MailControllerTest:aMoveReplyForAReplacedAccountLeavesTheCacheAlone
 
 # --- inbox paging (L12): an older page or a resync never crosses accounts,
@@ -516,3 +516,15 @@ core/domain/MailRepository.cpp	        const bool keepOlder = reaches(held, bott
 core/domain/MailRepository.cpp	        if (result.hasMore.value_or(false) && !reaches(held, messageRef(result.nextBefore))) {	        if (false) {	MailPagingTest:aDeltaWithMoreThanAWindowDropsRowsItCannotReach
 core/domain/MailRepository.cpp	    if (oldestHeld(m_emailDao.messageIdsInFolder(plan.folder)) != plan.before)	    if (false)	MailPagingTest:anOlderPageThatNoLongerJoinsOnIsDropped
 core/domain/MailRepository.cpp	        if (!below(email.messageId, anchor))	        if (false)	MailPagingTest:anOlderPageStoresOnlyRowsBelowItsAnchor
+#
+# QQC2 popups, menus and drawers paint ABOVE the lock overlay. Settings is a
+# live destination since the adaptive shell (2026-10-20), so each of these
+# would stay on top of the PIN screen, still working, if its close-on-lock
+# line went. ShellTests loads the real AppShell against the screenshot fakes.
+app/qml/AppShell.qml	            folderDrawer.close();		ShellTests:ShellLock::test_folder_drawer_closes_on_lock
+app/qml/AppShell.qml	            pairingConfirmPopup.close();		ShellTests:ShellLock::test_pairing_confirmation_closes_on_lock
+app/qml/AppShell.qml	            settingsPane.closePopups();		ShellTests:ShellLock::test_settings_popups_close_on_lock
+app/qml/components/MailCard.qml	        function onLockedChanged() { if (AppLock.locked) contextMenu.close() }	        function onLockedChanged() {}	ShellTests:ShellLock::test_mail_row_menu_closes_on_lock
+app/qml/pages/ContactsList.qml	                actionsMenu.close()		ShellTests:ShellLock::test_contacts_menu_closes_on_lock
+app/qml/AppShell.qml	            folderActionsMenu.close();		ShellTests:ShellLock::test_folder_actions_menu_closes_on_lock
+app/qml/pages/Settings.qml	        securityPrompt.close()		ShellTests:ShellLock::test_pin_prompt_closes_on_lock

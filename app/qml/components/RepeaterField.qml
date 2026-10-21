@@ -177,7 +177,7 @@ ColumnLayout {
                 text: "✕"
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 16
+                font.pixelSize: Math.round(16 * Theme.fontScale)
 
                 TapHandler {
                     onTapped: root.removeAt(rowDelegate.entryIndex)

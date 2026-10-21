@@ -15,6 +15,7 @@ private slots:
     void contactAtOutOfRangeReturnsDefaultConstructedContact();
     void dataOutOfRangeReturnsInvalidVariant();
     void isSelfRoleReflectsContactField();
+    void hasPgpKeyRoleIsTrueOnlyForANonBlankKey();
 
 private:
     static Contact sampleContact();
@@ -71,9 +72,9 @@ void ContactListModelTest::dataRoundTripsEveryRoleForAPopulatedRow()
     QCOMPARE(model.data(index, ContactListModel::SyncedRole).toBool(), true); // rev == 3, not 0
     QCOMPARE(model.data(index, ContactListModel::PhotoRefRole).toString(), QStringLiteral("photo-ref-1"));
 
-    // roleNames() must expose exactly these 12 role-name strings for QML.
+    // roleNames() must expose exactly these 13 role-name strings for QML.
     const QHash<int, QByteArray> roles = model.roleNames();
-    QCOMPARE(roles.size(), 12);
+    QCOMPARE(roles.size(), 13);
     QCOMPARE(roles.value(ContactListModel::UidRole), QByteArrayLiteral("uid"));
     QCOMPARE(roles.value(ContactListModel::PrimaryEmailRole), QByteArrayLiteral("primaryEmail"));
     QCOMPARE(roles.value(ContactListModel::PrimaryPhoneRole), QByteArrayLiteral("primaryPhone"));
@@ -95,10 +96,28 @@ void ContactListModelTest::isSelfRoleReflectsContactField()
     QCOMPARE(model.data(model.index(0, 0), ContactListModel::IsSelfRole).toBool(), true);
     QCOMPARE(model.data(model.index(1, 0), ContactListModel::IsSelfRole).toBool(), false);
 
-    // roleNames() must expose exactly these 12 role-name strings for QML now.
+    // roleNames() must expose exactly these 13 role-name strings for QML now.
     const QHash<int, QByteArray> roles = model.roleNames();
-    QCOMPARE(roles.size(), 12);
+    QCOMPARE(roles.size(), 13);
     QCOMPARE(roles.value(ContactListModel::IsSelfRole), QByteArrayLiteral("isSelf"));
+}
+
+void ContactListModelTest::hasPgpKeyRoleIsTrueOnlyForANonBlankKey()
+{
+    Contact withKey = sampleContact();
+    withKey.pgpKey = QStringLiteral("-----BEGIN PGP PUBLIC KEY BLOCK-----\nabc\n-----END PGP PUBLIC KEY BLOCK-----");
+    Contact noKey = sampleContact();
+    noKey.pgpKey = std::nullopt;
+    Contact blankKey = sampleContact();
+    blankKey.pgpKey = QStringLiteral("  \n ");
+
+    ContactListModel model;
+    model.setContacts({ withKey, noKey, blankKey });
+
+    QCOMPARE(model.data(model.index(0, 0), ContactListModel::HasPgpKeyRole).toBool(), true);
+    QCOMPARE(model.data(model.index(1, 0), ContactListModel::HasPgpKeyRole).toBool(), false);
+    QCOMPARE(model.data(model.index(2, 0), ContactListModel::HasPgpKeyRole).toBool(), false);
+    QCOMPARE(model.roleNames().value(ContactListModel::HasPgpKeyRole), QByteArrayLiteral("hasPgpKey"));
 }
 
 void ContactListModelTest::syncedRoleReflectsPendingUidSet()

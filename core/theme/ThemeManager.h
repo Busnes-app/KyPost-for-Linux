@@ -7,25 +7,24 @@
 
 class SettingsStore; // forward-declared, core/stores/SettingsStore.h
 
-// Thin persistence layer on top of AppTheme's data (Task 26): resolves the
-// user's saved theme selection at construction time and exposes it as a
-// live name/palette pair, writing back through SettingsStore only when
-// setTheme() is explicitly called. Mirrors ThemeManager.swift.
+// Resolves the saved theme selection against the system colour scheme.
+// themeName() is the selection (may be "Follow system"); palette() is what
+// it paints. Writes back through SettingsStore only from setTheme().
 class ThemeManager
 {
 public:
-    explicit ThemeManager(SettingsStore& settingsStore);
+    ThemeManager(SettingsStore& settingsStore, bool systemDark);
 
     QString themeName() const;
     ThemePalette palette() const;
 
-    // No-op if `name` is not one of AppTheme::themeNames() -- mirrors
-    // ThemeManager.swift's `guard AppTheme.palettes[name] != nil else
-    // return`. On success, persists via settingsStore.setThemeId(name).
+    // No-op if `name` is not one of AppTheme::themeNames(); on success,
+    // persists via settingsStore.setThemeId(name).
     void setTheme(const QString& name);
+    void setSystemDark(bool systemDark);
 
 private:
     SettingsStore& m_settingsStore;
     QString m_themeName;
-    ThemePalette m_palette;
+    bool m_systemDark;
 };

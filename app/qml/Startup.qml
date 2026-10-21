@@ -42,7 +42,7 @@ Window {
             text: qsTr("KyPost")
             color: Theme.inkStrong
             font.family: Theme.fontUi
-            font.pixelSize: 26
+            font.pixelSize: Math.round(26 * Theme.fontScale)
             font.weight: Font.DemiBold
         }
 
@@ -55,7 +55,7 @@ Window {
             text: root.statusText
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: 14
+            font.pixelSize: Theme.fontSender
         }
 
         // A plain indeterminate bar. QtQuick.Controls is deliberately not

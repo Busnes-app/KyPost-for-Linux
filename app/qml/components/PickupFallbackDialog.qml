@@ -121,7 +121,7 @@ Item {
                 text: i18n("Send an unencrypted link?")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 16
+                font.pixelSize: Math.round(16 * Theme.fontScale)
                 font.weight: Font.Medium
             }
             Text {
@@ -132,7 +132,7 @@ Item {
                             root.recipients.length, root.recipients.join(", "))
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontSender
                 wrapMode: Text.WordWrap
             }
             Text {
@@ -142,7 +142,7 @@ Item {
                 text: i18n("To make that work, this message's contents are stored on your KyPost server — unencrypted — for up to 7 days or until the link is opened. Everyone else on this message still gets it encrypted.")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontPreview
                 wrapMode: Text.WordWrap
             }
             RowLayout {

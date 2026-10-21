@@ -43,6 +43,8 @@ QVariant ContactListModel::data(const QModelIndex& index, int role) const
         return contact.photoRef.value_or(QString());
     case IsSelfRole:
         return contact.isSelf;
+    case HasPgpKeyRole:
+        return contact.pgpKey.has_value() && !contact.pgpKey->trimmed().isEmpty();
     default:
         return QVariant();
     }
@@ -63,6 +65,7 @@ QHash<int, QByteArray> ContactListModel::roleNames() const
         { SyncedRole, "synced" },
         { PhotoRefRole, "photoRef" },
         { IsSelfRole, "isSelf" },
+        { HasPgpKeyRole, "hasPgpKey" },
     };
 }
 

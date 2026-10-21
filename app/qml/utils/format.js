@@ -312,7 +312,7 @@ function initialsFromName(name) {
 // formatted sender string (and may pass an email local-part instead, or an
 // empty string). Unlike initialsFromName(), an empty/unparseable result
 // comes back as "" rather than "?" -- EmailDetail.qml's initialsFor() and
-// MobileRoot.qml's initialsForSender() each handle that empty case
+// the old MobileRoot.qml's initialsForSender() each handle that empty case
 // differently (one falls back further to the sender's email local-part
 // before ever calling this, the other falls back to "?" itself), so this
 // shared core stays a plain splitter and leaves those decisions to the
@@ -331,15 +331,14 @@ function initialsFromNamePart(namePart) {
 // so this stays a plain, dependency-free JS module). Falls back to
 // `wireName` itself when not found -- which is also what makes a
 // just-created subfolder render sanely before the next refresh lands.
-// Shared by DesktopRoot.qml's folderDisplayName() and MobileRoot.qml's
-// currentFolderDisplayName(), which both did this identical linear scan
-// over the same data.
+// The fallback still shows the raw IMAP "INBOX" as "Inbox", matching
+// core's standardFolderDisplayName().
 function folderDisplayName(folders, wireName) {
     for (let i = 0; i < folders.length; i++) {
         if (folders[i].wireName === wireName)
             return folders[i].displayName
     }
-    return wireName
+    return String(wireName).toUpperCase() === "INBOX" ? "Inbox" : wireName
 }
 
 // A tab or folder label with its unread count, "Work · 3" as on Android; the
@@ -349,4 +348,29 @@ function withUnread(label, unread) {
     const s = String(label === undefined || label === null ? "" : label)
     const n = Math.floor(Number(unread))
     return n > 0 ? "\u2068" + s + "\u2069 · " + n : s
+}
+
+// Whole minutes from `then` to `now`, never negative (a clock step back
+// must not read "Updated -3 minutes ago").
+function minutesSince(then, now) {
+    const ms = new Date(now).getTime() - new Date(then).getTime()
+    return isNaN(ms) || ms < 0 ? 0 : Math.floor(ms / 60000)
+}
+
+// A mail row's date: the time for today, the date otherwise (Android's list).
+function rowDate(at, now, timeText, dateText) {
+    const a = new Date(at)
+    const n = new Date(now)
+    return a.getFullYear() === n.getFullYear() && a.getMonth() === n.getMonth()
+        && a.getDate() === n.getDate() ? timeText : dateText
+}
+
+// The whole path of a folder, for where two leaves share a name: the
+// notification folder question must tell Archive/Work from Projects/Work.
+// Splits on "/" and "." like core's standardFolderDisplayName().
+function folderPath(wireName) {
+    const parts = String(wireName).split(/[\/.]/).filter(function (p) { return p.length > 0 })
+    if (parts.length > 0 && parts[0].toUpperCase() === "INBOX")
+        parts[0] = "Inbox"
+    return parts.join(" / ")
 }

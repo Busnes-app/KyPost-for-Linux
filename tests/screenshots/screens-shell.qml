@@ -1,0 +1,47 @@
+import QtQuick
+import com.kysecurity.mail 1.0
+
+// Every screen of AppShell.qml. Names that match an Android store shot are
+// paired with it in scripts/screenshots-compare.py.
+QtObject {
+    function reset(root) {
+        AppLock.locked = false; Mfa.open = false; MailApp.empty = false; MailApp.isBusy = false
+        MailApp.lastError = ""; MailApp.clearSearch(); root.searchOpen = false
+        ContactsApp.empty = false; ContactsApp.reload()
+        Pairing.pairingState = "idle"; Pairing.isPaired = true
+        root.closeOverlays(); root.selectFolder("INBOX"); root.navigate("inbox")
+    }
+    property var screens: [
+        {name: "inbox-all", setup: function (root) {}},
+        {name: "inbox-primary", setup: function (root) { MailApp.selectKeyword("Primary") }},
+        {name: "inbox-selected", wait: 1800, setup: function (root) { root.selectEmail("<playshot-0@kypost-demo.local>", "INBOX") }},
+        {name: "folders", setup: function (root) { root.openFolders() }},
+        {name: "folder-sent", setup: function (root) { root.selectFolder("Sent") }},
+        {name: "email-detail", wait: 1800, setup: function (root) { root.selectEmail("<playshot-1@kypost-demo.local>", "INBOX") }},
+        {name: "compose", setup: function (root) { root.openCompose("Maya Chen <maya.chen@example.com>", "Re: Saturday hike", "Count me in! I will bring the trail mix and an extra headlamp.\n\nSee you at 7:30.\n\nSam", ({})) }},
+        {name: "compose-empty", setup: function (root) { root.navigate("compose") }},
+        {name: "contacts-list", setup: function (root) { root.navigate("contacts") }},
+        {name: "contact-detail", setup: function (root) { root.navigate("contacts"); root.selectContact("c4") }},
+        {name: "contact-new", setup: function (root) { root.navigate("contacts"); root.selectContact("") }},
+        {name: "contacts-empty", setup: function (root) { ContactsApp.empty = true; ContactsApp.reload(); root.navigate("contacts") }},
+        {name: "settings", setup: function (root) { root.navigate("settings") }},
+        {name: "settings-connection", setup: function (root) { root.openSettingsPane(0) }},
+        {name: "settings-appearance", setup: function (root) { root.openSettingsPane(1) }},
+        {name: "settings-keywords", setup: function (root) { root.openSettingsPane(2) }},
+        {name: "settings-contacts", setup: function (root) { root.openSettingsPane(3) }},
+        {name: "settings-notifications", setup: function (root) { root.openSettingsPane(4) }},
+        {name: "settings-general", setup: function (root) { root.openSettingsPane(5) }},
+        {name: "settings-security", setup: function (root) { root.openSettingsPane(6) }},
+        {name: "scheduled", setup: function (root) { root.openScheduled() }},
+        {name: "search", setup: function (root) { root.searchOpen = true; MailApp.setSearchQuery("roadmap") }},
+        {name: "mfa-approval", setup: function (root) { Mfa.open = true }},
+        {name: "pgp-my-qr", setup: function (root) { root.openPgpMyQrCode() }},
+        {name: "pgp-scan", setup: function (root) { root.openPgpScan() }},
+        {name: "pairing", setup: function (root) { Pairing.isPaired = false; root.openPairing() }},
+        {name: "pairing-confirm", setup: function (root) { Pairing.pairingState = "confirm" }},
+        {name: "unlock", setup: function (root) { AppLock.locked = true }},
+        {name: "inbox-empty", setup: function (root) { MailApp.empty = true; MailApp.reload() }},
+        {name: "inbox-loading", setup: function (root) { MailApp.isBusy = true }},
+        {name: "inbox-error", setup: function (root) { MailApp.lastError = "Could not reach relay.kypost-demo.local" }},
+    ]
+}

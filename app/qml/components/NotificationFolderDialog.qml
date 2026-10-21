@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import com.kysecurity.mail 1.0
+import "../utils/format.js" as Format
 
 // Asks which copy of a message the user meant, when a notification tap-through
 // cannot tell.
@@ -103,7 +104,7 @@ Item {
                 text: i18n("Which copy do you want?")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 16
+                font.pixelSize: Math.round(16 * Theme.fontScale)
                 font.bold: true
                 wrapMode: Text.WordWrap
             }
@@ -117,7 +118,7 @@ Item {
                 text: i18n("This message is in more than one mailbox, and the notification didn't say which one it came from.")
                 color: Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap
             }
 
@@ -129,7 +130,7 @@ Item {
                     Layout.fillWidth: true
                     // Bound as PlainText wherever it is rendered: this is a
                     // mailbox name off the wire, not a string this app chose.
-                    text: modelData
+                    text: Format.folderPath(modelData)
                     onClicked: root.choose(modelData)
                 }
             }

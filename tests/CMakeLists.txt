@@ -149,6 +149,8 @@ kypost_add_test(VCardContactTest core/vcard/VCardContactTest.cpp)
 kypost_add_test(ThemePaletteTest core/theme/ThemePaletteTest.cpp)
 kypost_add_test(AppThemeTest core/theme/AppThemeTest.cpp)
 kypost_add_test(ThemeManagerTest core/theme/ThemeManagerTest.cpp)
+kypost_add_test(SemanticColorsTest core/theme/SemanticColorsTest.cpp)
+kypost_add_test(TypeScaleTest core/theme/TypeScaleTest.cpp)
 
 # Everything below tests app/ code, which is Qt 6/KF6 only.
 if(KYPOST_CORE_ONLY)
@@ -202,6 +204,24 @@ kypost_add_app_test(GeneralControllerTest
     ${CMAKE_SOURCE_DIR}/app/general/GeneralControllerTest.cpp
     ${CMAKE_SOURCE_DIR}/app/general/GeneralController.cpp
 )
+
+# ThemeController: system colour scheme and font wiring. QTEST_MAIN needs a
+# QGuiApplication, so it runs offscreen.
+kypost_add_app_test(ThemeControllerTest
+  SOURCES
+    app/theme/ThemeControllerTest.cpp
+    ${CMAKE_SOURCE_DIR}/app/theme/ThemeController.cpp
+  LIBS Qt6::Gui
+)
+set_tests_properties(ThemeControllerTest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+kypost_add_app_test(AppIconTest
+  SOURCES
+    app/theme/AppIconTest.cpp
+    ${CMAKE_SOURCE_DIR}/app/resources/appicon.qrc
+  LIBS Qt6::Gui
+)
+set_tests_properties(AppIconTest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
 kypost_add_app_test(PgpMessagePresentationTest
   SOURCES
@@ -447,16 +467,19 @@ kypost_add_app_test(NotificationDispatcherTest
 # missing from the resource bundle fails here rather than at runtime.
 find_package(Qt6 REQUIRED COMPONENTS QuickTest Quick Qml)
 
+find_package(Qt6 REQUIRED COMPONENTS Svg)
 add_executable(QmlTests
   qml/main.cpp
   qml/FakeSingletons.h
+  ${CMAKE_SOURCE_DIR}/app/theme/MaterialIconProvider.cpp
   ${CMAKE_SOURCE_DIR}/app/qml/qml.qrc
+  ${CMAKE_SOURCE_DIR}/app/resources/appicon.qrc
 )
-target_include_directories(QmlTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/qml)
+target_include_directories(QmlTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/qml ${CMAKE_SOURCE_DIR}/app)
 # KF6::I18nQml: the pages under test call i18n(), which needs the same
 # KLocalizedQmlContext main.cpp installs -- without it they fail to
 # construct with ReferenceError rather than testing anything.
-target_link_libraries(QmlTests PRIVATE Qt6::QuickTest Qt6::Quick Qt6::Qml KF6::I18n KF6::I18nQml)
+target_link_libraries(QmlTests PRIVATE Qt6::QuickTest Qt6::Quick Qt6::Qml Qt6::Svg KF6::I18n KF6::I18nQml)
 # QUICK_TEST_SOURCE_DIR tells the runner where the tst_*.qml files live.
 target_compile_definitions(QmlTests PRIVATE
   QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml"
@@ -469,7 +492,7 @@ set_tests_properties(QmlTests PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QML_XHR_ALLOW_FILE_READ=1")
 
 # QmlTests above instantiates a handful of leaf components. It cannot load
-# DesktopRoot or MobileRoot -- those need every C++ singleton -- so a property
+# the AppShell root -- it needs every C++ singleton -- so a property
 # assignment that makes a whole root fail to load slips through it entirely.
 # That is not hypothetical: it shipped, and the app would not start.
 #
@@ -491,4 +514,59 @@ if(KYPOST_QMLLINT)
 else()
   message(WARNING "Qt's qmllint not found -- QmlPropertyLint will not run. "
                   "A .qml file assigning a non-existent property will not be caught.")
+endif()
+
+# Screenshot harness (scripts/screenshots.sh): the shipped QML with fixture
+# singletons, rendered offscreen. A tool, not a test, so no add_test().
+find_package(Qt6 REQUIRED COMPONENTS Widgets)
+add_executable(KyPostScreens
+  ${CMAKE_SOURCE_DIR}/app/resources/appicon.qrc
+  screenshots/main.cpp
+  screenshots/Fixtures.h
+  screenshots/screens.qrc
+  ${CMAKE_SOURCE_DIR}/app/theme/ThemeController.cpp
+  ${CMAKE_SOURCE_DIR}/app/theme/MaterialIconProvider.cpp
+  ${CMAKE_SOURCE_DIR}/app/qml/qml.qrc
+  ${CMAKE_SOURCE_DIR}/app/resources/fonts.qrc
+)
+target_include_directories(KyPostScreens PRIVATE ${CMAKE_SOURCE_DIR}/app)
+target_link_libraries(KyPostScreens PRIVATE kypostcore Qt6::Quick Qt6::Qml Qt6::Widgets Qt6::Gui Qt6::Svg
+  KF6::I18n KF6::I18nQml)
+
+# The AppShell root under test, against the screenshot fixtures: QmlTests can
+# only build leaf components, so root handlers (notifications, closing popups
+# on lock) were untested -- and a notification tap once threw silently.
+find_package(Qt6 REQUIRED COMPONENTS QuickTest)
+add_executable(ShellTests
+  ${CMAKE_SOURCE_DIR}/app/resources/appicon.qrc
+  shell/main.cpp
+  screenshots/Fixtures.h
+  screenshots/screens.qrc
+  ${CMAKE_SOURCE_DIR}/app/theme/ThemeController.cpp
+  ${CMAKE_SOURCE_DIR}/app/theme/MaterialIconProvider.cpp
+  ${CMAKE_SOURCE_DIR}/app/qml/qml.qrc
+  ${CMAKE_SOURCE_DIR}/app/resources/fonts.qrc
+)
+target_include_directories(ShellTests PRIVATE ${CMAKE_SOURCE_DIR}/app ${CMAKE_CURRENT_SOURCE_DIR}/screenshots)
+target_link_libraries(ShellTests PRIVATE kypostcore Qt6::QuickTest Qt6::Quick Qt6::Qml Qt6::Gui Qt6::Svg
+  KF6::I18n KF6::I18nQml)
+target_compile_definitions(ShellTests PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/shell")
+add_test(NAME ShellTests COMMAND ShellTests)
+set_tests_properties(ShellTests PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu;QT_QUICK_BACKEND=software;KYPOST_RSS_LIMIT_MB=800")
+# The same suite on a fractionally scaled screen (KDE's 1.6x laptop default
+# territory). Icons once fed their pixel size back into their layout size,
+# which only grows when devicePixelRatio > 1: 3 GB in two seconds, offscreen
+# at 1x never noticed.
+add_test(NAME ShellTestsScaled COMMAND ShellTests)
+set_tests_properties(ShellTestsScaled PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_SCALE_FACTOR=1.6;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu;QT_QUICK_BACKEND=software;KYPOST_RSS_LIMIT_MB=800")
+if(EXISTS "/.flatpak-info")
+  # The shell holds EmailDetail's WebEngineView; same build-sandbox-only
+  # setup as ProtectedImageHandlerTest above.
+  set_property(TEST ShellTests ShellTestsScaled APPEND PROPERTY ENVIRONMENT
+    "QTWEBENGINEPROCESS_PATH=/app/lib/libexec/QtWebEngineProcess"
+    "QTWEBENGINE_RESOURCES_PATH=/app/resources"
+    "QTWEBENGINE_LOCALES_PATH=/app/translations/qtwebengine_locales"
+    "QTWEBENGINE_DISABLE_SANDBOX=1")
 endif()

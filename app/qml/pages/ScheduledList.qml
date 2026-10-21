@@ -15,7 +15,8 @@ Item {
     property string confirmingId: ""
 
     implicitWidth: 480
-    implicitHeight: 560
+    // Its content, up to the sheet's old 560: one row is a short sheet.
+    implicitHeight: Math.min(560, content.implicitHeight + 32)
 
     Component.onCompleted: Scheduled.refresh()
 
@@ -26,6 +27,7 @@ Item {
     }
 
     ColumnLayout {
+        id: content
         anchors.fill: parent
         anchors.margins: 16
         spacing: 10
@@ -40,7 +42,7 @@ Item {
                 text: i18n("Scheduled")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: 18
+                font.pixelSize: Theme.fontSubject
                 font.bold: true
             }
             GhostButton {
@@ -63,7 +65,7 @@ Item {
                 : (!Scheduled.busy && Scheduled.items.length === 0 ? i18n("Nothing is scheduled.") : "")
             color: Theme.ink
             font.family: Theme.fontUi
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontPreview
             wrapMode: Text.WordWrap
         }
 
@@ -71,66 +73,77 @@ Item {
             id: list
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.preferredHeight: contentHeight
             clip: true
             spacing: 12
             model: Scheduled.items
             ScrollBar.vertical: ThemedScrollBar {}
 
-            delegate: ColumnLayout {
+            delegate: Card {
                 objectName: "scheduledRow"
                 width: list.width
-                spacing: 2
+                height: rowColumn.implicitHeight + 28
 
-                Text {
-                    Layout.fillWidth: true
-                    textFormat: Text.PlainText
-                    text: modelData.subject
-                    color: Theme.inkStrong
-                    font.family: Theme.fontUi
-                    font.pixelSize: 14
-                    font.bold: true
-                    elide: Text.ElideRight
-                }
-                Text {
-                    Layout.fillWidth: true
-                    textFormat: Text.PlainText
-                    text: modelData.to
-                    color: Theme.ink
-                    font.family: Theme.fontUi
-                    font.pixelSize: 12
-                    elide: Text.ElideRight
-                }
-                Text {
-                    Layout.fillWidth: true
-                    textFormat: Text.PlainText
-                    text: [modelData.when, modelData.status, modelData.reason].filter(s => s !== "").join(" · ")
-                    color: Theme.ink
-                    font.family: Theme.fontUi
-                    font.pixelSize: 12
-                    wrapMode: Text.WordWrap
-                }
-                RowLayout {
-                    visible: modelData.cancellable
-                    spacing: 8
+                ColumnLayout {
+                    id: rowColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 14
+                    spacing: 2
 
-                    GhostButton {
-                        objectName: "cancelScheduled"
-                        // The second tap confirms; the button stays where it was.
-                        text: root.confirmingId === modelData.id ? i18n("Return to Drafts") : i18n("Cancel Send")
-                        enabled: !Scheduled.busy
-                        onClicked: {
-                            if (root.confirmingId !== modelData.id) {
-                                root.confirmingId = modelData.id
-                                return
-                            }
-                            root.confirmingId = ""
-                            Scheduled.cancel(modelData.id)
-                        }
+                    Text {
+                        Layout.fillWidth: true
+                        textFormat: Text.PlainText
+                        text: modelData.subject
+                        color: Theme.inkStrong
+                        font.family: Theme.fontUi
+                        font.pixelSize: Theme.fontSender
+                        font.bold: true
+                        elide: Text.ElideRight
                     }
-                    GhostButton {
-                        visible: root.confirmingId === modelData.id
-                        text: i18n("Keep")
-                        onClicked: root.confirmingId = ""
+                    Text {
+                        Layout.fillWidth: true
+                        textFormat: Text.PlainText
+                        text: modelData.to
+                        color: Theme.ink
+                        font.family: Theme.fontUi
+                        font.pixelSize: Theme.fontSender
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        textFormat: Text.PlainText
+                        text: [modelData.when, modelData.status, modelData.reason].filter(s => s !== "").join(" · ")
+                        color: Theme.ink
+                        font.family: Theme.fontUi
+                        font.pixelSize: Theme.fontPreview
+                        wrapMode: Text.WordWrap
+                    }
+                    RowLayout {
+                        visible: modelData.cancellable
+                        spacing: 8
+
+                        GhostButton {
+                            objectName: "cancelScheduled"
+                            Layout.topMargin: 8
+                            // The second tap confirms; the button stays where it was.
+                            text: root.confirmingId === modelData.id ? i18n("Return to Drafts") : i18n("Cancel send")
+                            enabled: !Scheduled.busy
+                            onClicked: {
+                                if (root.confirmingId !== modelData.id) {
+                                    root.confirmingId = modelData.id
+                                    return
+                                }
+                                root.confirmingId = ""
+                                Scheduled.cancel(modelData.id)
+                            }
+                        }
+                        GhostButton {
+                            visible: root.confirmingId === modelData.id
+                            text: i18n("Keep")
+                            onClicked: root.confirmingId = ""
+                        }
                     }
                 }
             }
