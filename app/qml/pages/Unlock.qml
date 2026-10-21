@@ -7,7 +7,7 @@ import "../components"
 // Full-window PIN gate shown whenever AppLock.locked is true.
 //
 // A plain Item, following the EmailDetail.qml/Compose.qml convention that a
-// page does not assume how it is presented -- both roots overlay it at the
+// page does not assume how it is presented -- the shell overlays it at the
 // top of their own stacking order rather than pushing it as a page, so
 // nothing behind it is reachable while it is up.
 Item {

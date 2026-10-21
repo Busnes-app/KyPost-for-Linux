@@ -1963,7 +1963,7 @@ QVariantMap MailController::findByMessageId(const QString& messageId, const QStr
     //
     // Resolved 2026-08-23. An ambiguous id is no longer an empty result:
     // openFromNotification() asks MailRepository::foldersHolding() and emits
-    // notificationEmailAmbiguous(), which both roots answer with
+    // notificationEmailAmbiguous(), which the shell answers with
     // NotificationFolderDialog. Readers that know their folder pass it
     // explicitly; notification callers without one retain the unique-ID rule.
     const std::optional<Email> email = folder.isEmpty()

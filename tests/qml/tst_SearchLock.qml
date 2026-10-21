@@ -22,7 +22,7 @@ TestCase {
         findShortcutEnabled: true
     }
 
-    // Stacked over the field the way both roots stack it.
+    // Stacked over the field the way the shell stacks it.
     Components.LockOverlay {
         id: overlay
     }

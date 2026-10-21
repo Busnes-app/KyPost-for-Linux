@@ -2,7 +2,7 @@ import QtQuick
 import com.kysecurity.mail 1.0
 
 // The mail list's search field (GET /api/mail/search), one definition for
-// both roots. Results replace the list while there is a query; Escape or
+// the shell. Results replace the list while there is a query; Escape or
 // emptying the field returns to the folder.
 //
 // Disabled while locked. A disabled item neither holds nor takes focus, so

@@ -1100,8 +1100,8 @@ int main(int argc, char* argv[])
     // signals already carry the same (const QString&) shape. Neither
     // NotificationDispatcher nor MailController has window/pageStack access
     // (by design -- see both classes' doc comments), so this connect only
-    // gets the bare messageId to QML; AppShell.qml each
-    // have their own `Connections { target: MailApp }` block that hydrates
+    // gets the bare messageId to QML; AppShell.qml has
+    // its own `Connections { target: MailApp }` block that hydrates
     // the full email via MailApp.findByMessageId() and does the actual
     // navigation + window raise/focus. Deliberately NOT connected here for
     // NotificationDispatcher::notify() itself (Task 41's Step 3 wiring,

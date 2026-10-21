@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import com.kysecurity.mail 1.0
 
-// Create / rename / delete prompt shared by both roots. The host makes the
+// Create / rename / delete prompt shared by the shell. The host makes the
 // MailApp call on the *Requested signals and reports back with finished():
 // the dialog stays open on failure so the typed name and the reason are kept.
 //

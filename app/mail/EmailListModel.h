@@ -38,7 +38,7 @@ public:
         // user cannot read, plus its spoken equivalent. Exposed as roles
         // rather than computed in QML so the rule lives in one place
         // (core/domain/PgpMessageState.h + app/mail/PgpMessagePresentation.h)
-        // and both roots render identically.
+        // and the shell renders it the same everywhere.
         PgpMarkerRole,
         PgpMarkerAccessibleNameRole,
         UnreadRole,

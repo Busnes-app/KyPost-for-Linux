@@ -8,7 +8,7 @@ import "../utils/format.js" as Format
 import "../utils/layout.js" as Breakpoints
 
 // Task 35 -- plain reusable Item, deliberately NOT a Kirigami.Page (see
-// Phase 6 global constraint 4); AppShell each host this
+// Phase 6 global constraint 4); AppShell hosts this
 // directly (Tasks 38/39). Body is a RichBodyEditor (WYSIWYG HTML,
 // see docs/superpowers/specs/2026-07-18-html-compose-design.md) --
 // the earlier "plain text only" constraint no longer applies.

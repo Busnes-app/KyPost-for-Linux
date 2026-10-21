@@ -623,7 +623,7 @@ signals:
     // pageStack access (same constraint every other controller in this repo
     // respects -- see PairingController's deep-link routing for the closest
     // precedent), so this only carries the bare messageId to QML;
-    // AppShell.qml each have a
+    // AppShell.qml has a
     // `Connections { target: MailApp }` block that hydrates the full email
     // via findByMessageId() and does the actual navigation + window
     // raise/focus.
