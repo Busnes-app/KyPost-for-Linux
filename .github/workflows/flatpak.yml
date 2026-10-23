@@ -99,7 +99,7 @@ jobs:
             runs_on: ubuntu-24.04-arm
     runs-on: ${{ matrix.runs_on }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # First, because a tagged run that gets this wrong publishes a signed
       # build claiming the wrong version to everyone on the remote, and the
@@ -207,7 +207,7 @@ jobs:
       # 26.04.3 rebuild from source on every single run.
 
       - name: Cache flatpak-builder state
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .flatpak-builder
           key: flatpak-builder-${{ matrix.arch }}-${{ hashFiles('packaging/flatpak/com.kysecurity.mail.yaml') }}-${{ github.run_id }}
@@ -356,7 +356,7 @@ jobs:
             --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 
       - name: Upload bundle artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: kypost-flatpak-${{ matrix.arch }}-${{ github.sha }}
           path: kypost-${{ matrix.arch }}.flatpak
@@ -370,7 +370,7 @@ jobs:
         run: tar -cf "repo-${{ matrix.arch }}.tar" "repo-${{ matrix.arch }}"
 
       - name: Upload OSTree repo artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: repo-${{ matrix.arch }}-${{ github.sha }}
           path: repo-${{ matrix.arch }}.tar
@@ -387,7 +387,7 @@ jobs:
     permissions:
       contents: write # push the gh-pages branch; attach tagged-release assets
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # First, because a tagged run that gets this wrong publishes a signed
       # build claiming the wrong version to everyone on the remote, and the
@@ -416,7 +416,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends flatpak ostree
 
       - name: Download per-arch OSTree repos
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: repo-*-${{ github.sha }}
           merge-multiple: true
@@ -426,7 +426,7 @@ jobs:
       # what the release gets, which keeps "a tag always ships a bundle" true
       # rather than failing the attach step on a missing file.
       - name: Download per-arch bundles
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: kypost-flatpak-*-${{ github.sha }}
           merge-multiple: true
@@ -636,7 +636,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         # Pinned to a commit, not the mutable v2 tag: a third-party action
         # repointed at malicious code runs with this repo's secrets in scope.
-        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.2.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           files: kypost-*.flatpak
           fail_on_unmatched_files: true
