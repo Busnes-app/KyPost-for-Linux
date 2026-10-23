@@ -571,10 +571,16 @@ set_tests_properties(ShellTests PROPERTIES
 add_test(NAME ShellTestsScaled COMMAND ShellTests)
 set_tests_properties(ShellTestsScaled PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_SCALE_FACTOR=1.6;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu;QT_QUICK_BACKEND=software;KYPOST_RSS_LIMIT_MB=800")
+# Shell tests that open a message, in a process of their own. Opening one
+# starts WebEngine, and under the sanitizers that alone took ShellTests past
+# its 800 MB limit in the test after it; the limit stays as it is.
+add_test(NAME ShellReaderTests COMMAND ShellTests -input ${CMAKE_CURRENT_SOURCE_DIR}/shell-reader)
+set_tests_properties(ShellReaderTests PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu;QT_QUICK_BACKEND=software;KYPOST_RSS_LIMIT_MB=800")
 if(EXISTS "/.flatpak-info")
   # The shell holds EmailDetail's WebEngineView; same build-sandbox-only
   # setup as ProtectedImageHandlerTest above.
-  set_property(TEST ShellTests ShellTestsScaled APPEND PROPERTY ENVIRONMENT
+  set_property(TEST ShellTests ShellTestsScaled ShellReaderTests APPEND PROPERTY ENVIRONMENT
     "QTWEBENGINEPROCESS_PATH=/app/lib/libexec/QtWebEngineProcess"
     "QTWEBENGINE_RESOURCES_PATH=/app/resources"
     "QTWEBENGINE_LOCALES_PATH=/app/translations/qtwebengine_locales"
