@@ -121,6 +121,9 @@ on:
 # doesn't download the ~600MB SDK twice. This workflow is now purely the
 # native cmake/ctest build.
 
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     # x86_64 only -- and NOT because arm64 does not matter. It ships, and

@@ -76,7 +76,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
-  contents: write # push the gh-pages branch; attach tagged-release assets
+  contents: read
 
 env:
   APP_ID: com.kysecurity.mail
@@ -384,6 +384,8 @@ jobs:
     # already built and smoke-tested them, so there is nothing left to do.
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write # push the gh-pages branch; attach tagged-release assets
     steps:
       - uses: actions/checkout@v4
 
