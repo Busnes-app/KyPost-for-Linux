@@ -238,6 +238,7 @@ void PairingControllerTest::pairFromDeepLinkHappyPathPairsAndPersists()
 
     QSignalSpy pairingChangedSpy(&controller, &PairingController::pairingChanged);
     QSignalSpy stateChangedSpy(&controller, &PairingController::pairingStateChanged);
+    QSignalSpy pairedFromLinkSpy(&controller, &PairingController::pairedFromLink);
 
     const QString serverBaseUrl = QStringLiteral("http://127.0.0.1:%1").arg(fake.port());
     const QString registrationUrl = serverBaseUrl + QStringLiteral("/api/notifications/native/register");
@@ -265,6 +266,8 @@ void PairingControllerTest::pairFromDeepLinkHappyPathPairsAndPersists()
     QTRY_COMPARE_WITH_TIMEOUT(controller.pairingState(), QStringLiteral("paired"), 5000);
     QVERIFY(controller.pairingError().isEmpty());
     QVERIFY(controller.isPaired());
+    // What the app-lock offer (Android #181) waits for.
+    QCOMPARE(pairedFromLinkSpy.count(), 1);
     QCOMPARE(controller.deviceId(), QStringLiteral("dev-1"));
     QCOMPARE(controller.pairedServerHost(), QStringLiteral("127.0.0.1"));
     // Task 39: deliveryMode/transport read straight through SettingsStore,
@@ -1442,6 +1445,7 @@ void PairingControllerTest::reconnectToServerKeepsThePairingAndDoesNotDeregister
 
     controller.setCertificateMismatch(true, QByteArray(32, '\xAB'));
     QVERIFY(controller.certificateMismatch());
+    QSignalSpy pairedFromLinkSpy(&controller, &PairingController::pairedFromLink);
 
     controller.reconnectToServer();
     QTRY_VERIFY_WITH_TIMEOUT(!controller.pairingState().isEmpty(), 5000);
@@ -1464,6 +1468,8 @@ void PairingControllerTest::reconnectToServerKeepsThePairingAndDoesNotDeregister
     // And the banner is gone: the certificate that just served the
     // registration is the pinned one now.
     QVERIFY(!controller.certificateMismatch());
+    // A repair, not a pairing: no app-lock offer follows it.
+    QCOMPARE(pairedFromLinkSpy.count(), 0);
 }
 
 

@@ -200,6 +200,8 @@ public:
     // KyPost-Server's maxContactsSyncChanges and maxContactsSyncBodyBytes.
     static constexpr int kMaxSyncChanges = 500;
     static constexpr qsizetype kMaxSyncBodyBytes = 1 << 20;
+    // Room left for the envelope around the changes ({"baseCursor":...,"changes":[...]}).
+    static constexpr qsizetype kSyncEnvelopeHeadroom = 4096;
 
 private:
     // The two writes of a queued create, inside the caller's transaction.

@@ -54,6 +54,8 @@ private slots:
     void aVCardImportIsQueuedWholeAndOnlyIntoAnEmptyOutbox();
     void aVCardImportThatCannotBePushedInOneSyncIsRefused();
     void aVCardImportThatCannotReadTheOutboxQueuesNothing();
+    void aVCardImportExactlyAtTheBodyBudgetIsQueued();
+    void aVCardImportThatFailsPartWayQueuesNothing();
 
 private:
     static void savePairing(PairingStore& pairingStore, quint16 port);
@@ -1290,6 +1292,58 @@ void ContactSyncRepositoryTest::aVCardImportThatCannotReadTheOutboxQueuesNothing
     }
     QCOMPARE(f.repository->queueImport(namedContacts(2)), ContactImportOutcome::WriteFailed);
     QVERIFY(f.contactDao->findAll().isEmpty());
+}
+
+// The budget is the queued JSON plus one comma per change, against the
+// relay's 1 MiB less the envelope. One byte either side of it.
+void ContactSyncRepositoryTest::aVCardImportExactlyAtTheBodyBudgetIsQueued()
+{
+    const qsizetype budget = ContactSyncRepository::kMaxSyncBodyBytes - ContactSyncRepository::kSyncEnvelopeHeadroom;
+    QVector<Contact> two = namedContacts(2);
+    auto wireSize = [](const Contact& contact) {
+        Contact wire = contact;
+        wire.uid = QString();
+        return QJsonDocument(ContactWire::contactToJson(wire)).toJson(QJsonDocument::Compact).size() + 1;
+    };
+    // Grow the second one's note until the pair is exactly at the budget;
+    // each 'x' is one byte of JSON.
+    two[1].notes = QStringLiteral("x");
+    const qsizetype base = wireSize(two[0]) + wireSize(two[1]) - 1;
+    two[1].notes = QString(int(budget - base), QLatin1Char('x'));
+    QCOMPARE(wireSize(two[0]) + wireSize(two[1]), budget);
+
+    {
+        ImportFixture f;
+        QVERIFY(f.open());
+        QCOMPARE(f.repository->queueImport(two), ContactImportOutcome::Queued);
+    }
+    two[1].notes = *two[1].notes + QLatin1Char('x');
+    ImportFixture f;
+    QVERIFY(f.open());
+    QCOMPARE(f.repository->queueImport(two), ContactImportOutcome::TooLarge);
+    QVERIFY(f.pendingDao->findAll().isEmpty());
+}
+
+// One transaction: a write that fails on the second contact takes the first
+// with it, from the cache and from the outbox.
+void ContactSyncRepositoryTest::aVCardImportThatFailsPartWayQueuesNothing()
+{
+    ImportFixture f;
+    QVERIFY(f.open());
+    {
+        QSqlQuery trigger(f.db.handle());
+        QVERIFY(trigger.exec(QStringLiteral("CREATE TRIGGER refuse BEFORE INSERT ON contacts "
+                                            "WHEN NEW.fn = 'Imported 1' BEGIN SELECT RAISE(ABORT, 'refused'); END")));
+    }
+    QCOMPARE(f.repository->queueImport(namedContacts(3)), ContactImportOutcome::WriteFailed);
+    QVERIFY(f.contactDao->findAll().isEmpty());
+    QVERIFY(f.pendingDao->findAll().isEmpty());
+    // And the connection is usable afterwards: the rollback ended the transaction.
+    {
+        QSqlQuery drop(f.db.handle());
+        QVERIFY(drop.exec(QStringLiteral("DROP TRIGGER refuse")));
+    }
+    QCOMPARE(f.repository->queueImport(namedContacts(3)), ContactImportOutcome::Queued);
 }
 
 QTEST_GUILESS_MAIN(ContactSyncRepositoryTest)

@@ -94,29 +94,40 @@ TestCase {
         const settings = findChild(shell.contentItem, "settingsPane")
         tryVerify(() => settings.popupOpen)
         Pairing.pairingState = "paired"
+        Pairing.pairedFromLink()
         tryVerify(() => offer.visible)
         // The full-window pairing page is a Popup and would cover the offer.
         tryVerify(() => !settings.popupOpen)
         mouseClick(findChild(offer, "confirmDialogReject")) // "Not now"
         verify(!offer.visible)
 
-        Pairing.pairingState = "idle"
-        Pairing.pairingState = "paired"
+        Pairing.pairedFromLink()
         wait(50)
         verify(!offer.visible, "the offer was made again after Not now")
     }
 
     function test_no_offer_while_a_lock_is_set() {
         const offer = findChild(shell.contentItem, "appLockOfferDialog")
+        Pairing.pairedFromLink()
+        wait(50)
+        verify(!offer.visible)
+    }
+
+    // Reconnect also ends in "paired", but repairs an existing pairing.
+    function test_no_offer_after_reconnect() {
+        AppLock.lockEnabled = false
+        const offer = findChild(shell.contentItem, "appLockOfferDialog")
+        Pairing.pairingState = "working"
         Pairing.pairingState = "paired"
         wait(50)
         verify(!offer.visible)
+        verify(!AppLock.lockOffered, "a reconnect spent the one-time offer")
     }
 
     function test_accepting_the_offer_opens_security_settings() {
         AppLock.lockEnabled = false
         const offer = findChild(shell.contentItem, "appLockOfferDialog")
-        Pairing.pairingState = "paired"
+        Pairing.pairedFromLink()
         tryVerify(() => offer.visible)
         mouseClick(findChild(offer, "confirmDialogAccept"))
         verify(!offer.visible)

@@ -113,7 +113,7 @@ app/mail/MailController.cpp	    if (const QStringList folders = m_mailRepository
 core/stores/CursorStore.cpp	    return m_settings.status() == QSettings::NoError;	    return true;	CursorStoreTest:aCursorThatCannotReachTheDiskIsReportedAsFailed
 
 # a contact is saved with its sync queue entry, or not at all
-core/domain/ContactSyncRepository.cpp	    return queued ? tempUid : QString();	    return tempUid;	ContactSyncRepositoryTest:aLocalCreateThatCannotBeQueuedIsNotSavedAtAll
+core/domain/ContactSyncRepository.cpp	    return queued ? contact.uid : QString();	    return contact.uid;	ContactSyncRepositoryTest:aLocalCreateThatCannotBeQueuedIsNotSavedAtAll
 
 # a delete whose tombstone was lost brings the contact back on the next pull
 core/domain/ContactSyncRepository.cpp	        return m_pendingDao.enqueue(uid, serializeContact(tombstone), nowUtc()) > 0;	        return m_pendingDao.enqueue(uid, serializeContact(tombstone), nowUtc()), true;	ContactSyncRepositoryTest:aDeleteThatCannotEnqueueItsTombstoneKeepsTheContact

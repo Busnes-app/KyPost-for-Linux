@@ -2,6 +2,7 @@
 
 #include "models/Contact.h"
 
+#include <QElapsedTimer>
 #include <QFile>
 #include <QTemporaryDir>
 #include <QTest>
@@ -28,6 +29,9 @@ private slots:
     void moreValuesThanTheServerKeepsAreRefused();
     void theReaderStopsAtTheSizeCap();
     void onlyRegularFilesAreRead();
+    void nulAndBomAreAnsweredTheSameOnQt5AndQt6();
+    void singleLineFieldsCarryNoLineBreak();
+    void aHugeTypeListParsesInLinearTime();
 };
 
 namespace {
@@ -290,6 +294,49 @@ void VCardImportTest::onlyRegularFilesAreRead()
              VCardImport::Refusal::Unreadable);
     if (QFile::exists(QStringLiteral("/dev/zero")))
         QCOMPARE(VCardImport::readFile(QStringLiteral("/dev/zero")).refusal, VCardImport::Refusal::Unreadable);
+}
+
+// Qt 5's fromUtf8(QByteArray) stopped at a NUL and Qt 6's strips a second
+// BOM; core/ must answer the same on both (AGENTS.md section 5).
+void VCardImportTest::nulAndBomAreAnsweredTheSameOnQt5AndQt6()
+{
+    QByteArray nul = card({QStringLiteral("FN:A")});
+    nul.insert(nul.indexOf("FN:A") + 4, QByteArray(1, '\0') + "B");
+    QCOMPARE(only(nul).fn, std::optional<QString>(QStringLiteral("AB")));
+    QCOMPARE(refusalOf("\xEF\xBB\xBF\xEF\xBB\xBF" + card({QStringLiteral("FN:A")})), VCardImport::Refusal::Malformed);
+}
+
+// A name is one line: no newline, NEL or Unicode line separator survives into
+// a field the preview or a header shows on one line. NOTE and ADR keep theirs.
+void VCardImportTest::singleLineFieldsCarryNoLineBreak()
+{
+    const Contact c = only(card({
+        QStringLiteral("FN:Ada\\n• Mallory") + QChar(0x2028) + QStringLiteral("x") + QChar(0x85) + QStringLiteral("y"),
+        QStringLiteral("EMAIL:a@b.example\\nBcc: c@d.example"),
+        QStringLiteral("NOTE:one\\ntwo"),
+        QStringLiteral("ADR:;;1 Main St\\nFlat 2;Town;;;"),
+    }));
+    for (const QString& value : {*c.fn, c.emails.first().value}) {
+        for (const QChar ch : value)
+            QVERIFY2(ch != QLatin1Char('\n') && ch.unicode() != 0x2028 && ch.unicode() != 0x85, qPrintable(value));
+    }
+    QCOMPARE(c.notes, std::optional<QString>(QStringLiteral("one\ntwo")));
+    QCOMPARE(c.addresses.first().street, std::optional<QString>(QStringLiteral("1 Main St\nFlat 2")));
+}
+
+// The parser runs on the GUI thread. Removing duplicate TYPE values once
+// scanned a list, so one 256 KiB TYPE= line took seconds.
+void VCardImportTest::aHugeTypeListParsesInLinearTime()
+{
+    QString types;
+    for (int i = 0; types.size() < 240 * 1024; ++i)
+        types += QStringLiteral("t%1,").arg(i);
+    const QByteArray bytes = card({QStringLiteral("FN:A"), QStringLiteral("EMAIL;TYPE=") + types + QStringLiteral(":a@b.example")});
+    QVERIFY(bytes.size() <= VCardImport::kMaxBytes);
+    QElapsedTimer timer;
+    timer.start();
+    QCOMPARE(only(bytes).emails.size(), 1);
+    QVERIFY2(timer.elapsed() < 1000, qPrintable(QStringLiteral("%1 ms").arg(timer.elapsed())));
 }
 
 QTEST_GUILESS_MAIN(VCardImportTest)

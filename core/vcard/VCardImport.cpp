@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QHash>
 #include <QRegularExpression>
+#include <QSet>
 #include <QStringList>
 #include <optional>
 
@@ -61,6 +62,9 @@ std::optional<Property> parseProperty(const QString& line)
                 return std::nullopt;
             Property property;
             property.name = name.toUpper();
+            // A set beside the ordered list: contains() on the list made a
+            // 256 KiB TYPE= line quadratic, seconds on the GUI thread.
+            QSet<QString> seen;
             for (qsizetype p = 1; p < parts.size(); ++p) {
                 const QString& param = parts.at(p);
                 const qsizetype eq = param.indexOf(QLatin1Char('='));
@@ -71,8 +75,10 @@ std::optional<Property> parseProperty(const QString& line)
                 } else if (key == QLatin1String("TYPE") || key.isEmpty()) {
                     for (const QString& type : value.split(QLatin1Char(','))) {
                         const QString t = type.trimmed().toLower();
-                        if (!t.isEmpty() && !property.types.contains(t))
+                        if (!t.isEmpty() && !seen.contains(t)) {
+                            seen.insert(t);
                             property.types << t;
+                        }
                     }
                 }
             }
@@ -85,9 +91,16 @@ std::optional<Property> parseProperty(const QString& line)
     return std::nullopt;
 }
 
-// Undoes the writer's escaping; drops control characters other than newline,
-// so nothing from the file can break a line in the UI or a header.
-QString unescapeText(const QString& s)
+bool isLineBreak(QChar ch)
+{
+    return ch == QLatin1Char('\n') || ch.unicode() == 0x85 || ch.unicode() == 0x2028 || ch.unicode() == 0x2029;
+}
+
+// Undoes the writer's escaping and drops control characters. Only a multiline
+// field (NOTE, ADR) keeps line breaks; everywhere else each one, U+2028/2029
+// and NEL included, becomes a space, so a name cannot add a line to the
+// import preview and an address cannot carry a header break.
+QString unescapeText(const QString& s, bool multiline = false)
 {
     QString out;
     out.reserve(s.size());
@@ -100,14 +113,16 @@ QString unescapeText(const QString& s)
             if (ch == QLatin1Char('n') || ch == QLatin1Char('N'))
                 ch = QLatin1Char('\n');
         }
-        if ((ch >= QLatin1Char(' ') && ch.unicode() != 0x7f) || ch == QLatin1Char('\n'))
+        if (isLineBreak(ch))
+            out += multiline ? QLatin1Char('\n') : QLatin1Char(' ');
+        else if (ch >= QLatin1Char(' ') && ch.unicode() != 0x7f && !(ch.unicode() >= 0x80 && ch.unicode() < 0xa0))
             out += ch;
     }
     return out;
 }
 
 // Splits on unescaped `;`, then unescapes each component.
-QStringList splitComponents(const QString& value)
+QStringList splitComponents(const QString& value, bool multiline = false)
 {
     QStringList parts;
     QString current;
@@ -117,13 +132,13 @@ QStringList splitComponents(const QString& value)
             current += ch;
             current += value.at(++i);
         } else if (ch == QLatin1Char(';')) {
-            parts << unescapeText(current);
+            parts << unescapeText(current, multiline);
             current.clear();
         } else {
             current += ch;
         }
     }
-    parts << unescapeText(current);
+    parts << unescapeText(current, multiline);
     return parts;
 }
 
@@ -215,9 +230,9 @@ std::optional<Contact> toContact(const QVector<Property>& properties, Refusal& r
         }
         return values;
     };
-    auto text = [&](const char* name) -> std::optional<QString> {
+    auto text = [&](const char* name, bool multiline = false) -> std::optional<QString> {
         const QVector<Property> values = byName.value(QLatin1String(name));
-        return values.isEmpty() ? std::nullopt : nonBlank(unescapeText(values.first().value));
+        return values.isEmpty() ? std::nullopt : nonBlank(unescapeText(values.first().value, multiline));
     };
     auto parts = [&](const char* name) -> QStringList {
         const QVector<Property> values = byName.value(QLatin1String(name));
@@ -245,7 +260,7 @@ std::optional<Contact> toContact(const QVector<Property>& properties, Refusal& r
             contact.phones.append({label(p.types), value});
     }
     for (const Property& p : *addresses) {
-        const QStringList a = splitComponents(p.value);
+        const QStringList a = splitComponents(p.value, /*multiline=*/true);
         ContactAddressEntry entry{label(p.types), at(a, 2), at(a, 3), at(a, 4), at(a, 5), at(a, 6)};
         if (entry.street || entry.city || entry.region || entry.postalCode || entry.country)
             contact.addresses.append(entry);
@@ -268,7 +283,7 @@ std::optional<Contact> toContact(const QVector<Property>& properties, Refusal& r
     contact.department = at(org, 1);
     contact.title = text("TITLE");
     contact.birthday = birthday(text("BDAY"));
-    contact.notes = text("NOTE");
+    contact.notes = text("NOTE", /*multiline=*/true);
 
     contact.fn = text("FN");
     if (!contact.fn) {
@@ -303,8 +318,13 @@ Result parse(const QByteArray& raw)
     if (raw.size() > kMaxBytes)
         return refused(Refusal::TooLarge);
     const QByteArray bytes = raw.startsWith("\xEF\xBB\xBF") ? raw.mid(3) : raw;
-    // Strict UTF-8: anything fromUtf8 had to replace does not survive the trip back.
-    const QString decoded = QString::fromUtf8(bytes);
+    // Qt 6's fromUtf8 drops a leading BOM and Qt 5's keeps it; refuse a second
+    // one here so both builds answer the same.
+    if (bytes.startsWith("\xEF\xBB\xBF"))
+        return refused(Refusal::Malformed);
+    // Strict UTF-8: anything fromUtf8 had to replace does not survive the trip
+    // back. The sized overload: Qt 5's QByteArray one stops at the first NUL.
+    const QString decoded = QString::fromUtf8(bytes.constData(), int(bytes.size()));
     if (decoded.toUtf8() != bytes)
         return refused(Refusal::NotUtf8);
 

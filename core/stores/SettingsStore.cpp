@@ -100,6 +100,11 @@ bool SettingsStore::setAppLockOffered()
     return m_settings.status() == QSettings::NoError;
 }
 
+void SettingsStore::clearAppLockOffered()
+{
+    m_settings.remove(kAppLockOfferedKey);
+}
+
 QString SettingsStore::deliveryMode() const
 {
     return m_settings.value(kDeliveryModeKey, QString()).toString();

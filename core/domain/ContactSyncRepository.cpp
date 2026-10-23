@@ -224,8 +224,7 @@ ContactImportOutcome ContactSyncRepository::queueImport(const QVector<Contact>& 
         wire << createJson(contact);
         bytes += wire.last().toUtf8().size() + 1; // and its comma
     }
-    // Headroom for the envelope around the changes ({"cursor":...,"changes":[...]}).
-    if (bytes > kMaxSyncBodyBytes - 4096)
+    if (bytes > kMaxSyncBodyBytes - kSyncEnvelopeHeadroom)
         return ContactImportOutcome::TooLarge;
 
     if (!m_db.transaction())

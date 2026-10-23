@@ -493,13 +493,16 @@ Kirigami.ApplicationWindow {
                 pairingConfirmPopup.open()
             } else {
                 pairingConfirmPopup.close()
-                // Android #181. takeLockOffer() is true once per install and
-                // only with no lock set. Settings' pairing page is a Popup and
-                // would paint over the offer, so it gives way.
-                if (Pairing.pairingState === "paired" && AppLock.takeLockOffer()) {
-                    settingsPane.closePopups()
-                    appLockOfferDialog.open()
-                }
+            }
+        }
+        // Android #181: after a pairing from a link, never after Reconnect.
+        // takeLockOffer() is true once per install and only with no lock set.
+        // Settings' pairing page is a Popup and would paint over the offer,
+        // so it gives way.
+        function onPairedFromLink() {
+            if (AppLock.takeLockOffer()) {
+                settingsPane.closePopups()
+                appLockOfferDialog.open()
             }
         }
     }

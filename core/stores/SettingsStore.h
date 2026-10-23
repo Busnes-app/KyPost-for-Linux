@@ -57,6 +57,7 @@ public:
     // reports failure, so an offer that was not recorded is not shown.
     bool appLockOffered() const;
     [[nodiscard]] bool setAppLockOffered();
+    void clearAppLockOffered(); // a full wipe makes this a new install again
 
     // pushServerBaseUrl (the embedded ntfy subscriber's server, default
     // https://ntfy.sh) lived here until 2026-07-26. It went away with that
