@@ -133,7 +133,7 @@ from source.
 
 ### Task 6: Verify against the real relay
 
-- [ ] Pair against `mail.urlxl.com`, open a folder, and confirm in the journal that the inbox response is kilobytes rather than megabytes.
+- [ ] Pair against `mail.example.com`, open a folder, and confirm in the journal that the inbox response is kilobytes rather than megabytes.
 - [ ] Open an HTML message, a plain-text message, a message with attachments, and a signed message. All four render.
 - [ ] Go offline and re-open a message read while online: it still renders. Open one never opened: it says so, and does not claim the message is empty.
 - [ ] Force a full resync and confirm previously-opened bodies survive it.
