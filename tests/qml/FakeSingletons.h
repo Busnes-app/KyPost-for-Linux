@@ -382,8 +382,61 @@ private:
     QString m_lastCancelled;
 };
 
+// Records what the card and the dialog ask for; the real rules are tested in
+// C++ (InviteControllerTest). Tests set `states` and `confirmation` directly.
+class FakeInvites : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(QVariantMap states MEMBER m_states NOTIFY changed)
+    Q_PROPERTY(QVariantMap confirmation MEMBER m_confirmation NOTIFY changed)
+    Q_PROPERTY(QVariantList calls MEMBER m_calls NOTIFY changed)
+
+public:
+    Q_INVOKABLE int load(const QString& mailbox, const QString& messageId, const QVariantList&, const QString&,
+                         bool phishing)
+    {
+        record(QStringLiteral("load"), { mailbox, messageId, phishing });
+        return ++m_lastRequest;
+    }
+    Q_INVOKABLE void forget(int token) { record(QStringLiteral("forget"), { token }); }
+    Q_INVOKABLE void requestRsvp(int token, const QString& partstat)
+    {
+        record(QStringLiteral("requestRsvp"), { token, partstat });
+    }
+    Q_INVOKABLE void confirmRsvp(int token) { record(QStringLiteral("confirmRsvp"), { token }); }
+    Q_INVOKABLE void cancelRsvp(int token) { record(QStringLiteral("cancelRsvp"), { token }); }
+    // What the real controller emits once an invite is read.
+    Q_INVOKABLE void emitLoaded(int request, const QVariantMap& card) { emit inviteLoaded(request, card); }
+    Q_INVOKABLE void reset()
+    {
+        m_states.clear();
+        m_confirmation.clear();
+        m_calls.clear();
+        emit changed();
+    }
+
+signals:
+    void changed();
+    void inviteLoaded(int request, const QVariantMap& card);
+
+private:
+    void record(const QString& name, const QVariantList& args)
+    {
+        m_calls.append(QVariantMap{ { QStringLiteral("name"), name }, { QStringLiteral("args"), args } });
+        emit changed();
+    }
+
+    QVariantMap m_states;
+    QVariantMap m_confirmation;
+    QVariantList m_calls;
+    int m_lastRequest = 0;
+};
+
 inline void registerFakeSingletons(QQmlEngine*)
 {
+    qmlRegisterSingletonType<FakeInvites>(
+        "com.kysecurity.mail", 1, 0, "Invites",
+        [](QQmlEngine*, QJSEngine*) -> QObject* { return new FakeInvites; });
     qmlRegisterSingletonType<FakeScheduled>(
         "com.kysecurity.mail", 1, 0, "Scheduled",
         [](QQmlEngine*, QJSEngine*) -> QObject* { return new FakeScheduled; });

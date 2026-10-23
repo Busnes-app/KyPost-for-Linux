@@ -4,6 +4,7 @@
 #include "mail/MailController.h"
 #include "mail/ProtectedImageHandler.h"
 #include "mail/RemoteContentInterceptor.h"
+#include "mail/InviteController.h"
 #include "mail/ScheduledController.h"
 #include "pairing/MfaController.h"
 #include "pairing/PairingController.h"
@@ -1235,6 +1236,18 @@ int main(int argc, char* argv[])
     QObject::connect(&appLockManager, &AppLockManager::lockedChanged, &scheduledController,
                      [&scheduledController, &appLockManager]() {
                          scheduledController.setAppLocked(appLockManager.locked());
+                     });
+
+    // Calendar invites and RSVP: each answer goes only for the account that
+    // loaded the card, and nothing is asked or sent under the lock.
+    InviteController inviteController(networkExecutor, pairingStore);
+    qmlRegisterSingletonInstance<InviteController>("com.kysecurity.mail", 1, 0, "Invites", &inviteController);
+    QObject::connect(&pairingController, &PairingController::pairingChanged, &inviteController,
+                     [&inviteController]() { inviteController.clear(); });
+    inviteController.setAppLocked(appLockManager.locked());
+    QObject::connect(&appLockManager, &AppLockManager::lockedChanged, &inviteController,
+                     [&inviteController, &appLockManager]() {
+                         inviteController.setAppLocked(appLockManager.locked());
                      });
 
     // A decrypted message belongs to the account it was fetched for, and an

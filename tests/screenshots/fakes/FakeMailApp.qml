@@ -49,7 +49,7 @@ QtObject {
 
     signal actionCompleted(string action, var ids, bool ok)
     signal attachmentDownloaded()
-    signal attachmentsListed()
+    signal attachmentsListed(string mailbox, string messageId, var attachments)
     signal decryptedChanged()
     signal draftSaveCompleted()
     signal folderMutationCompleted(bool ok)

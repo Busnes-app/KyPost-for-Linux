@@ -357,6 +357,14 @@ kypost_add_app_test(ScheduledControllerTest
   LIBS KF6::I18n
 )
 
+# Calendar invites and RSVP: the card, and a REPLY only for the confirming account.
+kypost_add_app_test(InviteControllerTest
+  SOURCES
+    app/mail/InviteControllerTest.cpp
+    ${CMAKE_SOURCE_DIR}/app/mail/InviteController.cpp
+  LIBS KF6::I18n
+)
+
 # Sign-in approval: lock gate, tapped digits, expiry, which paths may raise one.
 kypost_add_app_test(MfaControllerTest
   SOURCES
