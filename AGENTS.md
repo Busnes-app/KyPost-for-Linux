@@ -338,6 +338,22 @@ Added 2026-07-25 (parity work with `kypost-android`):
   past the relay's 500 changes or 1 MiB, because the push is not batched.
   The app-lock offer is `AppLockManager::takeLockOffer`: once per install,
   spent and flushed before it shows.
+- **Calendar invites and RSVP (plan item L17, 2026-10-23).** `InviteController`
+  ("Invites") reads the listed calendar part into memory (`inviteAttachment`,
+  256 KiB) and parses it with `core/domain/CalendarInvite`, a port of Android's
+  `CalendarInvite.kt`; the reply is `RelayMailSource::sendCalendarReply`, always
+  plain, unsigned, unencrypted, to the ORGANIZER. Buttons need a REQUEST that can
+  be answered and the relay's `calendarMethod`. Each answer is confirmed, and is
+  sent only through the pairing that loaded the card (guards in
+  `tests/guards.tsv`); the lock withdraws the confirmation. Only
+  `"calendarReply": true` is an RSVP. Cards are addressed by their own token,
+  never by UID, which any sender can copy; RSVP state is keyed by UID +
+  RECURRENCE-ID + SEQUENCE + organizer. A reader takes only the card its own
+  `load()` request asked for, loads once per reload, and `forget()`s the card on
+  reload and destruction: one answer is asked about at a time, so a card nobody
+  shows must not hold one. `RsvpConfirmDialog` is an overlay Item, shown only by
+  the reader holding that card. KyCalendar's `/api/calendar/rsvp` is not used
+  yet (neither is it on Android or Mac).
 
 - **Biometric unlock and window-content protection are non-goals** — no
   portable Linux equivalent (no `FLAG_SECURE` analogue on Wayland).
