@@ -160,6 +160,8 @@ add_library(kypostcore STATIC
   net/ClientVersionClient.h
   vcard/VCardContact.cpp
   vcard/VCardContact.h
+  vcard/VCardImport.cpp
+  vcard/VCardImport.h
   theme/ThemePalette.cpp
   theme/ThemePalette.h
   theme/AppTheme.cpp

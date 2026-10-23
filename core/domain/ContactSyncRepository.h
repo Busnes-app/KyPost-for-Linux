@@ -63,6 +63,14 @@ struct ContactSyncOutcome
     QVector<ContactReconciliationAssignment> uidReassignments;
 };
 
+// Outcome of ContactSyncRepository::queueImport. Nothing is queued unless Queued.
+enum class ContactImportOutcome {
+    Queued,
+    OutboxNotEmpty, // changes are still waiting to sync; sync them first
+    TooLarge,       // the one push would pass the relay's sync body cap
+    WriteFailed,
+};
+
 enum class ContactDedupeStatus { Success, NotPaired, Unauthorized, ServiceUnavailable, Retry };
 
 struct ContactDedupeOutcome
@@ -116,6 +124,13 @@ public:
     // caller must say so rather than showing the contact as saved -- see the
     // .cpp for why half of this is worse than none of it.
     [[nodiscard]] QString queueCreate(Contact contact);
+
+    // vCard import (Android #186): every contact as an ordinary create, all
+    // in one transaction, and only into an empty outbox. The push is not
+    // batched, so a larger one could pass the relay's 500-change or 1 MiB
+    // body cap and fail on every sync from then on, which is why the queued
+    // size is checked too.
+    [[nodiscard]] ContactImportOutcome queueImport(const QVector<Contact>& contacts);
 
     // contact.uid must already be a real server uid. Updates the cache
     // immediately and enqueues the wire copy as-is (uid+rev present,
@@ -182,7 +197,14 @@ public:
     // survivor updates reflected locally must call sync() separately.
     ContactDedupeOutcome dedupe();
 
+    // KyPost-Server's maxContactsSyncChanges and maxContactsSyncBodyBytes.
+    static constexpr int kMaxSyncChanges = 500;
+    static constexpr qsizetype kMaxSyncBodyBytes = 1 << 20;
+
 private:
+    // The two writes of a queued create, inside the caller's transaction.
+    bool insertCreate(Contact& contact, const QString& wireJson);
+
     ContactSyncClient& m_client;
     ContactDao& m_contactDao;
     PendingContactChangeDao& m_pendingDao;

@@ -145,6 +145,7 @@ kypost_add_test(PgpSendClientTest core/net/PgpSendClientTest.cpp)
 kypost_add_test(RelayMailSourceTest core/net/RelayMailSourceTest.cpp)
 
 kypost_add_test(VCardContactTest core/vcard/VCardContactTest.cpp)
+kypost_add_test(VCardImportTest core/vcard/VCardImportTest.cpp)
 
 kypost_add_test(ThemePaletteTest core/theme/ThemePaletteTest.cpp)
 kypost_add_test(AppThemeTest core/theme/AppThemeTest.cpp)
