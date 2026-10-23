@@ -42,6 +42,14 @@ QStringList splitAddressList(const QString& list)
     return parts;
 }
 
+QSet<QString> ownKeys(const QStringList& own)
+{
+    QSet<QString> mine;
+    for (const QString& address : own)
+        mine.insert(addressFromHeader(address).toLower());
+    return mine;
+}
+
 } // namespace
 
 QStringList replyAllRecipients(const QString& sender, const QString& to, const QString& cc,
@@ -49,9 +57,7 @@ QStringList replyAllRecipients(const QString& sender, const QString& to, const Q
 {
     const QStringList headers = QStringList{ sender } + splitAddressList(to) + splitAddressList(cc);
 
-    QSet<QString> mine;
-    for (const QString& address : own)
-        mine.insert(addressFromHeader(address).toLower());
+    const QSet<QString> mine = ownKeys(own);
 
     QStringList all;
     QStringList others;
@@ -67,4 +73,24 @@ QStringList replyAllRecipients(const QString& sender, const QString& to, const Q
             others.append(address);
     }
     return others.isEmpty() ? all : others;
+}
+
+QStringList replyRecipients(const QString& sender, const QString& to, const QStringList& own)
+{
+    const QString from = addressFromHeader(sender);
+    const QSet<QString> mine = ownKeys(own);
+    if (from.isEmpty() || !mine.contains(from.toLower()))
+        return from.isEmpty() ? QStringList() : QStringList{ from };
+
+    QStringList others;
+    QSet<QString> seen;
+    for (const QString& header : splitAddressList(to)) {
+        const QString address = addressFromHeader(header);
+        const QString key = address.toLower();
+        if (address.isEmpty() || mine.contains(key) || seen.contains(key))
+            continue;
+        seen.insert(key);
+        others.append(address);
+    }
+    return others.isEmpty() ? QStringList{ from } : others;
 }

@@ -60,6 +60,7 @@ private slots:
     void confirmPickupFallbackSendWithoutAPendingSendDoesNothing();
     void aReplyKeepsItsReferenceThroughThePickupResendUntilRefused();
     void replyAllLeavesOutOnlyThisAccountsOwnAddresses();
+    void repliesLeaveOutAccountAddressesFromANewerRelay();
     void sendMailSurfacesAWarningOnAnOtherwiseSuccessfulSend();
     void sendMailClientSideNeededHandsOffAndOffersNoToggles();
     void openWebmailDraftsRefusesAnInsecurePairingBeforeSavingAnything();
@@ -3665,6 +3666,8 @@ void MailControllerTest::replyAllLeavesOutOnlyThisAccountsOwnAddresses()
     QVERIFY(stateSpy.wait(10000));
     QCOMPARE(f.controller.replyAllRecipients(sender, to, cc),
              QStringList({ QStringLiteral("bob@example.com"), QStringLiteral("carol@example.com") }));
+    QCOMPARE(f.controller.replyRecipients(QStringLiteral("ME@example.com"), to),
+             QStringList({ QStringLiteral("carol@example.com") }));
 
     // Held for this pairing: no second fetch.
     f.controller.loadAccountAddresses();
@@ -3678,6 +3681,32 @@ void MailControllerTest::replyAllLeavesOutOnlyThisAccountsOwnAddresses()
     other.deviceId = QStringLiteral("dev-2");
     QVERIFY(f.pairingStore.save(other));
     QCOMPARE(f.controller.replyAllRecipients(sender, to, cc), everyone);
+}
+
+// Issue #90, on demo.kypost.org's shape: the login "demo" is not an address,
+// so suggestedUserIDs never named demo@kypost-demo.local and Reply All put it
+// back in Cc. accountAddresses does; every other recipient stays.
+void MailControllerTest::repliesLeaveOutAccountAddressesFromANewerRelay()
+{
+    FakeRelayServer fake(httpResponse(
+        200, "OK",
+        R"({"hasIdentity":true,"protection":"client","suggestedUserIDs":["demo"],)"
+        R"("accountAddresses":["demo@kypost-demo.local","alias@example.com"]})"));
+    RefreshFixture f(fake.port());
+    QSignalSpy stateSpy(&f.controller, &MailController::pgpComposeStateChanged);
+    f.controller.loadAccountAddresses();
+    QVERIFY(stateSpy.wait(10000));
+
+    QCOMPARE(f.controller.replyAllRecipients(QStringLiteral("Bob <bob@example.com>"),
+                                             QStringLiteral("Demo <DEMO@kypost-demo.local>, carol@example.com"),
+                                             QStringLiteral("alias@example.com, dave@example.com")),
+             QStringList({ QStringLiteral("bob@example.com"), QStringLiteral("carol@example.com"),
+                           QStringLiteral("dave@example.com") }));
+    QCOMPARE(f.controller.replyRecipients(QStringLiteral("Bob <bob@example.com>"), QStringLiteral("demo@kypost-demo.local")),
+             QStringList({ QStringLiteral("bob@example.com") }));
+    QCOMPARE(f.controller.replyRecipients(QStringLiteral("demo@kypost-demo.local"),
+                                          QStringLiteral("Alias@Example.com, carol@example.com")),
+             QStringList({ QStringLiteral("carol@example.com") }));
 }
 
 namespace {
