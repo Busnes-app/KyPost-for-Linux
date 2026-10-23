@@ -27,6 +27,8 @@ add_library(kypostcore STATIC
   domain/SendLater.h
   domain/ReplyAll.cpp
   domain/ReplyAll.h
+  domain/CalendarInvite.cpp
+  domain/CalendarInvite.h
   domain/KeywordRepository.cpp
   domain/KeywordRepository.h
   domain/ContactSyncReconciliation.cpp
