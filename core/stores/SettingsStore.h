@@ -51,6 +51,13 @@ public:
     bool hostileLocationProtectionEnabled() const;
     [[nodiscard]] bool setHostileLocationProtectionEnabled(bool enabled);
 
+    // The one-time "Lock KyPost?" offer after pairing (Android #181) has been
+    // shown on this install. An ordinary preference, as on Android: editing
+    // it only brings back or suppresses a suggestion. The setter flushes and
+    // reports failure, so an offer that was not recorded is not shown.
+    bool appLockOffered() const;
+    [[nodiscard]] bool setAppLockOffered();
+
     // pushServerBaseUrl (the embedded ntfy subscriber's server, default
     // https://ntfy.sh) lived here until 2026-07-26. It went away with that
     // tier -- see core/domain/TransportStateMachine.h. The key it wrote,

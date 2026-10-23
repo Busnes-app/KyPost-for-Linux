@@ -18,6 +18,12 @@ QtObject {
     property bool dataDirectoryUnprotected: false
     property bool storeUnavailable: false
     property bool wipeIncomplete: false
+    property bool lockOffered: false
+    function takeLockOffer() {
+        if (lockEnabled || lockOffered) return false
+        lockOffered = true
+        return true
+    }
     function lockNow() { locked = true }
     function lockAfterGrace() {}
     function cancelPendingLock() {}

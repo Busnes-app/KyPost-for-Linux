@@ -10,6 +10,7 @@
 
 #include <QSignalSpy>
 #include <QDir>
+#include <QFile>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -187,6 +188,11 @@ private slots:
     // Review-finding regression.
     void hostileLocationIsRefusedWhenTheDiskCouldNotBeErased();
     void hostileLocationErasesNothingWhenTheFlagCannotBePersisted();
+
+    // The one-time offer after pairing (Android #181).
+    void theLockOfferIsMadeOnceAndOnlyWithNoLock();
+    void theLockOfferIsNotMadeWhenItCannotBeRecorded();
+    void theLockOfferIsNotMadeWhenTheLockStoreIsUnreadable();
 };
 
 // Hostile Location Protection promises that nothing is on this disk. When
@@ -1184,6 +1190,68 @@ void AppLockManagerTest::aVerifierThatCannotBeComputedNeverReachesTheWipe()
 
     QVERIFY2(wipeSpy.isEmpty(), "a verifier that could not be computed triggered the ten-failure wipe");
     QCOMPARE(store.failedAttemptCount(), LockoutPolicy::kDefaultWipeThreshold - 1);
+}
+
+// Spent when taken, and recorded on disk, so no pairing after it -- in this
+// process or the next -- asks again. Not spent while a lock is set: Android
+// only marks it when it actually shows.
+void AppLockManagerTest::theLockOfferIsMadeOnceAndOnlyWithNoLock()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    SecureStoreFile secureStore(dir.path());
+    AppLockStore store(secureStore);
+    const QString settingsPath = dir.filePath(QStringLiteral("settings.ini"));
+    SettingsStore settingsStore(settingsPath);
+    NullCredentialSealer sealer;
+    QVERIFY(store.setPin(kGoodPin));
+    AppLockManager manager(store, settingsStore, sealer);
+
+    QVERIFY2(!manager.takeLockOffer(), "offered a lock to a user who already has one");
+    QVERIFY(!settingsStore.appLockOffered());
+
+    QVERIFY(manager.tryUnlock(kGoodPin));
+    QVERIFY(manager.disableLock(kGoodPin));
+    QVERIFY(manager.takeLockOffer());
+    QVERIFY2(!manager.takeLockOffer(), "the offer was made twice");
+
+    // Read off the filesystem: QSettings answers a second instance from the
+    // same in-process copy, which would prove nothing about the next launch.
+    QFile file(settingsPath);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QVERIFY(file.readAll().contains("appLockOffered=true"));
+}
+
+// Shown only if recorded: one that could not be written would come back on
+// every pairing, which is the nag "Not now" is meant to end.
+void AppLockManagerTest::theLockOfferIsNotMadeWhenItCannotBeRecorded()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    SecureStoreFile secureStore(dir.path());
+    AppLockStore store(secureStore);
+    const QString blocked = dir.filePath(QStringLiteral("settings.ini"));
+    QVERIFY(QDir().mkpath(blocked));
+    SettingsStore settingsStore(blocked);
+    NullCredentialSealer sealer;
+    AppLockManager manager(store, settingsStore, sealer);
+
+    QVERIFY(!manager.takeLockOffer());
+}
+
+// "Could not read the lock state" is not "no lock".
+void AppLockManagerTest::theLockOfferIsNotMadeWhenTheLockStoreIsUnreadable()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    UnreachableSecureStore secureStore;
+    AppLockStore store(secureStore);
+    SettingsStore settingsStore(dir.filePath(QStringLiteral("settings.ini")));
+    NullCredentialSealer sealer;
+    AppLockManager manager(store, settingsStore, sealer);
+
+    QVERIFY(!manager.takeLockOffer());
+    QVERIFY(!settingsStore.appLockOffered());
 }
 
 QTEST_GUILESS_MAIN(AppLockManagerTest)
