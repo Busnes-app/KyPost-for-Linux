@@ -71,6 +71,11 @@ default/bare User-Agent strings (see `AGENTS.md` Section 8).
       A pairing from before this migration has no stored `deviceSecret`;
       confirm that case still clears locally with no crash even though the
       deregister call is skipped.
+- [ ] **First pairing offers an app lock, once (plan L18).** On a profile
+      with no app lock, pair. Expected: the pairing page closes and "Lock
+      KyPost?" appears; "Set up app lock" opens Settings → Security. Unpair,
+      pair again: no offer, whatever was answered the first time
+      (`security/appLockOffered=true` in `settings.ini`).
 
 ## Mail
 
@@ -180,6 +185,11 @@ default/bare User-Agent strings (see `AGENTS.md` Section 8).
       driven by `MailApp.keywordTabs` (derived per-folder); tapping one
       calls `MailApp.selectKeyword(keyword)` and re-filters the
       already-cached folder emails with no network round-trip.
+- [ ] **Send without a subject (plan L18).** Fill To and the body, leave
+      Subject blank, Send. Expected: "Send without a subject?"; "Add subject"
+      returns to the Subject field, "Send" sends. On a client-custody account
+      the received message, decrypted, shows a blank subject rather than
+      "[Encrypted] Email Sent by KyPost".
 
 ## Contacts
 
@@ -196,6 +206,12 @@ default/bare User-Agent strings (see `AGENTS.md` Section 8).
       (`ContactsController::sync()` chains into `GroupsRepository::refresh()`
       on success — confirm a group renamed on the backend shows its new name
       in the Groups field below without a separate action).
+- [ ] **Import a vCard (plan L18).** Contacts → ⋮ → Import vCard…, pick a
+      `.vcf` exported from KAddressBook, GNOME Contacts or Android. Expected:
+      a preview with the count and the first ten names; Import adds them and
+      a sync pushes them. Under the Flatpak the picker is the file portal.
+      A file over 256 KiB, a vCard 2.1 file, or an import while other
+      changes are still unsynced is refused with a reason.
 
 ### Extended contact fields (groups, photo, PGP key, IM/websites/relations/events, phonetic names, department, custom fields, pronouns)
 
