@@ -66,7 +66,7 @@ private slots:
     void nonAsciiHeadersBecomeEncodedWords();
     void aLongNonAsciiSubjectFoldsWithoutSplittingACharacter();
     void protectedContentCarriesTheSubjectWhereBothKindsOfClientFindIt();
-    void protectedContentWithNoSubjectHasNoLegacyPart();
+    void protectedContentWithNoSubjectWritesABlankOne();
     void htmlIsDeclaredAsHtml();
     void anAttachmentBecomesABase64PartInsideTheProtectedContent();
     void aFilenameCannotEscapeItsQuotedString();
@@ -240,14 +240,17 @@ void PgpMimeWriterTest::protectedContentCarriesTheSubjectWhereBothKindsOfClientF
     QVERIFY(content.contains("Attached."));
 }
 
-void PgpMimeWriterTest::protectedContentWithNoSubjectHasNoLegacyPart()
+void PgpMimeWriterTest::protectedContentWithNoSubjectWritesABlankOne()
 {
     OutgoingMessage message = sampleMessage();
     message.subject = QString();
 
     const QByteArray content = protectedContent(message, QStringLiteral("=_kypost_test_="));
 
-    QVERIFY2(!content.contains("Subject:"), "an empty subject was written out anyway");
+    // Blank, not absent: the reader tells the two apart, and absent shows the
+    // outer "[Encrypted]" placeholder in place of the subject the sender left out.
+    QVERIFY2(content.startsWith("Subject:\r\n"), "a blank subject was dropped rather than written blank");
+    QCOMPARE(content.count("Subject:"), 1);
     QVERIFY2(!content.contains("text/rfc822-headers"),
              "an empty legacy-display part was emitted for a message with no subject");
     QVERIFY(content.contains("Attached."));

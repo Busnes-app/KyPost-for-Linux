@@ -111,6 +111,9 @@ class MailController : public QObject
     Q_PROPERTY(QString decryptedImageBase READ decryptedImageBase NOTIFY decryptedChanged)
     Q_PROPERTY(QString decryptedToken READ decryptedToken NOTIFY decryptedChanged)
     Q_PROPERTY(QString decryptedSubject READ decryptedSubject NOTIFY decryptedChanged)
+    // True when the protected Subject header was there, even blank: a blank
+    // one is the sender's subject, not a cue to show the outer placeholder.
+    Q_PROPERTY(bool decryptedHasSubject READ decryptedHasSubject NOTIFY decryptedChanged)
     Q_PROPERTY(QString decryptedFolder READ decryptedFolder NOTIFY decryptedChanged)
     // Localized sentence for the last failed decryption, or empty. Paired
     // with decryptRetryable so the UI knows whether a Retry button can help.
@@ -173,6 +176,7 @@ public:
     QString decryptedHtml() const { return decryptedStillOurs() ? m_decryptedHtml : QString(); }
     QString decryptedPlain() const { return decryptedStillOurs() ? m_decryptedPlain : QString(); }
     QString decryptedSubject() const { return decryptedStillOurs() ? m_decryptedSubject : QString(); }
+    bool decryptedHasSubject() const { return decryptedStillOurs() && m_decryptedHasSubject; }
     QString decryptedFolder() const { return decryptedStillOurs() ? m_decryptedFolder : QString(); }
     void setAppLocked(bool locked);
     QVariantList decryptedAttachments() const;
@@ -921,6 +925,7 @@ private:
     QVector<MimeAttachment> m_decryptedAttachments;
     QString m_decryptedToken;
     QString m_decryptedSubject;
+    bool m_decryptedHasSubject = false;
     QString m_decryptedTo, m_decryptedCc, m_decryptedBcc;
     // ponytail: one restored draft at a time; use bounded per-composer sessions
     // if simultaneous restored drafts become necessary. A replacement invalidates the old token.

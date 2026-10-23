@@ -42,6 +42,7 @@ private slots:
     void malformedAttachmentsDoNotPartiallySucceed();
     void protectedSubjectRoundTrips();
     void legacySubjectAndNestedSubjects();
+    void blankProtectedSubjectIsPresent();
     void malformedAndLimitedMessagesAreExplicit();
 };
 
@@ -492,6 +493,29 @@ void MimeBodyReaderTest::protectedSubjectRoundTrips()
              QStringLiteral("café menu"));
     QCOMPARE(readMimeBody("Subject: =?UTF-8?B?YQ0KYg==?=\r\nContent-Type: text/plain\r\n\r\nbody").subject,
              QStringLiteral("a  b"));
+}
+
+// "Send without a subject?" confirmed: the writer puts a blank Subject in the
+// protected headers, and it must read as present so the reader shows a blank
+// subject rather than the outer placeholder. Absent is still "none".
+void MimeBodyReaderTest::blankProtectedSubjectIsPresent()
+{
+    OutgoingMessage message;
+    message.body = QStringLiteral("body");
+    message.mode = QStringLiteral("plain");
+    const MimeBody blank = readMimeBody(protectedContent(message, QStringLiteral("test-boundary")));
+    QCOMPARE(blank.status, MimeBody::Status::Complete);
+    QVERIFY(blank.subject.isEmpty());
+    QVERIFY(blank.hasSubject);
+
+    const MimeBody absent = readMimeBody("Content-Type: text/plain\r\n\r\nbody");
+    QVERIFY(absent.subject.isEmpty());
+    QVERIFY(!absent.hasSubject);
+
+    message.subject = QStringLiteral("Set");
+    const MimeBody set = readMimeBody(protectedContent(message, QStringLiteral("test-boundary")));
+    QCOMPARE(set.subject, QStringLiteral("Set"));
+    QVERIFY(set.hasSubject);
 }
 
 void MimeBodyReaderTest::legacySubjectAndNestedSubjects()

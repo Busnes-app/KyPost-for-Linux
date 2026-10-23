@@ -27,6 +27,7 @@ struct MimeBody
     QString cc;
     QString bcc;
     QString subject; // inner protected header only; transient, like the body
+    bool hasSubject = false; // the header was there, even blank; false leaves the outer subject
     enum class Status { Complete, Malformed, TooLarge };
     Status status = Status::Complete;
 

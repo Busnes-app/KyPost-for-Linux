@@ -835,10 +835,12 @@ void MailDecryptionTest::protectedSubjectIsTransient()
     h.controller->decryptMessage(QStringLiteral("5"));
     QTRY_VERIFY_WITH_TIMEOUT(!h.controller->decryptBusy(), 15000);
     QCOMPARE(h.controller->decryptedSubject(), QStringLiteral("protected-subject-canary"));
+    QVERIFY(h.controller->decryptedHasSubject());
     QCOMPARE(h.controller->decryptedFolder(), QStringLiteral("INBOX"));
     QVERIFY(!everythingInTheDatabase(h.db.handle()).contains(QStringLiteral("protected-subject-canary")));
     h.controller->setAppLocked(true);
     QVERIFY(h.controller->decryptedSubject().isEmpty());
+    QVERIFY(!h.controller->decryptedHasSubject());
     QVERIFY(h.controller->decryptedFolder().isEmpty());
 }
 

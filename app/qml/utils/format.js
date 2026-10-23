@@ -208,6 +208,17 @@ function renderedEmailHtml(body, imagesLoaded, style, forcePlainText, localImage
         + "</head><body>" + inner + "</body></html>"
 }
 
+// Android's sendReadiness (ComposeActivity.kt): a recipient and a body (or an
+// attachment) are required; a blank subject is asked about, not refused.
+// "ready" | "incomplete" | "confirmSubject".
+function sendReadiness(to, subject, bodyEmpty, allowEmptySubject) {
+    if (String(to || "").trim() === "" || bodyEmpty)
+        return "incomplete"
+    if (String(subject || "").trim() === "" && !allowEmptySubject)
+        return "confirmSubject"
+    return "ready"
+}
+
 // Which decrypted OpenPGP body, if any, belongs to the message on screen.
 //
 // The id comparison is the security control, not a tidiness check. MailApp is
@@ -229,9 +240,11 @@ function protectedMessageMatches(messageId, heldId, folder, heldFolder) {
         && !!folder && String(folder) === String(heldFolder)
 }
 
-function protectedSubjectFor(messageId, heldId, folder, heldFolder, subject, fallback) {
-    return protectedMessageMatches(messageId, heldId, folder, heldFolder) && subject
-        ? String(subject) : String(fallback || "")
+// hasSubject: the protected header was present, even blank (a sender who
+// confirmed "Send without a subject?"), so the outer placeholder is not shown.
+function protectedSubjectFor(messageId, heldId, folder, heldFolder, subject, fallback, hasSubject) {
+    return protectedMessageMatches(messageId, heldId, folder, heldFolder) && (subject || hasSubject)
+        ? String(subject || "") : String(fallback || "")
 }
 
 function decryptedBodyFor(messageId, decryptedMessageId, html, plain, folder, heldFolder) {
