@@ -76,7 +76,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
-  contents: write # push the gh-pages branch; attach tagged-release assets
+  contents: read
 
 env:
   APP_ID: com.kysecurity.mail
@@ -99,7 +99,7 @@ jobs:
             runs_on: ubuntu-24.04-arm
     runs-on: ${{ matrix.runs_on }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # First, because a tagged run that gets this wrong publishes a signed
       # build claiming the wrong version to everyone on the remote, and the
@@ -207,7 +207,7 @@ jobs:
       # 26.04.3 rebuild from source on every single run.
 
       - name: Cache flatpak-builder state
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .flatpak-builder
           key: flatpak-builder-${{ matrix.arch }}-${{ hashFiles('packaging/flatpak/com.kysecurity.mail.yaml') }}-${{ github.run_id }}
@@ -356,7 +356,7 @@ jobs:
             --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 
       - name: Upload bundle artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: kypost-flatpak-${{ matrix.arch }}-${{ github.sha }}
           path: kypost-${{ matrix.arch }}.flatpak
@@ -370,7 +370,7 @@ jobs:
         run: tar -cf "repo-${{ matrix.arch }}.tar" "repo-${{ matrix.arch }}"
 
       - name: Upload OSTree repo artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: repo-${{ matrix.arch }}-${{ github.sha }}
           path: repo-${{ matrix.arch }}.tar
@@ -384,8 +384,10 @@ jobs:
     # already built and smoke-tested them, so there is nothing left to do.
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write # push the gh-pages branch; attach tagged-release assets
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # First, because a tagged run that gets this wrong publishes a signed
       # build claiming the wrong version to everyone on the remote, and the
@@ -414,7 +416,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends flatpak ostree
 
       - name: Download per-arch OSTree repos
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: repo-*-${{ github.sha }}
           merge-multiple: true
@@ -424,7 +426,7 @@ jobs:
       # what the release gets, which keeps "a tag always ships a bundle" true
       # rather than failing the attach step on a missing file.
       - name: Download per-arch bundles
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: kypost-flatpak-*-${{ github.sha }}
           merge-multiple: true

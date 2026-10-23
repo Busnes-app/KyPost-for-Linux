@@ -121,6 +121,9 @@ on:
 # doesn't download the ~600MB SDK twice. This workflow is now purely the
 # native cmake/ctest build.
 
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     # x86_64 only -- and NOT because arm64 does not matter. It ships, and
@@ -153,7 +156,7 @@ jobs:
     # check the closure, not the names.
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # Cheap, and it fails before ~20 minutes of dependency building.
       - name: Verify version consistency
@@ -334,7 +337,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
