@@ -1381,6 +1381,12 @@ QStringList MailController::replyAllRecipients(const QString& sender, const QStr
     return ::replyAllRecipients(sender, to, cc, ours ? m_accountAddresses : QStringList());
 }
 
+QStringList MailController::replyRecipients(const QString& sender, const QString& to) const
+{
+    const bool ours = m_pairingStore.stillCurrent(m_accountAddressesOwner);
+    return ::replyRecipients(sender, to, ours ? m_accountAddresses : QStringList());
+}
+
 void MailController::fetchPgpBootstrap()
 {
     // Coalescing: Compose can be opened twice before the first answer lands.

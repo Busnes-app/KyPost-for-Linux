@@ -13,3 +13,9 @@ QString addressFromHeader(const QString& raw);
 // self still answers somebody. Same rule as Android's replyAllRecipients.
 QStringList replyAllRecipients(const QString& sender, const QString& to, const QString& cc,
                                const QStringList& own);
+
+// Reply's recipients: the sender's bare address. When the sender is one of
+// the account's own addresses (a reply to your own sent mail), the To
+// recipients instead, minus the account's own; the sender again if that
+// leaves nobody. Same rule as the Mac's ComposeDraft.reply.
+QStringList replyRecipients(const QString& sender, const QString& to, const QStringList& own);

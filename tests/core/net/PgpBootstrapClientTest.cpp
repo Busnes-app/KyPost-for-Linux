@@ -19,6 +19,8 @@ private slots:
     void fingerprintAdmission();
     void parsesIdentityAndProtection();
     void keepsEveryAccountAddress();
+    void accountAddressesWinOverSuggestedUserIDs();
+    void anEmptyAccountAddressesIsNotAFallback();
     void ignoresTheBrowserOnlyFields();
     void failureIsNotAnEmptySuccess();
 };
@@ -65,8 +67,8 @@ void PgpBootstrapClientTest::parsesIdentityAndProtection()
     QCOMPARE(result.protection, QStringLiteral("client"));
 }
 
-// The primary drives From; the whole list (primary plus send-as aliases) is
-// what Reply All leaves out.
+// An older relay, with no accountAddresses: the primary drives From; the
+// whole list (primary plus send-as aliases) is what Reply All leaves out.
 void PgpBootstrapClientTest::keepsEveryAccountAddress()
 {
     FakeRelayServer fake(httpResponse(
@@ -80,6 +82,41 @@ void PgpBootstrapClientTest::keepsEveryAccountAddress()
     QVERIFY(result.ok);
     QCOMPARE(result.primaryAddress, QStringLiteral("me@example.com"));
     QCOMPARE(result.addresses, QStringList({ QStringLiteral("me@example.com"), QStringLiteral("alias@example.com") }));
+}
+
+// A relay with KyPost-Server #452, on the demo's shape: the IMAP login is not
+// an address, so suggestedUserIDs starts with it and accountAddresses does not.
+// The own addresses come from accountAddresses; From is unchanged.
+void PgpBootstrapClientTest::accountAddressesWinOverSuggestedUserIDs()
+{
+    FakeRelayServer fake(httpResponse(
+        200, "OK",
+        R"({"hasIdentity":true,"protection":"client","suggestedUserIDs":["demo","dkim@example.com"],)"
+        R"("accountAddresses":[" demo@kypost-demo.local ","","dkim@example.com","code@example.org"]})"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    const auto result = PgpBootstrapClient(http).fetch(
+        QUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port())), {});
+
+    QVERIFY(result.ok);
+    QCOMPARE(result.primaryAddress, QStringLiteral("demo"));
+    QCOMPARE(result.addresses, QStringList({ QStringLiteral("demo@kypost-demo.local"), QStringLiteral("dkim@example.com"),
+                                             QStringLiteral("code@example.org") }));
+}
+
+// The server always sends an array, empty when the account has no sending
+// address. That is an answer, not an older relay.
+void PgpBootstrapClientTest::anEmptyAccountAddressesIsNotAFallback()
+{
+    FakeRelayServer fake(httpResponse(
+        200, "OK", R"({"hasIdentity":false,"protection":"client","suggestedUserIDs":["alice"],"accountAddresses":[]})"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    const auto result = PgpBootstrapClient(http).fetch(
+        QUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port())), {});
+
+    QVERIFY(result.ok);
+    QVERIFY(result.addresses.isEmpty());
 }
 
 // bootstrap carries wrappedPrivateKey, unlockRequired, signerPublicKeys and
