@@ -36,6 +36,10 @@ private slots:
     void sendMailJoinsRecipientsAndBase64EncodesAttachmentByteForByte();
     void sendMailSendsEmptyAttachmentsArrayWhenNoneProvided();
     void sendMailParsesAlwaysPresentWarningField();
+    void sendCalendarReplyIsPlainUnsignedAndCarriesTheIcs();
+    void sendCalendarReplyReadsTheRelaysAcknowledgement();
+    void sendCalendarReplyKeepsTheStatusOfARefusal();
+    void listAttachmentsReadsTheCalendarMethod();
     void sendMailPutsPgpFlagsInTheRequestBody();
     void sendMailParsesKeylessRecipient409();
     void sendMailClientSideNeeded409IsNotAKeylessRefusal();
@@ -577,6 +581,89 @@ void RelayMailSourceTest::sendMailParsesAlwaysPresentWarningField()
     QCOMPARE(result.ok, true);
     QCOMPARE(result.sentSaved, false);
     QCOMPARE(result.warning, QStringLiteral("email sent but could not be saved to Sent folder"));
+}
+
+// server_mail_send.go decodeMailRequest: calendarReply {ics} beside a plain
+// body; encrypt or sign with it is a 400, so both go as false, explicitly.
+void RelayMailSourceTest::sendCalendarReplyIsPlainUnsignedAndCarriesTheIcs()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true,"sentSaved":true,"warning":"","calendarReply":true})"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+
+    const QUrl serverBaseUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port()));
+    const RelayAuth auth{ QStringLiteral("device-1"), QStringLiteral("secret-1") };
+    const QString ics = QStringLiteral("BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nEND:VCALENDAR\r\n");
+    source.sendCalendarReply(serverBaseUrl, auth, QStringLiteral("boss@example.com"), QStringLiteral("alias@example.com"),
+                             QStringLiteral("Accepted: Planning"), QStringLiteral("alias@example.com has accepted."), ics);
+
+    QVERIFY(fake.receivedRequest().startsWith("POST /api/mail/send "));
+    const QJsonObject body = fake.receivedJsonBody();
+    QCOMPARE(body.value(QStringLiteral("to")).toString(), QStringLiteral("boss@example.com"));
+    QCOMPARE(body.value(QStringLiteral("cc")).toString(), QString());
+    QCOMPARE(body.value(QStringLiteral("bcc")).toString(), QString());
+    QCOMPARE(body.value(QStringLiteral("from")).toString(), QStringLiteral("alias@example.com"));
+    QCOMPARE(body.value(QStringLiteral("subject")).toString(), QStringLiteral("Accepted: Planning"));
+    QCOMPARE(body.value(QStringLiteral("mode")).toString(), QStringLiteral("plain"));
+    QCOMPARE(body.value(QStringLiteral("calendarReply")).toObject().value(QStringLiteral("ics")).toString(), ics);
+    QVERIFY(body.contains(QStringLiteral("sign")) && !body.value(QStringLiteral("sign")).toBool());
+    QVERIFY(body.contains(QStringLiteral("encrypt")) && !body.value(QStringLiteral("encrypt")).toBool());
+    QVERIFY(!body.value(QStringLiteral("allowPickupFallback")).toBool());
+    QVERIFY(body.value(QStringLiteral("attachments")).toArray().isEmpty());
+    QVERIFY(!body.contains(QStringLiteral("sendAt")));
+    QVERIFY(!body.contains(QStringLiteral("replyToMessageId")));
+}
+
+// A relay without RSVP support answers the same 200 with no calendarReply.
+void RelayMailSourceTest::sendCalendarReplyReadsTheRelaysAcknowledgement()
+{
+    for (const bool ack : { true, false }) {
+        FakeRelayServer fake(httpResponse(200, "OK",
+                                          ack ? R"({"ok":true,"sentSaved":true,"warning":"","calendarReply":true})"
+                                              : R"({"ok":true,"sentSaved":true,"warning":""})"));
+        QNetworkAccessManager manager;
+        HttpClient http(manager);
+        const SendMailResult result = RelayMailSource(http).sendCalendarReply(
+            QUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port())), RelayAuth{}, QStringLiteral("a@example.com"),
+            {}, QStringLiteral("s"), QStringLiteral("b"), QStringLiteral("ics"));
+        QVERIFY(result.ok);
+        QCOMPARE(result.calendarReplySent, ack);
+        // Without from, the relay sends as the account itself.
+        QVERIFY(!fake.receivedJsonBody().contains(QStringLiteral("from")));
+    }
+}
+
+void RelayMailSourceTest::sendCalendarReplyKeepsTheStatusOfARefusal()
+{
+    FakeRelayServer fake(httpResponse(400, "Bad Request", "invalid calendar reply: calendar reply has no VEVENT\n",
+                                      "text/plain"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    const SendMailResult result = RelayMailSource(http).sendCalendarReply(
+        QUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port())), RelayAuth{}, QStringLiteral("a@example.com"), {},
+        QStringLiteral("s"), QStringLiteral("b"), QStringLiteral("ics"));
+    QVERIFY(result.error.has_value());
+    QCOMPARE(result.statusCode, 400);
+    QCOMPARE(result.detail, QStringLiteral("invalid calendar reply: calendar reply has no VEVENT"));
+    QVERIFY(!result.calendarReplySent);
+}
+
+// KyPost-Server #353: calendarMethod is omitempty, so an absent one stays "".
+void RelayMailSourceTest::listAttachmentsReadsTheCalendarMethod()
+{
+    FakeRelayServer fake(httpResponse(
+        200, "OK",
+        R"({"attachments":[{"index":0,"name":"agenda.pdf","mimeType":"application/pdf","size":10},)"
+        R"({"index":1,"name":"invite.ics","mimeType":"text/calendar","size":900,"calendarMethod":"REQUEST"}]})"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    const ListAttachmentsResult result = RelayMailSource(http).listAttachments(
+        QUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port())), RelayAuth{}, QStringLiteral("INBOX"),
+        QStringLiteral("42"));
+    QCOMPARE(result.attachments.size(), 2);
+    QCOMPARE(result.attachments.at(0).calendarMethod, QString());
+    QCOMPARE(result.attachments.at(1).calendarMethod, QStringLiteral("REQUEST"));
 }
 
 void RelayMailSourceTest::listAttachmentsSendsMailboxMessageIdAsQueryParamsAndAuthAsHeadersAndParsesResult()

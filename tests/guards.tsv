@@ -541,3 +541,15 @@ app/qml/pages/Settings.qml	        securityPrompt.close()		ShellTests:ShellLock:
 # reaching it while locked would send or queue from under the PIN screen.
 app/qml/components/ConfirmDialog.qml	        if (!root.isOpen || AppLock.locked)	        if (!root.isOpen)	QmlTests:SendWithoutSubject::test_lockingRefusesAndNothingIsAcceptedWhileLocked
 app/qml/components/ConfirmDialog.qml	            if (AppLock.locked)	            if (false)	QmlTests:SendWithoutSubject::test_lockingRefusesAndNothingIsAcceptedWhileLocked
+
+# --- calendar invites and RSVP (L17): an RSVP is mail sent in the clear, so it
+# goes only for the account that loaded the card and was asked, never under the
+# lock, and the previous account's invite or answer never reaches the next.
+app/mail/InviteController.cpp	    if (identityOf(*pairing) != card->owner) {	    if (false) {	InviteControllerTest:aReplacedAccountNeverSendsTheConfirmedAnswer
+app/mail/InviteController.cpp	            if (!m_pairingStore.stillCurrent(owner))	            if (false)	InviteControllerTest:aCardForAReplacedAccountIsNotShown
+app/mail/InviteController.cpp	            if (m_pairingStore.stillCurrent(owner))	            if (true)	InviteControllerTest:aCompletionForAReplacedAccountRecordsNothing
+app/mail/InviteController.cpp	    if (locked && m_pending) {	    if (false) {	InviteControllerTest:lockingWithdrawsTheConfirmationAndSendsNothing
+app/mail/InviteController.cpp	            if (m_appLocked) {	            if (false) {	InviteControllerTest:aConfirmationAnsweredUnderTheLockSendsNothing
+app/mail/InviteController.cpp	    if (!m_cards.remove(token))	    if (true)	InviteControllerTest:forgettingACardDuringTheLookupLeavesNothingAsked
+app/mail/InviteController.cpp	    if (m_pending && m_pending->token == token) {	    if (false) {	InviteControllerTest:forgettingACardDuringTheLookupLeavesNothingAsked
+app/qml/components/RsvpConfirmDialog.qml	    readonly property bool isOpen: root.token >= 0 && root.confirmation.token === root.token && !AppLock.locked	    readonly property bool isOpen: root.token >= 0 && root.confirmation.token === root.token	QmlTests:InviteCard::test_the_dialog_is_closed_and_inert_under_the_lock

@@ -191,6 +191,29 @@ default/bare User-Agent strings (see `AGENTS.md` Section 8).
       the received message, decrypted, shows a blank subject rather than
       "[Encrypted] Email Sent by KyPost".
 
+### Calendar invites and RSVP (plan L17, added 2026-10-23)
+
+Needs a relay with KyPost-Server #353/#354 deployed, and an organizer on a real
+calendar (Google, Outlook or another KyPost account's calendar app).
+
+- [ ] **The card appears.** Send yourself an invite from the organizer's
+      calendar. Expected: a "Calendar invite · REQUEST" card above the body
+      with the title, time in your zone, place and organizer, and Accept,
+      Maybe and Decline. An invite from an address other than its organizer
+      also says so.
+- [ ] **Accept reaches the organizer's calendar.** Press Accept. Expected: a
+      "Send RSVP unencrypted?" prompt naming the organizer and your address;
+      Send unencrypted, then "RSVP sent". The organizer's calendar shows you
+      as accepted, and Sent holds the reply. Reopen the message: the buttons
+      stay off.
+- [ ] **An alias answers as the alias.** Invite a verified send-as alias, not
+      your primary address, and accept. Expected: the prompt and the
+      organizer's calendar both show the alias.
+- [ ] **The lock withdraws the prompt.** Press Maybe, then lock before
+      answering. Unlock: no prompt, nothing in Sent, and the buttons work.
+- [ ] **An older relay offers no buttons.** Against a relay without #353, the
+      card shows but has no Accept/Maybe/Decline.
+
 ## Contacts
 
 - [ ] **List renders.** `ContactsList.qml` shows `ContactsApp`'s model;

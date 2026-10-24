@@ -86,6 +86,8 @@ target_sources(kypost PRIVATE
   mail/RemoteContentInterceptor.h
   mail/ScheduledController.cpp
   mail/ScheduledController.h
+  mail/InviteController.cpp
+  mail/InviteController.h
 )
 target_link_libraries(kypost PRIVATE Qt6::WebEngineCore)
 

@@ -1577,6 +1577,9 @@ void MailController::listAttachments(const QString& mailbox, const QString& mess
                 entry[QStringLiteral("name")] = info.name;
                 entry[QStringLiteral("mimeType")] = info.mimeType;
                 entry[QStringLiteral("size")] = info.size;
+                // For the invite card (Invites.load): a relay without it
+                // would send an RSVP as plain mail, so it gets no buttons.
+                entry[QStringLiteral("calendarMethod")] = info.calendarMethod;
                 list.append(entry);
             }
             emit attachmentsListed(mailbox, messageId, list);

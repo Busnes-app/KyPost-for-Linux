@@ -115,6 +115,7 @@ MailAttachmentInfo mailAttachmentInfoFromJson(const QJsonObject& obj)
     item.name = obj.value(QStringLiteral("name")).toString();
     item.mimeType = obj.value(QStringLiteral("mimeType")).toString();
     item.size = obj.value(QStringLiteral("size")).toInt();
+    item.calendarMethod = obj.value(QStringLiteral("calendarMethod")).toString();
     return item;
 }
 
@@ -355,11 +356,32 @@ SendMailResult RelayMailSource::sendMail(const QUrl& serverBaseUrl, const RelayA
         requestBody.insert(QStringLiteral("replyToMessageId"), replyToMessageId);
         requestBody.insert(QStringLiteral("replyToMailbox"), replyToMailbox);
     }
+    return postSend(serverBaseUrl, auth, requestBody, threaded, sendAt.isValid());
+}
 
+SendMailResult RelayMailSource::sendCalendarReply(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& to,
+                                                  const QString& from, const QString& subject, const QString& body,
+                                                  const QString& ics) const
+{
+    QJsonObject requestBody = mailRequestBody(to, {}, {}, subject, body, QStringLiteral("plain"), {});
+    // Spelled out, not left to the defaults: the organizer's calendar cannot
+    // read a PGP-wrapped reply, and the relay answers 400 to either flag.
+    requestBody.insert(QStringLiteral("sign"), false);
+    requestBody.insert(QStringLiteral("encrypt"), false);
+    if (!from.isEmpty())
+        requestBody.insert(QStringLiteral("from"), from);
+    requestBody.insert(QStringLiteral("calendarReply"), QJsonObject{ { QStringLiteral("ics"), ics } });
+    return postSend(serverBaseUrl, auth, requestBody, false, false);
+}
+
+SendMailResult RelayMailSource::postSend(const QUrl& serverBaseUrl, const RelayAuth& auth,
+                                         const QJsonObject& requestBody, bool threaded, bool scheduled) const
+{
     const HttpClient::HttpResult result = m_httpClient.post(
         joinUrlPath(serverBaseUrl, QStringLiteral("api/mail/send")), {}, requestBody, auth.headerItems());
 
     SendMailResult out;
+    out.statusCode = result.statusCode;
     if (result.error.has_value()) {
         out.error = result.error;
 
@@ -429,7 +451,7 @@ SendMailResult RelayMailSource::sendMail(const QUrl& serverBaseUrl, const RelayA
 
     const QJsonObject json = *decoded;
     // Held for later: {scheduled, id, sendAt} and no ok. Counts only when asked for.
-    if (sendAt.isValid() && result.statusCode == 202) {
+    if (scheduled && result.statusCode == 202) {
         out.scheduledAt = scheduledAtOf(json);
         out.ok = out.scheduledAt.isValid();
         return out;
@@ -437,6 +459,7 @@ SendMailResult RelayMailSource::sendMail(const QUrl& serverBaseUrl, const RelayA
     out.ok = json.value(QStringLiteral("ok")).toBool();
     out.sentSaved = json.value(QStringLiteral("sentSaved")).toBool();
     out.warning = json.value(QStringLiteral("warning")).toString();
+    out.calendarReplySent = json.value(QStringLiteral("calendarReply")).toBool();
     return out;
 }
 
