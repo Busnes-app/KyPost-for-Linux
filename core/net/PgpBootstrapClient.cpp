@@ -51,7 +51,10 @@ PgpBootstrapResult PgpBootstrapClient::fetch(const QUrl& serverBaseUrl, const Re
     const QJsonArray userIds = obj.value(QStringLiteral("suggestedUserIDs")).toArray();
     if (!userIds.isEmpty())
         out.primaryAddress = userIds.first().toString().trimmed();
-    for (const QJsonValue& userId : userIds) {
+    // accountAddresses (KyPost-Server #452) when the relay sends it, even
+    // empty; suggestedUserIDs only from an older relay that does not.
+    const QJsonValue accountAddresses = obj.value(QStringLiteral("accountAddresses"));
+    for (const QJsonValue& userId : accountAddresses.isArray() ? accountAddresses.toArray() : userIds) {
         const QString address = userId.toString().trimmed();
         if (!address.isEmpty())
             out.addresses.append(address);

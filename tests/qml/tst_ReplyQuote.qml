@@ -100,8 +100,8 @@ TestCase {
         const detail = source("qrc:/qml/pages/EmailDetail.qml")
         verify(detail.indexOf("email.preview") === -1)
         compare(detail.split("Format.quotedBodyHtml(root.email, root.hasDecryptedBody)").length - 1, 2)
-        verify(detail.indexOf("root.composeRequested(to, subject, root.replyQuote(), root.replyReference(), root.quoteNotice(false))") !== -1)
-        verify(detail.indexOf("root.composeRequested(to.join(\", \"), subject, root.replyQuote(), root.replyReference(), root.quoteNotice(false))") !== -1)
+        // Reply and Reply All both quote.
+        compare(detail.split("root.composeRequested(to.join(\", \"), subject, root.replyQuote(), root.replyReference(), root.quoteNotice(false))").length - 1, 2)
         verify(detail.indexOf("const body = Format.forwardQuoteHtml(") !== -1)
         // Forward attachments are refused for protected messages before any download.
         verify(detail.indexOf("root.attachments.length > 0 && !root.hasDecryptedBody && root.email.pgpState !== 1") !== -1)

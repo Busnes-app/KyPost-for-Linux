@@ -14,6 +14,9 @@ private slots:
     void noKnownOwnAddressesKeepsEveryone();
     void addressIsTheLastAngleAddr();
     void aCommaInADisplayNameIsNotARecipient();
+    void replyToSomeoneElseIsTheSender();
+    void replyToOwnSentMailAnswersItsOtherRecipients();
+    void replyToANoteToSelfIsTheSender();
 };
 
 // The old QML split on every comma, so a sender-chosen display name could add
@@ -90,6 +93,36 @@ void ReplyAllTest::addressIsTheLastAngleAddr()
              QStringLiteral("evil@attacker.tld"));
     QCOMPARE(addressFromHeader(QStringLiteral(" bob@corp.com ")), QStringLiteral("bob@corp.com"));
     QCOMPARE(addressFromHeader(QStringLiteral("Unknown sender")), QString());
+}
+
+void ReplyAllTest::replyToSomeoneElseIsTheSender()
+{
+    const QStringList own{ QStringLiteral("me@example.com") };
+    QCOMPARE(replyRecipients(QStringLiteral("Bob <bob@example.com>"), QStringLiteral("me@example.com, carol@example.com"), own),
+             QStringList({ QStringLiteral("bob@example.com") }));
+    QCOMPARE(replyRecipients(QStringLiteral("bob@example.com"), QStringLiteral("carol@example.com"), {}),
+             QStringList({ QStringLiteral("bob@example.com") }));
+    QCOMPARE(replyRecipients(QStringLiteral("Unknown sender"), QStringLiteral("carol@example.com"), own), QStringList());
+}
+
+// The Mac's replyToOwnSentMessageAddressesItsRecipients: To, minus every own
+// address (an alias too), compared on the bare address; Cc is Reply All's.
+void ReplyAllTest::replyToOwnSentMailAnswersItsOtherRecipients()
+{
+    const QStringList recipients = replyRecipients(
+        QStringLiteral("Me <Me@Example.com>"),
+        QStringLiteral("me@example.com, Ann <ann@example.com>; alias@example.org, ANN@example.com, \"x, y\" <bob@example.com>"),
+        { QStringLiteral("me@example.com"), QStringLiteral("Alias@Example.org") });
+
+    QCOMPARE(recipients, QStringList({ QStringLiteral("ann@example.com"), QStringLiteral("bob@example.com") }));
+}
+
+void ReplyAllTest::replyToANoteToSelfIsTheSender()
+{
+    const QStringList recipients = replyRecipients(QStringLiteral("me@example.com"), QStringLiteral("alias@example.org"),
+                                                   { QStringLiteral("me@example.com"), QStringLiteral("alias@example.org") });
+
+    QCOMPARE(recipients, QStringList({ QStringLiteral("me@example.com") }));
 }
 
 QTEST_APPLESS_MAIN(ReplyAllTest)
