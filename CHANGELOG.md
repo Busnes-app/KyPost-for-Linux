@@ -28,6 +28,11 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- New [assurance case](docs/ASSURANCE-CASE.md) and
+  [release verification](docs/VERIFYING-RELEASES.md) pages. The security policy's
+  pairing section now says the client enforces a pairing link's `pin=`, and
+  that automatic re-registration is trust-on-first-use again. Documentation
+  only; the app is unchanged.
 - The release-notes unit tests no longer fail on a tag build: they cleared
   nothing from the CI environment, so `release-notes.py` in their fixture
   repositories took the real tag (`v0.6.0`) as its `--tag` and failed. The

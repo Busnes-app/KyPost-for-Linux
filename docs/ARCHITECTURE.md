@@ -20,7 +20,8 @@ packaging/  — flatpak/ (manifest, desktop file, AppStream metainfo, notifyrc, 
 po/         — gettext translation catalogs
 scripts/    — build-sqlcipher.sh, verify-guards.sh, verify-version.sh, relay verification
 docs/       — PARITY.md (the authoritative Android-parity matrix), DISTRIBUTION.md,
-              THREADING.md, SETUP.md, RENAME_NOTES.md, STRONG-CRYPTO.md
+              THREADING.md, SETUP.md, RENAME_NOTES.md, STRONG-CRYPTO.md,
+              ASSURANCE-CASE.md, VERIFYING-RELEASES.md
 ```
 
 The `core/` boundary permits Qt Core, Network, and Sql only. A new dependency in `core/` breaks

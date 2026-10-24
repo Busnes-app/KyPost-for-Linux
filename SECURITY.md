@@ -42,19 +42,31 @@ be moved. A misfiled report is better than an unfiled one.
   [docs/STRONG-CRYPTO.md](docs/STRONG-CRYPTO.md) lists each boundary, the
   deliberate exceptions and what is out of scope.
 
-## Known limitation: pairing is trust-on-first-use
+## Pairing and certificate pinning
 
-Server 0.3.0 and later publish a certificate pin in the pairing QR (`pin=`). This
-client does not read it. It instead records the certificate that served
-registration and pins later calls to that — trust-on-first-use, which is what it
-did before the pin existed.
+Pairing pins the relay's certificate, and later calls to the relay must match the pin. The
+stored pin is the SHA-256 of the public key of the certificate that issued the relay's leaf
+(`core/net/HttpClient.cpp`, `pinnedSpkiFromChain`).
 
-The gap is that the pairing request carries the pairing token and push
-credentials together, and trust-on-first-use trusts the certificate only *after*
-they have been disclosed. On a network with a locally trusted CA — enterprise
-MDM, a user-installed root, a hostile captive portal — an interceptor can read
-the token. This is tracked as an open issue; it is stated here rather than left
-for someone to discover.
+- **With `pin=` in the pairing link**, the registration handshake must match it. On a new
+  connection the check runs when the TLS handshake completes, before the pairing token or
+  push credentials are sent. A mismatch, or a `pin=` that cannot be parsed, refuses the
+  pairing.
+- **Without `pin=`, pairing is trust-on-first-use.** The client pins the certificate that
+  served registration. It detects a certificate that changes afterwards, but not an
+  interceptor already in place at pairing. On a network with a locally trusted CA, such as
+  enterprise MDM, a user-installed root or a hostile captive portal, that interceptor can
+  read the pairing token. Pair over a network you trust.
+- **Automatic re-registration is trust-on-first-use again.** At startup, and when the push
+  endpoint or transport changes, the client re-registers without the stored pin and pins the
+  key that answers, so the same interceptor can take over then. Qt's normal certificate
+  validation still applies. The reasons are recorded at
+  `DeviceRegistrationService::reregistrationParams`.
+- Because the pin names the issuing CA's key, not the leaf's, a certificate for the relay's
+  name from the same issuing CA also matches.
+
+How these protections fit together is argued in [docs/ASSURANCE-CASE.md](docs/ASSURANCE-CASE.md).
+How to check a release is in [docs/VERIFYING-RELEASES.md](docs/VERIFYING-RELEASES.md).
 
 ## Disclosure timeline
 
