@@ -143,6 +143,7 @@ LocalDataWipeResult LocalDataWipe::wipeEverything()
     // Not part of the result: this is a preference, not a secret, and a
     // failure to reset it leaks nothing.
     m_settingsStore.setDeliveryMode(QString());
+    m_settingsStore.clearAppLockOffered();
 
     // A replacement profile on the same path, so the session that called
     // this is not left writing through a connection whose file no longer has

@@ -145,8 +145,9 @@ QByteArray protectedContent(const OutgoingMessage& message, const QString& bound
     const QByteArray boundaryUtf8 = boundary.toUtf8();
 
     QByteArray out;
-    if (!subject.isEmpty())
-        out += "Subject: " + subject.toUtf8() + "\r\n";
+    // Always written, blank too: a present-but-blank header reads back as a
+    // blank subject, where an absent one leaves the outer placeholder showing.
+    out += subject.isEmpty() ? QByteArray("Subject:\r\n") : "Subject: " + subject.toUtf8() + "\r\n";
     out += "Content-Type: multipart/mixed; boundary=\"" + boundaryUtf8
         + "\"; protected-headers=\"v1\"\r\n";
     out += "\r\n";

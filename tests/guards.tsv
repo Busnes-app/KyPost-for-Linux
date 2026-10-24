@@ -113,7 +113,7 @@ app/mail/MailController.cpp	    if (const QStringList folders = m_mailRepository
 core/stores/CursorStore.cpp	    return m_settings.status() == QSettings::NoError;	    return true;	CursorStoreTest:aCursorThatCannotReachTheDiskIsReportedAsFailed
 
 # a contact is saved with its sync queue entry, or not at all
-core/domain/ContactSyncRepository.cpp	    return queued ? tempUid : QString();	    return tempUid;	ContactSyncRepositoryTest:aLocalCreateThatCannotBeQueuedIsNotSavedAtAll
+core/domain/ContactSyncRepository.cpp	    return queued ? contact.uid : QString();	    return contact.uid;	ContactSyncRepositoryTest:aLocalCreateThatCannotBeQueuedIsNotSavedAtAll
 
 # a delete whose tombstone was lost brings the contact back on the next pull
 core/domain/ContactSyncRepository.cpp	        return m_pendingDao.enqueue(uid, serializeContact(tombstone), nowUtc()) > 0;	        return m_pendingDao.enqueue(uid, serializeContact(tombstone), nowUtc()), true;	ContactSyncRepositoryTest:aDeleteThatCannotEnqueueItsTombstoneKeepsTheContact
@@ -534,3 +534,10 @@ app/qml/components/MailCard.qml	        function onLockedChanged() { if (AppLock
 app/qml/pages/ContactsList.qml	                actionsMenu.close()		ShellTests:ShellLock::test_contacts_menu_closes_on_lock
 app/qml/AppShell.qml	            folderActionsMenu.close();		ShellTests:ShellLock::test_folder_actions_menu_closes_on_lock
 app/qml/pages/Settings.qml	        securityPrompt.close()		ShellTests:ShellLock::test_pin_prompt_closes_on_lock
+#
+# ConfirmDialog (2026-10-23, plan L18) asks "Send without a subject?", "Import
+# contacts?" and "Lock KyPost?". It is an Item under the lock gate, but a
+# question left open would still take Return through the gate, and an accept
+# reaching it while locked would send or queue from under the PIN screen.
+app/qml/components/ConfirmDialog.qml	        if (!root.isOpen || AppLock.locked)	        if (!root.isOpen)	QmlTests:SendWithoutSubject::test_lockingRefusesAndNothingIsAcceptedWhileLocked
+app/qml/components/ConfirmDialog.qml	            if (AppLock.locked)	            if (false)	QmlTests:SendWithoutSubject::test_lockingRefusesAndNothingIsAcceptedWhileLocked

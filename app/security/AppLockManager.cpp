@@ -96,6 +96,13 @@ bool AppLockManager::storeUnavailable() const
     return !m_store.storeReadable();
 }
 
+bool AppLockManager::takeLockOffer()
+{
+    if (lockEnabled() || storeUnavailable() || m_settingsStore.appLockOffered())
+        return false;
+    return m_settingsStore.setAppLockOffered();
+}
+
 int AppLockManager::minimumPinLength() const
 {
     return PinPolicy::kMinimumLength;

@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Dialogs
 import com.kysecurity.mail 1.0
 import "../components"
 import "../utils/format.js" as Format
@@ -40,15 +41,48 @@ Item {
     property bool showSyncStatus: false
 
     function sync() {
+        root.importError = ""
         ContactsApp.sync()
         root.showSyncStatus = true
         syncStatusTimer.restart()
     }
 
     function findDuplicates() {
+        root.importError = ""
         ContactsApp.dedupe()
         root.showSyncStatus = true
         syncStatusTimer.restart()
+    }
+
+    // vCard import (Android #186): pick a file, preview what it holds, then
+    // queue it. The parsed contacts stay in ContactsApp; this page only shows
+    // the preview and answers it.
+    property string importError: ""
+
+    function showImportOutcome(error) {
+        root.importError = error
+        root.showSyncStatus = true
+        syncStatusTimer.restart()
+    }
+
+    function previewImport(fileUrl) {
+        const preview = ContactsApp.previewVCardImport(fileUrl.toString())
+        if (!preview.ok) {
+            root.showImportOutcome(preview.error)
+            return
+        }
+        let message = i18np("%1 contact from this file will be added and synced to your server:",
+                            "%1 contacts from this file will be added and synced to your server:", preview.count)
+        for (let i = 0; i < preview.names.length; ++i)
+            message += "\n• " + preview.names[i]
+        if (preview.more > 0)
+            message += "\n" + i18np("…and %1 more", "…and %1 more", preview.more)
+        if (preview.skipped > 0)
+            message += "\n\n" + i18np("%1 card has no name, email or organization and will be skipped.",
+                                       "%1 cards have no name, email or organization and will be skipped.",
+                                       preview.skipped)
+        importDialog.message = message
+        importDialog.open()
     }
 
     // Sync, Find duplicates and Scan PGP key, Android's overflow menu. The
@@ -60,12 +94,24 @@ Item {
     }
 
     // A Menu stacks above the lock overlay, so it closes when the app locks
-    // and its items refuse while locked.
+    // and its items refuse while locked. The file picker is a portal window
+    // of its own; a file chosen while locked is dropped.
     Connections {
         target: AppLock
         function onLockedChanged() {
-            if (AppLock.locked)
+            if (AppLock.locked) {
                 actionsMenu.close()
+                vcardFileDialog.close()
+            }
+        }
+    }
+
+    // A preview read under one pairing is not imported into the next.
+    Connections {
+        target: Pairing
+        function onPairingChanged() {
+            importDialog.reject()
+            ContactsApp.discardVCardImport()
         }
     }
 
@@ -87,6 +133,19 @@ Item {
             enabled: !AppLock.locked
             onTriggered: root.scanPgpKeyRequested()
         }
+        MenuItem {
+            text: i18n("Import vCard…")
+            enabled: !AppLock.locked
+            onTriggered: vcardFileDialog.open()
+        }
+    }
+
+    FileDialog {
+        id: vcardFileDialog
+        title: i18n("Import vCard")
+        fileMode: FileDialog.OpenFile
+        nameFilters: [i18n("vCard files (*.vcf *.vcard)"), i18n("All files (*)")]
+        onAccepted: if (!AppLock.locked) root.previewImport(selectedFile)
     }
 
     ColumnLayout {
@@ -97,10 +156,11 @@ Item {
             Layout.fillWidth: true
             Layout.leftMargin: 20
             Layout.rightMargin: 20
-            visible: root.showSyncStatus && (ContactsApp.lastError !== "" || ContactsApp.statusMessage !== "")
+            readonly property string error: root.importError !== "" ? root.importError : ContactsApp.lastError
+            visible: root.showSyncStatus && (error !== "" || ContactsApp.statusMessage !== "")
             textFormat: Text.PlainText
-            text: ContactsApp.lastError !== "" ? ContactsApp.lastError : ContactsApp.statusMessage
-            color: ContactsApp.lastError !== "" ? Theme.dangerActionText : Theme.ink
+            text: error !== "" ? error : ContactsApp.statusMessage
+            color: error !== "" ? Theme.dangerActionText : Theme.ink
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontDate
             wrapMode: Text.WordWrap
@@ -224,6 +284,23 @@ Item {
     Timer {
         id: syncStatusTimer
         interval: 3000
-        onTriggered: root.showSyncStatus = false
+        onTriggered: {
+            root.showSyncStatus = false
+            root.importError = ""
+        }
+    }
+
+    ConfirmDialog {
+        id: importDialog
+        objectName: "vcardImportDialog"
+        anchors.fill: parent
+        z: 50
+        title: i18n("Import contacts?")
+        acceptText: i18n("Import")
+        onAccepted: {
+            ContactsApp.confirmVCardImport()
+            root.showImportOutcome("")
+        }
+        onRejected: ContactsApp.discardVCardImport()
     }
 }

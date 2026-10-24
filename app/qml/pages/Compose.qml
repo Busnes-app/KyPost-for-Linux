@@ -213,7 +213,8 @@ Item {
     }
 
     // sendAtMs, when given, is the scheduled time (SendLaterDialog); absent sends now.
-    function trySend(sendAtMs) {
+    // allowEmptySubject is the answer to "Send without a subject?".
+    function trySend(sendAtMs, allowEmptySubject) {
         const sendAt = sendAtMs || 0
         // Any address still sitting uncommitted in a field's input box (the
         // user typed it but never hit Enter/Tab/comma) is committed first --
@@ -223,13 +224,21 @@ Item {
         bccField.commitInputAsToken()
 
         bodyEditor.requestSendableHtml(function(result) {
-            // Mirrors Android's "Please fill in all fields" check -- Cc/Bcc
-            // stay optional, only To/Subject/Body are required.
-            if (toField.joinedText.trim() === "" || subjectField.text.trim() === "" || (result.isEmpty && root.attachmentPaths.length === 0)) {
-                root.validationError = i18n("Please fill in all fields")
+            // Cc/Bcc stay optional. A blank subject is legal -- the relay
+            // accepts one -- so it is asked about, not refused.
+            const readiness = Format.sendReadiness(toField.joinedText, subjectField.text,
+                                                   result.isEmpty && root.attachmentPaths.length === 0,
+                                                   allowEmptySubject)
+            if (readiness === "incomplete") {
+                root.validationError = i18n("Fill in the recipient and message.")
                 return
             }
             root.validationError = ""
+            if (readiness === "confirmSubject") {
+                emptySubjectDialog.sendAt = sendAt
+                emptySubjectDialog.open()
+                return
+            }
 
             // A client-custody account whose key is in THIS machine's gpg:
             // encrypt and sign here rather than handing the user to webmail.
@@ -257,7 +266,7 @@ Item {
     }
 
     // Saves to the Drafts mailbox. Deliberately does NOT apply trySend()'s
-    // "fill in all fields" check -- a half-written draft is the normal thing
+    // recipient-and-message check -- a half-written draft is the normal thing
     // to save, and refusing to save it would be the opposite of useful.
     function trySaveDraft() {
         toField.commitInputAsToken()
@@ -788,6 +797,21 @@ Item {
         id: sendLaterDialog
         z: 40
         onChosen: function (atMs) { root.trySend(atMs) }
+    }
+
+    // Android #178. Confirming runs trySend again, so the body and recipients
+    // are read afresh and a scheduled send keeps its time.
+    ConfirmDialog {
+        id: emptySubjectDialog
+        objectName: "emptySubjectDialog"
+        z: 40
+        property var sendAt: 0
+        title: i18n("Send without a subject?")
+        acceptText: i18n("Send")
+        rejectText: i18n("Add subject")
+        onAccepted: root.trySend(emptySubjectDialog.sendAt, true)
+        // Not under the lock: focus behind the gate would take keystrokes.
+        onRejected: if (!AppLock.locked) subjectField.forceActiveFocus()
     }
 
     PickupFallbackDialog {

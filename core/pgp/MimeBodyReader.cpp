@@ -103,6 +103,15 @@ Entity parseEntity(const QByteArray& raw)
     return entity;
 }
 
+bool hasHeader(const Entity& entity, const char* name)
+{
+    for (const auto& header : entity.headers) {
+        if (header.first == name)
+            return true;
+    }
+    return false;
+}
+
 QByteArray headerOf(const Entity& entity, const char* name)
 {
     for (const auto& header : entity.headers) {
@@ -568,6 +577,7 @@ MimeBody readMimeBody(const QByteArray& entity)
     out.cc = QString::fromUtf8(headerOf(parsed, "cc"));
     out.bcc = QString::fromUtf8(headerOf(parsed, "bcc"));
     out.subject = decodeSubject(headerOf(parsed, "subject"));
+    out.hasSubject = hasHeader(parsed, "subject");
     if (out.subject.isEmpty() && mimeTypeOf(parsed).startsWith("multipart/")) {
         const auto parts = splitOnBoundary(parsed.body, parameterOf(headerOf(parsed, "content-type"), "boundary"), out.status);
         if (!parts.isEmpty()) {
@@ -576,8 +586,11 @@ MimeBody readMimeBody(const QByteArray& entity)
                 && parameterOf(headerOf(first, "content-type"), "protected-headers") == "v1"
                 && !headerOf(first, "content-disposition").toLower().startsWith("attachment")) {
                 const QByteArray headers = decodeTransfer(first.body, headerOf(first, "content-transfer-encoding"));
-                if (headers.size() <= kMaxHeaderBytes)
-                    out.subject = decodeSubject(headerOf(parseEntity(headers + "\r\n\r\n"), "subject"));
+                if (headers.size() <= kMaxHeaderBytes) {
+                    const Entity legacy = parseEntity(headers + "\r\n\r\n");
+                    out.subject = decodeSubject(headerOf(legacy, "subject"));
+                    out.hasSubject = out.hasSubject || hasHeader(legacy, "subject");
+                }
             }
         }
     }

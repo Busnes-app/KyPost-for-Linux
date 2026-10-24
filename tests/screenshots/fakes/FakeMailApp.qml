@@ -34,6 +34,7 @@ QtObject {
     property string decryptedSignature: ""
     property bool decryptedSignatureIsWarning: false
     property string decryptedSubject: ""
+    property bool decryptedHasSubject: false
     property string decryptedToken: ""
     property string decryptFailure: ""
     property bool decryptRetryable: false

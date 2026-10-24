@@ -14,6 +14,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSqlDatabase>
+#include <QStringList>
 #include <QUrl>
 #include <QUuid>
 #include <type_traits>
@@ -185,23 +186,63 @@ bool ContactSyncRepository::isPending(const QString& uid) const
     return pendingUids().contains(uid);
 }
 
-QString ContactSyncRepository::queueCreate(Contact contact)
+namespace {
+
+// The wire copy of a create: empty uid marks one, per ContactSyncClient's contract.
+QString createJson(Contact contact)
 {
-    const QString tempUid = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    contact.uid = tempUid;
+    contact.uid = QString();
     contact.deleted = false;
+    return serializeContact(contact);
+}
 
-    Contact wireCopy = contact;
-    wireCopy.uid = QString(); // empty uid marks a create, per ContactSyncClient's contract
+} // namespace
 
+bool ContactSyncRepository::insertCreate(Contact& contact, const QString& wireJson)
+{
+    contact.uid = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    contact.deleted = false;
     // The cached row without the queue row is a contact the user can see,
     // edit and rely on that will never reach the server or any other device.
-    const bool queued = inTransaction(m_db, [&] {
-        return m_contactDao.insertOrReplace(contact)
-            && m_pendingDao.enqueue(tempUid, serializeContact(wireCopy), nowUtc()) > 0;
-    });
+    return m_contactDao.insertOrReplace(contact) && m_pendingDao.enqueue(contact.uid, wireJson, nowUtc()) > 0;
+}
 
-    return queued ? tempUid : QString();
+QString ContactSyncRepository::queueCreate(Contact contact)
+{
+    const QString wireJson = createJson(contact);
+    const bool queued = inTransaction(m_db, [&] { return insertCreate(contact, wireJson); });
+    return queued ? contact.uid : QString();
+}
+
+ContactImportOutcome ContactSyncRepository::queueImport(const QVector<Contact>& contacts)
+{
+    if (contacts.size() > kMaxSyncChanges)
+        return ContactImportOutcome::TooLarge;
+    QStringList wire;
+    qsizetype bytes = 0;
+    for (const Contact& contact : contacts) {
+        wire << createJson(contact);
+        bytes += wire.last().toUtf8().size() + 1; // and its comma
+    }
+    if (bytes > kMaxSyncBodyBytes - kSyncEnvelopeHeadroom)
+        return ContactImportOutcome::TooLarge;
+
+    if (!m_db.transaction())
+        return ContactImportOutcome::WriteFailed;
+    // Read inside the transaction, so nothing can be queued between the check and the writes.
+    const std::optional<int> pending = m_pendingDao.count();
+    if (!pending || *pending > 0) {
+        m_db.rollback();
+        return pending ? ContactImportOutcome::OutboxNotEmpty : ContactImportOutcome::WriteFailed;
+    }
+    for (qsizetype i = 0; i < contacts.size(); ++i) {
+        Contact contact = contacts.at(i);
+        if (!insertCreate(contact, wire.at(i))) {
+            m_db.rollback();
+            return ContactImportOutcome::WriteFailed;
+        }
+    }
+    return m_db.commit() ? ContactImportOutcome::Queued : ContactImportOutcome::WriteFailed;
 }
 
 bool ContactSyncRepository::queueUpdate(const Contact& contact)

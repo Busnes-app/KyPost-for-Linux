@@ -88,7 +88,7 @@ Item {
                                                               MailApp.decryptedPlain, root.folder, MailApp.decryptedFolder)
     readonly property string displaySubject: Format.protectedSubjectFor(root.messageId,
         MailApp.decryptedMessageId, root.folder, MailApp.decryptedFolder,
-        MailApp.decryptedSubject, root.email.subject)
+        MailApp.decryptedSubject, root.email.subject, MailApp.decryptedHasSubject)
     readonly property bool hasDecryptedBody: root.hasProtectedMessage // includes attachment-only mail
     // Which form it is comes from the message's own MIME Content-Type, not
     // from sniffing the characters -- see Format.renderedEmailHtml.
