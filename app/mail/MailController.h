@@ -507,11 +507,15 @@ public slots:
     // m_preflightInFlight.
     Q_INVOKABLE void preflightRecipients(const QString& to, const QString& cc, const QString& bcc);
     // Fetches the account's own addresses (bootstrap) unless this pairing's
-    // are already held. Called when a message opens, ahead of Reply All.
+    // are already held. Called when a message opens, ahead of Reply and
+    // Reply All.
     Q_INVOKABLE void loadAccountAddresses();
     // replyAllRecipients() (core/domain/ReplyAll.h) with the account's own
     // addresses, once loadAccountAddresses() has them for this pairing.
     Q_INVOKABLE QStringList replyAllRecipients(const QString& sender, const QString& to, const QString& cc) const;
+    // replyRecipients() (core/domain/ReplyAll.h), the same way: Reply to the
+    // account's own sent mail answers its other recipients.
+    Q_INVOKABLE QStringList replyRecipients(const QString& sender, const QString& to) const;
     // Re-sends the exact payload the server refused with 409 +
     // keylessRecipients, with allowPickupFallback set. `token` is the value
     // pickupFallbackRequired() carried: this returns false without sending

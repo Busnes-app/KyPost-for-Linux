@@ -243,7 +243,7 @@ Item {
         }
         root.email = MailApp.findByMessageId(root.messageId, root.folder)
         root.unread = root.email.status === "unread"
-        // Reply All leaves these out; fetched once per pairing.
+        // Reply and Reply All leave these out; fetched once per pairing.
         MailApp.loadAccountAddresses()
         // A search hit this device has not synced: its body arrives later
         // through onSearchBodyLoaded.
@@ -453,9 +453,9 @@ Item {
                     tooltip: i18n("Reply")
                     enabled: !MailApp.isBusy
                     onClicked: {
-                        const to = root.extractAddress(root.email.sender)
+                        const to = MailApp.replyRecipients(root.email.sender || "", root.email.sentTo || "")
                         const subject = root.withPrefix(root.displaySubject, "Re:")
-                        root.composeRequested(to, subject, root.replyQuote(), root.replyReference(), root.quoteNotice(false))
+                        root.composeRequested(to.join(", "), subject, root.replyQuote(), root.replyReference(), root.quoteNotice(false))
                     }
                 }
                 IconButton {

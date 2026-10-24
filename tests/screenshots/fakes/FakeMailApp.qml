@@ -123,6 +123,7 @@ QtObject {
     function confirmPickupFallbackSend() {}
     function preflightRecipients() { return ({}) }
     function replyAllRecipients() { return ({to: [], cc: []}) }
+    function replyRecipients() { return [] }
     function loadAccountAddresses() { return [F.me] }
     function listAttachments() {}
     function downloadAttachment() {}

@@ -35,8 +35,11 @@ struct PgpBootstrapResult
     // Empty when the account has no mail configured, which the caller must
     // treat as "cannot send" rather than guessing an address.
     QString primaryAddress;
-    // Every suggestedUserIDs entry: the primary plus verified send-as
-    // aliases. Only used to leave the user out of Reply All.
+    // The addresses this account sends as: accountAddresses (the sending
+    // address, then every verified send-as alias) when the relay sends that
+    // field, else every suggestedUserIDs entry. The latter starts with the
+    // IMAP login, which is often not an address at all. Only used to leave
+    // the user out of replies.
     QStringList addresses;
 };
 
