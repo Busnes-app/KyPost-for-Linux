@@ -54,6 +54,10 @@ Item {
     readonly property var visibleAttachments: root.hasProtectedMessage ? MailApp.decryptedAttachments : root.attachments
     readonly property string localImageBase: root.hasProtectedMessage ? MailApp.decryptedImageBase : ""
     property string attachmentStatus: ""
+    // Invites.inviteLoaded's card for this message, or {}; inviteRequest is
+    // this reader's own load of it, 0 when none is out or held.
+    property var invite: ({})
+    property int inviteRequest: 0
     // A Forward is downloading this message's attachments.
     property bool forwarding: false
     // Remote images are blocked by default (see WebEngineView's
@@ -88,7 +92,7 @@ Item {
                                                               MailApp.decryptedPlain, root.folder, MailApp.decryptedFolder)
     readonly property string displaySubject: Format.protectedSubjectFor(root.messageId,
         MailApp.decryptedMessageId, root.folder, MailApp.decryptedFolder,
-        MailApp.decryptedSubject, root.email.subject)
+        MailApp.decryptedSubject, root.email.subject, MailApp.decryptedHasSubject)
     readonly property bool hasDecryptedBody: root.hasProtectedMessage // includes attachment-only mail
     // Which form it is comes from the message's own MIME Content-Type, not
     // from sniffing the characters -- see Format.renderedEmailHtml.
@@ -157,7 +161,10 @@ Item {
         reload()
         Qt.callLater(root.markOpenedRead)
     }
-    Component.onDestruction: MailApp.forgetDecrypted()
+    Component.onDestruction: {
+        MailApp.forgetDecrypted()
+        root.clearInvite()
+    }
 
     // Archive/Junk/Delete dispatch and return; the answer arrives here.
     //
@@ -202,8 +209,15 @@ Item {
         }
 
         function onAttachmentsListed(mailbox, messageId, attachments) {
-            if (mailbox === root.folder && messageId === root.messageId)
-                root.attachments = attachments
+            if (mailbox !== root.folder || messageId !== root.messageId)
+                return
+            root.attachments = attachments
+            // After the chips: a slow or hostile invite must not hold them up.
+            // Once per reload: another reader's listing of the same message
+            // reaches here too, and must not reopen this reader's invite.
+            if (root.inviteRequest === 0)
+                root.inviteRequest = Invites.load(mailbox, messageId, attachments, root.email.sender || "",
+                                                  phishingBanner.flagged)
         }
 
         function onAttachmentDownloaded(messageId, index, ok) {
@@ -223,6 +237,25 @@ Item {
         }
     }
 
+    // Only this reader's own load: another reader's card, or one for a
+    // message this reader has left, is not shown here.
+    Connections {
+        target: Invites
+        function onInviteLoaded(request, card) {
+            if (request !== 0 && request === root.inviteRequest)
+                root.invite = card
+        }
+    }
+
+    // A card no reader shows must not keep an answer being asked about: that
+    // would hold every other RSVP back.
+    function clearInvite() {
+        if (root.invite.token !== undefined)
+            Invites.forget(root.invite.token)
+        root.invite = {}
+        root.inviteRequest = 0
+    }
+
     // Clears the refused-link notice a few seconds after it appears.
     Timer {
         id: blockedLinkTimer
@@ -235,6 +268,7 @@ Item {
 
     function reload() {
         root.imagesLoaded = false
+        root.clearInvite()
         if (root.messageId === "") {
             root.email = {}
             root.unread = false
@@ -869,6 +903,12 @@ Item {
                 }
             }
         }
+
+        InviteCard {
+            id: inviteCard
+            Layout.fillWidth: true
+            invite: root.invite
+        }
         } // aboveWebView
 
         // Loader, not a directly-embedded WebEngineView -- active only once
@@ -1166,6 +1206,12 @@ Item {
         onChosen: function (messageIds, folder) {
             MailApp.moveEmails(messageIds, folder)
         }
+    }
+
+    RsvpConfirmDialog {
+        anchors.fill: parent
+        z: 900
+        token: root.invite.token !== undefined ? root.invite.token : -1
     }
 
     SnoozeDialog {

@@ -9,7 +9,13 @@ QtObject {
         MailApp.lastError = ""; MailApp.clearSearch(); root.searchOpen = false
         ContactsApp.empty = false; ContactsApp.reload()
         Pairing.pairingState = "idle"; Pairing.isPaired = true
+        Invites.confirmation = ({})
         root.closeOverlays(); root.selectFolder("INBOX"); root.navigate("inbox")
+    }
+    function inviteCard() {
+        return {token: 7, eyebrow: "Calendar invite · REQUEST", title: "Saturday hike: Eagle Peak loop",
+                details: ["Sat 31/10/2026 07:30 – 13:00", "Where: Eagle Peak trailhead", "Organizer: maya.chen@example.com"],
+                notices: [], offersRsvp: true}
     }
     function findReader(item, id) {
         if (item.replyQuote !== undefined && item.messageId === id)
@@ -28,6 +34,21 @@ QtObject {
         {name: "folders", setup: function (root) { root.openFolders() }},
         {name: "folder-sent", setup: function (root) { root.selectFolder("Sent") }},
         {name: "email-detail", wait: 1800, setup: function (root) { root.selectEmail("<playshot-1@kypost-demo.local>", "INBOX") }},
+        // A calendar invite, as Invites.inviteLoaded hands it to the reader.
+        {name: "email-invite", wait: 1800, setup: function (root) {
+            const id = "<playshot-1@kypost-demo.local>"
+            root.selectEmail(id, "INBOX")
+            findReader(root, id).invite = inviteCard()
+        }},
+        {name: "rsvp-confirm", wait: 1800, setup: function (root) {
+            const id = "<playshot-1@kypost-demo.local>"
+            root.selectEmail(id, "INBOX")
+            findReader(root, id).invite = inviteCard()
+            Invites.confirmation = {token: 7, title: "Send RSVP unencrypted?", sendLabel: "Send unencrypted",
+                text: "Reply \"Accepted\" to maya.chen@example.com as sam@kypost-demo.local.\n\n"
+                    + "RSVPs are always sent unencrypted and unsigned, because the organizer's calendar can't read "
+                    + "an encrypted reply. The reply carries your answer, your address and the event's ID."}
+        }},
         {name: "compose", setup: function (root) { root.openCompose("Maya Chen <maya.chen@example.com>", "Re: Saturday hike", "Count me in! I will bring the trail mix and an extra headlamp.<br><br>See you at 7:30.<br><br>Sam", ({})) }},
         // The reader's own Reply: the composer opens on the quoted body.
         {name: "reply", wait: 1800, setup: function (root) {

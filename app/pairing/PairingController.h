@@ -314,6 +314,10 @@ signals:
     void reregistrationRejectedChanged();
     void certificateMismatchChanged();
     void pushStatusChanged();
+    // A pairing from a link (pasted or deep link) succeeded. Not emitted by
+    // reconnectToServer(), which re-registers an account already here: the
+    // app-lock offer (Android #181) follows a pairing, not a repair.
+    void pairedFromLink();
 
 private:
     // Runs after a registration SUCCEEDS and before its result is persisted.

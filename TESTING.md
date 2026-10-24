@@ -71,6 +71,11 @@ default/bare User-Agent strings (see `AGENTS.md` Section 8).
       A pairing from before this migration has no stored `deviceSecret`;
       confirm that case still clears locally with no crash even though the
       deregister call is skipped.
+- [ ] **First pairing offers an app lock, once (plan L18).** On a profile
+      with no app lock, pair. Expected: the pairing page closes and "Lock
+      KyPost?" appears; "Set up app lock" opens Settings → Security. Unpair,
+      pair again: no offer, whatever was answered the first time
+      (`security/appLockOffered=true` in `settings.ini`).
 
 ## Mail
 
@@ -180,6 +185,34 @@ default/bare User-Agent strings (see `AGENTS.md` Section 8).
       driven by `MailApp.keywordTabs` (derived per-folder); tapping one
       calls `MailApp.selectKeyword(keyword)` and re-filters the
       already-cached folder emails with no network round-trip.
+- [ ] **Send without a subject (plan L18).** Fill To and the body, leave
+      Subject blank, Send. Expected: "Send without a subject?"; "Add subject"
+      returns to the Subject field, "Send" sends. On a client-custody account
+      the received message, decrypted, shows a blank subject rather than
+      "[Encrypted] Email Sent by KyPost".
+
+### Calendar invites and RSVP (plan L17, added 2026-10-23)
+
+Needs a relay with KyPost-Server #353/#354 deployed, and an organizer on a real
+calendar (Google, Outlook or another KyPost account's calendar app).
+
+- [ ] **The card appears.** Send yourself an invite from the organizer's
+      calendar. Expected: a "Calendar invite · REQUEST" card above the body
+      with the title, time in your zone, place and organizer, and Accept,
+      Maybe and Decline. An invite from an address other than its organizer
+      also says so.
+- [ ] **Accept reaches the organizer's calendar.** Press Accept. Expected: a
+      "Send RSVP unencrypted?" prompt naming the organizer and your address;
+      Send unencrypted, then "RSVP sent". The organizer's calendar shows you
+      as accepted, and Sent holds the reply. Reopen the message: the buttons
+      stay off.
+- [ ] **An alias answers as the alias.** Invite a verified send-as alias, not
+      your primary address, and accept. Expected: the prompt and the
+      organizer's calendar both show the alias.
+- [ ] **The lock withdraws the prompt.** Press Maybe, then lock before
+      answering. Unlock: no prompt, nothing in Sent, and the buttons work.
+- [ ] **An older relay offers no buttons.** Against a relay without #353, the
+      card shows but has no Accept/Maybe/Decline.
 
 ## Contacts
 
@@ -196,6 +229,12 @@ default/bare User-Agent strings (see `AGENTS.md` Section 8).
       (`ContactsController::sync()` chains into `GroupsRepository::refresh()`
       on success — confirm a group renamed on the backend shows its new name
       in the Groups field below without a separate action).
+- [ ] **Import a vCard (plan L18).** Contacts → ⋮ → Import vCard…, pick a
+      `.vcf` exported from KAddressBook, GNOME Contacts or Android. Expected:
+      a preview with the count and the first ten names; Import adds them and
+      a sync pushes them. Under the Flatpak the picker is the file portal.
+      A file over 256 KiB, a vCard 2.1 file, or an import while other
+      changes are still unsynced is refused with a reason.
 
 ### Extended contact fields (groups, photo, PGP key, IM/websites/relations/events, phonetic names, department, custom fields, pronouns)
 

@@ -34,6 +34,7 @@ QtObject {
     property string decryptedSignature: ""
     property bool decryptedSignatureIsWarning: false
     property string decryptedSubject: ""
+    property bool decryptedHasSubject: false
     property string decryptedToken: ""
     property string decryptFailure: ""
     property bool decryptRetryable: false
@@ -48,7 +49,7 @@ QtObject {
 
     signal actionCompleted(string action, var ids, bool ok)
     signal attachmentDownloaded()
-    signal attachmentsListed()
+    signal attachmentsListed(string mailbox, string messageId, var attachments)
     signal decryptedChanged()
     signal draftSaveCompleted()
     signal folderMutationCompleted(bool ok)

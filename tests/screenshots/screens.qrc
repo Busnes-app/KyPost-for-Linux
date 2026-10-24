@@ -13,6 +13,7 @@
     <file>fakes/FakeProtectedImages.qml</file>
     <file>fakes/FakeRemoteContentInterceptor.qml</file>
     <file>fakes/FakeScheduled.qml</file>
+    <file>fakes/FakeInvites.qml</file>
     <file>fakes/FakeUpdateCheck.qml</file>
   </qresource>
 </RCC>

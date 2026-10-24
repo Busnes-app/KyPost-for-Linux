@@ -158,6 +158,18 @@ public slots:
     // everything" mode); an empty query matches every contact/email pair.
     Q_INVOKABLE QVariantList searchContacts(const QString& query, int limit = 5);
 
+    // vCard import (Android #186), in two steps so the user sees what a file
+    // holds before anything is queued. previewVCardImport reads and parses the
+    // file (core/vcard/VCardImport.h) and holds the result here, never in QML:
+    // {ok, error, count, names (first ten, one line each), more, skipped}.
+    // confirmVCardImport queues exactly what was previewed as ordinary
+    // creates and starts a sync; false (lastError set) means nothing was
+    // queued. discardVCardImport drops the held preview; the page calls it on
+    // cancel, on lock and on a pairing change.
+    Q_INVOKABLE QVariantMap previewVCardImport(const QString& fileUrl);
+    Q_INVOKABLE bool confirmVCardImport();
+    Q_INVOKABLE void discardVCardImport();
+
 signals:
     void isBusyChanged();
     void lastErrorChanged();
@@ -209,6 +221,7 @@ private:
     // evicted later (ContactPhotoCache::kMaxCacheBytes) is simply a cache miss
     // again, not a photo this session has decided never to ask for.
     QSet<QString> m_photoFetchesAttempted;
+    QVector<Contact> m_importPreview;
     // `onApplied` runs once the outcome has been applied; dedupe() uses it to
     // prefix its merge count onto the sync's status message, which it can no
     // longer do by reading statusMessage() after the call. See the .cpp.

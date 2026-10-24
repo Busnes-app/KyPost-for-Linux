@@ -3,6 +3,7 @@
 #include <QSqlDatabase>
 #include <QString>
 #include <QVector>
+#include <optional>
 
 // Over the existing `pending_contact_changes` table from
 // core/db/migrations/001_initial.sql (id, contact_uid, change_json,
@@ -28,6 +29,8 @@ public:
     // Returns the new row's id, or -1 on failure.
     int enqueue(const QString& contactUid, const QString& changeJson, const QString& createdAt);
     QVector<PendingContactChangeRecord> findAll() const;
+    // nullopt when the table could not be read, which is not "empty".
+    std::optional<int> count() const;
     bool deleteById(int id);
     bool deleteAll();
 

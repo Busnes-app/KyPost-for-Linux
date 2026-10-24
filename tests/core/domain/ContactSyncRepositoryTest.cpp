@@ -13,12 +13,14 @@
 #include "../net/FakeRelayServer.h"
 
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QDir>
 #include <QNetworkAccessManager>
 #include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QTest>
+#include <optional>
 
 class ContactSyncRepositoryTest : public QObject
 {
@@ -49,6 +51,11 @@ private slots:
     void applySyncKeepsTheQueueAndTheCursorWhenTheCacheWriteFails();
     void applySyncReportsFailureWhenTheCursorCannotBePersisted();
     void aTooOldWipeThatFailsNeverLeavesTheCursorAhead();
+    void aVCardImportIsQueuedWholeAndOnlyIntoAnEmptyOutbox();
+    void aVCardImportThatCannotBePushedInOneSyncIsRefused();
+    void aVCardImportThatCannotReadTheOutboxQueuesNothing();
+    void aVCardImportExactlyAtTheBodyBudgetIsQueued();
+    void aVCardImportThatFailsPartWayQueuesNothing();
 
 private:
     static void savePairing(PairingStore& pairingStore, quint16 port);
@@ -1182,6 +1189,161 @@ void ContactSyncRepositoryTest::aTooOldWipeThatFailsNeverLeavesTheCursorAhead()
     QCOMPARE(repository.applySync(*plan, tooOld).status, ContactSyncStatus::CacheWriteFailed);
     QVERIFY2(cursorStore.contactBaseCursor().isEmpty(),
              "the cursor outlived the wipe it was supposed to be reset with");
+}
+
+namespace {
+
+// The collaborators an import needs; it never touches the network or the pairing.
+struct ImportFixture
+{
+    Database db;
+    std::optional<ContactDao> contactDao;
+    std::optional<PendingContactChangeDao> pendingDao;
+    QTemporaryDir cursorDir;
+    std::optional<CursorStore> cursorStore;
+    QTemporaryDir secureDir;
+    std::optional<SecureStoreFile> secureStore;
+    std::optional<PairingStore> pairingStore;
+    QNetworkAccessManager manager;
+    std::optional<HttpClient> http;
+    std::optional<ContactSyncClient> client;
+    std::optional<ContactSyncRepository> repository;
+
+    bool open()
+    {
+        if (!db.open(QStringLiteral(":memory:")) || !cursorDir.isValid() || !secureDir.isValid())
+            return false;
+        contactDao.emplace(db.handle());
+        pendingDao.emplace(db.handle());
+        cursorStore.emplace(cursorDir.filePath(QStringLiteral("cursors.ini")));
+        secureStore.emplace(secureDir.path());
+        pairingStore.emplace(*secureStore);
+        http.emplace(manager);
+        client.emplace(*http);
+        repository.emplace(*client, *contactDao, *pendingDao, *cursorStore, *pairingStore, db.handle());
+        return true;
+    }
+};
+
+QVector<Contact> namedContacts(int count)
+{
+    QVector<Contact> contacts;
+    for (int i = 0; i < count; ++i) {
+        Contact contact;
+        contact.fn = QStringLiteral("Imported %1").arg(i);
+        contacts << contact;
+    }
+    return contacts;
+}
+
+} // namespace
+
+// Android #186's queueImport: ordinary creates, all or nothing, and refused
+// while anything else is waiting -- the push is not batched, so the two
+// together could pass the relay's 500-change cap and fail every sync after.
+void ContactSyncRepositoryTest::aVCardImportIsQueuedWholeAndOnlyIntoAnEmptyOutbox()
+{
+    ImportFixture f;
+    QVERIFY(f.open());
+
+    QCOMPARE(f.repository->queueImport(namedContacts(3)), ContactImportOutcome::Queued);
+    const QVector<PendingContactChangeRecord> queued = f.pendingDao->findAll();
+    QCOMPARE(queued.size(), 3);
+    QCOMPARE(f.contactDao->findAll().size(), 3);
+    QSet<QString> uids;
+    for (const PendingContactChangeRecord& record : queued) {
+        QVERIFY(!record.contactUid.isEmpty());
+        uids.insert(record.contactUid);
+        // A create on the wire: no uid of its own, so the relay assigns one.
+        const QJsonObject wire = QJsonDocument::fromJson(record.changeJson.toUtf8()).object();
+        QVERIFY(wire.value(QStringLiteral("uid")).toString().isEmpty());
+        QVERIFY(!wire.value(QStringLiteral("deleted")).toBool());
+    }
+    QCOMPARE(uids.size(), 3);
+
+    QCOMPARE(f.repository->queueImport(namedContacts(2)), ContactImportOutcome::OutboxNotEmpty);
+    QCOMPARE(f.pendingDao->findAll().size(), 3);
+    QCOMPARE(f.contactDao->findAll().size(), 3);
+}
+
+void ContactSyncRepositoryTest::aVCardImportThatCannotBePushedInOneSyncIsRefused()
+{
+    ImportFixture f;
+    QVERIFY(f.open());
+
+    QCOMPARE(f.repository->queueImport(namedContacts(ContactSyncRepository::kMaxSyncChanges + 1)),
+             ContactImportOutcome::TooLarge);
+    Contact huge;
+    huge.fn = QStringLiteral("Huge");
+    huge.notes = QString(int(ContactSyncRepository::kMaxSyncBodyBytes), QLatin1Char('x'));
+    QCOMPARE(f.repository->queueImport({huge}), ContactImportOutcome::TooLarge);
+    QVERIFY(f.pendingDao->findAll().isEmpty());
+    QVERIFY(f.contactDao->findAll().isEmpty());
+}
+
+// "Could not read the outbox" is not "the outbox is empty".
+void ContactSyncRepositoryTest::aVCardImportThatCannotReadTheOutboxQueuesNothing()
+{
+    ImportFixture f;
+    QVERIFY(f.open());
+    {
+        QSqlQuery drop(f.db.handle());
+        QVERIFY(drop.exec(QStringLiteral("DROP TABLE pending_contact_changes")));
+    }
+    QCOMPARE(f.repository->queueImport(namedContacts(2)), ContactImportOutcome::WriteFailed);
+    QVERIFY(f.contactDao->findAll().isEmpty());
+}
+
+// The budget is the queued JSON plus one comma per change, against the
+// relay's 1 MiB less the envelope. One byte either side of it.
+void ContactSyncRepositoryTest::aVCardImportExactlyAtTheBodyBudgetIsQueued()
+{
+    const qsizetype budget = ContactSyncRepository::kMaxSyncBodyBytes - ContactSyncRepository::kSyncEnvelopeHeadroom;
+    QVector<Contact> two = namedContacts(2);
+    auto wireSize = [](const Contact& contact) {
+        Contact wire = contact;
+        wire.uid = QString();
+        return QJsonDocument(ContactWire::contactToJson(wire)).toJson(QJsonDocument::Compact).size() + 1;
+    };
+    // Grow the second one's note until the pair is exactly at the budget;
+    // each 'x' is one byte of JSON.
+    two[1].notes = QStringLiteral("x");
+    const qsizetype base = wireSize(two[0]) + wireSize(two[1]) - 1;
+    two[1].notes = QString(int(budget - base), QLatin1Char('x'));
+    QCOMPARE(wireSize(two[0]) + wireSize(two[1]), budget);
+
+    {
+        ImportFixture f;
+        QVERIFY(f.open());
+        QCOMPARE(f.repository->queueImport(two), ContactImportOutcome::Queued);
+    }
+    two[1].notes = *two[1].notes + QLatin1Char('x');
+    ImportFixture f;
+    QVERIFY(f.open());
+    QCOMPARE(f.repository->queueImport(two), ContactImportOutcome::TooLarge);
+    QVERIFY(f.pendingDao->findAll().isEmpty());
+}
+
+// One transaction: a write that fails on the second contact takes the first
+// with it, from the cache and from the outbox.
+void ContactSyncRepositoryTest::aVCardImportThatFailsPartWayQueuesNothing()
+{
+    ImportFixture f;
+    QVERIFY(f.open());
+    {
+        QSqlQuery trigger(f.db.handle());
+        QVERIFY(trigger.exec(QStringLiteral("CREATE TRIGGER refuse BEFORE INSERT ON contacts "
+                                            "WHEN NEW.fn = 'Imported 1' BEGIN SELECT RAISE(ABORT, 'refused'); END")));
+    }
+    QCOMPARE(f.repository->queueImport(namedContacts(3)), ContactImportOutcome::WriteFailed);
+    QVERIFY(f.contactDao->findAll().isEmpty());
+    QVERIFY(f.pendingDao->findAll().isEmpty());
+    // And the connection is usable afterwards: the rollback ended the transaction.
+    {
+        QSqlQuery drop(f.db.handle());
+        QVERIFY(drop.exec(QStringLiteral("DROP TRIGGER refuse")));
+    }
+    QCOMPARE(f.repository->queueImport(namedContacts(3)), ContactImportOutcome::Queued);
 }
 
 QTEST_GUILESS_MAIN(ContactSyncRepositoryTest)

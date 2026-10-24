@@ -46,6 +46,14 @@ QVector<PendingContactChangeRecord> PendingContactChangeDao::findAll() const
     return results;
 }
 
+std::optional<int> PendingContactChangeDao::count() const
+{
+    QSqlQuery query(m_db);
+    if (!query.exec(QStringLiteral("SELECT COUNT(*) FROM pending_contact_changes")) || !query.next())
+        return std::nullopt;
+    return query.value(0).toInt();
+}
+
 bool PendingContactChangeDao::deleteById(int id)
 {
     QSqlQuery query(m_db);

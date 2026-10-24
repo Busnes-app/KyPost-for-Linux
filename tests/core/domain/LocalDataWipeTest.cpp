@@ -121,6 +121,7 @@ void LocalDataWipeTest::wipeEverythingClearsCachesPairingAndLock()
     pairing.deviceSecret = QStringLiteral("super-secret");
     QVERIFY(pairingStore.save(pairing));
     QVERIFY(appLockStore.setPin(QStringLiteral("419273")));
+    QVERIFY(settingsStore.setAppLockOffered());
 
     // A contact photo on disk, which is cached mail-adjacent content.
     QVERIFY(QDir().mkpath(dir.filePath(QStringLiteral("contact-photos"))));
@@ -142,6 +143,8 @@ void LocalDataWipeTest::wipeEverythingClearsCachesPairingAndLock()
 
     QVERIFY(!pairingStore.isPaired());
     QVERIFY(!appLockStore.lockEnabled());
+    // An erased device is a new install: the next pairing may offer a lock again.
+    QVERIFY(!settingsStore.appLockOffered());
     QVERIFY(!QFile::exists(dir.filePath(QStringLiteral("contact-photos/abc.jpg"))));
 }
 

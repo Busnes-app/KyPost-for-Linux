@@ -33,4 +33,13 @@ QtObject {
                          .map(function (c) { return {name: c.fn, email: c.email} })
     }
     function photoPathFor() { return "" }
+    // "good.vcf" previews twelve contacts; anything else is refused.
+    property int importsConfirmed: 0
+    property int importsDiscarded: 0
+    function previewVCardImport(url) {
+        if (String(url).indexOf("good.vcf") < 0) return {ok: false, error: "That file isn't a valid vCard."}
+        return {ok: true, count: 12, names: ["Ada", "Grace"], more: 10, skipped: 1}
+    }
+    function confirmVCardImport() { ++importsConfirmed; return true }
+    function discardVCardImport() { ++importsDiscarded }
 }

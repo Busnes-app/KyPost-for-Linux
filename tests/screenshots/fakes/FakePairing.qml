@@ -18,6 +18,7 @@ QtObject {
     property string observedCertificateFingerprint: "CC:DD"
     property bool reregistrationRejected: false
     signal pairingChanged()
+    signal pairedFromLink()
     function confirmPendingPair() {}
     function cancelPendingPair() { pairingState = "idle" }
     function pairFromDeepLink() {}

@@ -30,6 +30,15 @@ TestCase {
         compare(Format.protectedSubjectFor("5", "5", "INBOX", "INBOX", "", "outer"), "outer")
     }
 
+    // A sender who confirmed "Send without a subject?" wrote a blank protected
+    // Subject; it reads as blank, not as the outer "[Encrypted]" placeholder.
+    // Absent still falls back, and a blank one never crosses to another message.
+    function test_presentButBlankProtectedSubjectIsBlank() {
+        compare(Format.protectedSubjectFor("5", "5", "INBOX", "INBOX", "", "outer", true), "")
+        compare(Format.protectedSubjectFor("5", "5", "INBOX", "INBOX", "", "outer", false), "outer")
+        compare(Format.protectedSubjectFor("6", "5", "INBOX", "INBOX", "", "outer", true), "outer")
+    }
+
     function test_cidImagesUseOnlyTheLocalMessageRoute() {
         const base = "kypost-cid://abc-123/"
         const html = Format.renderedEmailHtml('<img src="cid:logo"><img src="https://tracker/pixel">', false, "", false, base)

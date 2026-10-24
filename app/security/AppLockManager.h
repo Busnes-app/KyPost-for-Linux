@@ -176,6 +176,13 @@ public:
     // this honoured the grace there would be no way to lock at once at all.
     Q_INVOKABLE void lockNow();
 
+    // Android #181's AppLockOffer.showIfDue: true at most once per install,
+    // right after a pairing succeeds, and only while no lock is set. Spent
+    // when it returns true, before anything is shown, so closing or ignoring
+    // the offer is the answer ("Not now" is final). False when the lock store
+    // cannot be read: that is not "no lock", and the banner already says so.
+    Q_INVOKABLE bool takeLockOffer();
+
     // The host's "the window went away" trigger: minimised, hidden to tray,
     // or the application state left Active.
     //

@@ -8,6 +8,7 @@
 #include "domain/GroupsRepository.h"
 #include "models/Contact.h"
 #include "models/Group.h"
+#include "vcard/VCardImport.h"
 
 #include <KLocalizedString>
 
@@ -15,6 +16,7 @@
 #include <QUrl>
 #include <QVariantList>
 #include <algorithm>
+#include <utility>
 
 namespace {
 
@@ -561,6 +563,89 @@ QString ContactsController::createContact(const QVariantMap& fields)
     setLastError(QString());
     load();
     return newUid;
+}
+
+QVariantMap ContactsController::previewVCardImport(const QString& fileUrl)
+{
+    m_importPreview.clear();
+    const QUrl url(fileUrl);
+    const VCardImport::Result result = VCardImport::readFile(url.isLocalFile() ? url.toLocalFile() : fileUrl);
+
+    QString error;
+    switch (result.refusal) {
+    case VCardImport::Refusal::None:
+        break;
+    case VCardImport::Refusal::Unreadable:
+        error = i18n("Couldn't read that file.");
+        break;
+    case VCardImport::Refusal::TooLarge:
+        error = i18n("That file is larger than %1 KB.", VCardImport::kMaxBytes / 1024);
+        break;
+    case VCardImport::Refusal::NotUtf8:
+        error = i18n("That file isn't UTF-8 text.");
+        break;
+    case VCardImport::Refusal::Malformed:
+        error = i18n("That file isn't a valid vCard.");
+        break;
+    case VCardImport::Refusal::UnsupportedVersion:
+        error = i18n("Only vCard 3.0 and 4.0 files can be imported.");
+        break;
+    case VCardImport::Refusal::TooManyContacts:
+        error = i18n("That file has too many contacts. The limit is %1.", VCardImport::kMaxContacts);
+        break;
+    case VCardImport::Refusal::TooManyValues:
+        error = i18n("A contact in that file has too many values in one field. The limit is %1.",
+                     VCardImport::kMaxValuesPerField);
+        break;
+    case VCardImport::Refusal::Empty:
+        error = i18n("No contacts found in that file.");
+        break;
+    }
+    if (!error.isEmpty())
+        return {{QStringLiteral("ok"), false}, {QStringLiteral("error"), error}};
+
+    // Names come from the file: the first line of each, bounded.
+    constexpr int kPreviewNames = 10;
+    QStringList names;
+    for (qsizetype i = 0; i < result.contacts.size() && i < kPreviewNames; ++i)
+        names << result.contacts.at(i).fn.value_or(QString()).section(QLatin1Char('\n'), 0, 0).left(80);
+    m_importPreview = result.contacts;
+    return {{QStringLiteral("ok"), true},
+            {QStringLiteral("count"), int(result.contacts.size())},
+            {QStringLiteral("names"), names},
+            {QStringLiteral("more"), int(std::max<qsizetype>(0, result.contacts.size() - kPreviewNames))},
+            {QStringLiteral("skipped"), result.skipped}};
+}
+
+bool ContactsController::confirmVCardImport()
+{
+    const QVector<Contact> contacts = std::exchange(m_importPreview, {});
+    if (contacts.isEmpty())
+        return false;
+    switch (m_repository.queueImport(contacts)) {
+    case ContactImportOutcome::Queued:
+        setLastError(QString());
+        setStatusMessage(i18np("%1 contact imported", "%1 contacts imported", contacts.size()));
+        load();
+        sync();
+        return true;
+    case ContactImportOutcome::OutboxNotEmpty:
+        setLastError(i18n("Some changes are still waiting to sync. Sync them first, then import."));
+        return false;
+    case ContactImportOutcome::TooLarge:
+        setLastError(i18n("Those contacts are too large to sync in one go. Split the file and import each part."));
+        return false;
+    case ContactImportOutcome::WriteFailed:
+        setLastError(i18n("Could not save the imported contacts to the local database"));
+        load();
+        return false;
+    }
+    return false;
+}
+
+void ContactsController::discardVCardImport()
+{
+    m_importPreview.clear();
 }
 
 bool ContactsController::updateContact(const QString& uid, const QVariantMap& fields)

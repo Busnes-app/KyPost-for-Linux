@@ -495,6 +495,16 @@ Kirigami.ApplicationWindow {
                 pairingConfirmPopup.close()
             }
         }
+        // Android #181: after a pairing from a link, never after Reconnect.
+        // takeLockOffer() is true once per install and only with no lock set.
+        // Settings' pairing page is a Popup and would paint over the offer,
+        // so it gives way.
+        function onPairedFromLink() {
+            if (AppLock.takeLockOffer()) {
+                settingsPane.closePopups()
+                appLockOfferDialog.open()
+            }
+        }
     }
 
     // ---- PGP QR key exchange: two more popups, same choice as
@@ -1415,6 +1425,18 @@ Kirigami.ApplicationWindow {
         onChosen: function (messageIds, at) {
             MailApp.snoozeEmails(messageIds, at)
         }
+    }
+
+    ConfirmDialog {
+        id: appLockOfferDialog
+        objectName: "appLockOfferDialog"
+        anchors.fill: parent
+        z: 900
+        title: i18n("Lock KyPost?")
+        message: i18n("Your mail now opens without a PIN. An app lock keeps it closed to anyone using this device while you're away. You can set it up later in Settings, Security.")
+        acceptText: i18n("Set up app lock")
+        rejectText: i18n("Not now")
+        onAccepted: root.openSettingsPane(6) // Security
     }
 
     FolderDialog {

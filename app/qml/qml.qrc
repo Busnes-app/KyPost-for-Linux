@@ -36,7 +36,10 @@
     <file>components/NotificationFolderDialog.qml</file>
     <file>components/MoveToFolderDialog.qml</file>
     <file>components/SnoozeDialog.qml</file>
+    <file>components/InviteCard.qml</file>
+    <file>components/RsvpConfirmDialog.qml</file>
     <file>components/FolderDialog.qml</file>
+    <file>components/ConfirmDialog.qml</file>
     <file>components/SendLaterDialog.qml</file>
     <file>components/MaterialIcon.qml</file>
     <file>components/Card.qml</file>

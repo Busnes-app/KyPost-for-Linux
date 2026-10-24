@@ -103,6 +103,7 @@ kypost_add_test(WipeTripwireTest core/security/WipeTripwireTest.cpp)
 kypost_add_test(PgpMessageStateTest core/domain/PgpMessageStateTest.cpp)
 kypost_add_test(PgpComposeStateTest core/domain/PgpComposeStateTest.cpp)
 kypost_add_test(ReplyAllTest core/domain/ReplyAllTest.cpp)
+kypost_add_test(CalendarInviteTest core/domain/CalendarInviteTest.cpp)
 kypost_add_test(KeywordRepositoryTest core/domain/KeywordRepositoryTest.cpp)
 kypost_add_test(ContactSyncReconciliationTest core/domain/ContactSyncReconciliationTest.cpp)
 kypost_add_test(NativeContactReconciliationTest core/domain/NativeContactReconciliationTest.cpp)
@@ -145,6 +146,7 @@ kypost_add_test(PgpSendClientTest core/net/PgpSendClientTest.cpp)
 kypost_add_test(RelayMailSourceTest core/net/RelayMailSourceTest.cpp)
 
 kypost_add_test(VCardContactTest core/vcard/VCardContactTest.cpp)
+kypost_add_test(VCardImportTest core/vcard/VCardImportTest.cpp)
 
 kypost_add_test(ThemePaletteTest core/theme/ThemePaletteTest.cpp)
 kypost_add_test(AppThemeTest core/theme/AppThemeTest.cpp)
@@ -355,6 +357,14 @@ kypost_add_app_test(ScheduledControllerTest
   LIBS KF6::I18n
 )
 
+# Calendar invites and RSVP: the card, and a REPLY only for the confirming account.
+kypost_add_app_test(InviteControllerTest
+  SOURCES
+    app/mail/InviteControllerTest.cpp
+    ${CMAKE_SOURCE_DIR}/app/mail/InviteController.cpp
+  LIBS KF6::I18n
+)
+
 # Sign-in approval: lock gate, tapped digits, expiry, which paths may raise one.
 kypost_add_app_test(MfaControllerTest
   SOURCES
@@ -561,10 +571,16 @@ set_tests_properties(ShellTests PROPERTIES
 add_test(NAME ShellTestsScaled COMMAND ShellTests)
 set_tests_properties(ShellTestsScaled PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_SCALE_FACTOR=1.6;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu;QT_QUICK_BACKEND=software;KYPOST_RSS_LIMIT_MB=800")
+# Shell tests that open a message, in a process of their own. Opening one
+# starts WebEngine, and under the sanitizers that alone took ShellTests past
+# its 800 MB limit in the test after it; the limit stays as it is.
+add_test(NAME ShellReaderTests COMMAND ShellTests -input ${CMAKE_CURRENT_SOURCE_DIR}/shell-reader)
+set_tests_properties(ShellReaderTests PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu;QT_QUICK_BACKEND=software;KYPOST_RSS_LIMIT_MB=800")
 if(EXISTS "/.flatpak-info")
   # The shell holds EmailDetail's WebEngineView; same build-sandbox-only
   # setup as ProtectedImageHandlerTest above.
-  set_property(TEST ShellTests ShellTestsScaled APPEND PROPERTY ENVIRONMENT
+  set_property(TEST ShellTests ShellTestsScaled ShellReaderTests APPEND PROPERTY ENVIRONMENT
     "QTWEBENGINEPROCESS_PATH=/app/lib/libexec/QtWebEngineProcess"
     "QTWEBENGINE_RESOURCES_PATH=/app/resources"
     "QTWEBENGINE_LOCALES_PATH=/app/translations/qtwebengine_locales"

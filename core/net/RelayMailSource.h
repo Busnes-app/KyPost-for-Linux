@@ -149,6 +149,15 @@ struct SendMailResult
     // any delivery, so sending again unthreaded cannot duplicate. Matched
     // whole: other 502s here can follow a delivery and quote SMTP text.
     bool replyThreadingRefused = false;
+
+    // `"calendarReply": true` (withCalendarReplyAck in server_mail_send.go):
+    // the message carried the RSVP part. A 200 without it is a relay that
+    // ignored the field and sent the body alone.
+    bool calendarReplySent = false;
+
+    // The relay's HTTP status, 0 when it never answered. A 4xx was refused
+    // before any delivery; a 502 or a timeout may follow one.
+    int statusCode = 0;
 };
 
 // POST /api/mail/draft response: {ok}. No sentSaved/warning -- the backend
@@ -169,6 +178,9 @@ struct MailAttachmentInfo
     QString name;
     QString mimeType;
     int size = 0;
+    // A text/calendar part's uppercase iTIP METHOD; omitempty, and absent
+    // from a relay older than calendarReply (KyPost-Server #353).
+    QString calendarMethod;
 
     bool operator==(const MailAttachmentInfo&) const = default;
 };
@@ -314,6 +326,15 @@ public:
                              bool allowPickupFallback = false, const QString& replyToMessageId = {},
                              const QString& replyToMailbox = {}, const QDateTime& sendAt = {}) const;
 
+    // POST /api/mail/send with `calendarReply: {ics}` (an RSVP), addressed to
+    // the invite's organizer. Always plain, unsigned and unencrypted, with no
+    // attachments; `from` is a send-as alias, or empty for the account's own
+    // address. The relay checks the ics (mailmsg.CalendarReply) and answers
+    // 400 to anything else; check calendarReplySent on success.
+    SendMailResult sendCalendarReply(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& to,
+                                     const QString& from, const QString& subject, const QString& body,
+                                     const QString& ics) const;
+
     // POST /api/mail/draft. When pgpDraft is supplied, only To and the complete
     // self-encrypted PGP/MIME message leave this process. The other arguments
     // are intentionally excluded from the JSON in that case.
@@ -351,5 +372,9 @@ public:
     CancelScheduledResult cancelScheduled(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& id) const;
 
 private:
+    // The POST and its answer, shared by sendMail and sendCalendarReply.
+    SendMailResult postSend(const QUrl& serverBaseUrl, const RelayAuth& auth, const QJsonObject& requestBody,
+                            bool threaded, bool scheduled) const;
+
     HttpClient& m_httpClient;
 };

@@ -797,7 +797,10 @@ void PairingController::pairFromParsedParams(PairingParams params)
             }
             // Phase 3, back here: persists, installs the new pin, writes the
             // delivery settings.
-            applyRegistrationResult(m_service.finishPair(std::move(attempt), params, result));
+            const NativeRegistrationResult applied = m_service.finishPair(std::move(attempt), params, result);
+            applyRegistrationResult(applied);
+            if (applied.outcome == RegistrationOutcome::Success)
+                emit pairedFromLink();
         });
 }
 

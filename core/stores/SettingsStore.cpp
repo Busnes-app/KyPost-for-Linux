@@ -6,6 +6,7 @@ constexpr auto kPreferredModeKey = "interface/preferredMode";
 constexpr auto kTrayIconEnabledKey = "general/trayIconEnabled";
 constexpr auto kMinimizeToTrayOnCloseKey = "general/minimizeToTrayOnClose";
 constexpr auto kHostileLocationKey = "security/hostileLocationProtection";
+constexpr auto kAppLockOfferedKey = "security/appLockOffered";
 constexpr auto kDeliveryModeKey = "push/deliveryMode";
 constexpr auto kPullEndpointKey = "push/pullEndpoint";
 constexpr auto kTransportKey = "push/transport";
@@ -85,6 +86,23 @@ bool SettingsStore::setHostileLocationProtectionEnabled(bool enabled)
     // from its in-memory copy, which holds the new value either way.
     m_settings.sync();
     return m_settings.status() == QSettings::NoError; // Hostile-location relaunch requires durable settings.
+}
+
+bool SettingsStore::appLockOffered() const
+{
+    return m_settings.value(kAppLockOfferedKey, false).toBool();
+}
+
+bool SettingsStore::setAppLockOffered()
+{
+    m_settings.setValue(kAppLockOfferedKey, true);
+    m_settings.sync();
+    return m_settings.status() == QSettings::NoError;
+}
+
+void SettingsStore::clearAppLockOffered()
+{
+    m_settings.remove(kAppLockOfferedKey);
 }
 
 QString SettingsStore::deliveryMode() const

@@ -1577,6 +1577,9 @@ void MailController::listAttachments(const QString& mailbox, const QString& mess
                 entry[QStringLiteral("name")] = info.name;
                 entry[QStringLiteral("mimeType")] = info.mimeType;
                 entry[QStringLiteral("size")] = info.size;
+                // For the invite card (Invites.load): a relay without it
+                // would send an RSVP as plain mail, so it gets no buttons.
+                entry[QStringLiteral("calendarMethod")] = info.calendarMethod;
                 list.append(entry);
             }
             emit attachmentsListed(mailbox, messageId, list);
@@ -2519,7 +2522,7 @@ QVariantMap MailController::reopenDecryptedDraft(const QString& token)
             {QStringLiteral("to"), m_decryptedTo.isEmpty() ? email->sentTo : m_decryptedTo},
             {QStringLiteral("cc"), m_decryptedCc.isEmpty() ? email->cc : m_decryptedCc},
             {QStringLiteral("bcc"), m_decryptedBcc},
-            {QStringLiteral("subject"), m_decryptedSubject.isEmpty() ? email->subject : m_decryptedSubject},
+            {QStringLiteral("subject"), m_decryptedHasSubject || !m_decryptedSubject.isEmpty() ? m_decryptedSubject : email->subject},
             {QStringLiteral("body"), m_decryptedHtml.isEmpty() ? m_decryptedPlain.toHtmlEscaped().replace(QLatin1Char('\n'), QStringLiteral("<br>")) : m_decryptedHtml},
             {QStringLiteral("paths"), paths}, {QStringLiteral("names"), names},
             {QStringLiteral("encrypted"), true}};
@@ -2568,6 +2571,7 @@ void MailController::forgetDecrypted()
     m_decryptedAttachments.clear();
     m_decryptedToken.clear();
     m_decryptedSubject.clear();
+    m_decryptedHasSubject = false;
     m_decryptedTo.clear();
     m_decryptedCc.clear();
     m_decryptedBcc.clear();
@@ -2691,6 +2695,7 @@ void MailController::applyDecryptResult(const PairingIdentity& identity, const Q
     m_decryptedAttachments = body.attachments;
     m_decryptedToken = QUuid::createUuid().toString(QUuid::WithoutBraces);
     m_decryptedSubject = body.subject;
+    m_decryptedHasSubject = body.hasSubject;
     m_decryptedTo = body.to;
     m_decryptedCc = body.cc;
     m_decryptedBcc = body.bcc;

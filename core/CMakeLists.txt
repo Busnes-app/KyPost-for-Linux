@@ -27,6 +27,8 @@ add_library(kypostcore STATIC
   domain/SendLater.h
   domain/ReplyAll.cpp
   domain/ReplyAll.h
+  domain/CalendarInvite.cpp
+  domain/CalendarInvite.h
   domain/KeywordRepository.cpp
   domain/KeywordRepository.h
   domain/ContactSyncReconciliation.cpp
@@ -160,6 +162,8 @@ add_library(kypostcore STATIC
   net/ClientVersionClient.h
   vcard/VCardContact.cpp
   vcard/VCardContact.h
+  vcard/VCardImport.cpp
+  vcard/VCardImport.h
   theme/ThemePalette.cpp
   theme/ThemePalette.h
   theme/AppTheme.cpp

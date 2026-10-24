@@ -76,7 +76,7 @@ inline void registerAll(QQmlEngine& engine, ScreenRun& run, ThemeController& the
     qmlRegisterSingletonInstance("KyPostScreens", 1, 0, "ScreenRun", &run);
     qmlRegisterSingletonInstance<ThemeController>("com.kysecurity.mail", 1, 0, "Theme", &theme);
     for (const char* name : {"General", "MailApp", "ProtectedImages", "AppLock", "ContactsApp", "PgpQr",
-                             "PgpEnrollment", "Pairing", "UpdateCheck", "Mfa", "Scheduled"}) {
+                             "PgpEnrollment", "Pairing", "UpdateCheck", "Mfa", "Scheduled", "Invites"}) {
         // Created from QML but registered as a QObject singleton, the way the
         // real controllers are: a composite singleton named "Pairing" would
         // clash with pages/Pairing.qml in the pages directory import.
