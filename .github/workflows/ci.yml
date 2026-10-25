@@ -312,6 +312,10 @@ jobs:
       # deliberately-unfreed singletons, so LeakSanitizer reports are noise
       # here. ASan's use-after-free/overflow detection and all of UBSan
       # remain on, which is the part that matters.
+      #
+      # new_delete_type_mismatch=0: Ubuntu 26.04's libQt6WebEngineCore 6.10
+      # trips it inside QWebEngineProfile's constructor (uninstrumented Qt code,
+      # 4 WebEngine tests). Everything else in ASan stays on.
       - name: Configure (sanitizers)
         run: |
           cmake -B build-asan -S . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DKYPOST_SANITIZE=ON \
@@ -322,7 +326,7 @@ jobs:
 
       - name: Test (sanitizers)
         env:
-          ASAN_OPTIONS: detect_leaks=0
+          ASAN_OPTIONS: detect_leaks=0:new_delete_type_mismatch=0
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         run: ctest --test-dir build-asan --output-on-failure
 
