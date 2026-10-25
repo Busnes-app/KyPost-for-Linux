@@ -9,6 +9,9 @@
 #include <QTimer>
 #include <QUrl>
 
+#include <atomic>
+#include <memory>
+
 class NetworkExecutor;
 class PairingStore;
 
@@ -60,5 +63,7 @@ private:
     QUrl m_serverBaseUrl;
     RelayAuth m_auth;
     PairingIdentity m_identity;
+    // Read by the import worker between keys; cancel() sets it and starts a fresh one.
+    std::shared_ptr<std::atomic_bool> m_importCancelled = std::make_shared<std::atomic_bool>(false);
     static constexpr qint64 kPollWindowMs = 5 * 60 * 1000;
 };

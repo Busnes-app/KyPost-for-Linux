@@ -216,7 +216,8 @@ target_include_directories(kypostcore PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/genera
 # TLS, is in org.kde.Platform, and is on every target distro -- see that
 # file's header comment. PRIVATE: nothing in kypostcore's public headers
 # mentions an OpenSSL type, so consumers don't inherit the include path.
-find_package(OpenSSL REQUIRED)
+# 3.2 for OSSL_HPKE_* (RFC 9180 device envelopes v4/v5, DeviceEnrollmentCrypto).
+find_package(OpenSSL 3.2 REQUIRED)
 
 # Argon2id for the credential seal's key derivation.
 #

@@ -111,9 +111,8 @@ enum class PgpKeyringImportStatus
     EngineUnavailable,
 };
 
-// Preparation only: the v2 enrollment controller must not call this or use its
-// legacy boolean acknowledgement for v3. expected comes from the authenticated
-// current server snapshot, not from parsing this payload. No archive is written.
+// Never acknowledge a ring with the legacy boolean. expected comes from the
+// authenticated current server snapshot, not from parsing this payload. No archive is written.
 // All members are validated in isolation before the first destination import.
 // Only Imported/Unchanged permit the caller to advance active selection/ack.
 // Run on a worker. stillCurrent, if supplied, must be thread-safe; it is checked
@@ -121,3 +120,10 @@ enum class PgpKeyringImportStatus
 PgpKeyringImportStatus importPrivateKeyring(
     const SecureBytes& keyringJson, const PgpKeyringSnapshot& expected,
     const QString& homeDirectory = {}, const std::function<bool()>& stillCurrent = {});
+
+// Imports what DeviceEnrollmentCrypto::openDelivery returned for `version`:
+// one armored key bound to expected.activeFingerprint (2/4), or the complete
+// ring bound to all of expected (3/5). Anything else is Rejected.
+PgpKeyringImportStatus importDeviceDelivery(int version, const SecureBytes& plaintext,
+    const PgpKeyringSnapshot& expected, const QString& homeDirectory = {},
+    const std::function<bool()>& stillCurrent = {});

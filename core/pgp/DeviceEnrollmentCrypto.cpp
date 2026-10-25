@@ -5,6 +5,7 @@
 
 #include <openssl/core_names.h>
 #include <openssl/evp.h>
+#include <openssl/hpke.h>
 #include <openssl/kdf.h>
 #include <openssl/params.h>
 
@@ -14,8 +15,10 @@
 namespace {
 constexpr auto kInfo = "kypost-device-envelope/v2";
 constexpr auto kV3Info = "kypost-device-envelope/v3";
+constexpr auto kDomainPrefix = "kypost-device-envelope/v";
 constexpr int kMaxV3EnvelopeBytes = 128 * 1024;
 constexpr auto kAlgorithm = "ECDH-P256+HKDF-SHA256+A256GCM";
+constexpr auto kHpkeAlgorithm = "HPKE-Base-P256-SHA256-A256GCM";
 constexpr auto kCrockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 constexpr int kMaxEnvelopeBytes = 1024 * 1024;
 
@@ -166,7 +169,7 @@ QString formatEnrollmentCode(const QString& code)
         + code.mid(7, 4) + QLatin1Char('-') + code.right(3);
 }
 
-QByteArray deviceEnvelopeAad(const QString& deviceId, const QString& fingerprint)
+QByteArray deviceEnvelopeAad(const QString& deviceId, const QString& fingerprint, int version)
 {
     const QByteArray id = deviceId.toUtf8();
     // simplified() turns every whitespace run into one ' ', then those go.
@@ -177,7 +180,7 @@ QByteArray deviceEnvelopeAad(const QString& deviceId, const QString& fingerprint
             return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F');
         }))
         return {};
-    QByteArray aad(kInfo);
+    QByteArray aad(kDomainPrefix + QByteArray::number(version));
     aad.append(static_cast<char>((id.size() >> 8) & 0xff));
     aad.append(static_cast<char>(id.size() & 0xff));
     aad.append(id);
@@ -187,7 +190,7 @@ QByteArray deviceEnvelopeAad(const QString& deviceId, const QString& fingerprint
     return aad;
 }
 
-QByteArray deviceEnvelopeV3Aad(const QString& deviceId, const QString& activeFingerprint)
+QByteArray deviceEnvelopeV3Aad(const QString& deviceId, const QString& activeFingerprint, int version)
 {
     const QByteArray id = deviceId.toUtf8();
     const QByteArray fingerprint = activeFingerprint.toUtf8();
@@ -197,8 +200,8 @@ QByteArray deviceEnvelopeV3Aad(const QString& deviceId, const QString& activeFin
             return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F');
         }))
         return {};
-    // V3 binds exact UTF-8 bytes. V2's normalization must not leak into it.
-    QByteArray aad(kV3Info);
+    // V3/v5 bind exact UTF-8 bytes. V2's normalization must not leak into them.
+    QByteArray aad(kDomainPrefix + QByteArray::number(version));
     aad.append(static_cast<char>((id.size() >> 8) & 0xff));
     aad.append(static_cast<char>(id.size() & 0xff));
     aad.append(id);
@@ -220,10 +223,18 @@ SecureBytes DeviceEnrollmentCrypto::openKeyringEnvelope(const QByteArray& envelo
     return open(envelopeJson, deviceId, activeFingerprint, 3);
 }
 
+SecureBytes DeviceEnrollmentCrypto::openDelivery(const QByteArray& envelopeJson, int version,
+                                                  const QString& deviceId, const QString& fingerprint) const
+{
+    return version >= 2 && version <= 5 ? open(envelopeJson, deviceId, fingerprint, version) : SecureBytes();
+}
+
 SecureBytes DeviceEnrollmentCrypto::open(const QByteArray& envelopeJson, const QString& deviceId,
                                           const QString& fingerprint, int version) const
 {
-    const int maximum = version == 3 ? kMaxV3EnvelopeBytes : kMaxEnvelopeBytes;
+    // Odd versions carry the complete ring, even ones one armored key.
+    const bool ring = version == 3 || version == 5;
+    const int maximum = ring ? kMaxV3EnvelopeBytes : kMaxEnvelopeBytes;
     if (!isReady() || envelopeJson.isEmpty() || envelopeJson.size() > maximum)
         return {};
     const QJsonDocument document = QJsonDocument::fromJson(envelopeJson);
@@ -231,15 +242,56 @@ SecureBytes DeviceEnrollmentCrypto::open(const QByteArray& envelopeJson, const Q
         return {};
     const QJsonObject object = document.object();
     if (object.value(QStringLiteral("v")) != QJsonValue(version)
-        || object.value(QStringLiteral("alg")).toString() != QString::fromLatin1(kAlgorithm))
+        || object.value(QStringLiteral("alg")).toString() != QString::fromLatin1(version >= 4 ? kHpkeAlgorithm : kAlgorithm))
         return {};
+    // info/AAD comes from this device's own ID and the checked fingerprint, never the envelope.
+    const QByteArray aad = ring ? deviceEnvelopeV3Aad(deviceId, fingerprint, version)
+                                : deviceEnvelopeAad(deviceId, fingerprint, version);
+    if (aad.isEmpty())
+        return {};
+    SecureBytes plaintext;
+    if (version >= 4) {
+        const QByteArray encapsulated = strictBase64(object.value(QStringLiteral("enc")), true);
+        const QByteArray ciphertext = strictBase64(object.value(QStringLiteral("ct")), true);
+        if (object.size() != 4 || encapsulated.size() != 65 || encapsulated.front() != '\x04')
+            return {};
+        plaintext = hpkeOpen(m_key, encapsulated, aad, {}, ciphertext);
+    } else {
+        plaintext = openEcdh(object, aad, version);
+    }
+    if (plaintext.isEmpty() || (!ring && !plaintext.bytes().startsWith("-----BEGIN PGP PRIVATE KEY BLOCK-----")))
+        return {};
+    return plaintext;
+}
+
+SecureBytes DeviceEnrollmentCrypto::hpkeOpen(EVP_PKEY* key, const QByteArray& encapsulated, const QByteArray& info,
+                                             const QByteArray& aad, const QByteArray& ciphertext)
+{
+    if (key == nullptr || ciphertext.size() <= 16)
+        return {};
+    const OSSL_HPKE_SUITE suite = {OSSL_HPKE_KEM_ID_P256, OSSL_HPKE_KDF_ID_HKDF_SHA256, OSSL_HPKE_AEAD_ID_AES_GCM_256};
+    std::unique_ptr<OSSL_HPKE_CTX, decltype(&OSSL_HPKE_CTX_free)> context(
+        OSSL_HPKE_CTX_new(OSSL_HPKE_MODE_BASE, suite, OSSL_HPKE_ROLE_RECEIVER, nullptr, nullptr), &OSSL_HPKE_CTX_free);
+    SecureBytes plaintext(QByteArray(ciphertext.size() - 16, '\0'));
+    size_t size = static_cast<size_t>(plaintext.bytes().size());
+    if (!context
+        || OSSL_HPKE_decap(context.get(), reinterpret_cast<const unsigned char*>(encapsulated.constData()),
+            encapsulated.size(), key, reinterpret_cast<const unsigned char*>(info.constData()), info.size()) != 1
+        || OSSL_HPKE_open(context.get(), reinterpret_cast<unsigned char*>(plaintext.bytes().data()), &size,
+            reinterpret_cast<const unsigned char*>(aad.constData()), aad.size(),
+            reinterpret_cast<const unsigned char*>(ciphertext.constData()), ciphertext.size()) != 1)
+        return {};
+    plaintext.bytes().resize(static_cast<qsizetype>(size));
+    return plaintext;
+}
+
+SecureBytes DeviceEnrollmentCrypto::openEcdh(const QJsonObject& object, const QByteArray& aad, int version) const
+{
     const QByteArray peerPoint = strictBase64(object.value(QStringLiteral("epk")), version == 3);
     const QByteArray iv = strictBase64(object.value(QStringLiteral("iv")), version == 3);
     const QByteArray ciphertextAndTag = strictBase64(object.value(QStringLiteral("ct")), version == 3);
-    const QByteArray aad = version == 3 ? deviceEnvelopeV3Aad(deviceId, fingerprint)
-                                         : deviceEnvelopeAad(deviceId, fingerprint);
     if (peerPoint.size() != 65 || peerPoint.front() != '\x04' || iv.size() != 12
-        || ciphertextAndTag.size() <= 16 || aad.isEmpty())
+        || ciphertextAndTag.size() <= 16)
         return {};
 
     SecureBytes key = envelopeKey(peerPoint, version);
@@ -268,8 +320,6 @@ SecureBytes DeviceEnrollmentCrypto::open(const QByteArray& envelopeJson, const Q
             reinterpret_cast<unsigned char*>(plaintext.bytes().data()) + written, &finalBytes) != 1)
         return {};
     plaintext.bytes().resize(written + finalBytes);
-    if (version == 2 && !plaintext.bytes().startsWith("-----BEGIN PGP PRIVATE KEY BLOCK-----"))
-        return {};
     return plaintext;
 }
 

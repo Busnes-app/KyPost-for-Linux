@@ -139,6 +139,7 @@ kypost_add_test(GroupsClientTest core/net/GroupsClientTest.cpp)
 kypost_add_test(ContactPhotoClientTest core/net/ContactPhotoClientTest.cpp)
 kypost_add_test(PgpQrClientTest core/net/PgpQrClientTest.cpp)
 kypost_add_test(PgpBootstrapClientTest core/net/PgpBootstrapClientTest.cpp)
+kypost_add_test(PgpDeviceEnrollmentClientTest core/net/PgpDeviceEnrollmentClientTest.cpp)
 kypost_add_test(PgpRecipientCheckerTest core/net/PgpRecipientCheckerTest.cpp)
 kypost_add_test(PgpPayloadClientTest core/net/PgpPayloadClientTest.cpp)
 kypost_add_test(PgpResolveClientTest core/net/PgpResolveClientTest.cpp)
@@ -517,7 +518,12 @@ find_program(KYPOST_QMLLINT
   PATHS /usr/lib/qt6/bin
   NO_DEFAULT_PATH
 )
-if(KYPOST_QMLLINT)
+# Gated on Qt >= 6.11, the Qt the Flatpak ships and lints with (both arches).
+# Ubuntu 26.04's 6.10 qmllint reports 22 members that exist (Q_INVOKABLEs,
+# declared properties, singletons shadowed by same-named pages).
+if(KYPOST_QMLLINT AND Qt6_VERSION VERSION_LESS 6.11)
+  message(STATUS "QmlPropertyLint: Qt ${Qt6_VERSION} qmllint predates the shipped 6.11; the Flatpak build runs it")
+elseif(KYPOST_QMLLINT)
   add_test(NAME QmlPropertyLint
     COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/qml/qmllint-gate.sh
             ${KYPOST_QMLLINT} ${CMAKE_SOURCE_DIR}/app/qml)
