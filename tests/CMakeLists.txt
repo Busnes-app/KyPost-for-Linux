@@ -518,7 +518,12 @@ find_program(KYPOST_QMLLINT
   PATHS /usr/lib/qt6/bin
   NO_DEFAULT_PATH
 )
-if(KYPOST_QMLLINT)
+# Gated on Qt >= 6.11, the Qt the Flatpak ships and lints with (both arches).
+# Ubuntu 26.04's 6.10 qmllint reports 22 members that exist (Q_INVOKABLEs,
+# declared properties, singletons shadowed by same-named pages).
+if(KYPOST_QMLLINT AND Qt6_VERSION VERSION_LESS 6.11)
+  message(STATUS "QmlPropertyLint: Qt ${Qt6_VERSION} qmllint predates the shipped 6.11; the Flatpak build runs it")
+elseif(KYPOST_QMLLINT)
   add_test(NAME QmlPropertyLint
     COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/qml/qmllint-gate.sh
             ${KYPOST_QMLLINT} ${CMAKE_SOURCE_DIR}/app/qml)
