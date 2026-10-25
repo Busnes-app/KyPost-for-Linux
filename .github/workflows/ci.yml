@@ -103,6 +103,15 @@
 # archive.neon.kde.org/user/dists/noble/main/binary-amd64/Packages.gz),
 # version-matched at 6.28.0 like the other KF6 packages already in this
 # list -- note it doesn't follow their `libkf6*-dev` naming pattern.
+#
+# Update 2026-10-24: both jobs moved to ubuntu-26.04 ("resolute"), and the neon
+# layer is gone. Owner decision: core/ needs OpenSSL >= 3.2 for OSSL_HPKE_*
+# (device envelopes v4/v5), and noble ships 3.0. Resolute ships OpenSSL 3.5,
+# Qt 6.10, KF6 and Qt 5.15 in its own archive; neon has no resolute suite. The
+# package list below was resolved, and both jobs built and tested, in an
+# ubuntu:26.04 container before this change. Names differ from neon's:
+# libkirigami-dev, libkf6statusnotifieritem-dev, libkunifiedpush-dev.
+# Everything above about noble and neon is history.
 name: CI
 
 on:
@@ -152,25 +161,15 @@ jobs:
     # `run-tests: true` -- so the full ctest suite AND the launch smoke test
     # run on real arm64 hardware there.
     #
-    # Re-add a matrix here only once neon's arm64 archive is complete, and
-    # check the closure, not the names.
-    runs-on: ubuntu-24.04
+    # The neon layer is gone (2026-10-24); before re-adding arm64 here
+    # (ubuntu-26.04-arm), resolve this list's closure, not its names.
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Cheap, and it fails before ~20 minutes of dependency building.
       - name: Verify version consistency
         run: ./scripts/verify-version.sh
-
-      # Layer KDE neon's "user" apt archive on top of the stock noble repos
-      # -- see the file-level comment above for why this is necessary (no
-      # KF6 packages exist in Ubuntu 24.04's own archives at all).
-      - name: Add KDE neon apt archive (KF6/Qt6 packages for noble)
-        run: |
-          sudo install -d -m 0755 /etc/apt/keyrings
-          curl -fsSL https://archive.neon.kde.org/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/neon-archive.gpg
-          echo "deb [signed-by=/etc/apt/keyrings/neon-archive.gpg] https://archive.neon.kde.org/user noble main" \
-            | sudo tee /etc/apt/sources.list.d/neon.list
 
       # Full dependency list cross-checked against this repo's own
       # CMakeLists.txt (root, app/, core/, tests/) -- see the file-level
@@ -219,13 +218,13 @@ jobs:
             qt6-webengine-dev \
             qt6-multimedia-dev \
             libqt6sql6-sqlite \
-            libkf6kirigami2-dev \
+            libkirigami-dev \
             libkf6notifications-dev \
             libkf6dbusaddons-dev \
             libkf6i18n-dev \
-            kf6-kstatusnotifieritem-dev \
+            libkf6statusnotifieritem-dev \
             qtkeychain-qt6-dev \
-            kunifiedpush-dev \
+            libkunifiedpush-dev \
             libssl-dev \
             libargon2-dev \
             libgpgme-dev \
@@ -234,8 +233,8 @@ jobs:
       # ZXing (zxing-cpp) backs the PGP QR key exchange feature's
       # encode/decode (app/pgp/PgpQrController.cpp, app/pgp/PgpQrScanner.cpp
       # -- app/CMakeLists.txt's `find_package(ZXing CONFIG REQUIRED)`). Not
-      # installable via apt here: Ubuntu noble's universe archive only
-      # carries libzxing-dev 2.2.1-3, whose headers predate
+      # installable via apt here: resolute carries libzxing-dev 2.3.0 (not
+      # yet rechecked); noble's 2.2.1-3 had headers that predate
       # CreateBarcode.h/WriteBarcode.h (confirmed by inspecting that .deb's
       # contents directly -- neither file is present), and KDE neon's "user"
       # archive added above doesn't package zxing-cpp at all. Built from
@@ -328,12 +327,12 @@ jobs:
         run: ctest --test-dir build-asan --output-on-failure
 
   # core/ (libkypostcore) and tests/core on Qt 5.15, for the Ubuntu Touch app
-  # that shares it (AGENTS.md section 5). Stock noble packages only: no KDE
-  # neon archive, because nothing here needs KF6 and neon would bring Qt6.
+  # that shares it (AGENTS.md section 5). Stock resolute packages only (Qt 5.15
+  # is still in its archive); OpenSSL >= 3.2 is why this is not noble.
   # build-sqlcipher.sh needs only curl, make, a C compiler and libssl-dev.
   # SQLCipher is built so the encryption tests run instead of skipping.
   core-qt5:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:

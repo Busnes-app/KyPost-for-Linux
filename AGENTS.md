@@ -51,7 +51,7 @@ A change is not verified until this builds cleanly and `ctest` is green.
 
 `core/` and `tests/core` alone, on Qt 5.15 (the shared core of the Ubuntu
 Touch app). Drop `-DQT_DIR` to get Qt 6 if both are installed; configure prints
-`kypostcore: Qt <version>`. CI's `core-qt5` job runs this on stock noble:
+`kypostcore: Qt <version>`. CI's `core-qt5` job runs this on stock Ubuntu 26.04:
 
 ```sh
 cmake -B build-qt5 -S . -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DKYPOST_CORE_ONLY=ON \
@@ -515,7 +515,7 @@ divergence to guard against: KF is never used in `core/`.
   `at()`), `std::min` of `qsizetype` and Qt 5's `int` `size()` does not deduce,
   a test-data type needs `Q_DECLARE_METATYPE`, and Qt 6 headers pull in
   includes Qt 5 needs spelled out. The `core-qt5` CI job is the proof, not a
-  grep. `core/` stays on C++20: noble's gcc 13 compiles Qt 5.15 headers under
+  grep. `core/` stays on C++20: resolute's gcc compiles Qt 5.15 headers under
   it.
 
 - `core/`'s **QtCore/QtNetwork/QtSql-only boundary** is the rule most likely
@@ -529,12 +529,13 @@ divergence to guard against: KF is never used in `core/`.
     `app/mail/PgpMessagePresentation.h`.
   - **`core/` links exactly three non-Qt libraries, all PRIVATE, and no type
     from any of them appears in a public header**: OpenSSL's libcrypto
-    (`core/security/CredentialCipher.cpp` — Qt exposes no AEAD anywhere in
+    (>= 3.2 for `OSSL_HPKE_*`, so neither CI job runs on noble's 3.0;
+    `core/security/CredentialCipher.cpp` — Qt exposes no AEAD anywhere in
     its public API, and hand-rolling encrypt-then-MAC would be worse than
     linking what Qt already links for TLS), libargon2 (the memory-hard KDF
     behind the same seal), and gpgme — **the C API, never the `gpgmepp` C++
     wrapper**, which broke CI: KDE neon's `libgpgmepp-dev` wants gpgme >= 2.0
-    while Ubuntu noble carries 1.x, and CI layers both archives. A fourth,
+    while Ubuntu noble carried 1.x, and CI then layered both archives. A fourth,
     SQLCipher, is linked PUBLIC and only when `KYPOST_SQLCIPHER_ROOT` is set;
     §6h is why it cannot be an ordinary distro package. Adding a fifth is a
     decision, not a build tweak. `org.kde.Platform` ships libssl, so the
@@ -1196,12 +1197,21 @@ worse than no comment: the next reader stops looking.
   are never deleted. The expected snapshot must come from the authenticated
   server, not the payload itself. Run the importer on a worker with a thread-safe
   identity/cancellation predicate.
-  Keep the v2 controller on `openEnvelope`. V3 uses exact uppercase 40/64-digit
-  fingerprints, unchanged UTF-8 device IDs, canonical padded base64 and a 128 KiB
-  serialized-envelope limit. Both shared fixtures in `tests/fixtures/` are public
-  test material from server PR199. Capability publication and revision/generation
-  acknowledgement remain gated on server delivery contracts and Linux certificate
-  acceptance; import/vector tests do not authorize conversion. `OpenPgpKeyringTest`
+  **Wired 2026-10-24 (owner decision), with HPKE v4/v5.** `PgpEnrollmentController`
+  publishes `envelopeVersions: [2,3,4,5]` and opens by the server-recorded delivery
+  `version` via `openDelivery`, never by trial: 2/4 import one armored key with the
+  legacy boolean ack, 3/5 import the ring against the GET-envelope snapshot and ack
+  `{envelopeVersion, materialGeneration, fingerprint}`. V4/v5 are RFC 9180 HPKE
+  through OpenSSL `OSSL_HPKE_*` (never hand-rolled); `info` is the v2/v3 AAD with
+  the version digit, HPKE `aad` empty, exactly `{v, alg, enc, ct}`. V3/v5 use exact
+  uppercase 40/64-digit fingerprints, unchanged UTF-8 device IDs, canonical padded
+  base64 and a 128 KiB serialized-envelope limit. `device-envelope-v3.json` and
+  `pgp-keyring-v1.json` are public test material from server PR199;
+  `device-envelope-hpke.json` (SHA-256 `fa551913…a6499c`) and
+  `hpke-cfrg-p256-aes256.json` (`a9d0c155…5b865a`, CFRG draft-irtf-cfrg-hpke
+  `b1f7cb0c`) are byte-identical copies from kypost-server commit `5c52b69d`
+  `testdata/`. Re-copy, never edit. Openers keep v2/v3 until a later PR; until
+  then a hostile server can downgrade by trimming the advertised list. `OpenPgpKeyringTest`
   covers real disk imports, agent restart, historical/hidden-recipient decrypt,
   current signing, malformed payloads, partial failure/cancellation and retry.
 

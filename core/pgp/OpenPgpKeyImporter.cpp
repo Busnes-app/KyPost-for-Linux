@@ -774,3 +774,20 @@ PgpKeyringImportStatus importPrivateKeyring(const SecureBytes& keyringJson,
         return PgpKeyringImportStatus::Cancelled;
     return anyChanged ? PgpKeyringImportStatus::Imported : PgpKeyringImportStatus::Unchanged;
 }
+
+PgpKeyringImportStatus importDeviceDelivery(int version, const SecureBytes& plaintext,
+    const PgpKeyringSnapshot& expected, const QString& homeDirectory, const std::function<bool()>& stillCurrent)
+{
+    if (version == 3 || version == 5)
+        return importPrivateKeyring(plaintext, expected, homeDirectory, stillCurrent);
+    // An empty fingerprint would skip importPrivateKey's binding check.
+    if ((version != 2 && version != 4) || expected.activeFingerprint.isEmpty())
+        return PgpKeyringImportStatus::Rejected;
+    switch (importPrivateKey(plaintext, expected.activeFingerprint, homeDirectory).status) {
+    case PgpImportStatus::Imported: return PgpKeyringImportStatus::Imported;
+    case PgpImportStatus::Unchanged: return PgpKeyringImportStatus::Unchanged;
+    case PgpImportStatus::EngineUnavailable: return PgpKeyringImportStatus::EngineUnavailable;
+    case PgpImportStatus::Rejected: break;
+    }
+    return PgpKeyringImportStatus::Rejected;
+}

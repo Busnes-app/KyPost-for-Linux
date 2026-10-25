@@ -20,9 +20,14 @@ struct PgpEnrollmentController::StartResult
 namespace {
 struct ImportResult
 {
-    PgpImportResult imported;
+    PgpKeyringImportStatus imported = PgpKeyringImportStatus::EngineUnavailable;
     bool enrollmentStateReported = false;
 };
+
+bool importSucceeded(PgpKeyringImportStatus status)
+{
+    return status == PgpKeyringImportStatus::Imported || status == PgpKeyringImportStatus::Unchanged;
+}
 }
 
 PgpEnrollmentController::PgpEnrollmentController(PairingStore& pairingStore, NetworkExecutor& executor,
@@ -142,7 +147,17 @@ void PgpEnrollmentController::poll()
                 finishWithFailure(i18n("This device is no longer authorised to fetch its envelope."));
                 return;
             }
-            SecureBytes privateKey = m_crypto.openEnvelope(result.envelope, m_auth.deviceId, m_fingerprint);
+            // Open exactly the version the server recorded. A ring (3/5) is bound to
+            // the delivered snapshot, which must name the identity bootstrap reported.
+            const int version = result.version;
+            const bool ring = version == 3 || version == 5;
+            PgpKeyringSnapshot expected;
+            expected.activeFingerprint = m_fingerprint;
+            if (ring)
+                expected = result.keyring.value_or(PgpKeyringSnapshot{});
+            SecureBytes privateKey;
+            if (expected.activeFingerprint == m_fingerprint)
+                privateKey = m_crypto.openDelivery(result.envelope, version, m_auth.deviceId, m_fingerprint);
             m_crypto.clear();
             m_pollTimer.stop();
             m_codeTimer.stop();
@@ -154,15 +169,17 @@ void PgpEnrollmentController::poll()
             setState(Importing, i18n("Importing the private key into GnuPG…"));
             m_executor.run(
                 this,
-                [key = std::move(privateKey), fingerprint = m_fingerprint,
+                [key = std::move(privateKey), version, ring, expected, cancelled = m_importCancelled,
                  url = m_serverBaseUrl, auth = m_auth](HttpClient& http) mutable {
                     ImportResult importResult;
-                    importResult.imported = importPrivateKey(key, fingerprint);
+                    importResult.imported = importDeviceDelivery(version, key, expected, {},
+                                                                 [cancelled] { return !cancelled->load(); });
                     key.clear();
-                    if (importResult.imported.status == PgpImportStatus::Imported
-                        || importResult.imported.status == PgpImportStatus::Unchanged) {
+                    if (importSucceeded(importResult.imported)) {
+                        const PgpDeviceEnrollmentClient client(http);
                         importResult.enrollmentStateReported =
-                            PgpDeviceEnrollmentClient(http).reportState(url, auth, true).status
+                            (ring ? client.acknowledgeKeyring(url, auth, version, expected)
+                                  : client.reportState(url, auth, true)).status
                             == DeviceEnrollmentCallStatus::Ok;
                     }
                     return importResult;
@@ -172,16 +189,26 @@ void PgpEnrollmentController::poll()
                         cancel();
                         return;
                     }
-                    if (importResult.imported.status == PgpImportStatus::Imported
-                        || importResult.imported.status == PgpImportStatus::Unchanged) {
+                    if (importSucceeded(importResult.imported)) {
                         setState(Enrolled, importResult.enrollmentStateReported
                             ? i18n("This device can now decrypt and sign with your OpenPGP key.")
                             : i18n("The key was imported, but KyPost could not update the device status on the server."));
                         emit enrolled();
                     } else {
-                        finishWithFailure(importResult.imported.status == PgpImportStatus::EngineUnavailable
-                            ? i18n("GnuPG is not available on this computer.")
-                            : i18n("GnuPG rejected the private key or its fingerprint did not match."));
+                        switch (importResult.imported) {
+                        case PgpKeyringImportStatus::EngineUnavailable:
+                            finishWithFailure(i18n("GnuPG is not available on this computer."));
+                            break;
+                        case PgpKeyringImportStatus::UnsupportedRevocationCertificate:
+                            finishWithFailure(i18n("Your keyring includes an unpublished revocation certificate, which KyPost cannot import. Nothing was imported."));
+                            break;
+                        case PgpKeyringImportStatus::ImportFailed:
+                        case PgpKeyringImportStatus::Cancelled:
+                            finishWithFailure(i18n("Only some of your keys were imported. Enroll again to finish."));
+                            break;
+                        default:
+                            finishWithFailure(i18n("GnuPG rejected the private key or its fingerprint did not match."));
+                        }
                     }
                 });
         });
@@ -209,6 +236,8 @@ void PgpEnrollmentController::finishWithFailure(const QString& status)
 
 void PgpEnrollmentController::cancel()
 {
+    m_importCancelled->store(true);
+    m_importCancelled = std::make_shared<std::atomic_bool>(false);
     m_pollTimer.stop();
     m_codeTimer.stop();
     m_crypto.clear();
