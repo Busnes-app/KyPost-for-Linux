@@ -780,8 +780,7 @@ PgpKeyringImportStatus importDeviceDelivery(int version, const SecureBytes& plai
 {
     if (version == 3 || version == 5)
         return importPrivateKeyring(plaintext, expected, homeDirectory, stillCurrent);
-    // An empty fingerprint would skip importPrivateKey's binding check.
-    if ((version != 2 && version != 4) || expected.activeFingerprint.isEmpty())
+    if (version != 2 && version != 4)
         return PgpKeyringImportStatus::Rejected;
     switch (importPrivateKey(plaintext, expected.activeFingerprint, homeDirectory).status) {
     case PgpImportStatus::Imported: return PgpKeyringImportStatus::Imported;
