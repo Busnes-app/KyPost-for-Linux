@@ -48,12 +48,40 @@ struct KeyList
     }
 };
 
+bool rsaSizeAllowed(gpgme_subkey_t subkey)
+{
+    switch (subkey->pubkey_algo) {
+    case GPGME_PK_RSA:
+    case GPGME_PK_RSA_E:
+    case GPGME_PK_RSA_S:
+        return subkey->length >= 2048;
+    default:
+        return true;
+    }
+}
+
+bool rsaSizesAllowed(gpgme_key_t key, bool signing)
+{
+    // The primary certifies the identity even when a subkey does the operation.
+    if (key->subkeys == nullptr || !rsaSizeAllowed(key->subkeys))
+        return false;
+    // GnuPG selects the operational subkey. Every currently usable candidate
+    // for this role must meet the floor; do not assume it picks the strongest.
+    for (gpgme_subkey_t subkey = key->subkeys; subkey != nullptr; subkey = subkey->next) {
+        if (!subkey->revoked && !subkey->expired && !subkey->disabled && !subkey->invalid
+            && (signing ? subkey->can_sign : subkey->can_encrypt) && !rsaSizeAllowed(subkey)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool usableKey(gpgme_key_t key, const QString& requested, bool signing)
 {
     return key != nullptr && key->fpr != nullptr
         && requested == QString::fromLatin1(key->fpr)
         && !key->revoked && !key->expired && !key->disabled && !key->invalid
-        && (signing ? key->can_sign : key->can_encrypt);
+        && (signing ? key->can_sign : key->can_encrypt) && rsaSizesAllowed(key, signing);
 }
 
 PgpEncryptStatus statusFromError(gpgme_error_t error)
@@ -134,7 +162,7 @@ PgpEncryptResult signAndEncrypt(const QByteArray& plaintext, const QString& sign
         if (signer != nullptr)
             gpgme_key_unref(signer);
         out.status = PgpEncryptStatus::NoSigningKey;
-        out.detail = QStringLiteral("no usable secret key for the sender fingerprint");
+        out.detail = QStringLiteral("no usable secret key for the sender fingerprint (RSA requires 2048 bits)");
         return out;
     }
     gpgme_signers_clear(context.handle);
@@ -165,7 +193,7 @@ PgpEncryptResult signAndEncrypt(const QByteArray& plaintext, const QString& sign
     }
     if (!out.unusableRecipients.isEmpty()) {
         out.status = PgpEncryptStatus::RecipientKeyUnusable;
-        out.detail = QStringLiteral("a recipient key is not in the keyring");
+        out.detail = QStringLiteral("a recipient key is missing or unusable (RSA requires 2048 bits)");
         return out;
     }
 

@@ -558,3 +558,6 @@ app/qml/components/RsvpConfirmDialog.qml	    readonly property bool isOpen: root
 core/pgp/DeviceEnrollmentCrypto.cpp	        if (object.size() != 4 || encapsulated.size() != 65 || encapsulated.front() != '\x04')	        if (encapsulated.size() != 65 || encapsulated.front() != '\x04')	DeviceEnrollmentCryptoTest:rejectsHpkeFramingChanges
 core/pgp/DeviceEnrollmentCrypto.cpp	        || object.value(QStringLiteral("alg")).toString() != QString::fromLatin1(version >= 4 ? kHpkeAlgorithm : kAlgorithm))	        || false)	DeviceEnrollmentCryptoTest:rejectsHpkeNegatives
 core/net/PgpDeviceEnrollmentClient.cpp	        || generationOf(ring.value(QStringLiteral("materialGeneration"))) != out.materialGeneration)	        || false)	PgpDeviceEnrollmentClientTest:aStaleOrLegacyDeliveryHasNoRingSnapshot
+
+# New signing/encryption never selects an undersized RSA primary or usable role subkey.
+core/pgp/OpenPgpEncryptor.cpp	        return subkey->length >= 2048;	        return true;	OpenPgpEncryptorTest:undersizedRsaKeysAreNotUsedForNewMessages

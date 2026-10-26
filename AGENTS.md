@@ -1176,6 +1176,13 @@ worse than no comment: the next reader stops looking.
   recipient tiers authorize automatic use; unconfirmed keyserver, changed,
   expired, revoked, absent and unknown tiers do not. Unknown tier strings are
   still valid decoder input, never parse errors or implicit permission.
+- **New OpenPGP operations require RSA-2048.** `signAndEncrypt` checks the
+  primary and every usable RSA subkey for the requested signing/encryption role
+  before invoking GnuPG. Keep weak historical keys importable and decryptable;
+  never delete or rewrite them to repair new-use policy. The synthetic
+  `openpgp-rsa-policy.json` fixture tests literal 1024/2047/2048-bit keys,
+  primary/subkey selection, all-recipient refusal and retained old mail/keys.
+  This guard does not establish TLS or incoming-signature strength policy.
 
 - **Restored encrypted drafts remain account-bound in the composer.**
   `reopenDecryptedDraft` accepts only the current protected token in Drafts.

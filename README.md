@@ -51,6 +51,14 @@ use the same Go relay backend.
   inside the ciphertext, and refuses to send at all if any recipient has no usable key — there
   is no silent downgrade to plaintext. Mail this device holds no key for is still explained and
   routed to webmail.
+  New signing/encryption requires RSA primary keys and usable RSA subkeys for
+  that operation to contain at least 2048 bits. If an older key blocks a new
+  message or encrypted draft, arrange a replacement key through your existing
+  account/key-management process and verify its fingerprint with the other
+  party. Keep the old GnuPG keys: historical mail remains decryptable. Do not
+  delete your keyring, reset the profile or send the protected content in
+  plaintext to work around the refusal. Incoming signature verification and
+  TLS have separate policies; this RSA guard makes no project-wide claim about them.
 - **Compose autocomplete** — type a name or an address in Compose, then select a synced
   contact.
 - **Push notifications over [UnifiedPush](https://unifiedpush.org/)** — two tiers with

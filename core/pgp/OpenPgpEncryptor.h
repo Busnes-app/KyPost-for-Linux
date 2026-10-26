@@ -75,6 +75,9 @@ struct PgpEncryptResult
 // fingerprints. Resolved keys must match exactly and be usable for their role;
 // never accept GnuPG key patterns. An address can match more than one key,
 // and "whichever gpg picked" is not a decision this code may make silently.
+// RSA primary keys and every usable RSA subkey for the requested role require
+// at least 2048 actual bits. Weak keys remain importable/readable for old mail;
+// this guard never deletes keys or rewrites existing encrypted messages.
 //
 // homeDirectory is for tests, as everywhere else in core/pgp.
 PgpEncryptResult signAndEncrypt(const QByteArray& plaintext, const QString& signerFingerprint,
