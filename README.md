@@ -5,6 +5,10 @@
 <h1 align="center">KyPost</h1>
 
 <p align="center">
+  <a href="https://www.bestpractices.dev/projects/15929"><img src="https://www.bestpractices.dev/projects/15929/badge" alt="OpenSSF Best Practices"></a>
+</p>
+
+<p align="center">
   A relay-only email client for KDE Plasma and Plasma Mobile, built with Qt6/Kirigami.
 </p>
 
