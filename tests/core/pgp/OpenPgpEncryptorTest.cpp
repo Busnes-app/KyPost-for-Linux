@@ -7,6 +7,11 @@
 
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QScopeGuard>
 #include <QTest>
 
 // Two real keyrings, arranged the way a send actually is: the sender holds
@@ -33,6 +38,8 @@ private slots:
     void emptyInputIsRefused();
     void keyPatternsAreNotFingerprints_data();
     void keyPatternsAreNotFingerprints();
+    void undersizedRsaKeysAreNotUsedForNewMessages_data();
+    void undersizedRsaKeysAreNotUsedForNewMessages();
 
 private:
     QString importInto(const QString& home, const GnupgFixture& from, const QString& uid) const;
@@ -47,6 +54,78 @@ private:
     QString m_recipientFingerprint;
     QString m_secondFingerprint;
 };
+
+void OpenPgpEncryptorTest::undersizedRsaKeysAreNotUsedForNewMessages_data()
+{
+    QTest::addColumn<QJsonObject>("fixture");
+    QTest::addColumn<bool>("signing");
+    QFile file(QFINDTESTDATA("../../fixtures/openpgp-rsa-policy.json"));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const auto fixtures = QJsonDocument::fromJson(file.readAll()).object()["fixtures"].toArray();
+    QCOMPARE(fixtures.size(), 7);
+    for (const auto& value : fixtures) {
+        const auto fixture = value.toObject();
+        for (bool signing : {false, true}) {
+            const auto name = fixture["name"].toString().toLatin1() + (signing ? "-signer" : "-recipient");
+            QTest::newRow(name.constData()) << fixture << signing;
+        }
+    }
+}
+
+void OpenPgpEncryptorTest::undersizedRsaKeysAreNotUsedForNewMessages()
+{
+    QFETCH(QJsonObject, fixture);
+    QFETCH(bool, signing);
+    GnupgFixture home;
+    const auto cleanup = qScopeGuard([&] { GnupgFixture::killAgent(home.path()); });
+    const auto runGpg = [&](const QStringList& args, const QByteArray& input = QByteArray()) {
+        QProcess process;
+        process.start("gpg", QStringList{"--homedir", home.path(), "--batch", "--yes",
+            "--pinentry-mode", "loopback", "--passphrase", ""} + args);
+        if (!process.waitForStarted(10000) || process.write(input) != input.size())
+            return QByteArray();
+        process.closeWriteChannel();
+        if (!process.waitForFinished(30000) || process.exitCode() != 0)
+            return QByteArray();
+        return process.readAllStandardOutput();
+    };
+    // Import public, unprotected synthetic test secrets; never use the user's keyring.
+    runGpg({"--import"}, fixture["privateKey"].toString().toUtf8());
+    const auto fingerprint = fixture["fingerprint"].toString();
+    QVERIFY(GnupgFixture::fingerprintsIn(home.path()).contains(fingerprint));
+    const auto before = runGpg({"--export-secret-keys", fingerprint});
+    QVERIFY(!before.isEmpty());
+
+    // Verify actual GnuPG packet lengths, including the literal 2047-bit boundary.
+    const auto listing = runGpg({"--with-colons", "--list-keys", fingerprint});
+    QVERIFY(listing.contains(QByteArray(":") + QByteArray::number(fixture["primaryBits"].toInt()) + ":1:"));
+    QVERIFY(listing.contains(QByteArray(":") + QByteArray::number(fixture["subkeyBits"].toInt()) + ":1:"));
+
+    const auto strongSigner = m_sender.fingerprintOf(QStringLiteral("sender@example.com"));
+    runGpg({"--import"}, m_sender.exportSecretKeys({QStringLiteral("sender@example.com")}));
+    QVERIFY(GnupgFixture::fingerprintsIn(home.path()).contains(strongSigner));
+    const bool weakPrimary = fixture["primaryBits"].toInt() < 2048;
+    const bool weakRoleSubkey = fixture["subkeyBits"].toInt() < 2048
+        && signing == fixture["signingSubkey"].toBool();
+    const auto recipients = signing ? QStringList{strongSigner} : QStringList{strongSigner, fingerprint};
+    const auto encrypted = signAndEncrypt("new private mail\n", signing ? fingerprint : strongSigner,
+                                         recipients, home.path());
+    if (weakPrimary || weakRoleSubkey) {
+        QCOMPARE(encrypted.status, signing ? PgpEncryptStatus::NoSigningKey : PgpEncryptStatus::RecipientKeyUnusable);
+        QVERIFY(encrypted.armoredCiphertext.isEmpty());
+        if (!signing)
+            QVERIFY(encrypted.unusableRecipients.contains(fingerprint));
+    } else {
+        QCOMPARE(encrypted.status, PgpEncryptStatus::Encrypted);
+        QCOMPARE(OpenPgpDecryptor().decrypt(encrypted.armoredCiphertext.toUtf8(), home.path()).plaintext,
+                 QByteArray("new private mail\n"));
+    }
+    // Historical mail and the exact exported secret key remain readable/intact.
+    const auto old = OpenPgpDecryptor().decrypt(fixture["ciphertext"].toString().toUtf8(), home.path());
+    QCOMPARE(old.status, PgpDecryptStatus::Decrypted);
+    QCOMPARE(old.plaintext, fixture["plaintext"].toString().toUtf8());
+    QCOMPARE(runGpg({"--export-secret-keys", fingerprint}), before);
+}
 
 QString OpenPgpEncryptorTest::importInto(const QString& home, const GnupgFixture& from,
                                           const QString& uid) const

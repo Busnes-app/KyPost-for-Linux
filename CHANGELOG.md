@@ -28,6 +28,30 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- Refuse new OpenPGP signing/encryption with RSA primary keys or usable
+  operation-specific RSA subkeys below 2048 actual bits, including 2047-bit keys.
+- Exercise the real GnuPG path with weak primary/signing/encryption subkeys,
+  strong controls, all-recipient refusal and retained historical mail/secret keys.
+- Record the PIN-focus mutation's overlapping protection honestly: retain both
+  application focus handlers without claiming each is independently proved.
+
+### Upgrade impact
+
+- A weak sender/recipient key can now block a new protected message or draft.
+  Arrange replacement through existing account/key management and verify the
+  fingerprint; never bypass refusal with plaintext or delete the old keyring.
+- Existing keys, profile formats and historical ciphertext are unchanged;
+  old mail remains decryptable. Incoming signature verification, non-RSA
+  algorithms and TLS are outside this guard's scope.
+
+## Source notes at 01c1fdd1
+
+These are the prior source summary, preserved from
+[`01c1fdd1`](https://github.com/Busnes-app/KyPost-for-Linux/commit/01c1fdd1).
+Their presence does not establish that this source was distributed.
+
+### Changes
+
 - Add human summaries and upgrade guidance for named releases and all observed
   published source builds, including the rolling channel between tags.
 - Require fresh source notes before publication. Future tag releases attach
