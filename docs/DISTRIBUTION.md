@@ -122,6 +122,13 @@ runner; `publish` runs once, after both, and is the only thing that touches gh-p
 Every run uploads one `kypost-<arch>.flatpak` bundle per architecture as an artifact.
 Tagged runs attach both to the GitHub Release, for people who'd rather not add a remote.
 
+[Release notes](../CHANGELOG.md) cover named versions and published source builds.
+Every future publication prepares human notes before signing/publishing: tag runs
+select their exact version section; main/nightly builds select Current source.
+The site serves `release-notes.md` and retains `releases/<source-sha>.md`; the
+tagged GitHub Release uses the generated notes as its body. The notes identify
+the source and upgrade impact; package signature verification remains separate.
+
 ### Architectures
 
 `x86_64` and `aarch64`. Plasma Mobile is a target, so arm64 is not optional.
@@ -134,13 +141,12 @@ runs.
 Users do not choose an arch. `flatpak install` resolves it from the one repo, which
 carries both.
 
-Note that **`ci.yml` is x86_64-only**, and deliberately so: it builds natively against
-KDE neon's apt archive, which does not carry a complete KF6 set for arm64 (`kf6-ki18n`,
-`kf6-knotifications`, `kf6-kcmutils` and `kf6-extra-cmake-modules` among others are
-absent, so apt cannot resolve the dependency closure even though the leaf package names
-all exist). That costs nothing in coverage: this workflow builds arm64 against
-`org.kde.Sdk` from Flathub instead, and the manifest sets `run-tests: true`, so the
-whole ctest suite plus the launch smoke test run on real arm64 hardware here.
+Native `ci.yml` currently runs on x86_64 Ubuntu 26.04, using its stock Qt6/KF6
+packages and a separate Qt 5.15 shared-core job. Its former KDE neon dependency
+layer is gone. Native arm64 expansion still needs the dependency closure verified;
+the runner comment records the earlier failures. This Flatpak workflow already
+builds arm64 against `org.kde.Sdk` from Flathub, with `run-tests: true`, so the
+whole ctest suite and launch smoke test run on real arm64 hardware.
 
 ### How two build jobs become one published repo
 
@@ -230,20 +236,39 @@ it publishes anything — `scripts/verify-version.sh` runs first in both workflo
    `packaging/flatpak/com.kysecurity.mail.metainfo.xml`. This decides what Discover
    shows and whether a user is offered the update at all. `appstreamcli validate`
    runs in CI and is blocking.
-3. Tag and push:
+3. Update `CHANGELOG.md`'s Current source section and add an exact
+   `## v<version>` section, each with Changes and Upgrade impact. Include relay,
+   schema, keyring and packaging compatibility, migration steps and any known
+   advisory IDs. Archive the previous shipped source notes under its known
+   commit. Every main update needs fresh source notes, including workflow/docs
+   changes; the rolling channel distributes those commits too.
+4. Tag and push after review (for example, when preparing version 0.4.4):
    ```sh
-   git tag -a v0.2.0 -m "KyPost 0.2.0" && git push origin v0.2.0
+   git tag -a v0.4.4 -m "KyPost 0.4.4" && git push origin v0.4.4
    ```
    The tag must be `v<version>`, or `v<version>-<prerelease>` for an rc.
 
 The workflow then publishes both architectures to the remote and attaches
-`kypost-x86_64.flatpak` and `kypost-aarch64.flatpak` to the release.
+`kypost-x86_64.flatpak`, `kypost-aarch64.flatpak` and the named notes to the
+release. It validates notes before importing signing material or changing
+gh-pages. Existing release bodies, tags and assets are not rewritten by adding
+the retrospective archive.
 
 Check locally before tagging:
 
 ```sh
-./scripts/verify-version.sh v0.2.0
+./scripts/verify-version.sh v0.4.4
+python3 -B -m unittest discover -s scripts -p test_release_notes.py
+python3 scripts/release-notes.py --base origin/main --tag v0.4.4
 ```
+
+Fetch `origin/main` before that comparison. Release verification needs Python 3;
+the desktop runtime does not. CI checks the tested commit against its first parent,
+using checkout depth two. It refuses missing/invalid bases and empty, comment/link-only
+or unchanged source notes; a parent without the file permits initial adoption.
+Named publication output must match the tag's actual commit. The check establishes
+presence/freshness and source binding, not prose accuracy or completeness; reviewers
+must still verify the summaries against the code.
 
 ## Rotating the signing key
 

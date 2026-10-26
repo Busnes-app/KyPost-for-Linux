@@ -33,7 +33,7 @@ app/        — main.cpp, push/ (KUnifiedPush glue, Qt6-only), platform/ (Secure
 tests/      — QtTest, stubbed HttpClient; ctest-driven. tests/qml/ is the QML suite (QmlTests); tests/guards.tsv is the security-guard manifest (§5a)
 packaging/  — flatpak/ (manifest, desktop file, metainfo, notifyrc, icons), dbus/ (session D-Bus activation .service), click/ (empty .gitkeep placeholder — the Ubuntu Touch app does not exist yet, there is no Clickable manifest)
 po/         — gettext catalogs
-scripts/    — build-sqlcipher.sh, verify-guards.sh, verify-version.sh, verify-pgp-against-relay.sh
+scripts/    — build-sqlcipher.sh, verify-guards.sh, verify-version.sh, release-notes.py, verify-pgp-against-relay.sh
 docs/       — local tooling/setup notes (see docs/SETUP.md); docs/PARITY.md is the authoritative Android-parity matrix; docs/THREADING.md records the async-controller constraints
 ```
 
@@ -48,6 +48,16 @@ ctest --test-dir build
 ```
 
 A change is not verified until this builds cleanly and `ctest` is green.
+
+Release/workflow changes also run `python3 -B -m unittest discover -s scripts -p
+test_release_notes.py` and `python3 scripts/release-notes.py --base origin/main`
+after fetching the target. `CHANGELOG.md` owns named and source-build notes.
+Every main update replaces Current source changes/upgrade impact, including
+workflow/docs updates; archive the previous shipped summary under its known
+commit. New tags also need their exact version section. CI fetches two commits
+and compares against the tested commit's first parent. Publication prepares notes
+before signing, binds tagged output to its commit, and publishes current/per-source
+notes on the channel. Review factual accuracy separately from the text gate.
 
 `core/` and `tests/core` alone, on Qt 5.15 (the shared core of the Ubuntu
 Touch app). Drop `-DQT_DIR` to get Qt 6 if both are installed; configure prints
@@ -1306,9 +1316,11 @@ worse than no comment: the next reader stops looking.
   `--print-report=full` now lives in the workflow; it named the icon in one
   run. Do not delete it.
 
-  Still outstanding: `FLATPAK_GPG_PRIVATE_KEY` is not configured, so
-  `steps.mode.outputs.publish` is false and nothing is published even now that
-  the build is green. Green build != shipped app; see docs/DISTRIBUTION.md.
+  Build success alone does not establish publication. Check the actual
+  `Publish OSTree repo to gh-pages`/release-attachment step results, then verify
+  the live channel/signature as described in docs/DISTRIBUTION.md. Publication
+  needs the configured signing key; preserve that key rather than replacing
+  it to repair an unrelated build failure.
 
 - **The Secret Service costs ~25 s on its first call when a collection is
   locked.** Measured on a live gnome-keyring, 2026-08-22: `QKeychain::Job`
