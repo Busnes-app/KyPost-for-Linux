@@ -32,6 +32,8 @@ explains the signed remote and the standalone-bundle update-origin limitation.
   operation-specific RSA subkeys below 2048 actual bits, including 2047-bit keys.
 - Exercise the real GnuPG path with weak primary/signing/encryption subkeys,
   strong controls, all-recipient refusal and retained historical mail/secret keys.
+- Record the PIN-focus mutation's overlapping protection honestly: retain both
+  application focus handlers without claiming each is independently proved.
 
 ### Upgrade impact
 

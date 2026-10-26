@@ -590,6 +590,11 @@ decrypt path's `stillCurrent` check cannot be proven from outside at all,
 because the read-time guard already refuses to hand the plaintext out; that is
 recorded in the manifest rather than papered over.
 
+The PIN field's Component.onCompleted focus is also not listed: the lock
+regression still passes without it because onVisibleChanged focuses the PIN
+field too. Keep both production paths; that test proves the effective focus
+contract, not each handler independently.
+
 ## 6. Ponytail, lazy senior dev mode
 
 Use the smallest correct change.
