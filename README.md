@@ -6,6 +6,7 @@
 
 <p align="center">
   <a href="https://www.bestpractices.dev/projects/15929"><img src="https://www.bestpractices.dev/projects/15929/badge" alt="OpenSSF Best Practices"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/Busnes-app/KyPost-for-Linux"><img src="https://api.scorecard.dev/projects/github.com/Busnes-app/KyPost-for-Linux/badge" alt="OpenSSF Scorecard"></a>
 </p>
 
 <p align="center">
