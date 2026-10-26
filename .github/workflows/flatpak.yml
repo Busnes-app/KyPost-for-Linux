@@ -100,6 +100,8 @@ jobs:
     runs-on: ${{ matrix.runs_on }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
 
       # First, because a tagged run that gets this wrong publishes a signed
       # build claiming the wrong version to everyone on the remote, and the
@@ -107,6 +109,11 @@ jobs:
 
       - name: Verify version consistency
         run: ./scripts/verify-version.sh
+
+      - name: Verify release notes
+        run: |
+          python3 -B -m unittest discover -s scripts -p test_release_notes.py
+          python3 scripts/release-notes.py --base HEAD^
 
       # Publishing needs the signing key, which pull_request events from
       # forks never get. Those runs still build and smoke-test; they just
@@ -207,7 +214,7 @@ jobs:
       # 26.04.3 rebuild from source on every single run.
 
       - name: Cache flatpak-builder state
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # zizmor: ignore[cache-poisoning] -- v6.1.0; PR caches cannot be restored by main/tag publishers; branch-scope evidence below.
         with:
           path: .flatpak-builder
           key: flatpak-builder-${{ matrix.arch }}-${{ hashFiles('packaging/flatpak/com.kysecurity.mail.yaml') }}-${{ github.run_id }}
@@ -216,9 +223,11 @@ jobs:
           # prefix that omits it matches nothing and the cache silently never
           # restores.
           #
-          # No bare "flatpak-builder-" fallback: that key is writable by any
-          # branch, so a pull request could seed the .flatpak-builder state
-          # that a later publishing run builds from.
+          # Keep the arch/manifest partition when restoring older trusted builds.
+          # GitHub scopes pull_request caches to refs/pull/.../merge; main/tag
+          # publishers cannot restore them. This workflow uses pull_request,
+          # never pull_request_target, and PRs cannot reach the publish job.
+          # https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#restrictions-for-accessing-a-cache
           restore-keys: |
             flatpak-builder-${{ matrix.arch }}-${{ hashFiles('packaging/flatpak/com.kysecurity.mail.yaml') }}-
 
@@ -388,6 +397,11 @@ jobs:
       contents: write # push the gh-pages branch; attach tagged-release assets
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+
+      - name: Prepare publication notes
+        run: python3 scripts/release-notes.py --base HEAD^ --output "$RUNNER_TEMP/kypost-release-notes.md"
 
       # First, because a tagged run that gets this wrong publishes a signed
       # build claiming the wrong version to everyone on the remote, and the
@@ -602,6 +616,11 @@ jobs:
           # byte-for-byte, so opt out entirely.
           touch _site/.nojekyll
 
+          # Notes belong to the exact published source, including rolling updates.
+          mkdir -p _site/releases
+          cp "$RUNNER_TEMP/kypost-release-notes.md" "_site/releases/$GITHUB_SHA.md"
+          cp "$RUNNER_TEMP/kypost-release-notes.md" _site/release-notes.md
+
       - name: Publish OSTree repo to gh-pages
         if: steps.mode.outputs.publish == 'true'
         run: |
@@ -638,5 +657,6 @@ jobs:
         # repointed at malicious code runs with this repo's secrets in scope.
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
+          body_path: ${{ runner.temp }}/kypost-release-notes.md
           files: kypost-*.flatpak
           fail_on_unmatched_files: true

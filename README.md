@@ -41,7 +41,9 @@ use the same Go relay backend.
   the camera. The code carries the fingerprint of the key this device holds, and a scan saves a
   key as verified only if it matches; a device holding no private key shows a code that cannot be
   verified in person. Webmail can seal the account key to a
-  temporary ECDH device key; KyPost imports it into the user's GnuPG keyring and clears the
+  temporary P-256 device key; current compatible relays can use RFC 9180 HPKE
+  envelopes v4/v5, while older v2/v3 delivery support remains available. KyPost
+  imports it into the user's GnuPG keyring and clears the
   transient key bytes. Once a key is enrolled, end-to-end encrypted mail is **decrypted and
   signed on this device** through the user's own `gpg-agent` (GPGME): KyPost never sees the
   OpenPGP passphrase, so hardware tokens and smartcards work unchanged. Sending signs and
@@ -81,6 +83,12 @@ and requires the account’s key/recovery material. Preserve your profile, OS ke
 GnuPG keyring on updates. See [setup](docs/SETUP.md) and [manual testing](TESTING.md).
 
 ## Installing
+
+Read the [release notes](CHANGELOG.md) before upgrading. They cover named versions
+and the rolling channel's source builds, with profile/keyring compatibility and
+relay requirements. Future channel publications also provide
+[current notes](https://busnes-app.github.io/KyPost-for-Linux/release-notes.md)
+and per-source notes; verify the package signature as described below.
 
 > **Available channel (checked 2026-10-20):** GitHub release `v0.4.2`, the
 > `gh-pages` branch and the public `.flatpakrepo` endpoint exist (HTTP 200).

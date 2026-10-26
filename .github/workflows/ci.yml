@@ -166,10 +166,17 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
 
       # Cheap, and it fails before ~20 minutes of dependency building.
       - name: Verify version consistency
         run: ./scripts/verify-version.sh
+
+      - name: Verify release notes
+        run: |
+          python3 -B -m unittest discover -s scripts -p test_release_notes.py
+          python3 scripts/release-notes.py --base HEAD^
 
       # Full dependency list cross-checked against this repo's own
       # CMakeLists.txt (root, app/, core/, tests/) -- see the file-level

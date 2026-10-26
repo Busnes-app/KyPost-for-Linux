@@ -65,10 +65,11 @@ re-litigation in a PR:
 
 ## Getting Set Up
 
-You need Qt6 and KF6 — there is no Qt5 path, and Ubuntu Touch is deferred, not
-pending. [`README.md`](README.md) has the dependency list with Arch package
-names; [`.github/workflows/ci.yml`](.github/workflows/ci.yml) has the Ubuntu and
-KDE neon equivalents and is the version CI actually installs.
+The desktop/Plasma Mobile app needs Qt6 and KF6. The shared core also supports
+Qt 5.15; the separate Ubuntu Touch app is not shipped yet. [`README.md`](README.md)
+has the dependency list with Arch package names;
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) installs the native CI
+dependencies from Ubuntu 26.04, including OpenSSL 3.2 or newer for HPKE.
 
 ```sh
 # Encryption at rest needs a SQLCipher with the right SONAME; see README.md.
@@ -194,22 +195,28 @@ genuinely flaky, that is a bug to fix in the job.
 
 | Workflow / job | What it runs |
 |---|---|
-| `ci.yml` → `build-and-test` | `scripts/verify-version.sh`, then a Release build against KDE neon's Qt6/KF6 with SQLCipher built from source, then `ctest` |
+| `ci.yml` → `build-and-test` | Version/release-note checks, then a Release build against Ubuntu 26.04 Qt6/KF6 with SQLCipher built from source, then `ctest` |
 | `ci.yml` → same job, second half | A Debug build with `KYPOST_SANITIZE=ON` and the whole suite again under ASan + UBSan |
-| `flatpak.yml` → `build` | Builds `packaging/flatpak/com.kysecurity.mail.yaml` on x86_64 **and** aarch64 native runners, runs the full ctest suite inside the sandbox, validates the AppStream metainfo, and launch-smoke-tests the result |
-| `flatpak.yml` → `publish` | Skipped entirely on a pull request. It only ever runs on `main` and tags |
+| `ci.yml` → `core-qt5` | RelWithDebInfo shared-core build and tests against Qt 5.15 on Ubuntu 26.04 with SQLCipher |
+| `flatpak.yml` → `build` | Checks release notes, builds `packaging/flatpak/com.kysecurity.mail.yaml` on x86_64 **and** aarch64 native runners, runs the full ctest suite inside the sandbox, validates the AppStream metainfo, and launch-smoke-tests the result |
+| `flatpak.yml` → `publish` | Skipped entirely on a pull request; runs for main pushes, version tags, nightly runs and manual dispatch |
 
 Notes that trip people up:
 
 - **Run the gates locally before pushing.** All of them work on a normal
   machine. "It only fails in CI" is usually a dependency-version difference —
   check what `ci.yml` actually installs.
-- **`ci.yml` is x86_64-only, deliberately** (KDE neon's archive has no complete
-  KF6 set for arm64). arm64 coverage comes from `flatpak.yml`, which builds and
-  tests on real arm64 hardware. Don't "fix" that by adding qemu.
+- **`ci.yml` runs natively on x86_64 Ubuntu 26.04.** arm64 coverage comes
+  from `flatpak.yml`, which builds and tests on real arm64 hardware. Expanding
+  native CI needs a verified dependency closure; see its runner comment.
 - **A version bump touches three files or it fails before it builds anything.**
   `CMakeLists.txt`, the metainfo `<release>` entry, and the tag must agree; see
   [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md).
+- **Every main update needs fresh release notes.** Update Current source in
+  [`CHANGELOG.md`](CHANGELOG.md), including upgrade impact; new tags also need
+  their exact version section. Run the Python checks in
+  [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md#cutting-a-release).
+  Publication validates/selects notes before signing or publishing.
 - **New logic ships with tests.** Unit plus integration for new behaviour, a
   regression test for anything high-impact. Security-sensitive changes need
   attack-path coverage, not just the happy path.
