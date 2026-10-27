@@ -13,6 +13,7 @@
 #include <openssl/core_names.h>
 #include <openssl/param_build.h>
 #include <openssl/bn.h>
+#include <openssl/hpke.h>
 #include <memory>
 
 #include <algorithm>
@@ -23,9 +24,8 @@ class DeviceEnrollmentCryptoTest : public QObject
 
 private slots:
     void initTestCase();
-    void matchesSharedEnvelopeVectors();
-    void rejectsV3BindingAndFramingChanges();
-    void v3LimitsCountUtf8Bytes();
+    void refusesRetiredLegacyDeliveries();
+    void ringInfoLimitsCountUtf8Bytes();
     void matchesTheBrowserVerificationVector();
     void formatsTheCodeForReading();
     void generatesAValidEphemeralPublicPoint();
@@ -51,23 +51,26 @@ QByteArray decoded(const QJsonObject& object, const char* name)
     return QByteArray::fromBase64(object.value(QLatin1String(name)).toString().toLatin1());
 }
 
-QByteArray sealForTest(const QByteArray& plaintext, const QByteArray& key, const QByteArray& iv, const QByteArray& aad)
+// An honest-looking HPKE envelope for the PUBLIC test device key, labelled `version`.
+QByteArray hpkeSealForTest(const QByteArray& publicKey, const QByteArray& info, const QByteArray& plaintext, int version)
 {
-    std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> ctx(EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
-    QByteArray ciphertext(plaintext.size() + 16, '\0');
-    int count = 0, final = 0;
-    if (!ctx || EVP_EncryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr,
-            reinterpret_cast<const unsigned char*>(key.constData()),
-            reinterpret_cast<const unsigned char*>(iv.constData())) != 1
-        || EVP_EncryptUpdate(ctx.get(), nullptr, &count,
-            reinterpret_cast<const unsigned char*>(aad.constData()), aad.size()) != 1
-        || EVP_EncryptUpdate(ctx.get(), reinterpret_cast<unsigned char*>(ciphertext.data()), &count,
-            reinterpret_cast<const unsigned char*>(plaintext.constData()), plaintext.size()) != 1
-        || EVP_EncryptFinal_ex(ctx.get(), reinterpret_cast<unsigned char*>(ciphertext.data()) + count, &final) != 1
-        || EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_GET_TAG, 16, ciphertext.data() + count + final) != 1)
+    const OSSL_HPKE_SUITE suite = {OSSL_HPKE_KEM_ID_P256, OSSL_HPKE_KDF_ID_HKDF_SHA256, OSSL_HPKE_AEAD_ID_AES_GCM_256};
+    std::unique_ptr<OSSL_HPKE_CTX, decltype(&OSSL_HPKE_CTX_free)> context(
+        OSSL_HPKE_CTX_new(OSSL_HPKE_MODE_BASE, suite, OSSL_HPKE_ROLE_SENDER, nullptr, nullptr), &OSSL_HPKE_CTX_free);
+    QByteArray enc(65, '\0');
+    QByteArray ct(plaintext.size() + 16, '\0');
+    size_t encSize = enc.size();
+    size_t ctSize = ct.size();
+    if (!context
+        || OSSL_HPKE_encap(context.get(), reinterpret_cast<unsigned char*>(enc.data()), &encSize,
+            reinterpret_cast<const unsigned char*>(publicKey.constData()), publicKey.size(),
+            reinterpret_cast<const unsigned char*>(info.constData()), info.size()) != 1
+        || OSSL_HPKE_seal(context.get(), reinterpret_cast<unsigned char*>(ct.data()), &ctSize, nullptr, 0,
+            reinterpret_cast<const unsigned char*>(plaintext.constData()), plaintext.size()) != 1)
         return {};
-    ciphertext.resize(count + final + 16);
-    return ciphertext;
+    return QJsonDocument(QJsonObject{{"v", version}, {"alg", "HPKE-Base-P256-SHA256-A256GCM"},
+                                     {"enc", QString::fromLatin1(enc.toBase64())},
+                                     {"ct", QString::fromLatin1(ct.toBase64())}}).toJson(QJsonDocument::Compact);
 }
 }
 
@@ -114,107 +117,46 @@ void DeviceEnrollmentCryptoTest::loadKey(DeviceEnrollmentCrypto& crypto, const Q
     QVERIFY(crypto.isReady());
 }
 
-void DeviceEnrollmentCryptoTest::matchesSharedEnvelopeVectors()
+void DeviceEnrollmentCryptoTest::refusesRetiredLegacyDeliveries()
 {
     DeviceEnrollmentCrypto crypto;
     fixedDevice(crypto);
+    // Authentic v2/v3 envelopes for this device key: retired, so no version opens them.
     for (const auto& entry : m_fixture.value("vectors").toArray()) {
         const auto vector = entry.toObject();
-        const auto envelope = vector.value("envelope").toObject();
-        const int version = envelope.value("v").toInt();
-        const QString id = vector.value("deviceId").toString();
-        const QString fingerprint = vector.value("fingerprint").toString();
-        const auto point = decoded(envelope, "epk");
-        auto shared = crypto.sharedSecret(point);
-        QCOMPARE(shared.bytes(), decoded(vector, "sharedSecret"));
-        auto key = crypto.envelopeKey(point, version);
-        QCOMPARE(key.bytes(), decoded(vector, "aesKey"));
-        const auto aad = version == 3 ? deviceEnvelopeV3Aad(id, fingerprint) : deviceEnvelopeAad(id, fingerprint);
-        QCOMPARE(aad, decoded(vector, "aad"));
-        const auto json = QJsonDocument(envelope).toJson(QJsonDocument::Compact);
-        auto plaintext = version == 3 ? crypto.openKeyringEnvelope(json, id, fingerprint)
-                                      : crypto.openEnvelope(json, id, fingerprint);
-        QCOMPARE(plaintext.bytes(), vector.value("plaintext").toString().toUtf8());
-        QCOMPARE(sealForTest(plaintext.bytes(), key.bytes(), decoded(envelope, "iv"), aad), decoded(envelope, "ct"));
-        // Version selection is explicit, never a fallback after failed authentication.
-        QVERIFY((version == 3 ? crypto.openEnvelope(json, id, fingerprint)
-                             : crypto.openKeyringEnvelope(json, id, fingerprint)).isEmpty());
+        const auto json = QJsonDocument(vector.value("envelope").toObject()).toJson(QJsonDocument::Compact);
+        for (int version = 1; version <= 6; ++version)
+            QVERIFY(crypto.openDelivery(json, version, vector.value("deviceId").toString(),
+                                        vector.value("fingerprint").toString()).isEmpty());
+    }
+    // Nor does a well-formed HPKE envelope relabelled as v2/v3; the same seal as v4/v5 opens.
+    for (const auto& entry : m_hpke.value("vectors").toArray()) {
+        const auto vector = entry.toObject();
+        const int version = vector.value("envelope").toObject().value("v").toInt();
+        const auto id = vector.value("deviceId").toString();
+        const auto fingerprint = vector.value("fingerprint").toString();
+        const auto plaintext = vector.value("plaintext").toString().toUtf8();
+        for (int label : {version, version - 2}) {
+            const auto info = version == 5 ? deviceEnvelopeV3Aad(id, fingerprint, label)
+                                           : deviceEnvelopeAad(id, fingerprint, label);
+            const auto json = hpkeSealForTest(crypto.m_publicKey, info, plaintext, label);
+            QVERIFY(!json.isEmpty());
+            QCOMPARE(crypto.openDelivery(json, label, id, fingerprint).bytes(),
+                     label == version ? plaintext : QByteArray());
+        }
     }
 }
 
-void DeviceEnrollmentCryptoTest::rejectsV3BindingAndFramingChanges()
+void DeviceEnrollmentCryptoTest::ringInfoLimitsCountUtf8Bytes()
 {
-    DeviceEnrollmentCrypto crypto;
-    fixedDevice(crypto);
-    const auto vector = m_fixture.value("vectors").toArray().last().toObject();
-    const auto envelope = vector.value("envelope").toObject();
-    const auto json = QJsonDocument(envelope).toJson(QJsonDocument::Compact);
+    const auto vector = m_hpke.value("vectors").toArray().last().toObject();
     const auto id = vector.value("deviceId").toString();
     const auto fingerprint = vector.value("fingerprint").toString();
-    QVERIFY(crypto.openKeyringEnvelope(json, id + QLatin1Char(' '), fingerprint).isEmpty());
-    QVERIFY(crypto.openKeyringEnvelope(json, id, QString(40, QLatin1Char('A'))).isEmpty());
-    QVERIFY(crypto.openKeyringEnvelope(json, id, fingerprint.toLower()).isEmpty());
-    QVERIFY(crypto.openKeyringEnvelope(json, QString(), fingerprint).isEmpty());
-    QVERIFY(crypto.openKeyringEnvelope(json, id, fingerprint + QLatin1Char(' ')).isEmpty());
-    for (const QJsonValue& version : {QJsonValue(2), QJsonValue(4), QJsonValue(3.5), QJsonValue("3")}) {
-        auto bad = envelope;
-        bad.insert("v", version);
-        QVERIFY(crypto.openKeyringEnvelope(QJsonDocument(bad).toJson(), id, fingerprint).isEmpty());
-    }
-    for (const char* field : {"epk", "iv", "ct", "alg"}) {
-        auto bad = envelope;
-        bad.insert(QLatin1String(field), "unsupported");
-        QVERIFY(crypto.openKeyringEnvelope(QJsonDocument(bad).toJson(), id, fingerprint).isEmpty());
-        bad.insert(QLatin1String(field), 12);
-        QVERIFY(crypto.openKeyringEnvelope(QJsonDocument(bad).toJson(), id, fingerprint).isEmpty());
-    }
-    auto reject = [&](const char* field, const QByteArray& bytes) {
-        auto bad = envelope;
-        bad.insert(QLatin1String(field), QString::fromLatin1(bytes.toBase64()));
-        return crypto.openKeyringEnvelope(QJsonDocument(bad).toJson(), id, fingerprint).isEmpty();
-    };
-    auto ciphertext = decoded(envelope, "ct");
-    ciphertext.data()[ciphertext.size() - 1] ^= 1;
-    QVERIFY(reject("ct", ciphertext));
-    ciphertext = decoded(envelope, "ct");
-    ciphertext.data()[0] ^= 1;
-    QVERIFY(reject("ct", ciphertext));
-    QVERIFY(reject("ct", QByteArray(16, '\0')));
-    QVERIFY(reject("iv", QByteArray(11, '\0')));
-    QVERIFY(reject("epk", QByteArray(65, '\0')));
-    QVERIFY(reject("epk", QByteArray(1, '\x04') + QByteArray(64, '\0'))); // off-curve
-    auto unpadded = envelope;
-    QString point = unpadded.value("epk").toString();
-    point.chop(1);
-    unpadded.insert("epk", point);
-    QVERIFY(crypto.openKeyringEnvelope(QJsonDocument(unpadded).toJson(), id, fingerprint).isEmpty());
-    // Separately catch a v2 domain in either HKDF or AAD.
-    auto v2Key = crypto.envelopeKey(decoded(envelope, "epk"), 2);
-    auto v3Key = crypto.envelopeKey(decoded(envelope, "epk"), 3);
-    const auto plaintext = vector.value("plaintext").toString().toUtf8();
-    QVERIFY(reject("ct", sealForTest(plaintext, v2Key.bytes(), decoded(envelope, "iv"), deviceEnvelopeV3Aad(id, fingerprint))));
-    QVERIFY(reject("ct", sealForTest(plaintext, v3Key.bytes(), decoded(envelope, "iv"), deviceEnvelopeAad(id, fingerprint))));
-    crypto.clear();
-    QVERIFY(crypto.openKeyringEnvelope(json, id, fingerprint).isEmpty());
-}
-
-void DeviceEnrollmentCryptoTest::v3LimitsCountUtf8Bytes()
-{
-    DeviceEnrollmentCrypto crypto;
-    fixedDevice(crypto);
-    const auto vector = m_fixture.value("vectors").toArray().last().toObject();
-    const auto id = vector.value("deviceId").toString();
-    const auto fingerprint = vector.value("fingerprint").toString();
-    QByteArray json = QJsonDocument(vector.value("envelope").toObject()).toJson(QJsonDocument::Compact);
-    json.append(QByteArray(128 * 1024 - json.size(), ' '));
-    QVERIFY(!crypto.openKeyringEnvelope(json, id, fingerprint).isEmpty());
-    json.append(' ');
-    QVERIFY(crypto.openKeyringEnvelope(json, id, fingerprint).isEmpty());
-    QVERIFY(!deviceEnvelopeV3Aad(QString(65535, QLatin1Char('x')), fingerprint).isEmpty());
-    QVERIFY(deviceEnvelopeV3Aad(QString(65536, QLatin1Char('x')), fingerprint).isEmpty());
-    QVERIFY(deviceEnvelopeV3Aad(QString(32768, QChar(0x00e9)), fingerprint).isEmpty());
-    QVERIFY(!deviceEnvelopeV3Aad(id, QString(64, QLatin1Char('A'))).isEmpty());
-    QVERIFY(deviceEnvelopeV3Aad(id, QString(39, QLatin1Char('A'))).isEmpty());
+    QVERIFY(!deviceEnvelopeV3Aad(QString(65535, QLatin1Char('x')), fingerprint, 5).isEmpty());
+    QVERIFY(deviceEnvelopeV3Aad(QString(65536, QLatin1Char('x')), fingerprint, 5).isEmpty());
+    QVERIFY(deviceEnvelopeV3Aad(QString(32768, QChar(0x00e9)), fingerprint, 5).isEmpty());
+    QVERIFY(!deviceEnvelopeV3Aad(id, QString(64, QLatin1Char('A')), 5).isEmpty());
+    QVERIFY(deviceEnvelopeV3Aad(id, QString(39, QLatin1Char('A')), 5).isEmpty());
 }
 
 void DeviceEnrollmentCryptoTest::matchesTheBrowserVerificationVector()
@@ -246,18 +188,18 @@ void DeviceEnrollmentCryptoTest::generatesAValidEphemeralPublicPoint()
 
 void DeviceEnrollmentCryptoTest::bindsTheEnvelopeToDeviceAndFingerprint()
 {
-    const QByteArray aad = deviceEnvelopeAad(
-        QStringLiteral("device-123"), QStringLiteral("aa bb cc dd"));
-    QVERIFY(aad.startsWith("kypost-device-envelope/v2"));
-    QVERIFY(aad.endsWith("AABBCCDD"));
-    QVERIFY(deviceEnvelopeAad(QStringLiteral("device-123"), QStringLiteral("not hex")).isEmpty());
+    const QByteArray info = deviceEnvelopeAad(
+        QStringLiteral("device-123"), QStringLiteral("aa bb cc dd"), 4);
+    QVERIFY(info.startsWith("kypost-device-envelope/v4"));
+    QVERIFY(info.endsWith("AABBCCDD"));
+    QVERIFY(deviceEnvelopeAad(QStringLiteral("device-123"), QStringLiteral("not hex"), 4).isEmpty());
 }
 
 void DeviceEnrollmentCryptoTest::rejectsMalformedEnvelopes()
 {
     DeviceEnrollmentCrypto crypto;
     QVERIFY(crypto.generate());
-    QVERIFY(crypto.openEnvelope("{}", QStringLiteral("device-123"),
+    QVERIFY(crypto.openDelivery("{}", 4, QStringLiteral("device-123"),
                                 QStringLiteral("AABBCCDD")).isEmpty());
 }
 
@@ -298,14 +240,6 @@ void DeviceEnrollmentCryptoTest::opensHpkeDeliveriesByRecordedVersion()
         // The recorded version decides; no other version opens the same bytes.
         for (int other : {1, 2, 3, 4, 5, 6})
             QVERIFY(other == version || crypto.openDelivery(json, other, id, fingerprint).isEmpty());
-    }
-    // v2/v3 still open through the same entry point.
-    for (const auto& entry : m_fixture.value("vectors").toArray()) {
-        const auto vector = entry.toObject();
-        const auto envelope = vector.value("envelope").toObject();
-        QCOMPARE(crypto.openDelivery(QJsonDocument(envelope).toJson(), envelope.value("v").toInt(),
-                                     vector.value("deviceId").toString(), vector.value("fingerprint").toString()).bytes(),
-                 vector.value("plaintext").toString().toUtf8());
     }
     crypto.clear();
     const auto v4 = m_hpke.value("vectors").toArray().first().toObject();
@@ -369,7 +303,7 @@ void DeviceEnrollmentCryptoTest::rejectsHpkeFramingChanges()
     bad = envelope;
     bad.insert("enc", QString::fromLatin1(decoded(envelope, "enc").mid(1).prepend('\x02').toBase64()));
     QVERIFY(!opens(bad)); // compressed point marker
-    // A ring envelope is capped at 128 KiB like v3.
+    // A ring envelope is capped at 128 KiB.
     QByteArray json = QJsonDocument(envelope).toJson(QJsonDocument::Compact);
     json.append(QByteArray(128 * 1024 - json.size(), ' '));
     QVERIFY(!crypto.openDelivery(json, 5, id, fingerprint).isEmpty());
@@ -383,12 +317,10 @@ void DeviceEnrollmentCryptoTest::importsEveryDeliveryVersion()
         QSKIP("GnuPG is required to import deliveries");
     DeviceEnrollmentCrypto crypto;
     fixedDevice(crypto);
-    QList<QJsonObject> deliveries;
-    for (const auto* source : {&m_fixture, &m_hpke})
-        for (const auto& entry : source->value("vectors").toArray())
-            deliveries.append(entry.toObject());
-    QCOMPARE(deliveries.size(), 4);
-    for (const auto& vector : deliveries) {
+    const auto deliveries = m_hpke.value("vectors").toArray();
+    QCOMPARE(deliveries.size(), 2);
+    for (const auto& entry : deliveries) {
+        const auto vector = entry.toObject();
         const auto envelope = vector.value("envelope").toObject();
         const int version = envelope.value("v").toInt();
         const auto fingerprint = vector.value("fingerprint").toString();
@@ -411,6 +343,8 @@ void DeviceEnrollmentCryptoTest::importsEveryDeliveryVersion()
         // The wrong shape for the version is refused before the keyring is touched.
         QCOMPARE(importDeviceDelivery(version % 2 == 1 ? version - 1 : version + 1, plaintext, expected, home),
                  PgpKeyringImportStatus::Rejected);
+        // So is the same plaintext labelled as its retired legacy version.
+        QCOMPARE(importDeviceDelivery(version - 2, plaintext, expected, home), PgpKeyringImportStatus::Rejected);
         QCOMPARE(importDeviceDelivery(version, plaintext, PgpKeyringSnapshot{}, home), PgpKeyringImportStatus::Rejected);
         QCOMPARE(importDeviceDelivery(version, plaintext, expected, home), PgpKeyringImportStatus::Imported);
         QVERIFY(GnupgFixture::fingerprintsIn(home).contains(fingerprint));

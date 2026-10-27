@@ -147,10 +147,14 @@ void PgpEnrollmentController::poll()
                 finishWithFailure(i18n("This device is no longer authorised to fetch its envelope."));
                 return;
             }
-            // Open exactly the version the server recorded. A ring (3/5) is bound to
+            // Open exactly the version the server recorded. A ring (5) is bound to
             // the delivered snapshot, which must name the identity bootstrap reported.
             const int version = result.version;
-            const bool ring = version == 3 || version == 5;
+            if (version == 2 || version == 3) {
+                finishWithFailure(i18n("The server sent a retired legacy enrollment format, which KyPost no longer accepts. Update the KyPost server, then enroll this device again."));
+                return;
+            }
+            const bool ring = version == 5;
             PgpKeyringSnapshot expected;
             expected.activeFingerprint = m_fingerprint;
             if (ring)

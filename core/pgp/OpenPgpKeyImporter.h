@@ -122,8 +122,8 @@ PgpKeyringImportStatus importPrivateKeyring(
     const QString& homeDirectory = {}, const std::function<bool()>& stillCurrent = {});
 
 // Imports what DeviceEnrollmentCrypto::openDelivery returned for `version`:
-// one armored key bound to expected.activeFingerprint (2/4), or the complete
-// ring bound to all of expected (3/5). Anything else is Rejected.
+// one armored key bound to expected.activeFingerprint (4), or the complete
+// ring bound to all of expected (5). Anything else, including retired 2/3, is Rejected.
 PgpKeyringImportStatus importDeviceDelivery(int version, const SecureBytes& plaintext,
     const PgpKeyringSnapshot& expected, const QString& homeDirectory = {},
     const std::function<bool()>& stillCurrent = {});

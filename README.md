@@ -41,8 +41,8 @@ use the same Go relay backend.
   the camera. The code carries the fingerprint of the key this device holds, and a scan saves a
   key as verified only if it matches; a device holding no private key shows a code that cannot be
   verified in person. Webmail can seal the account key to a
-  temporary P-256 device key; current compatible relays can use RFC 9180 HPKE
-  envelopes v4/v5, while older v2/v3 delivery support remains available. KyPost
+  temporary P-256 device key as an RFC 9180 HPKE envelope (v4/v5); KyPost refuses the
+  retired v2/v3 formats, so enrollment needs a relay that offers v4/v5. KyPost
   imports it into the user's GnuPG keyring and clears the
   transient key bytes. Once a key is enrolled, end-to-end encrypted mail is **decrypted and
   signed on this device** through the user's own `gpg-agent` (GPGME): KyPost never sees the

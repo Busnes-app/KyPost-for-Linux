@@ -362,11 +362,12 @@ app/qml/components/RichBodyEditor.qml	                        if (droppedTags.in
 # Forwarded attachments belong to the account and unlocked session that asked.
 app/mail/MailController.cpp	            if (generation != m_forwardGeneration || m_appLocked || !m_pairingStore.stillCurrent(requestedBy)) {	            if (false) {	MailControllerTest:aForwardThatOutlivesItsAccountOrTheLockKeepsNothing
 
-# Explicit v3 framing, size admission and authenticated plaintext release.
-core/pgp/DeviceEnrollmentCrypto.cpp	    const int maximum = ring ? kMaxV3EnvelopeBytes : kMaxEnvelopeBytes;	    const int maximum = kMaxEnvelopeBytes;	DeviceEnrollmentCryptoTest:v3LimitsCountUtf8Bytes
-core/pgp/DeviceEnrollmentCrypto.cpp	    if (object.value(QStringLiteral("v")) != QJsonValue(version)	    if (false	DeviceEnrollmentCryptoTest:rejectsV3BindingAndFramingChanges
-core/pgp/DeviceEnrollmentCrypto.cpp	        || (canonical && QString::fromLatin1(decoded.decoded.toBase64()) != value.toString()))	        || false)	DeviceEnrollmentCryptoTest:rejectsV3BindingAndFramingChanges
-core/pgp/DeviceEnrollmentCrypto.cpp	            reinterpret_cast<unsigned char*>(plaintext.bytes().data()) + written, &finalBytes) != 1)	            reinterpret_cast<unsigned char*>(plaintext.bytes().data()) + written, &finalBytes) == -999)	DeviceEnrollmentCryptoTest:rejectsV3BindingAndFramingChanges
+# Ring size admission, exact version and canonical base64 framing (v4/v5 only; v2/v3 retired).
+core/pgp/DeviceEnrollmentCrypto.cpp	    const int maximum = ring ? kMaxRingEnvelopeBytes : kMaxEnvelopeBytes;	    const int maximum = kMaxEnvelopeBytes;	DeviceEnrollmentCryptoTest:rejectsHpkeFramingChanges
+core/pgp/DeviceEnrollmentCrypto.cpp	    if ((version != 4 && !ring) || !isReady() || envelopeJson.isEmpty() || envelopeJson.size() > maximum)	    if (!isReady() || envelopeJson.isEmpty() || envelopeJson.size() > maximum)	DeviceEnrollmentCryptoTest:refusesRetiredLegacyDeliveries
+core/pgp/DeviceEnrollmentCrypto.cpp	    if (object.value(QStringLiteral("v")) != QJsonValue(version)	    if (false	DeviceEnrollmentCryptoTest:rejectsHpkeFramingChanges
+core/pgp/DeviceEnrollmentCrypto.cpp	        || QString::fromLatin1(decoded.decoded.toBase64()) != value.toString())	        || false)	DeviceEnrollmentCryptoTest:rejectsHpkeFramingChanges
+core/pgp/OpenPgpKeyImporter.cpp	    if (version != 4)	    if (false)	DeviceEnrollmentCryptoTest:importsEveryDeliveryVersion
 
 # Complete-ring GnuPG-only custody: scratch admission, snapshot binding and no partial success.
 # boundedKeyPackets additionally refuses compressed key packets before GnuPG 2.4.4
@@ -558,8 +559,9 @@ app/mail/InviteController.cpp	    if (m_pending && m_pending->token == token) {	
 app/qml/components/RsvpConfirmDialog.qml	    readonly property bool isOpen: root.token >= 0 && root.confirmation.token === root.token && !AppLock.locked	    readonly property bool isOpen: root.token >= 0 && root.confirmation.token === root.token	QmlTests:InviteCard::test_the_dialog_is_closed_and_inert_under_the_lock
 
 # HPKE v4/v5: exact framing and alg, a stale ring snapshot.
-core/pgp/DeviceEnrollmentCrypto.cpp	        if (object.size() != 4 || encapsulated.size() != 65 || encapsulated.front() != '\x04')	        if (encapsulated.size() != 65 || encapsulated.front() != '\x04')	DeviceEnrollmentCryptoTest:rejectsHpkeFramingChanges
-core/pgp/DeviceEnrollmentCrypto.cpp	        || object.value(QStringLiteral("alg")).toString() != QString::fromLatin1(version >= 4 ? kHpkeAlgorithm : kAlgorithm))	        || false)	DeviceEnrollmentCryptoTest:rejectsHpkeNegatives
+core/net/PgpDeviceEnrollmentClient.cpp	                    {QStringLiteral("envelopeVersions"), QJsonArray{4, 5}}},	                    {QStringLiteral("envelopeVersions"), QJsonArray{2, 3, 4, 5}}},	PgpDeviceEnrollmentClientTest:advertisesOnlyHpkeEnvelopeVersions
+core/pgp/DeviceEnrollmentCrypto.cpp	    if (info.isEmpty() || object.size() != 4 || encapsulated.size() != 65 || encapsulated.front() != '\x04')	    if (info.isEmpty() || encapsulated.size() != 65 || encapsulated.front() != '\x04')	DeviceEnrollmentCryptoTest:rejectsHpkeFramingChanges
+core/pgp/DeviceEnrollmentCrypto.cpp	        || object.value(QStringLiteral("alg")).toString() != QLatin1String(kHpkeAlgorithm))	        || false)	DeviceEnrollmentCryptoTest:rejectsHpkeNegatives
 core/net/PgpDeviceEnrollmentClient.cpp	        || generationOf(ring.value(QStringLiteral("materialGeneration"))) != out.materialGeneration)	        || false)	PgpDeviceEnrollmentClientTest:aStaleOrLegacyDeliveryHasNoRingSnapshot
 
 # New signing/encryption never selects an undersized RSA primary or usable role subkey.

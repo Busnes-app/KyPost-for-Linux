@@ -1219,21 +1219,27 @@ worse than no comment: the next reader stops looking.
   are never deleted. The expected snapshot must come from the authenticated
   server, not the payload itself. Run the importer on a worker with a thread-safe
   identity/cancellation predicate.
-  **Wired 2026-10-24 (owner decision), with HPKE v4/v5.** `PgpEnrollmentController`
-  publishes `envelopeVersions: [2,3,4,5]` and opens by the server-recorded delivery
-  `version` via `openDelivery`, never by trial: 2/4 import one armored key with the
-  legacy boolean ack, 3/5 import the ring against the GET-envelope snapshot and ack
-  `{envelopeVersion, materialGeneration, fingerprint}`. V4/v5 are RFC 9180 HPKE
-  through OpenSSL `OSSL_HPKE_*` (never hand-rolled); `info` is the v2/v3 AAD with
-  the version digit, HPKE `aad` empty, exactly `{v, alg, enc, ct}`. V3/v5 use exact
-  uppercase 40/64-digit fingerprints, unchanged UTF-8 device IDs, canonical padded
-  base64 and a 128 KiB serialized-envelope limit. `device-envelope-v3.json` and
-  `pgp-keyring-v1.json` are public test material from server PR199;
+  **Wired 2026-10-24 (owner decision); HPKE-only since 2026-10-27.** `PgpEnrollmentController`
+  publishes `envelopeVersions: [4,5]` and opens by the server-recorded delivery
+  `version` via `openDelivery`, never by trial: 4 imports one armored key with the
+  legacy boolean ack, 5 imports the ring against the GET-envelope snapshot and acks
+  `{envelopeVersion, materialGeneration, fingerprint}`. V4/v5 are RFC 9180 mode_base,
+  KEM 0x0010 DHKEM(P-256, HKDF-SHA256), KDF 0x0001, AEAD 0x0002 AES-256-GCM, through
+  OpenSSL `OSSL_HPKE_*` (never hand-rolled). `info` = `kypost-device-envelope/vN` ||
+  u16-length device ID || u16-length fingerprint (v4 uppercased, whitespace removed;
+  v5 exact uppercase 40/64 hex); HPKE `aad` empty; exactly `{v, alg, enc, ct}`,
+  canonical padded base64; v5 is capped at 128 KiB serialized.
+  **V2/v3 (custom ECDH + HKDF + GCM, not RFC 9180) are retired.** A delivered 2/3 is
+  refused with an update-the-server message and `openDelivery`/`importDeviceDelivery`
+  reject it; no legacy opener exists. Nothing needs one: the enrollment key lives
+  only in memory for one ceremony, no envelope is stored, and Linux seals none.
+  Do not re-add v2/v3 for compatibility; KyPost-Server must deliver v4/v5.
+  `device-envelope-v3.json` (now the authentic v2/v3 refusal input and the fixed
+  device key) and `pgp-keyring-v1.json` are public test material from server PR199;
   `device-envelope-hpke.json` (SHA-256 `fa551913…a6499c`) and
   `hpke-cfrg-p256-aes256.json` (`a9d0c155…5b865a`, CFRG draft-irtf-cfrg-hpke
   `b1f7cb0c`) are byte-identical copies from kypost-server commit `5c52b69d`
-  `testdata/`. Re-copy, never edit. Openers keep v2/v3 until a later PR; until
-  then a hostile server can downgrade by trimming the advertised list. `OpenPgpKeyringTest`
+  `testdata/`. Re-copy, never edit. `OpenPgpKeyringTest`
   covers real disk imports, agent restart, historical/hidden-recipient decrypt,
   current signing, malformed payloads, partial failure/cancellation and retry.
 

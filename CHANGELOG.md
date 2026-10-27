@@ -28,6 +28,27 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- Device enrollment accepts only RFC 9180 HPKE envelopes: base mode,
+  DHKEM(P-256, HKDF-SHA256) 0x0010, HKDF-SHA256 0x0001, AES-256-GCM 0x0002;
+  `info` binds the version, device ID and OpenPGP fingerprint. KyPost advertises `envelopeVersions: [4,5]` and refuses a delivered v2/v3
+  envelope with an update-the-server message. The legacy ECDH/HKDF/GCM opener
+  is deleted; Linux never stored or sealed v2/v3 data.
+
+### Upgrade impact
+
+- Enrollment needs a KyPost server that seals v4/v5 when advertised; current
+  KyPost-Server main does. An older server sending v2/v3 now fails enrollment
+  without importing anything; update it, then enroll again. Already-imported
+  GnuPG keys, profiles and historical mail are unchanged.
+
+## Source notes at e6cb4e5d
+
+These are the prior source summary, preserved from
+[`e6cb4e5d`](https://github.com/Busnes-app/KyPost-for-Linux/commit/e6cb4e5d).
+Their presence does not establish that this source was distributed.
+
+### Changes
+
 - Refuse new OpenPGP signing/encryption with RSA primary keys or usable
   operation-specific RSA subkeys below 2048 actual bits, including 2047-bit keys.
 - Exercise the real GnuPG path with weak primary/signing/encryption subkeys,
