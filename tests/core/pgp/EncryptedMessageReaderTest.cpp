@@ -322,6 +322,11 @@ void EncryptedMessageReaderTest::detachedSignatureVerdicts_data()
     QTest::newRow("missing-key") << QStringLiteral("missing") << int(PgpSignatureVerdict::CannotCheck);
     QTest::newRow("conflicting-binding") << QStringLiteral("conflict") << int(PgpSignatureVerdict::CannotCheck);
     QTest::newRow("other-binding") << QStringLiteral("other") << int(PgpSignatureVerdict::ValidFromUnknownKey);
+    // Bound to the sender and mathematically valid, but below the floor.
+    QTest::newRow("rsa1024-key") << QStringLiteral("rsa1024") << int(PgpSignatureVerdict::TooWeak);
+    QTest::newRow("dsa1024-key") << QStringLiteral("dsa1024") << int(PgpSignatureVerdict::TooWeak);
+    QTest::newRow("sha1-digest") << QStringLiteral("sha1") << int(PgpSignatureVerdict::TooWeak);
+    QTest::newRow("sha224-digest") << QStringLiteral("sha224") << int(PgpSignatureVerdict::ValidFromSender);
 }
 
 void EncryptedMessageReaderTest::detachedSignatureVerdicts()
@@ -329,7 +334,14 @@ void EncryptedMessageReaderTest::detachedSignatureVerdicts()
     QFETCH(QString, variant);
     QFETCH(int, expected);
     const QByteArray original("Content-Type: text/plain\r\n\r\nexact signed bytes\r\n");
-    const auto signature = m_signer.detachedSignature(original, QStringLiteral("sender@example.com"));
+    const bool weakKey = variant == QStringLiteral("rsa1024") || variant == QStringLiteral("dsa1024");
+    GnupgFixture weakSigner;
+    if (weakKey)
+        QVERIFY(weakSigner.build(QStringLiteral("Sender <sender@example.com>"), variant));
+    const GnupgFixture& sender = weakKey ? weakSigner : m_signer;
+    const QString digest = variant == QStringLiteral("sha1") ? QStringLiteral("SHA1")
+        : variant == QStringLiteral("sha224") ? QStringLiteral("SHA224") : QString();
+    const auto signature = sender.detachedSignature(original, QStringLiteral("sender@example.com"), digest);
     QVERIFY(!signature.isEmpty());
     QByteArray bytes = original;
     if (variant == QStringLiteral("tampered")) bytes.replace("exact", "other");
@@ -344,7 +356,7 @@ void EncryptedMessageReaderTest::detachedSignatureVerdicts()
     }
     QJsonArray keys;
     if (variant != QStringLiteral("missing")) {
-        const auto& signer = variant == QStringLiteral("other") ? m_stranger : m_signer;
+        const auto& signer = variant == QStringLiteral("other") ? m_stranger : sender;
         const QString uid = variant == QStringLiteral("other") ? QStringLiteral("eve@evil.example") : QStringLiteral("sender@example.com");
         keys.append(QJsonObject{{"publicKey", QString::fromUtf8(signer.exportPublicKey(uid))},
             {"fingerprint", signer.fingerprintOf(uid)}, {"conflict", variant == QStringLiteral("conflict")},

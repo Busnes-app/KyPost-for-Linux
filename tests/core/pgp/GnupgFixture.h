@@ -27,7 +27,8 @@ class GnupgFixture
 public:
     // The uid defaults to the original single-key fixture, so every existing
     // caller is unaffected; tests that need two parties name their own.
-    bool build(const QString& uid = QStringLiteral("KyPost Test <test@example.com>"))
+    bool build(const QString& uid = QStringLiteral("KyPost Test <test@example.com>"),
+               const QString& algorithm = QStringLiteral("default"))
     {
         if (!m_home.isValid())
             return false;
@@ -39,7 +40,7 @@ public:
                   { QStringLiteral("--batch"), QStringLiteral("--pinentry-mode"),
                     QStringLiteral("loopback"), QStringLiteral("--passphrase"), QString(),
                     QStringLiteral("--quick-generate-key"),
-                    uid, QStringLiteral("default"),
+                    uid, algorithm,
                     QStringLiteral("default"), QStringLiteral("never") })) {
             return false;
         }
@@ -98,12 +99,15 @@ public:
         return gpg.readAllStandardOutput();
     }
 
-    QByteArray detachedSignature(const QByteArray& bytes, const QString& uid) const
+    QByteArray detachedSignature(const QByteArray& bytes, const QString& uid, const QString& digest = {}) const
     {
         QProcess gpg;
         gpg.setProcessEnvironment(environment());
-        gpg.start(QStringLiteral("gpg"), {QStringLiteral("--batch"), QStringLiteral("--yes"),
-            QStringLiteral("--armor"), QStringLiteral("--detach-sign"), QStringLiteral("--local-user"), uid});
+        QStringList args{QStringLiteral("--batch"), QStringLiteral("--yes"),
+            QStringLiteral("--armor"), QStringLiteral("--detach-sign"), QStringLiteral("--local-user"), uid};
+        if (!digest.isEmpty())
+            args << QStringLiteral("--digest-algo") << digest;
+        gpg.start(QStringLiteral("gpg"), args);
         if (!gpg.waitForStarted(10000) || gpg.write(bytes) != bytes.size())
             return {};
         gpg.closeWriteChannel();

@@ -28,6 +28,34 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- Every relay and QR HTTPS request uses one strong TLS profile: TLS 1.2+,
+  peer verification, OpenSSL `SECLEVEL=2`, and an actual-size floor of
+  RSA/DSA 2048 and EC 224 bits on every presented certificate and every
+  trusted root, checked before any request byte. HTTPS refuses to run without
+  Qt's OpenSSL 3 backend. See [docs/STRONG-CRYPTO.md](docs/STRONG-CRYPTO.md).
+- The OpenPGP floor now covers DSA and ElGamal (2048 bits) and ECC (224),
+  refuses unknown key algorithms, and discards a new signature gpg made with a
+  digest weaker than SHA-224.
+- Incoming signatures from a weak key or with SHA-1 are shown as too weak to
+  trust and never credited to the sender.
+
+### Upgrade impact
+
+- Relays whose certificate chain or root uses RSA under 2048 bits are refused.
+  Requests use HTTP/1.1 without TLS session resumption. The OS trust store is
+  read once at startup; restart after adding a CA.
+- DSA-1024/ElGamal-1024 keys can no longer sign or receive new mail, and a
+  `digest-algo SHA1` gpg.conf makes sending fail. Existing keys, profiles and
+  historical mail are unchanged and still decrypt.
+
+## Source notes at cff1a5f8
+
+These are the prior source summary, preserved from
+[`cff1a5f8`](https://github.com/Busnes-app/KyPost-for-Linux/commit/cff1a5f8).
+Their presence does not establish that this source was distributed.
+
+### Changes
+
 - Device enrollment accepts only RFC 9180 HPKE envelopes: base mode,
   DHKEM(P-256, HKDF-SHA256) 0x0010, HKDF-SHA256 0x0001, AES-256-GCM 0x0002;
   `info` binds the version, device ID and OpenPGP fingerprint. KyPost advertises `envelopeVersions: [4,5]` and refuses a delivered v2/v3

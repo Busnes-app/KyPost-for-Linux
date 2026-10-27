@@ -96,6 +96,10 @@ enum class PgpSignatureVerdict
     // claiming this sender and cannot say which is right. Not a failure and
     // not a pass -- the question was not answerable.
     CannotCheck,
+
+    // The mathematics checks out, but the key or digest is below the floor in
+    // core/pgp/PgpKeyStrength.h (RSA-1024, SHA-1, ...), so it proves nothing.
+    TooWeak,
 };
 
 struct PgpReadResult

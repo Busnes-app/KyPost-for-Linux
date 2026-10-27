@@ -1,4 +1,5 @@
 #include "pgp/OpenPgpDecryptor.h"
+#include "pgp/PgpKeyStrength.h"
 
 #include "pgp/GpgmeInit.h"
 
@@ -108,9 +109,10 @@ struct KeyHandle
 };
 
 // The primary key a signature's signing key belongs to, per gpg's own key
-// data. A key with a dedicated signing subkey -- a hardware token's, and what
-// Sequoia and Proton generate -- signs with the SUBKEY, so the fingerprint in
-// the signature is never the one an address is bound to.
+// data, and whether both meet the strength floor. A key with a dedicated
+// signing subkey -- a hardware token's, and what Sequoia and Proton generate --
+// signs with the SUBKEY, so the fingerprint in the signature is never the one
+// an address is bound to.
 //
 // Empty on any failure: no such key in this keyring, or gpg cannot say. That
 // is the answer "unknown", and the caller must not read it as a match.
@@ -126,17 +128,37 @@ struct KeyHandle
 // gpgme 1.x too. Copying the pattern in, and reading every other field of the
 // signature before calling this, means the answer does not depend on which
 // gpgme is linked.
-QString primaryFingerprintOf(gpgme_ctx_t context, const QByteArray& signingFingerprint)
+struct SignerKey
 {
+    QString primaryFingerprint;
+    // The primary and the subkey that signed both meet PgpKeyStrength.h.
+    bool strongEnough = false;
+};
+
+SignerKey signerKeyOf(gpgme_ctx_t context, const QByteArray& signingFingerprint)
+{
+    SignerKey out;
     if (signingFingerprint.isEmpty())
-        return {};
+        return out;
     KeyHandle key;
     if (gpgme_err_code(gpgme_get_key(context, signingFingerprint.constData(), &key.handle, /*secret=*/0))
             != GPG_ERR_NO_ERROR
-        || key.handle == nullptr || key.handle->fpr == nullptr) {
-        return {};
+        || key.handle == nullptr || key.handle->fpr == nullptr || key.handle->subkeys == nullptr) {
+        return out;
     }
-    return QString::fromLatin1(key.handle->fpr);
+    out.primaryFingerprint = QString::fromLatin1(key.handle->fpr);
+    // An old signature may name its key by key ID rather than fingerprint.
+    bool signerFound = false;
+    bool strong = pgpKeyStrengthAllowed(key.handle->subkeys);
+    for (gpgme_subkey_t subkey = key.handle->subkeys; subkey != nullptr; subkey = subkey->next) {
+        if ((subkey->fpr != nullptr && qstricmp(subkey->fpr, signingFingerprint.constData()) == 0)
+            || (subkey->keyid != nullptr && qstricmp(subkey->keyid, signingFingerprint.constData()) == 0)) {
+            signerFound = true;
+            strong = strong && pgpKeyStrengthAllowed(subkey);
+        }
+    }
+    out.strongEnough = signerFound && strong;
+    return out;
 }
 
 PgpSignature signatureFromContext(gpgme_ctx_t context)
@@ -159,13 +181,16 @@ PgpSignature signatureFromContext(gpgme_ctx_t context)
         const QByteArray signingFingerprint =
             signature->fpr != nullptr ? QByteArray(signature->fpr) : QByteArray();
         const gpgme_err_code_t signatureStatus = gpgme_err_code(signature->status);
+        const gpgme_hash_algo_t digest = signature->hash_algo;
 
         result.fingerprint =
             signingFingerprint.isEmpty() ? QString() : QString::fromLatin1(signingFingerprint);
-        result.primaryFingerprint = primaryFingerprintOf(context, signingFingerprint);
+        const SignerKey signer = signerKeyOf(context, signingFingerprint);
+        result.primaryFingerprint = signer.primaryFingerprint;
         switch (signatureStatus) {
         case GPG_ERR_NO_ERROR:
             result.mathematicallyValid = true;
+            result.belowStrengthFloor = !signer.strongEnough || !pgpDigestAllowed(digest);
             break;
         case GPG_ERR_NO_PUBKEY:
             result.keyUnavailable = true;

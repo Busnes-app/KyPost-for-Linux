@@ -40,6 +40,9 @@ private slots:
     void keyPatternsAreNotFingerprints();
     void undersizedRsaKeysAreNotUsedForNewMessages_data();
     void undersizedRsaKeysAreNotUsedForNewMessages();
+    void dsaAndElgamalKeysMeetTheSameFloor_data();
+    void dsaAndElgamalKeysMeetTheSameFloor();
+    void aSignatureDigestBelowSha224IsNotSent();
 
 private:
     QString importInto(const QString& home, const GnupgFixture& from, const QString& uid) const;
@@ -125,6 +128,76 @@ void OpenPgpEncryptorTest::undersizedRsaKeysAreNotUsedForNewMessages()
     QCOMPARE(old.status, PgpDecryptStatus::Decrypted);
     QCOMPARE(old.plaintext, fixture["plaintext"].toString().toUtf8());
     QCOMPARE(runGpg({"--export-secret-keys", fingerprint}), before);
+}
+
+void OpenPgpEncryptorTest::dsaAndElgamalKeysMeetTheSameFloor_data()
+{
+    QTest::addColumn<int>("bits");
+    QTest::addColumn<bool>("signing");
+    for (int bits : { 1024, 2048 }) {
+        for (bool signing : { false, true })
+            QTest::newRow(qPrintable(QStringLiteral("dsa-elg%1-%2").arg(bits).arg(signing ? "signer" : "recipient")))
+                << bits << signing;
+    }
+}
+
+// GnuPG still creates DSA-1024 + ElGamal-1024 keys without complaint.
+void OpenPgpEncryptorTest::dsaAndElgamalKeysMeetTheSameFloor()
+{
+    QFETCH(int, bits);
+    QFETCH(bool, signing);
+    GnupgFixture home;
+    QVERIFY(home.build(QStringLiteral("Legacy <legacy@example.com>"), QStringLiteral("dsa%1").arg(bits)));
+    const auto cleanup = qScopeGuard([&] { GnupgFixture::killAgent(home.path()); });
+    const QString legacy = home.fingerprintOf(QStringLiteral("legacy@example.com"));
+    const auto runGpg = [&](const QStringList& args, const QByteArray& input = QByteArray()) {
+        QProcess process;
+        process.start(QStringLiteral("gpg"), QStringList{ QStringLiteral("--homedir"), home.path(),
+                                                          QStringLiteral("--batch"), QStringLiteral("--pinentry-mode"),
+                                                          QStringLiteral("loopback"), QStringLiteral("--passphrase"),
+                                                          QString() } + args);
+        process.waitForStarted(10000);
+        process.write(input);
+        process.closeWriteChannel();
+        return process.waitForFinished(60000) && process.exitCode() == 0;
+    };
+    QVERIFY(runGpg({ QStringLiteral("--quick-add-key"), legacy, QStringLiteral("elg%1").arg(bits),
+                     QStringLiteral("encr"), QStringLiteral("never") }));
+    QVERIFY(runGpg({ QStringLiteral("--import") }, m_sender.exportSecretKeys({ QStringLiteral("sender@example.com") })));
+    const QString strong = m_sender.fingerprintOf(QStringLiteral("sender@example.com"));
+
+    const auto result = signing ? signAndEncrypt("new private mail\n", legacy, { strong }, home.path())
+                                : signAndEncrypt("new private mail\n", strong, { strong, legacy }, home.path());
+    if (bits >= 2048) {
+        QCOMPARE(result.status, PgpEncryptStatus::Encrypted);
+        return;
+    }
+    QCOMPARE(result.status, signing ? PgpEncryptStatus::NoSigningKey : PgpEncryptStatus::RecipientKeyUnusable);
+    QVERIFY(result.armoredCiphertext.isEmpty());
+    if (!signing)
+        QVERIFY(result.unusableRecipients.contains(legacy));
+}
+
+// The digest comes from gpg.conf, which this app does not own.
+void OpenPgpEncryptorTest::aSignatureDigestBelowSha224IsNotSent()
+{
+    GnupgFixture home;
+    QVERIFY(home.build(QStringLiteral("Sha One <sha1@example.com>")));
+    const auto cleanup = qScopeGuard([&] { GnupgFixture::killAgent(home.path()); });
+    const QString self = home.fingerprintOf(QStringLiteral("sha1@example.com"));
+    QFile conf(home.path() + QStringLiteral("/gpg.conf"));
+    QVERIFY(conf.open(QIODevice::WriteOnly));
+    conf.write("digest-algo SHA1\n");
+    conf.close();
+
+    const auto result = signAndEncrypt("new private mail\n", self, { self }, home.path());
+    QCOMPARE(result.status, PgpEncryptStatus::Failed);
+    QVERIFY(result.armoredCiphertext.isEmpty());
+
+    QVERIFY(conf.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    conf.write("digest-algo SHA224\n");
+    conf.close();
+    QCOMPARE(signAndEncrypt("new private mail\n", self, { self }, home.path()).status, PgpEncryptStatus::Encrypted);
 }
 
 QString OpenPgpEncryptorTest::importInto(const QString& home, const GnupgFixture& from,

@@ -366,6 +366,10 @@ private:
     HttpResult waitForReply(QNetworkReply* reply, const RedirectValidator& redirectValidator,
                              qint64 maxResponseBytes) const;
 
+    // An invalid URL, or HTTPS without the backend the strong TLS profile
+    // needs (net/TlsPolicy.h). nullopt means the request may be sent.
+    static std::optional<HttpResult> refuseBeforeSending(const QUrl& requestUrl);
+
     // Returns redirectValidator when the caller supplied one, otherwise a
     // same-origin-as-requestUrl validator. Never returns empty, so every
     // request runs under UserVerifiedRedirectPolicy.

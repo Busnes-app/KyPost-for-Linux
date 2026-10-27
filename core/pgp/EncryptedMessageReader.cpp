@@ -69,6 +69,8 @@ PgpSignatureVerdict verdictFor(const PgpSignature& signature, const QStringList&
         return PgpSignatureVerdict::CannotCheck;
     if (!signature.mathematicallyValid)
         return PgpSignatureVerdict::Invalid;
+    if (signature.belowStrengthFloor)
+        return PgpSignatureVerdict::TooWeak;
     if (boundFingerprints.isEmpty())
         return PgpSignatureVerdict::CannotCheck;
 

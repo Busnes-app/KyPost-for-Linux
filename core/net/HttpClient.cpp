@@ -1,4 +1,5 @@
 #include "net/HttpClient.h"
+#include "net/TlsPolicy.h"
 
 #include <QEventLoop>
 #include <QJsonDocument>
@@ -20,7 +21,7 @@ namespace {
 // The relay's own hostname is deliberately not named here: it is pairing
 // data (DevicePairing::serverBaseUrl), not a compile-time constant, and
 // self-hosted instances are a supported case.
-// Applied to every verb below via applyDefaultHeaders(); a caller-supplied
+// Applied to every verb below via prepareRequest(); a caller-supplied
 // User-Agent in `headers` still wins, because setRawHeader() runs after
 // this and overwrites.
 QString userAgent()
@@ -42,14 +43,27 @@ QByteArray spkiSha256(const QSslCertificate& cert)
     return der.isEmpty() ? QByteArray() : QCryptographicHash::hash(der, QCryptographicHash::Sha256);
 }
 
-void applyDefaultHeaders(QNetworkRequest& request, const QList<QPair<QString, QString>>& headers)
+void prepareRequest(QNetworkRequest& request, const QList<QPair<QString, QString>>& headers)
 {
+    applyStrongTlsPolicy(request);
     request.setHeader(QNetworkRequest::UserAgentHeader, userAgent());
     for (const auto& header : headers)
         request.setRawHeader(header.first.toUtf8(), header.second.toUtf8());
 }
 
 } // namespace
+
+std::optional<HttpClient::HttpResult> HttpClient::refuseBeforeSending(const QUrl& requestUrl)
+{
+    if (!requestUrl.isValid())
+        return HttpResult{ NetworkError::InvalidUrl, 0, {}, QStringLiteral("Invalid URL"), {}, {}, {} };
+    // Another backend would silently ignore the strong TLS profile's options.
+    if (requestUrl.scheme().compare(QLatin1String("https"), Qt::CaseInsensitive) == 0 && !strongTlsBackendAvailable())
+        return HttpResult{ NetworkError::Transport, 0, {},
+                           QStringLiteral("Secure networking is unavailable: install Qt's OpenSSL 3 TLS backend"),
+                           {}, {}, {} };
+    return std::nullopt;
+}
 
 void HttpClient::assertOwningThread(const char* where) const
 {
@@ -205,11 +219,11 @@ HttpClient::HttpResult HttpClient::get(const QUrl& url, const QList<QPair<QStrin
 {
     assertOwningThread("HttpClient::get");
     const QUrl requestUrl = urlWithQuery(url, query);
-    if (!requestUrl.isValid())
-        return HttpResult{ NetworkError::InvalidUrl, 0, {}, QStringLiteral("Invalid URL"), {}, {}, {} };
+    if (std::optional<HttpResult> refused = refuseBeforeSending(requestUrl))
+        return *refused;
 
     QNetworkRequest request(requestUrl);
-    applyDefaultHeaders(request, headers);
+    prepareRequest(request, headers);
 
     // Qt's default (NoLessSafeRedirectPolicy) follows redirects
     // automatically with no way for the caller to inspect the target.
@@ -231,12 +245,12 @@ HttpClient::HttpResult HttpClient::post(const QUrl& url, const QList<QPair<QStri
 {
     assertOwningThread("HttpClient::post");
     const QUrl requestUrl = urlWithQuery(url, query);
-    if (!requestUrl.isValid())
-        return HttpResult{ NetworkError::InvalidUrl, 0, {}, QStringLiteral("Invalid URL"), {}, {}, {} };
+    if (std::optional<HttpResult> refused = refuseBeforeSending(requestUrl))
+        return *refused;
 
     QNetworkRequest request(requestUrl);
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
-    applyDefaultHeaders(request, headers);
+    prepareRequest(request, headers);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::UserVerifiedRedirectPolicy);
 
     return waitForReply(m_manager.post(request, QJsonDocument(jsonBody).toJson(QJsonDocument::Compact)),
@@ -249,12 +263,12 @@ HttpClient::HttpResult HttpClient::put(const QUrl& url, const QList<QPair<QStrin
 {
     assertOwningThread("HttpClient::put");
     const QUrl requestUrl = urlWithQuery(url, query);
-    if (!requestUrl.isValid())
-        return HttpResult{ NetworkError::InvalidUrl, 0, {}, QStringLiteral("Invalid URL"), {}, {}, {} };
+    if (std::optional<HttpResult> refused = refuseBeforeSending(requestUrl))
+        return *refused;
 
     QNetworkRequest request(requestUrl);
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
-    applyDefaultHeaders(request, headers);
+    prepareRequest(request, headers);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::UserVerifiedRedirectPolicy);
 
     return waitForReply(m_manager.put(request, QJsonDocument(jsonBody).toJson(QJsonDocument::Compact)),
@@ -267,11 +281,11 @@ HttpClient::HttpResult HttpClient::del(const QUrl& url, const QList<QPair<QStrin
 {
     assertOwningThread("HttpClient::del");
     const QUrl requestUrl = urlWithQuery(url, query);
-    if (!requestUrl.isValid())
-        return HttpResult{ NetworkError::InvalidUrl, 0, {}, QStringLiteral("Invalid URL"), {}, {}, {} };
+    if (std::optional<HttpResult> refused = refuseBeforeSending(requestUrl))
+        return *refused;
 
     QNetworkRequest request(requestUrl);
-    applyDefaultHeaders(request, headers);
+    prepareRequest(request, headers);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::UserVerifiedRedirectPolicy);
 
     return waitForReply(m_manager.deleteResource(request),
@@ -337,6 +351,17 @@ HttpClient::HttpResult HttpClient::waitForReply(QNetworkReply* reply, const Redi
     QObject::connect(reply, &QNetworkReply::downloadProgress, reply,
                       [refuseIfOversized](qint64 received, qint64 /*total*/) { refuseIfOversized(received); });
 
+    // The key floor, checked before the pin below and for the same reason: at
+    // ::encrypted no request byte has been written. It runs first, so a weak
+    // chain is reported as weak rather than as an impersonation.
+    bool weakTls = false;
+    QObject::connect(reply, &QNetworkReply::encrypted, reply, [reply, &weakTls]() {
+        if (tlsChainKeysAllowed(reply->sslConfiguration().peerCertificateChain()))
+            return;
+        weakTls = true;
+        reply->abort();
+    });
+
     // TOFU pinning, checked in two places on purpose.
     //
     // Here: ::encrypted fires after the handshake completes but before any
@@ -356,8 +381,8 @@ HttpClient::HttpResult HttpClient::waitForReply(QNetworkReply* reply, const Redi
     QByteArray observedSpki;
     const bool enforcePin = !m_certificatePin.isEmpty() && sameUrlOrigin(reply->request().url(), m_pinnedOrigin);
     QObject::connect(reply, &QNetworkReply::encrypted, reply,
-                      [this, reply, enforcePin, &pinMismatch, &observedSpki]() {
-        if (!enforcePin)
+                      [this, reply, enforcePin, &weakTls, &pinMismatch, &observedSpki]() {
+        if (!enforcePin || weakTls)
             return;
 
         const std::optional<QByteArray> observed =
@@ -436,7 +461,10 @@ HttpClient::HttpResult HttpClient::waitForReply(QNetworkReply* reply, const Redi
     // and every later request that reuses it skipped the check entirely.
     // Already-set pinMismatch means the handshake path caught it first and
     // aborted; re-running here would report the same mismatch twice.
-    if (enforcePin && !pinMismatch) {
+    // A pooled connection skips ::encrypted; its chain is re-checked here.
+    if (!peerChain.isEmpty() && !tlsChainKeysAllowed(peerChain))
+        weakTls = true;
+    if (enforcePin && !pinMismatch && !weakTls) {
         if (const std::optional<QByteArray> observed =
                 pinMismatchFor(m_certificatePin, reply->sslConfiguration().peerCertificateChain())) {
             pinMismatch = true;
@@ -453,7 +481,16 @@ HttpClient::HttpResult HttpClient::waitForReply(QNetworkReply* reply, const Redi
     // Checked before the status code: an aborted handshake yields no status,
     // and even if it somehow did, "wrong server" outranks whatever that
     // server said.
-    if (tooLarge) {
+    if (weakTls) {
+        // Nothing a below-floor server said is handed back.
+        result.error = NetworkError::Transport;
+        result.detail = QStringLiteral("The server's TLS certificate chain uses a key below KyPost's minimum "
+                                       "(RSA 2048 or EC 224 bits)");
+        result.body.clear();
+        result.headers.clear();
+        result.statusCode = 0;
+        result.peerSpkiSha256.clear();
+    } else if (tooLarge) {
         // Ranked above the status code for the same reason pinMismatch and
         // redirectRefused are: abort() leaves whatever status had arrived,
         // and "we stopped reading because it was too big" is the fact the
