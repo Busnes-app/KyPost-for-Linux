@@ -61,7 +61,7 @@ DeviceEnrollmentCallResult PgpDeviceEnrollmentClient::publishKey(
     return statusOf(m_httpClient.post(
         joinUrlPath(serverBaseUrl, QStringLiteral("api/pgp/device/enrollment-key")), {},
         QJsonObject{{QStringLiteral("publicKey"), QString::fromLatin1(publicKeyBase64)},
-                    {QStringLiteral("envelopeVersions"), QJsonArray{2, 3, 4, 5}}},
+                    {QStringLiteral("envelopeVersions"), QJsonArray{4, 5}}},
         auth.headerItems()));
 }
 

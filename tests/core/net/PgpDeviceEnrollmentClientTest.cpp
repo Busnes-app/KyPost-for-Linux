@@ -16,7 +16,7 @@ class PgpDeviceEnrollmentClientTest : public QObject
     Q_OBJECT
 
 private slots:
-    void advertisesEveryOpenableEnvelopeVersion();
+    void advertisesOnlyHpkeEnvelopeVersions();
     void readsTheRecordedVersionAndRingSnapshot();
     void aStaleOrLegacyDeliveryHasNoRingSnapshot();
     void acknowledgesExactlyTheDeliveredRing();
@@ -37,7 +37,7 @@ QJsonObject delivery(int version, double generation, const QJsonValue& keyring)
 }
 }
 
-void PgpDeviceEnrollmentClientTest::advertisesEveryOpenableEnvelopeVersion()
+void PgpDeviceEnrollmentClientTest::advertisesOnlyHpkeEnvelopeVersions()
 {
     FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true})"));
     QNetworkAccessManager manager;
@@ -47,7 +47,7 @@ void PgpDeviceEnrollmentClientTest::advertisesEveryOpenableEnvelopeVersion()
     QVERIFY(fake.receivedRequest().startsWith("POST /api/pgp/device/enrollment-key "));
     const QJsonObject body = fake.receivedJsonBody();
     QCOMPARE(body.value("publicKey").toString(), QStringLiteral("BAAA"));
-    QCOMPARE(body.value("envelopeVersions").toArray(), (QJsonArray{2, 3, 4, 5}));
+    QCOMPARE(body.value("envelopeVersions").toArray(), (QJsonArray{4, 5}));
 }
 
 void PgpDeviceEnrollmentClientTest::readsTheRecordedVersionAndRingSnapshot()

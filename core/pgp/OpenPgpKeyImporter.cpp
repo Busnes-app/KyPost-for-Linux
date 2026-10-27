@@ -778,9 +778,9 @@ PgpKeyringImportStatus importPrivateKeyring(const SecureBytes& keyringJson,
 PgpKeyringImportStatus importDeviceDelivery(int version, const SecureBytes& plaintext,
     const PgpKeyringSnapshot& expected, const QString& homeDirectory, const std::function<bool()>& stillCurrent)
 {
-    if (version == 3 || version == 5)
+    if (version == 5)
         return importPrivateKeyring(plaintext, expected, homeDirectory, stillCurrent);
-    if (version != 2 && version != 4)
+    if (version != 4)
         return PgpKeyringImportStatus::Rejected;
     switch (importPrivateKey(plaintext, expected.activeFingerprint, homeDirectory).status) {
     case PgpImportStatus::Imported: return PgpKeyringImportStatus::Imported;

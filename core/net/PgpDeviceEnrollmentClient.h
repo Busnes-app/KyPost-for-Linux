@@ -30,7 +30,7 @@ class PgpDeviceEnrollmentClient
 {
 public:
     explicit PgpDeviceEnrollmentClient(HttpClient& httpClient);
-    // Advertises envelope versions [2,3,4,5] with the key; the server stores both atomically.
+    // Advertises RFC 9180 envelope versions [4,5] only with the key; the server stores both atomically.
     DeviceEnrollmentCallResult publishKey(const QUrl& serverBaseUrl, const RelayAuth& auth,
                                            const QByteArray& publicKeyBase64) const;
     DeviceEnrollmentCallResult fetchEnvelope(const QUrl& serverBaseUrl, const RelayAuth& auth) const;
