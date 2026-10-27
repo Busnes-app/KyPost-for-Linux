@@ -120,6 +120,11 @@ kypost_add_test(LinkTargetTest core/domain/LinkTargetTest.cpp)
 kypost_add_test(NetworkErrorTest core/net/NetworkErrorTest.cpp)
 kypost_add_test(RelayAuthTest core/net/RelayAuthTest.cpp)
 kypost_add_test(HttpClientTest core/net/HttpClientTest.cpp)
+# Real TLS fixtures through HttpClient: the RSA-2048/EC-224 floor on every
+# chain certificate and anchor, before any request byte (docs/STRONG-CRYPTO.md).
+kypost_add_test(TlsKeyPolicyTest core/net/TlsKeyPolicyTest.cpp)
+target_link_libraries(TlsKeyPolicyTest PRIVATE OpenSSL::Crypto)
+set_tests_properties(TlsKeyPolicyTest PROPERTIES TIMEOUT 300)
 # Asserts the property the whole threading migration exists for: that the
 # calling thread is never re-entered while a request is in flight.
 kypost_add_test(NetworkExecutorTest core/net/NetworkExecutorTest.cpp)

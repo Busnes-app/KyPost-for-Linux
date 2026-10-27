@@ -53,6 +53,10 @@ struct PgpSignature
     // and must never be shown as one.
     bool keyUnavailable = false;
 
+    // Valid, but made with a key or digest below core/pgp/PgpKeyStrength.h's
+    // floor (for example RSA-1024 or SHA-1), so it vouches for nothing.
+    bool belowStrengthFloor = false;
+
     // The key that made it, as gpg computed it -- never as anything claimed.
     // This is the SIGNING key, which on any key with a dedicated signing
     // subkey is the subkey and not the identity anything is bound to.

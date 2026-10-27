@@ -19,83 +19,106 @@
 namespace {
 
 // A real chain for the pooled-connection test: a leaf for 127.0.0.1 issued
-// by "KyPost Test Issuer", under a root that is not served. The pin anchors
-// to the ISSUER (HttpClient::pinnedSpkiFromChain), so the chain has to be
-// two deep or the pin cannot be computed at all. Generated with openssl,
+// by "KyPost Test Issuer", under a root that is trusted but not served. The
+// pin anchors to the ISSUER (HttpClient::pinnedSpkiFromChain), so the chain
+// has to be two deep or the pin cannot be computed at all. Generated with openssl,
 // valid to 2036; used nowhere else.
 const char* kServedLeafPem = R"PEM(
 -----BEGIN CERTIFICATE-----
-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
+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
+ZAjK1bfCBGJDW/L4EG111g==
 -----END CERTIFICATE-----
 )PEM";
 
 const char* kServedIssuerPem = R"PEM(
 -----BEGIN CERTIFICATE-----
-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
+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
+wvkyzgESvSQ67BIU8XOrgUFtJTeCDL/fr14=
+-----END CERTIFICATE-----
+)PEM";
+
+// The root the issuer chains to. Trusted by the pinned tests, never served.
+const char* kTrustedRootPem = R"PEM(
+-----BEGIN CERTIFICATE-----
+MIIDJzCCAg+gAwIBAgIUY8yXOt++Bud0ylZsETEdVQXadsYwDQYJKoZIhvcNAQEL
+BQAwGzEZMBcGA1UEAwwQS3lQb3N0IFRlc3QgUm9vdDAeFw0yNjEwMjcyMTI3MTZa
+Fw0zNjEwMjQyMTI3MTZaMBsxGTAXBgNVBAMMEEt5UG9zdCBUZXN0IFJvb3QwggEi
+MA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCXcTgPuqCrRTMFSgtkSwjfwvmr
+njGMcrtBahwekR3ReF34JkFWrXy2LcTK+n2kdmqXTlD7cyDCVduIzkDIDpkW4gnm
+5HuDavFARVgxSr2wIn5V7IzLd1ZPXKH6XP2+HGA0BRcrLK4xLB/27m4P2RM35euR
+5XjvUiQUKGArnKKA7bj1GB9fn4/eMAc2Mi1caj2JOyFRL0FA//9CbS8cBcTpIROz
+mI5faGI3jKXz7cjSlAhm5tpRl1RoszbuMMUtXccgNDcC6eyezpJ5mt3bKaEwKtzQ
+INjBEb5J+egJtjsncvZNtGiiXa6UkIy7OJUHyL0Set1w/CuIRvpwhavW0+D5AgMB
+AAGjYzBhMB0GA1UdDgQWBBRc9fUNIui2LpByiDied6/HyIfPxDAfBgNVHSMEGDAW
+gBRc9fUNIui2LpByiDied6/HyIfPxDAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB
+/wQEAwIBBjANBgkqhkiG9w0BAQsFAAOCAQEAPuwbb4KG5LGufiucYjljOo0blUZQ
+ESfIF5hf9E3fPHXBxrvPSlC11I5nyKBl6VzW8WPcX6/7m3JTX+3dOAnwdIly8wpL
+MQmwbdog09/hfkqLoPNGxZQzv29anbJq584n5NO1HqOPzMmuAnUEbJxdgGseQ6YV
+MSYHL4BhpQef1YSHbk1cdkN1ydxDlWg+muNVBNm07rmAxpOfVqw9mD6f/EESIW94
+WwMLevUTo0D1o6EEzX5zxYy8jmjt4w59YaxEjpd9S5JvAO3TAV2u96Udxv9fVQfo
+F5F/vel+1NuGXBwHoOWILhrjlmmHPft9CP6dlY/QUwEkE0EevrPN447zbQ==
 -----END CERTIFICATE-----
 )PEM";
 
 const char* kServedLeafKeyPem = R"PEM(
 -----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC8FXOWs97dw3w4
-WLehosAyPCb7zMu8RdT6xSXRM5OpFiTIZc4OnWsl/AZyTBpsJMByQBeyKCAv0Hsw
-NzbtTaWI9n2kppd+jQYSTF3AjnB7S/p58Dht/IC2pttp/eIKte2sEfRz6nQ0LUfD
-JR3V4vRhO6dTQJkD2Bv1UqsbLl7OOhSnmlchoM3Iijykey/0mqWmSl+x/V2sYo3S
-9jw/D9ZTXJDIxrHvwcdRP+gvBIDVVtKwl5wyJkUnbO/NovPdMbsk4T3cOANtVMtj
-gMKmy4jZ8jVKYWROh6Y9hwAPXreh7TXKBy9yxoy8pEZJDga0p3UXsOE4XoE2LBGv
-SEE7JcN3AgMBAAECggEAJy683tdoBYEVHtP0pXq3WX/Ii0p14yoVHYz2vOdmyqHv
-VcRHsim/SbGAUk1ib8cURHjvttC/K9bd4wSNr9AuPSNEt4lxJA8TBbrdCSFjc3w3
-mTGfP+KLmgGW0jTu41ZVRjSTXZapULliKthPp+BZEuyPhjt95RwfbvMi7E2zuHhr
-Fe5vRshTVk8R3D99rlL9zCFg7sWOAmc4TV82Q+HA0zBRQxMNhn5klsOnMEW8y/Pf
-iVAYkmlCUxXg2vRqw/dq/rgNJCwu2TiGn/cnq3lxtrcPZX7oXJ2prk9KlRBIMuQ7
-OlPM7+HJ0Y6IfT7S/TRn2PuE/y6XwUFFsQd5I07NUQKBgQD1hsD1FHe8sZlN7e7L
-stiJMFX4tblQrwFEk7qTQjPe3q3iOH/J7w3aYegdH9vp0uhA9DvnhCHGFPjK0uQE
-L+dc3KwVO6h84/YPhMrw+eboBvcYWzWSiECxArPrvjMVbEZ9Ekdk7oVz5Qb8oupP
-8Zaw9rT45tRAj30Up9Iz1R9JOQKBgQDEG2bZ8BEx900ueji6eZWh/84E17sVLzuy
-bQytotaEB3CEAu4ckZuflhrftHH6ViPghY66WgTIV6hnMMLEPmDLaDuJVn2Bhczq
-GXDXy4KsG+MN2TVsHlQwsCC+67umpnIpapJfXRvFPwkLs51+ZcZJz/TWxhAml0Bc
-mDYqmNviLwKBgDOi5nvklRYLJ9m624jdkSqxDrOizFmKpLKeexOzTaNmo507Eq0O
-aJRwGNffNmnjoFLgyqRzJoM5L+XAGpJC3N6rzkkc5d92Ne6nl+K8O/K6XEc0D31E
-yI4xqlM/ChFMVzrAmGFCxLBOD30cajjr7yxChmb+bM8zHjQ040FhZhYJAoGBAIaR
-Mwt7o6EAzPKGpeS3x8jpSsqh6luIFNPD5r5DjiX9IOVFSXVLKVnh28EEBm48q9PG
-cgFIAh4joIhmuk+FalBJzwjX07mMQeel23wIxzsoy65WDUWKrkTWpzG7ewHJF296
-FMThlEvOjHt+HiV82wsNaznxoWWJxn2DaS/jwoa7AoGAGGvXk6IROyB8annMfgKC
-/IVc5P5/0wEWkBY2Z94O5b4pSFivGO4iTH0702TpSgjeCLx+cV1ZZmAGKVXRiMbZ
-a5mq+QDlXVEZm4AwNCeY8tY15KjP1n1RX33f+7cd9nxdheEhpu9A7PPaBKLsTity
-skXq/OweosZgDAxiNotPVWw=
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDJA8qztywdbJqK
+EVJikP3cIkANUuHeAHXm4t8PaZZF4ROFfy0v5CjFoz+9tAS7qtkNAwk+JfFxIyYU
+qsijpNu/rAxHbJf1XFavik1PjnEQvAWgwiINIuhroXdcz9bSzGoAthNJqR1x24Q6
+N7VoQ8LX54q8H3R0QWL/55eHA0mnTsZOdneWx19BvPeZ/M112ecFCOvZ8Xl6ADtJ
+mTiI9SEAADUcNSmbky55bEbfRu5Eh9Te+oedz0rnbNWzKuSXV77WuzC7pxPrF1EU
+XTcuGK8v31tOphtel9nQJfPS1L9rvknHDcFLk1tR8V4sogCO17fNlLAT02d9QWM9
+GPLqOdw1AgMBAAECggEADi5yjUcZuWdeqBQh72VtHNacwA6OHqMCg7wTQmuE/XVB
+iDxJRD+blxqV5gy5KG1HUVlFZxP3CpqRIUmi4eqrpy7ckehpzcFf4JQIXBm/mno4
+B8KnyNdNiumyDwNJvlxLXoqkkIs6EieLbAO0ocBlaA/ZiZKgMmMk4yAkCv4oItcL
+iwt+7O+AElwxoegLcokDPDGp2bIv1xD6IkbIhDZQoqlg7nXU7WzML45p4tcTfdKC
+pI8KBTga85cZJJBhsKqzLTvJwymkbkovI/IizSCIvc6V+vDtpMloE2I58RrY6uZO
+RWFVSumht3NaEE/dFPmyBAweigf/gjwAFgiLnXBXwQKBgQD1OUD2U7r96IczzziW
+WuczjXzeDncmX5IzAy4aBKSxeSriKFG11a9lPrnyYXYb7YYFisE8rMyMo+ySrnp8
+ASmePNgRWFwR0/LBVZPaVZZUm5GLfUDsHI30XE7H8h5TS8QT94qWFFqZMIaefDlO
+3VrbF2LGsd2Sxv3nBcM8FiKcwQKBgQDR2TE0z7FNuTjwjm//uSpLWDuRqFqS0XIw
+DWmAfcfliB1+/3SCdFfGyryDA7UllSAnVUZjOFFxxn69dzB9Mw3ON32Mtx8Mvksb
+OFZGctM+tvu56Lg38YjzfHO3bKwaqhmHrRq8Dze6ExKjeEm4rule5ZeMms7ApFU/
++5goO544dQKBgQCrDAmNCDBpRRVxhPwynCuioPFVLn/bq1Qd8vzoNw7tn9fSsk70
+Z52VIGCxeVvZ9R7DpNpOyTVQcFLmqX9UGbd+4W/RAXIPGWi9hETCSWq3j1/BDVgI
+mY5GwVBOVUrjzPhy+PqY3o+nRNrRl1Kd+PaT1ccXUx97bwPRbgqVUddIwQKBgQCn
+yyZIVyYrwsYfu5Ucgj+qXVPMZTR/HxBSEfdhMbIL++mx6auMwGCLaQKRM/69nV9H
+dC1DGv4sno4rC0nvYkpQsRgn0yj1tJcznbmGvTvicsgXYFklCnH6V3HjofZ/n7Go
+RicRZo2lsKh/o6g3D001fxnN6N8XNI+iCJgi24DpHQKBgE9PAWIWuM+eKtrz5c+q
+3M0BLQZre3rtvWnNBTi7cvHvgJ7JDRJS+DG0TB94bScXJ/cTdGqMTkJIWnuN1F+f
+4LrKG0KTxnojYKiicWAgyPWmxk+TSkqgajO97zL1Hid8XLz077yhYIShqRgAy2kk
+Q1Je/KawVLddQD4wH7ok7cl3
 -----END PRIVATE KEY-----
 )PEM";
 
@@ -112,9 +135,8 @@ QByteArray keepAliveResponse(const QByteArray& body)
         + QByteArray::number(body.size()) + "\r\nConnection: keep-alive\r\n\r\n" + body;
 }
 
-// Restores the process-wide default QSslConfiguration, which the pooled
-// test has to relax (VerifyNone) so that chain validation of a private test
-// CA does not fail the request before the pin is ever consulted.
+// Restores the process-wide default QSslConfiguration, which the pinned
+// tests point at the test issuer: HttpClient always verifies the peer.
 struct SslDefaultsGuard
 {
     QSslConfiguration previous = QSslConfiguration::defaultConfiguration();
@@ -560,9 +582,9 @@ void HttpClientTest::aRequestOnAPooledConnectionIsStillPinChecked()
         QSKIP("no TLS backend available in this build");
 
     const SslDefaultsGuard sslDefaults;
-    QSslConfiguration relaxed = QSslConfiguration::defaultConfiguration();
-    relaxed.setPeerVerifyMode(QSslSocket::VerifyNone);
-    QSslConfiguration::setDefaultConfiguration(relaxed);
+    QSslConfiguration trusted = QSslConfiguration::defaultConfiguration();
+    trusted.setCaCertificates({ certOf(kTrustedRootPem) });
+    QSslConfiguration::setDefaultConfiguration(trusted);
 
     KeepAliveTlsServer server;
     QVERIFY(server.isListening());
@@ -629,9 +651,9 @@ void HttpClientTest::aMismatchOnAFreshHandshakeIsRefusedBeforeTheRequestIsSent()
         QSKIP("no TLS backend available in this build");
 
     const SslDefaultsGuard sslDefaults;
-    QSslConfiguration relaxed = QSslConfiguration::defaultConfiguration();
-    relaxed.setPeerVerifyMode(QSslSocket::VerifyNone);
-    QSslConfiguration::setDefaultConfiguration(relaxed);
+    QSslConfiguration trusted = QSslConfiguration::defaultConfiguration();
+    trusted.setCaCertificates({ certOf(kTrustedRootPem) });
+    QSslConfiguration::setDefaultConfiguration(trusted);
 
     KeepAliveTlsServer server;
     QVERIFY(server.isListening());

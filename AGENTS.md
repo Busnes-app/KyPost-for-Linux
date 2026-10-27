@@ -34,7 +34,7 @@ tests/      — QtTest, stubbed HttpClient; ctest-driven. tests/qml/ is the QML 
 packaging/  — flatpak/ (manifest, desktop file, metainfo, notifyrc, icons), dbus/ (session D-Bus activation .service), click/ (empty .gitkeep placeholder — the Ubuntu Touch app does not exist yet, there is no Clickable manifest)
 po/         — gettext catalogs
 scripts/    — build-sqlcipher.sh, verify-guards.sh, verify-version.sh, release-notes.py, verify-pgp-against-relay.sh
-docs/       — local tooling/setup notes (see docs/SETUP.md); docs/PARITY.md is the authoritative Android-parity matrix; docs/THREADING.md records the async-controller constraints
+docs/       — local tooling/setup notes (see docs/SETUP.md); docs/PARITY.md is the authoritative Android-parity matrix; docs/THREADING.md records the async-controller constraints; docs/STRONG-CRYPTO.md is the key-strength profile (§6k)
 ```
 
 ## 3. Build instructions
@@ -1242,6 +1242,27 @@ worse than no comment: the next reader stops looking.
   `testdata/`. Re-copy, never edit. `OpenPgpKeyringTest`
   covers real disk imports, agent restart, historical/hidden-recipient decrypt,
   current signing, malformed payloads, partial failure/cancellation and retry.
+
+## 6k. Strong crypto profile (2026-10-27)
+
+`docs/STRONG-CRYPTO.md` is the user-facing statement; keep it in step.
+
+- **Every HTTPS request goes through `HttpClient`, which applies
+  `core/net/TlsPolicy.h`.** Never send app traffic through a bare
+  `QNetworkAccessManager`, set `VerifyNone`, ignore SSL errors or add a weaker
+  per-request profile. Tests trust a generated root instead
+  (`TlsKeyPolicyTest`, `HttpClientTest`).
+- **The floor is literal key size, not OpenSSL's estimate.** `SECLEVEL=2`
+  accepts RSA-2047 on OpenSSL 3.6. Presented certificates are checked at
+  `QNetworkReply::encrypted` (before any request byte) and trusted roots are
+  filtered per request, because servers need not send their root.
+- **`main()` materialises the OS trust store before any network object
+  exists.** Without it the filtered anchor list is empty and HTTPS fails closed.
+- **HTTP/2 and TLS session resumption stay off.** Qt 5.15's HTTP/2 path has no
+  pre-data `encrypted` signal; a resumed session can expose no chain.
+- **OpenPGP strength lives in `core/pgp/PgpKeyStrength.h`.** New signing and
+  encryption, the signature digest gpg chose, and incoming-signature credit all
+  use it. Decryption of existing mail and key import are deliberately exempt.
 
 ## 7. DOX framework
 

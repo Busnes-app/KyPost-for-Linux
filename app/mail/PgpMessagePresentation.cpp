@@ -58,6 +58,9 @@ QString pgpSignatureLabel(PgpSignatureVerdict verdict, const QString& signedBy)
         // asked.
         return i18n("This message is signed, but there is no key available to check the signature "
                      "against.");
+    case PgpSignatureVerdict::TooWeak:
+        return i18n("This message is signed with a key or hash too weak to trust, so the signature "
+                    "proves nothing about who sent it.");
     }
     return {};
 }
@@ -66,7 +69,8 @@ bool pgpSignatureIsWarning(PgpSignatureVerdict verdict)
 {
     return verdict == PgpSignatureVerdict::CannotCheck
         || verdict == PgpSignatureVerdict::ValidFromUnknownKey
-        || verdict == PgpSignatureVerdict::Invalid;
+        || verdict == PgpSignatureVerdict::Invalid
+        || verdict == PgpSignatureVerdict::TooWeak;
 }
 
 QString pgpReadFailureMessage(PgpReadStatus status)

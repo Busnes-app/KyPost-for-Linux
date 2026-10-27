@@ -57,6 +57,7 @@
 #include "net/GroupsClient.h"
 #include "net/CertificatePinSink.h"
 #include "net/HttpClient.h"
+#include "net/TlsPolicy.h"
 #include "net/NetworkExecutor.h"
 #include "net/DeregisterClient.h"
 #include "net/NativeRegistrationClient.h"
@@ -821,6 +822,10 @@ int main(int argc, char* argv[])
     // 6. HttpClient -- default transferTimeoutMs. networkManager must
     // outlive httpClient and every net/ client below that borrows it
     // transitively.
+    // Before any network object exists, on either thread: the strong TLS
+    // profile filters this anchor list per request (core/net/TlsPolicy.h).
+    if (useSystemTrustAnchors() == 0)
+        qCritical("main: no system CA certificates found; every HTTPS request will fail");
     QNetworkAccessManager networkManager;
     HttpClient httpClient(networkManager);
 

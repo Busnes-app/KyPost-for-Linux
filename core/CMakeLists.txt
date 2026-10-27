@@ -85,6 +85,7 @@ add_library(kypostcore STATIC
   db/ProfileDatabase.cpp
   pgp/GpgmeInit.cpp
   pgp/GpgmeInit.h
+  pgp/PgpKeyStrength.h
   pgp/OpenPgpDecryptor.cpp
   pgp/MimeBodyReader.cpp
   pgp/PgpMimeWriter.cpp
@@ -118,6 +119,8 @@ add_library(kypostcore STATIC
   net/NetworkError.cpp
   net/NetworkError.h
   net/RelayAuth.h
+  net/TlsPolicy.cpp
+  net/TlsPolicy.h
   net/HttpClient.cpp
   net/HttpClient.h
   net/CertificatePinSink.cpp

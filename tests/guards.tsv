@@ -564,5 +564,37 @@ core/pgp/DeviceEnrollmentCrypto.cpp	    if (info.isEmpty() || object.size() != 4
 core/pgp/DeviceEnrollmentCrypto.cpp	        || object.value(QStringLiteral("alg")).toString() != QLatin1String(kHpkeAlgorithm))	        || false)	DeviceEnrollmentCryptoTest:rejectsHpkeNegatives
 core/net/PgpDeviceEnrollmentClient.cpp	        || generationOf(ring.value(QStringLiteral("materialGeneration"))) != out.materialGeneration)	        || false)	PgpDeviceEnrollmentClientTest:aStaleOrLegacyDeliveryHasNoRingSnapshot
 
-# New signing/encryption never selects an undersized RSA primary or usable role subkey.
-core/pgp/OpenPgpEncryptor.cpp	        return subkey->length >= 2048;	        return true;	OpenPgpEncryptorTest:undersizedRsaKeysAreNotUsedForNewMessages
+
+# --- the strong TLS profile on every HttpClient request (docs/STRONG-CRYPTO.md) ---
+# RSA-2047 passes OpenSSL SECLEVEL=2; the literal size check is what refuses it.
+core/net/TlsPolicy.cpp	        return bits >= 2048;	        return true;	TlsKeyPolicyTest:requests
+core/net/TlsPolicy.cpp	        return bits >= 224;	        return true;	TlsKeyPolicyTest:certificateKeyTypes
+core/net/TlsPolicy.cpp	    if (!cert || position != begin + certificateDer.size())	    if (!cert)	TlsKeyPolicyTest:certificateKeyTypes
+# A weak root the server never sends is only visible in the anchor list.
+core/net/TlsPolicy.cpp	    tls.setCaCertificates(anchors);	    (void)anchors;	TlsKeyPolicyTest:requests
+core/net/TlsPolicy.cpp	    tls.setPeerVerifyMode(QSslSocket::VerifyPeer);	    // peer verification removed	TlsKeyPolicyTest:requests
+core/net/TlsPolicy.cpp	    tls.setBackendConfigurationOption(QByteArrayLiteral("CipherString"), QByteArrayLiteral("DEFAULT@SECLEVEL=2"));	    // security level removed	TlsKeyPolicyTest:requests
+# Not listed: setProtocol(TlsV1_2OrLater). SECLEVEL=2 also refuses TLS 1.0/1.1
+# on OpenSSL 3, so the tls10/tls11 rows still fail closed without it. Both stay.
+# Also not listed: HttpClient's post-request chain re-check. Qt 6 opens a fresh
+# connection rather than reuse one made under another TLS configuration, so it
+# stays green on this (Qt 6) build. Qt 5.15 does reuse it: there, removing the
+# re-check fails TlsKeyPolicyTest:aWeakConnectionPooledBeforeTheClientIsStillRefused
+# (proven on the core-qt5 build, 2026-10-27).
+# The handshake-time check is what keeps request bytes from a weak peer.
+core/net/HttpClient.cpp	        if (tlsChainKeysAllowed(reply->sslConfiguration().peerCertificateChain()))	        if (true)	TlsKeyPolicyTest:requests
+core/net/HttpClient.cpp	    if (requestUrl.scheme().compare(QLatin1String("https"), Qt::CaseInsensitive) == 0 && !strongTlsBackendAvailable())	    if (false)	TlsKeyPolicyTest:httpsIsRefusedWithoutTheOpenSslBackend
+
+# --- the OpenPGP strength floor (core/pgp/PgpKeyStrength.h) ------------------
+# New signing/encryption never selects an undersized RSA, DSA or ElGamal primary or usable role subkey.
+core/pgp/PgpKeyStrength.h	        return subkey->length >= 2048;	        return true;	OpenPgpEncryptorTest:undersizedRsaKeysAreNotUsedForNewMessages
+core/pgp/PgpKeyStrength.h	        return subkey->length >= 2048;	        return true;	OpenPgpEncryptorTest:dsaAndElgamalKeysMeetTheSameFloor
+# gpg picks the digest from gpg.conf; a SHA-1 signature is not sent.
+core/pgp/OpenPgpEncryptor.cpp	            || !pgpDigestAllowed(signResult->signatures->hash_algo))) {	            || false)) {	OpenPgpEncryptorTest:aSignatureDigestBelowSha224IsNotSent
+core/pgp/PgpKeyStrength.h	    return digest == GPGME_MD_SHA224 || digest == GPGME_MD_SHA256 || digest == GPGME_MD_SHA384	    return true || digest == GPGME_MD_SHA256 || digest == GPGME_MD_SHA384	OpenPgpEncryptorTest:aSignatureDigestBelowSha224IsNotSent
+# A valid signature from a weak key or digest is never credited to the sender.
+core/pgp/PgpKeyStrength.h	    return digest == GPGME_MD_SHA224 || digest == GPGME_MD_SHA256 || digest == GPGME_MD_SHA384	    return true || digest == GPGME_MD_SHA256 || digest == GPGME_MD_SHA384	EncryptedMessageReaderTest:detachedSignatureVerdicts
+core/pgp/OpenPgpDecryptor.cpp	            result.belowStrengthFloor = !signer.strongEnough || !pgpDigestAllowed(digest);	            result.belowStrengthFloor = false;	EncryptedMessageReaderTest:detachedSignatureVerdicts
+core/pgp/EncryptedMessageReader.cpp	    if (signature.belowStrengthFloor)	    if (false)	EncryptedMessageReaderTest:detachedSignatureVerdicts
+# Not listed: the ECC 224-bit floor and the unknown-algorithm refusal. GnuPG
+# offers no ECC curve below 255 bits and no unclassified algorithm to test with.

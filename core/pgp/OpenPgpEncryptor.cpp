@@ -1,4 +1,5 @@
 #include "pgp/OpenPgpEncryptor.h"
+#include "pgp/PgpKeyStrength.h"
 
 #include "pgp/GpgmeInit.h"
 
@@ -48,28 +49,16 @@ struct KeyList
     }
 };
 
-bool rsaSizeAllowed(gpgme_subkey_t subkey)
-{
-    switch (subkey->pubkey_algo) {
-    case GPGME_PK_RSA:
-    case GPGME_PK_RSA_E:
-    case GPGME_PK_RSA_S:
-        return subkey->length >= 2048;
-    default:
-        return true;
-    }
-}
-
-bool rsaSizesAllowed(gpgme_key_t key, bool signing)
+bool strengthAllowed(gpgme_key_t key, bool signing)
 {
     // The primary certifies the identity even when a subkey does the operation.
-    if (key->subkeys == nullptr || !rsaSizeAllowed(key->subkeys))
+    if (key->subkeys == nullptr || !pgpKeyStrengthAllowed(key->subkeys))
         return false;
     // GnuPG selects the operational subkey. Every currently usable candidate
     // for this role must meet the floor; do not assume it picks the strongest.
     for (gpgme_subkey_t subkey = key->subkeys; subkey != nullptr; subkey = subkey->next) {
         if (!subkey->revoked && !subkey->expired && !subkey->disabled && !subkey->invalid
-            && (signing ? subkey->can_sign : subkey->can_encrypt) && !rsaSizeAllowed(subkey)) {
+            && (signing ? subkey->can_sign : subkey->can_encrypt) && !pgpKeyStrengthAllowed(subkey)) {
             return false;
         }
     }
@@ -81,7 +70,7 @@ bool usableKey(gpgme_key_t key, const QString& requested, bool signing)
     return key != nullptr && key->fpr != nullptr
         && requested == QString::fromLatin1(key->fpr)
         && !key->revoked && !key->expired && !key->disabled && !key->invalid
-        && (signing ? key->can_sign : key->can_encrypt) && rsaSizesAllowed(key, signing);
+        && (signing ? key->can_sign : key->can_encrypt) && strengthAllowed(key, signing);
 }
 
 PgpEncryptStatus statusFromError(gpgme_error_t error)
@@ -162,7 +151,7 @@ PgpEncryptResult signAndEncrypt(const QByteArray& plaintext, const QString& sign
         if (signer != nullptr)
             gpgme_key_unref(signer);
         out.status = PgpEncryptStatus::NoSigningKey;
-        out.detail = QStringLiteral("no usable secret key for the sender fingerprint (RSA requires 2048 bits)");
+        out.detail = QStringLiteral("no usable secret key for the sender fingerprint (RSA, DSA and ElGamal need 2048 bits)");
         return out;
     }
     gpgme_signers_clear(context.handle);
@@ -193,7 +182,7 @@ PgpEncryptResult signAndEncrypt(const QByteArray& plaintext, const QString& sign
     }
     if (!out.unusableRecipients.isEmpty()) {
         out.status = PgpEncryptStatus::RecipientKeyUnusable;
-        out.detail = QStringLiteral("a recipient key is missing or unusable (RSA requires 2048 bits)");
+        out.detail = QStringLiteral("a recipient key is missing or unusable (RSA, DSA and ElGamal need 2048 bits)");
         return out;
     }
 
@@ -232,10 +221,19 @@ PgpEncryptResult signAndEncrypt(const QByteArray& plaintext, const QString& sign
         return out;
     }
 
-    if (const gpgme_sign_result_t signResult = gpgme_op_sign_result(context.handle);
-        signResult != nullptr && signResult->invalid_signers != nullptr) {
+    const gpgme_sign_result_t signResult = gpgme_op_sign_result(context.handle);
+    if (signResult != nullptr && signResult->invalid_signers != nullptr) {
         out.status = PgpEncryptStatus::NoSigningKey;
         out.detail = QStringLiteral("gpg refused the signing key");
+        return out;
+    }
+    // The digest comes from the user's gpg.conf and key preferences, not from
+    // here, so check what gpg actually used. The ciphertext is discarded.
+    if (gpgme_err_code(error) == GPG_ERR_NO_ERROR
+        && (signResult == nullptr || signResult->signatures == nullptr
+            || !pgpDigestAllowed(signResult->signatures->hash_algo))) {
+        out.status = PgpEncryptStatus::Failed;
+        out.detail = QStringLiteral("gpg signed with a hash weaker than SHA-224");
         return out;
     }
 

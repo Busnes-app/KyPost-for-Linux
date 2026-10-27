@@ -213,7 +213,7 @@ packaging/  — flatpak/ (manifest, desktop file, AppStream metainfo, notifyrc, 
 po/         — gettext translation catalogs
 scripts/    — build-sqlcipher.sh, verify-guards.sh, verify-version.sh, relay verification
 docs/       — PARITY.md (the authoritative Android-parity matrix), DISTRIBUTION.md,
-              THREADING.md, SETUP.md, RENAME_NOTES.md
+              THREADING.md, SETUP.md, RENAME_NOTES.md, STRONG-CRYPTO.md
 ```
 
 The `core/` boundary permits Qt Core, Network, and Sql only. A new dependency in `core/` breaks
@@ -224,6 +224,8 @@ the rules a change breaks most easily, and the acceptance matrix against the And
 [`Linux_QT_Client_Plan.md`](Linux_QT_Client_Plan.md) is the original architectural design
 record; it predates several locked decisions, so where it disagrees with those two, it is the
 stale one. [`TESTING.md`](TESTING.md) is the manual verification checklist.
+[`docs/STRONG-CRYPTO.md`](docs/STRONG-CRYPTO.md) lists every key KyPost selects or accepts,
+the enforced minimums (RSA-2048, EC-224, SHA-224) and what is out of scope.
 
 ## License
 

@@ -10,6 +10,7 @@ class PgpMessagePresentationTest : public QObject
 
 private slots:
     void unsignedEncryptionIsDisclosed();
+    void aTooWeakSignatureIsAWarningNotAVerification();
     void marksOnlyTheUnreadableStates();
     void everyMarkerHasAnAccessibleName();
     void bannerCopyExistsForEveryStateExceptNone();
@@ -26,6 +27,13 @@ void PgpMessagePresentationTest::unsignedEncryptionIsDisclosed()
 {
     QCOMPARE(pgpSignatureLabel(PgpSignatureVerdict::None, {}), QStringLiteral("Encrypted, but not signed."));
     QVERIFY(!pgpSignatureIsWarning(PgpSignatureVerdict::None));
+}
+
+void PgpMessagePresentationTest::aTooWeakSignatureIsAWarningNotAVerification()
+{
+    QVERIFY(pgpSignatureIsWarning(PgpSignatureVerdict::TooWeak));
+    QVERIFY(pgpSignatureLabel(PgpSignatureVerdict::TooWeak, QStringLiteral("a@example.test"))
+                .contains(QStringLiteral("too weak")));
 }
 
 void PgpMessagePresentationTest::marksOnlyTheUnreadableStates()

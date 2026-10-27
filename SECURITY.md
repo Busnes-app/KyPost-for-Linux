@@ -37,6 +37,10 @@ be moved. A misfiled report is better than an unfiled one.
   [PLATFORM_BASELINE.md](https://github.com/Busnes-app/KyPost-Server/blob/main/docs/PLATFORM_BASELINE.md)
   section 2, which is normative across every client.
 - **Rendering hostile mail.** Message bodies are attacker-controlled input.
+- **Key strength.** Every HTTPS connection and every new OpenPGP signature or
+  encryption refuses keys below RSA-2048/EC-224, including weak trusted roots.
+  [docs/STRONG-CRYPTO.md](docs/STRONG-CRYPTO.md) lists each boundary, the
+  deliberate exceptions and what is out of scope.
 
 ## Known limitation: pairing is trust-on-first-use
 
