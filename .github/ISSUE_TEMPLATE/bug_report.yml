@@ -35,7 +35,7 @@ body:
     attributes:
       label: Client version
       description: "`flatpak info com.kysecurity.mail`, or the tag you built from."
-      placeholder: "0.4.3"
+      placeholder: "0.5.0"
     validations:
       required: true
 
