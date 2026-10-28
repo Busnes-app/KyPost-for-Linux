@@ -28,6 +28,23 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- Test-only: the shell notification tests, one of which opens a message and
+  starts WebEngine, run in the separate `ShellReaderTests` process. In the
+  sanitizer build they had pushed `ShellTestsScaled` past its 800 MB memory
+  limit, and CI on main was red. The app itself is unchanged.
+
+### Upgrade impact
+
+- None. Nothing shipped changes.
+
+## Source notes at 64d0cee2
+
+These are the prior source summary, preserved from
+[`64d0cee2`](https://github.com/Busnes-app/KyPost-for-Linux/commit/64d0cee2).
+Their presence does not establish that this source was distributed.
+
+### Changes
+
 - Every relay and QR HTTPS request uses one strong TLS profile: TLS 1.2+,
   peer verification, OpenSSL `SECLEVEL=2`, and an actual-size floor of
   RSA/DSA 2048 and EC 224 bits on every presented certificate and every
