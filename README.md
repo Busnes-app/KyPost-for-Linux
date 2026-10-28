@@ -232,3 +232,14 @@ the enforced minimums (RSA-2048, EC-224, SHA-224) and what is out of scope.
 MIT, developed by Busnes.app — see [`LICENSE.txt`](LICENSE.txt).
 
 [![OctoCounts](https://api.octocounts.com/badge/Busnes-app/KyPost-for-Linux/branch/main)](https://octocounts.com/github/Busnes-app/KyPost-for-Linux/tree/main)
+
+## Documentation
+
+- [Distribution](docs/DISTRIBUTION.md) — the self-hosted signed Flatpak channel.
+- [Strong cryptography](docs/STRONG-CRYPTO.md) — the keys KyPost selects or accepts, and their minimums.
+- [Encrypted send](Client_Encrypted_Send.md) — how the client sends encrypted and signed mail through the relay.
+- [Android parity](docs/PARITY.md) — which Android features the Linux client has.
+- [Manual testing](TESTING.md) — the human verification checklist.
+- [Contributing](CONTRIBUTING.md) — how to propose a change and what it must pass.
+- [Security policy](SECURITY.md) — how to report a vulnerability privately.
+- [Release notes](CHANGELOG.md) — what changed in each release, and its upgrade impact.
