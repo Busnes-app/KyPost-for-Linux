@@ -243,8 +243,9 @@ jobs:
 
           # No --install-deps-from: the step above already pulled them, with
           # retries. Leaving it on would re-introduce the single-shot Flathub
-          # fetch this is working around.
-          flatpak-builder --user --force-clean \
+          # fetch this is working around. --ccache keeps compiler output in the
+          # cached .flatpak-builder directory.
+          flatpak-builder --user --force-clean --ccache \
             --repo="repo-${{ matrix.arch }}" \
             build-flatpak "$MANIFEST"
 

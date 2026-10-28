@@ -28,6 +28,23 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- CI-only: the sanitizer build and tests run as their own parallel job,
+  `build-and-test (sanitizers)`, with the same commands. Native CI and the
+  Flatpak build reuse compiler output through ccache, and the SQLCipher and
+  zxing-cpp builds are cached. Superseded pull-request runs are cancelled.
+
+### Upgrade impact
+
+- None. Nothing shipped changes.
+
+## Source notes at b4b043fc
+
+These are the prior source summary, preserved from
+[`b4b043fc`](https://github.com/Busnes-app/KyPost-for-Linux/commit/b4b043fc).
+Their presence does not establish that this source was distributed.
+
+### Changes
+
 - The README shows an [OctoCounts](https://octocounts.com) badge with the
   repository's line counts, at the end of its License section, followed by a
   Documentation section listing the project documents.

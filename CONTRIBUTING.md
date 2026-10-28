@@ -196,7 +196,7 @@ genuinely flaky, that is a bug to fix in the job.
 | Workflow / job | What it runs |
 |---|---|
 | `ci.yml` → `build-and-test` | Version/release-note checks, then a Release build against Ubuntu 26.04 Qt6/KF6 with SQLCipher built from source, then `ctest` |
-| `ci.yml` → same job, second half | A Debug build with `KYPOST_SANITIZE=ON` and the whole suite again under ASan + UBSan |
+| `ci.yml` → `build-and-test (sanitizers)` | In parallel, a Debug build with `KYPOST_SANITIZE=ON` and the whole suite again under ASan + UBSan |
 | `ci.yml` → `core-qt5` | RelWithDebInfo shared-core build and tests against Qt 5.15 on Ubuntu 26.04 with SQLCipher |
 | `flatpak.yml` → `build` | Checks release notes, builds `packaging/flatpak/com.kysecurity.mail.yaml` on x86_64 **and** aarch64 native runners, runs the full ctest suite inside the sandbox, validates the AppStream metainfo, and launch-smoke-tests the result |
 | `flatpak.yml` → `publish` | Skipped entirely on a pull request; runs for main pushes, version tags, nightly runs and manual dispatch |
