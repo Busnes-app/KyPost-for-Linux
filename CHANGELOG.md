@@ -28,6 +28,20 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- Version 0.5.0 in CMake and AppStream, for the v0.5.0 tag. See `## v0.5.0`.
+
+### Upgrade impact
+
+- None beyond the v0.5.0 notes below; this commit changes only version numbers.
+
+## Source notes at aa26b6c9
+
+These are the prior source summary, preserved from
+[`aa26b6c9`](https://github.com/Busnes-app/KyPost-for-Linux/commit/aa26b6c9).
+Their presence does not establish that this source was distributed.
+
+### Changes
+
 - CI-only: pushes to `main`, tags and scheduled runs each get their own
   concurrency group, so a run queued behind another is no longer dropped.
   Superseded pull-request runs are still cancelled.
@@ -206,6 +220,36 @@ tagged GitHub Releases use the generated file as their body. These text notes
 are editorial metadata, not a replacement for package signature verification.
 Existing GitHub release bodies, tags and assets are not rewritten by adding
 this archive.
+
+## v0.5.0
+
+Prepared 2026-10-28. This section summarizes changes since v0.4.3, including
+the channel builds published between them.
+
+### Changes
+
+- Calendar invites show as a card with Accept, Maybe and Decline, confirmed
+  before the reply is sent to the organizer.
+- Device enrollment accepts only RFC 9180 HPKE envelopes (v4/v5); the legacy
+  ECDH envelope opener is removed.
+- One strong TLS profile for every relay and QR request: TLS 1.2+, OpenSSL
+  `SECLEVEL=2`, RSA/DSA 2048 and EC 224-bit floors on every certificate and
+  trusted root. OpenPGP refuses new mail with RSA, DSA or ElGamal keys under
+  2048 bits, ECC under 224, unknown algorithms or digests weaker than SHA-224,
+  and shows SHA-1 or weak-key signatures as too weak to trust.
+- CI, test and documentation changes: parallel sanitizer job, per-run
+  concurrency groups, OpenSSF and OctoCounts badges, tagged release notes.
+
+### Upgrade impact
+
+- RSVP replies are plain, unsigned, unencrypted email to the event organizer
+  and need a relay calendar-reply endpoint.
+- Enrollment needs a KyPost server that seals v4/v5 envelopes; an older server
+  fails enrollment without importing anything. Update it and enroll again.
+- Relays whose chain or root uses RSA under 2048 bits are refused, and a weak
+  sender or recipient key blocks a new protected message. A `digest-algo SHA1`
+  gpg.conf makes sending fail. Existing keys, profiles and historical mail are
+  unchanged and still decrypt; keep the GnuPG keyring.
 
 ## v0.4.3
 
