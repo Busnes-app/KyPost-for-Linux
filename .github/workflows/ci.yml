@@ -133,6 +133,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build-and-test:
     # x86_64 only -- and NOT because arm64 does not matter. It ships, and
@@ -163,7 +167,23 @@ jobs:
     #
     # The neon layer is gone (2026-10-24); before re-adding arm64 here
     # (ubuntu-26.04-arm), resolve this list's closure, not its names.
+    #
+    # The release and sanitizer builds of the same tree run as parallel legs;
+    # the release leg keeps the job's original check name.
+    name: ${{ matrix.name }}
     runs-on: ubuntu-26.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: build-and-test
+            build_type: Release
+            sanitize: 'OFF'
+          - name: build-and-test (sanitizers)
+            build_type: Debug
+            sanitize: 'ON'
+    env:
+      CCACHE_MAXSIZE: 1G
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -171,9 +191,11 @@ jobs:
 
       # Cheap, and it fails before ~20 minutes of dependency building.
       - name: Verify version consistency
+        if: matrix.sanitize == 'OFF'
         run: ./scripts/verify-version.sh
 
       - name: Verify release notes
+        if: matrix.sanitize == 'OFF'
         run: |
           python3 -B -m unittest discover -s scripts -p test_release_notes.py
           python3 scripts/release-notes.py --base HEAD^
@@ -235,7 +257,8 @@ jobs:
             libssl-dev \
             libargon2-dev \
             libgpgme-dev \
-            gnupg
+            gnupg \
+            ccache
 
       # ZXing (zxing-cpp) backs the PGP QR key exchange feature's
       # encode/decode (app/pgp/PgpQrController.cpp, app/pgp/PgpQrScanner.cpp
@@ -252,7 +275,17 @@ jobs:
       # build phase, this runner has network access throughout, so the
       # default ZXING_DEPENDENCIES=AUTO can fetch the `stb` single-header
       # dependency itself; no need to vendor it or force LOCAL.
+      #
+      # Staged under /tmp/zxing-root and cached on the pinned tag and this file.
+      - name: Restore zxing-cpp
+        id: zxing
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /tmp/zxing-root
+          key: zxing-cpp-v3.1.0-ubuntu-26.04-${{ hashFiles('.github/workflows/ci.yml') }}
+
       - name: Build zxing-cpp (ZXing) from source
+        if: steps.zxing.outputs.cache-hit != 'true'
         run: |
           git clone --recurse-submodules --branch v3.1.0 --depth 1 \
             https://github.com/zxing-cpp/zxing-cpp.git /tmp/zxing-cpp
@@ -265,7 +298,10 @@ jobs:
             -DZXING_UNIT_TESTS=OFF \
             -DCMAKE_DISABLE_FIND_PACKAGE_Doxygen=ON
           cmake --build /tmp/zxing-cpp/build
-          sudo cmake --install /tmp/zxing-cpp/build
+          DESTDIR=/tmp/zxing-root cmake --install /tmp/zxing-cpp/build
+
+      - name: Install zxing-cpp
+        run: sudo cp -a /tmp/zxing-root/. /
 
       # SQLCipher, for the encrypted-database tests.
       #
@@ -277,34 +313,28 @@ jobs:
       # not satisfy it and the loader maps the system SQLite alongside ours.
       # scripts/build-sqlcipher.sh sets the SONAME the plugin actually asks
       # for, and checks the result before it exits. See its header comment.
+      - name: Restore SQLCipher
+        id: sqlcipher
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /tmp/sqlcipher
+          key: sqlcipher-ubuntu-26.04-${{ hashFiles('scripts/build-sqlcipher.sh') }}
+
       - name: Build SQLCipher from source
+        if: steps.sqlcipher.outputs.cache-hit != 'true'
         run: ./scripts/build-sqlcipher.sh /tmp/sqlcipher
 
-      - name: Configure
-        run: |
-          cmake -B build -S . -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DKYPOST_SQLCIPHER_ROOT=/tmp/sqlcipher
+      # ccache's default directory, outside the source tree.
+      - name: Restore ccache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ccache
+          key: ccache-ubuntu-26.04-gcc-${{ matrix.build_type }}-${{ matrix.sanitize }}-${{ github.sha }}
+          restore-keys: |
+            ccache-ubuntu-26.04-gcc-${{ matrix.build_type }}-${{ matrix.sanitize }}-
 
-      - name: Build
-        run: cmake --build build
-
-      # All test binaries use QTEST_APPLESS_MAIN/QTEST_GUILESS_MAIN (verified
-      # against tests/CMakeLists.txt and every tests/**/*Test.cpp -- none use
-      # QTEST_MAIN/a real QGuiApplication), so no Xvfb/offscreen QPA platform
-      # setup is needed here. SecureStoreKeychainTest and
-      # NotificationDispatcherTest are the two tests that touch D-Bus-backed
-      # system services (Secret Service, KNotification); both are already
-      # written to tolerate a session with no such service reachable
-      # (SecureStoreKeychainTest QSKIPs when the Secret Service write fails;
-      # NotificationDispatcherTest only exercises the pure
-      # pickTitle()/pickText() helpers, never notify() itself) -- consistent
-      # with global constraint 9 (no live backend, no local KDE Wallet/D-Bus
-      # session required).
-      - name: Test
-        run: ctest --test-dir build --output-on-failure
-
-      # A second build of the same tree under AddressSanitizer and
-      # UndefinedBehaviorSanitizer.
+      # The sanitizers leg is a second build of the same tree under
+      # AddressSanitizer and UndefinedBehaviorSanitizer.
       #
       # Not paranoia for its own sake: this code does raw EVP_* calls with
       # manual length arithmetic and reinterpret_cast<quint32*> over
@@ -323,19 +353,40 @@ jobs:
       # new_delete_type_mismatch=0: Ubuntu 26.04's libQt6WebEngineCore 6.10
       # trips it inside QWebEngineProfile's constructor (uninstrumented Qt code,
       # 4 WebEngine tests). Everything else in ASan stays on.
-      - name: Configure (sanitizers)
+      - name: Configure
         run: |
-          cmake -B build-asan -S . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DKYPOST_SANITIZE=ON \
+          cmake -B build -S . -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DKYPOST_SANITIZE=${{ matrix.sanitize }} -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DKYPOST_SQLCIPHER_ROOT=/tmp/sqlcipher
 
-      - name: Build (sanitizers)
-        run: cmake --build build-asan
+      - name: Build
+        run: cmake --build build
+
+      - name: ccache statistics
+        run: ccache --show-stats
+
+      # All test binaries use QTEST_APPLESS_MAIN/QTEST_GUILESS_MAIN (verified
+      # against tests/CMakeLists.txt and every tests/**/*Test.cpp -- none use
+      # QTEST_MAIN/a real QGuiApplication), so no Xvfb/offscreen QPA platform
+      # setup is needed here. SecureStoreKeychainTest and
+      # NotificationDispatcherTest are the two tests that touch D-Bus-backed
+      # system services (Secret Service, KNotification); both are already
+      # written to tolerate a session with no such service reachable
+      # (SecureStoreKeychainTest QSKIPs when the Secret Service write fails;
+      # NotificationDispatcherTest only exercises the pure
+      # pickTitle()/pickText() helpers, never notify() itself) -- consistent
+      # with global constraint 9 (no live backend, no local KDE Wallet/D-Bus
+      # session required).
+      - name: Test
+        if: matrix.sanitize == 'OFF'
+        run: ctest --test-dir build --output-on-failure
 
       - name: Test (sanitizers)
+        if: matrix.sanitize == 'ON'
         env:
           ASAN_OPTIONS: detect_leaks=0:new_delete_type_mismatch=0
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-        run: ctest --test-dir build-asan --output-on-failure
+        run: ctest --test-dir build --output-on-failure
 
   # core/ (libkypostcore) and tests/core on Qt 5.15, for the Ubuntu Touch app
   # that shares it (AGENTS.md section 5). Stock resolute packages only (Qt 5.15
@@ -367,7 +418,15 @@ jobs:
             gnupg \
             pkg-config
 
+      - name: Restore SQLCipher
+        id: sqlcipher
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /tmp/sqlcipher
+          key: sqlcipher-ubuntu-26.04-${{ hashFiles('scripts/build-sqlcipher.sh') }}
+
       - name: Build SQLCipher from source
+        if: steps.sqlcipher.outputs.cache-hit != 'true'
         run: ./scripts/build-sqlcipher.sh /tmp/sqlcipher
 
       # Fails unless configure picked Qt 5.15: a runner that grew Qt 6 would

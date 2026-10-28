@@ -78,7 +78,7 @@ it the build is always Qt 6.
 in `CMakeLists.txt` include `_FORTIFY_SOURCE=3`, which does nothing without
 `-O`. A build with no configuration verifies unfortified code. Use
 `-DCMAKE_BUILD_TYPE=Debug -DKYPOST_SANITIZE=ON` for the sanitizer build, which
-CI runs as a second pass over the same tree.
+CI runs as a parallel leg over the same tree.
 
 **Add `-DKYPOST_SQLCIPHER_ROOT=...` before believing a green `ctest`.** Without
 it, configure prints `SQLCipher: not configured` and the encryption tests
