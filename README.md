@@ -7,7 +7,6 @@
 <p align="center">
   <a href="https://www.bestpractices.dev/projects/15929"><img src="https://www.bestpractices.dev/projects/15929/badge" alt="OpenSSF Best Practices"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/Busnes-app/KyPost-for-Linux"><img src="https://api.scorecard.dev/projects/github.com/Busnes-app/KyPost-for-Linux/badge" alt="OpenSSF Scorecard"></a>
-  <a href="https://octocounts.com/github/Busnes-app/KyPost-for-Linux/tree/main"><img src="https://api.octocounts.com/badge/Busnes-app/KyPost-for-Linux/branch/main" alt="OctoCounts"></a>
 </p>
 
 <p align="center">
@@ -231,3 +230,5 @@ the enforced minimums (RSA-2048, EC-224, SHA-224) and what is out of scope.
 ## License
 
 MIT, developed by Busnes.app — see [`LICENSE.txt`](LICENSE.txt).
+
+[![OctoCounts](https://api.octocounts.com/badge/Busnes-app/KyPost-for-Linux/branch/main)](https://octocounts.com/github/Busnes-app/KyPost-for-Linux/tree/main)

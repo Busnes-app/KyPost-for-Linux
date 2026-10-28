@@ -29,7 +29,7 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 ### Changes
 
 - The README shows an [OctoCounts](https://octocounts.com) badge with the
-  repository's line counts, beside the OpenSSF badges.
+  repository's line counts, at the end of its License section.
 
 ### Upgrade impact
 
