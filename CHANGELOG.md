@@ -28,6 +28,22 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- CI-only: pushes to `main`, tags and scheduled runs each get their own
+  concurrency group, so a run queued behind another is no longer dropped.
+  Superseded pull-request runs are still cancelled.
+
+### Upgrade impact
+
+- None. Nothing shipped changes.
+
+## Source notes at 6adcc526
+
+These are the prior source summary, preserved from
+[`6adcc526`](https://github.com/Busnes-app/KyPost-for-Linux/commit/6adcc526).
+Their presence does not establish that this source was distributed.
+
+### Changes
+
 - CI-only: the sanitizer build and tests run as their own parallel job,
   `build-and-test (sanitizers)`, with the same commands. Native CI and the
   Flatpak build reuse compiler output through ccache, and the SQLCipher and
