@@ -28,6 +28,22 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- The README shows an [OctoCounts](https://octocounts.com) badge with the
+  repository's line counts, at the end of its License section, followed by a
+  Documentation section listing the project documents.
+
+### Upgrade impact
+
+- None. Documentation only; the app is unchanged.
+
+## Source notes at 8cfdcb25
+
+These are the prior source summary, preserved from
+[`8cfdcb25`](https://github.com/Busnes-app/KyPost-for-Linux/commit/8cfdcb25).
+Their presence does not establish that this source was distributed.
+
+### Changes
+
 - Test-only: the shell notification tests, one of which opens a message and
   starts WebEngine, run in the separate `ShellReaderTests` process. In the
   sanitizer build they had pushed `ShellTestsScaled` past its 800 MB memory
