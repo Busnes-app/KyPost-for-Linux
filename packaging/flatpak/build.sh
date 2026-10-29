@@ -1,5 +1,5 @@
 #!/bin/sh
-# Wraps the Flatpak build documented in README.md's "### Flatpak" section and
+# Wraps the Flatpak build documented in docs/BUILDING.md's "### Flatpak" section and
 # duplicated in .github/workflows/ci.yml's flatpak-build job. Without this
 # script, building locally means copy-pasting those commands by hand, and a
 # fresh machine that's missing flatpak/flatpak-builder or the flathub remote

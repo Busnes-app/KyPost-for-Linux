@@ -66,13 +66,13 @@ re-litigation in a PR:
 ## Getting Set Up
 
 The desktop/Plasma Mobile app needs Qt6 and KF6. The shared core also supports
-Qt 5.15; the separate Ubuntu Touch app is not shipped yet. [`README.md`](README.md)
+Qt 5.15; the separate Ubuntu Touch app is not shipped yet. [`docs/BUILDING.md`](docs/BUILDING.md)
 has the dependency list with Arch package names;
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) installs the native CI
 dependencies from Ubuntu 26.04, including OpenSSL 3.2 or newer for HPKE.
 
 ```sh
-# Encryption at rest needs a SQLCipher with the right SONAME; see README.md.
+# Encryption at rest needs a SQLCipher with the right SONAME; see docs/BUILDING.md.
 ./scripts/build-sqlcipher.sh /tmp/sqlcipher
 
 cmake -B build -S . -DCMAKE_BUILD_TYPE=RelWithDebInfo -DKYPOST_SQLCIPHER_ROOT=/tmp/sqlcipher
@@ -325,7 +325,7 @@ still be the wrong feature for this project.
    finished understanding.
 4. **The trade-off is signposted where the user reads it**, in three places as
    applicable:
-   - **README.md** — one clear sentence on the feature bullet, so it is visible
+   - **docs/FEATURES.md** — one clear sentence on the feature bullet, so it is visible
      while deciding to use the feature.
    - **AGENTS.md / docs/PARITY.md** — the full explanation, naming the cost
      explicitly, in the section that owns the behaviour.
@@ -433,7 +433,7 @@ Paste this into your PR description and fill it in.
 - [ ] No change to defaults that weakens a protection
 - [ ] Fails closed on a missing, unreadable, or partial answer
 - Trade-off introduced (if any), in one sentence:
-- Documented in: README.md / AGENTS.md / docs/PARITY.md / UI / n-a
+- Documented in: docs/FEATURES.md / AGENTS.md / docs/PARITY.md / UI / n-a
 - [ ] Does not archive, delete, or move mail without an explicit user action
 - [ ] No trust decision derived from a keyword label
 - New dependencies / network calls / stored secrets, and why:
