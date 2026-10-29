@@ -33,6 +33,8 @@ explains the signed remote and the standalone-bundle update-origin limitation.
   [docs/BUILDING.md](docs/BUILDING.md) and
   [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Links to the old README sections
   land on its Documentation list, which links the new pages.
+- Repository hygiene: a stray compiled `scripts/__pycache__` file is no longer
+  tracked, and `__pycache__/` is ignored.
 
 ### Upgrade impact
 

@@ -13,3 +13,6 @@
 # Local flatpak publish staging (the real repo is published to the gh-pages
 # branch by .github/workflows/flatpak.yml, never committed to main).
 /_site/
+
+# Python bytecode caches.
+__pycache__/
