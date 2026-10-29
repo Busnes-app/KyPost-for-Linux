@@ -28,6 +28,24 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- Documentation only: the README's Features, Building and Architecture sections
+  moved verbatim to [docs/FEATURES.md](docs/FEATURES.md),
+  [docs/BUILDING.md](docs/BUILDING.md) and
+  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Links to the old README sections
+  land on its Documentation list, which links the new pages.
+
+### Upgrade impact
+
+- None. Nothing shipped changes.
+
+## Source notes at 3d94fdfa
+
+These are the prior source summary, preserved from
+[`3d94fdfa`](https://github.com/Busnes-app/KyPost-for-Linux/commit/3d94fdfa).
+Their presence does not establish that this source was distributed.
+
+### Changes
+
 - Version 0.5.0 in CMake and AppStream, for the v0.5.0 tag. See `## v0.5.0`.
 
 ### Upgrade impact

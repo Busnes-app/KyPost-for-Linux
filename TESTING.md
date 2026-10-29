@@ -590,7 +590,7 @@ every message as undecryptable — check that first, it is the cheapest of these
       then run `file ~/.local/share/mail/kypost.db` and `strings` over it: no
       subject, address or body may be readable. A build configured **without**
       `KYPOST_SQLCIPHER_ROOT` cannot do this at all — confirm which build you
-      are testing before concluding anything (`README.md` → Building).
+      are testing before concluding anything (`docs/BUILDING.md`).
 - [ ] **An existing plaintext profile converts on the next launch**, without
       being asked. Verify the mail is all still there afterwards: the
       conversion writes a separate file, verifies it table by table, swaps, and

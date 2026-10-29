@@ -37,7 +37,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   # _FORTIFY_SOURCE=3 while compiling at -O0: fortification did nothing, and
   # every translation unit repeated glibc's "_FORTIFY_SOURCE requires
   # compiling with optimization (-O)" warning. The build commands in
-  # README.md and AGENTS.md now name RelWithDebInfo so the default
+  # docs/BUILDING.md and AGENTS.md now name RelWithDebInfo so the default
   # verification build is the hardened one.
   add_compile_options(-fstack-protector-strong -fno-common)
   add_compile_definitions(
