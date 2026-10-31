@@ -46,7 +46,11 @@ def main():
             cwd=root, text=True).strip()
         exists = subprocess.check_output(
             ["git", "ls-tree", "--name-only", ref, "--", "CHANGELOG.md"], cwd=root, text=True).strip()
-        if exists:
+        # Notes describe what ships; a change confined to .github/ ships nothing.
+        changed = subprocess.check_output(
+            ["git", "diff", "--no-renames", "--name-only", ref, "HEAD"], cwd=root, text=True)
+        ci_only = all(path.startswith(".github/") for path in changed.splitlines())
+        if exists and not ci_only:
             previous = subprocess.check_output(
                 ["git", "show", ref + ":CHANGELOG.md"], cwd=root, text=True)
     body = check_notes((root / "CHANGELOG.md").read_text(encoding="utf-8"), previous, args.tag)

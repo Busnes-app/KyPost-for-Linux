@@ -52,12 +52,13 @@ A change is not verified until this builds cleanly and `ctest` is green.
 Release/workflow changes also run `python3 -B -m unittest discover -s scripts -p
 test_release_notes.py` and `python3 scripts/release-notes.py --base origin/main`
 after fetching the target. `CHANGELOG.md` owns named and source-build notes.
-Every main update replaces Current source changes/upgrade impact, including
-workflow/docs updates; archive the previous shipped summary under its known
-commit. New tags also need their exact version section. CI fetches two commits
-and compares against the tested commit's first parent. Publication prepares notes
-before signing, binds tagged output to its commit, and publishes current/per-source
-notes on the channel. Review factual accuracy separately from the text gate.
+Every main update replaces Current source changes/upgrade impact, including docs
+updates (changes only under `.github/` are exempt); archive the previous shipped
+summary under its known commit. New tags also need their exact version section.
+CI fetches two commits and compares against the tested commit's first parent.
+Publication prepares notes before signing, binds tagged output to its commit, and
+publishes current/per-source notes on the channel. Review factual accuracy
+separately from the text gate.
 
 `core/` and `tests/core` alone, on Qt 5.15 (the shared core of the Ubuntu
 Touch app). Drop `-DQT_DIR` to get Qt 6 if both are installed; configure prints
