@@ -37,6 +37,8 @@ explains the signed remote and the standalone-bundle update-origin limitation.
   tracked, and `__pycache__/` is ignored.
 - CI-only: the Scorecard workflow's `github/codeql-action/upload-sarif` moves
   from 4.39.0 to 4.39.1.
+- CI-only: the release-notes check no longer demands new notes for a change
+  confined to `.github/`, such as a Dependabot Actions bump.
 
 ### Upgrade impact
 

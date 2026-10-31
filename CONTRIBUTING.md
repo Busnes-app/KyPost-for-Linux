@@ -214,7 +214,8 @@ Notes that trip people up:
   [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md).
 - **Every main update needs fresh release notes.** Update Current source in
   [`CHANGELOG.md`](CHANGELOG.md), including upgrade impact; new tags also need
-  their exact version section. Run the Python checks in
+  their exact version section. Changes only under `.github/` are exempt.
+  Run the Python checks in
   [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md#cutting-a-release).
   Publication validates/selects notes before signing or publishing.
 - **New logic ships with tests.** Unit plus integration for new behaviour, a

@@ -21,6 +21,21 @@ TAG = """## v0.4.3
 """
 
 
+def fixture(root):
+    """A one-commit repository holding the script and CHANGELOG.md; returns its git runner."""
+    (root / "scripts").mkdir()
+    shutil.copyfile(Path(__file__).with_name("release-notes.py"), root / "scripts/release-notes.py")
+    (root / "CHANGELOG.md").write_text(CURRENT + TAG, encoding="utf-8")
+    def git(*args):
+        return subprocess.run(["git", "-c", "user.name=Fixture",
+            "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false",
+            *args], cwd=root, text=True, capture_output=True, check=True).stdout.strip()
+    git("init", "-b", "main")
+    git("add", "scripts", "CHANGELOG.md")
+    git("commit", "-m", "release source")
+    return git
+
+
 class ReleaseNotesTests(unittest.TestCase):
     def test_selects_current_or_exact_tag(self):
         self.assertIn("enrollment", check(CURRENT + TAG))
@@ -44,17 +59,7 @@ class ReleaseNotesTests(unittest.TestCase):
     def test_publication_output_is_bound_to_the_actual_tag_source(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "scripts").mkdir()
-            shutil.copyfile(Path(__file__).with_name("release-notes.py"),
-                            root / "scripts/release-notes.py")
-            (root / "CHANGELOG.md").write_text(CURRENT + TAG, encoding="utf-8")
-            def git(*args):
-                return subprocess.run(["git", "-c", "user.name=Fixture",
-                    "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false",
-                    *args], cwd=root, text=True, capture_output=True, check=True).stdout.strip()
-            git("init", "-b", "main")
-            git("add", "scripts", "CHANGELOG.md")
-            git("commit", "-m", "release source")
+            git = fixture(root)
             git("tag", "v0.4.3")
             command = ["python3", "scripts/release-notes.py", "--tag", "v0.4.3", "--output"]
             subprocess.run(command + ["notes.md"], cwd=root, check=True, capture_output=True)
@@ -66,6 +71,25 @@ class ReleaseNotesTests(unittest.TestCase):
             self.assertNotEqual(refused.returncode, 0)
             self.assertIn("does not select this source commit", refused.stderr)
             self.assertFalse((root / "wrong.md").exists())
+
+
+    def test_only_github_changes_need_no_new_notes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            git = fixture(root)
+            command = ["python3", "scripts/release-notes.py", "--base", "HEAD^"]
+            (root / ".github").mkdir()
+            (root / ".github/ci.yml").write_text("on: push")
+            git("add", ".github")
+            git("commit", "-m", "ci only")
+            subprocess.run(command, cwd=root, check=True, capture_output=True)
+            # Out of .github/, then back in: a rename must not hide the shipped side.
+            for source, target in ((".github/ci.yml", "shipped.yml"),
+                                   ("shipped.yml", ".github/shipped.yml")):
+                git("mv", source, target)
+                git("commit", "-m", "moves " + source)
+                refused = subprocess.run(command, cwd=root, capture_output=True, text=True)
+                self.assertIn("unchanged", refused.stderr)
 
 
 if __name__ == "__main__":
