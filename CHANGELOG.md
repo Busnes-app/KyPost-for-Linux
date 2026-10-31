@@ -35,6 +35,8 @@ explains the signed remote and the standalone-bundle update-origin limitation.
   land on its Documentation list, which links the new pages.
 - Repository hygiene: a stray compiled `scripts/__pycache__` file is no longer
   tracked, and `__pycache__/` is ignored.
+- CI-only: the release-notes check no longer demands new notes for a change
+  confined to `.github/`, such as a Dependabot Actions bump.
 
 ### Upgrade impact
 
