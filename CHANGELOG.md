@@ -35,6 +35,8 @@ explains the signed remote and the standalone-bundle update-origin limitation.
   land on its Documentation list, which links the new pages.
 - Repository hygiene: a stray compiled `scripts/__pycache__` file is no longer
   tracked, and `__pycache__/` is ignored.
+- CI-only: the Scorecard workflow's `github/codeql-action/upload-sarif` moves
+  from 4.39.0 to 4.39.1.
 
 ### Upgrade impact
 
