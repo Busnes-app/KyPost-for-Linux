@@ -309,93 +309,126 @@ Item {
             visible: root.wide || !root.paneOpen
             Layout.fillHeight: true
             Layout.fillWidth: !root.wide
-            Layout.preferredWidth: root.wide ? 360 : -1
+            Layout.preferredWidth: root.wide ? 340 : -1
             clip: true
             boundsBehavior: Flickable.StopAtBounds
             contentWidth: width
-            contentHeight: sectionColumn.implicitHeight + 40
+            contentHeight: sectionPanel.height + 40
             ScrollBar.vertical: ThemedScrollBar {}
 
-            ColumnLayout {
-                id: sectionColumn
+            // One grouped panel with hairline rows, as Gmail's settings list.
+            Card {
+                id: sectionPanel
                 x: 16
                 y: 8
                 width: parent.width - 32
-                spacing: 12
+                height: sectionColumn.implicitHeight + 8
 
-                Repeater {
-                    model: root.sections
-                    delegate: Card {
-                        id: sectionCard
-                        required property var modelData
-                        required property int index
-                        readonly property bool current: root.wide && root.currentPane === index
-                        Layout.fillWidth: true
-                        implicitHeight: sectionRow.implicitHeight + 28
-                        color: current ? Theme.accentSoft : Theme.panel
-                        border.color: current ? Theme.accent : Theme.line
+                ColumnLayout {
+                    id: sectionColumn
+                    x: 4
+                    y: 4
+                    width: parent.width - 8
+                    spacing: 0
 
-                        Rectangle {
-                            // the selection bar
-                            visible: sectionCard.current
-                            x: 1
-                            y: 12
-                            width: 3
-                            height: parent.height - 24
-                            radius: 1.5
-                            color: Theme.accent
-                        }
+                    Repeater {
+                        model: root.sections
+                        delegate: Rectangle {
+                            id: sectionCard
+                            required property var modelData
+                            required property int index
+                            readonly property bool current: root.wide && root.currentPane === index
+                            Layout.fillWidth: true
+                            implicitHeight: sectionRow.implicitHeight + 24
+                            radius: Theme.shapeButton
+                            color: current ? Theme.accentSoft
+                                : (sectionHover.hovered ? Theme.bg : "transparent")
 
-                        Accessible.role: Accessible.Button
-                        Accessible.name: modelData.name
-                        Accessible.onPressAction: if (!AppLock.locked) root.showPane(index)
-                        activeFocusOnTab: true
-                        Keys.onReturnPressed: if (!AppLock.locked) root.showPane(index)
-                        Keys.onSpacePressed: if (!AppLock.locked) root.showPane(index)
-                        FocusRing { cornerRadius: sectionCard.radius }
-
-                        RowLayout {
-                            id: sectionRow
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.leftMargin: 16
-                            anchors.rightMargin: 12
-                            spacing: 16
-
-                            MaterialIcon {
-                                name: sectionCard.modelData.icon
-                                tint: Theme.inkStrong
+                            Behavior on color {
+                                ColorAnimation { duration: 120 }
                             }
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                spacing: 2
-                                Text {
-                                    Layout.fillWidth: true
-                                    textFormat: Text.PlainText
-                                    text: sectionCard.modelData.name
-                                    color: Theme.inkStrong
-                                    font.family: Theme.fontUi
-                                    font.pixelSize: Math.round(16 * Theme.fontScale)
-                                    font.weight: Font.Medium
-                                    elide: Text.ElideRight
+
+                            Rectangle {
+                                // the selection bar
+                                visible: sectionCard.current
+                                y: 10
+                                width: 3
+                                height: parent.height - 20
+                                radius: 1.5
+                                color: Theme.accent
+                            }
+
+                            Rectangle {
+                                // the hairline between rows, from the text edge;
+                                // none against the selected row's fill
+                                visible: sectionCard.index < root.sections.length - 1 && !sectionCard.current
+                                         && !(root.wide && root.currentPane === sectionCard.index + 1)
+                                x: 48
+                                y: parent.height - 1
+                                width: parent.width - x - 12
+                                height: 1
+                                color: Theme.line
+                            }
+
+                            Accessible.role: Accessible.Button
+                            Accessible.name: modelData.name
+                            Accessible.onPressAction: if (!AppLock.locked) root.showPane(index)
+                            activeFocusOnTab: true
+                            Keys.onReturnPressed: if (!AppLock.locked) root.showPane(index)
+                            Keys.onSpacePressed: if (!AppLock.locked) root.showPane(index)
+                            FocusRing { cornerRadius: sectionCard.radius }
+
+                            RowLayout {
+                                id: sectionRow
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.leftMargin: 14
+                                anchors.rightMargin: 8
+                                spacing: 14
+
+                                MaterialIcon {
+                                    Layout.alignment: Qt.AlignTop
+                                    Layout.topMargin: 1
+                                    name: sectionCard.modelData.icon
+                                    tint: Theme.ink
+                                    size: 20
                                 }
-                                MutedHint {
+                                ColumnLayout {
                                     Layout.fillWidth: true
-                                    text: sectionCard.modelData.hint
-                                    wrapMode: Text.WordWrap
-                                    maximumLineCount: 2
-                                    elide: Text.ElideRight
+                                    spacing: 2
+                                    Text {
+                                        Layout.fillWidth: true
+                                        textFormat: Text.PlainText
+                                        text: sectionCard.modelData.name
+                                        color: Theme.inkStrong
+                                        font.family: Theme.fontUi
+                                        font.pixelSize: Math.round(15 * Theme.fontScale)
+                                        font.weight: Font.Medium
+                                        elide: Text.ElideRight
+                                    }
+                                    MutedHint {
+                                        Layout.fillWidth: true
+                                        text: sectionCard.modelData.hint
+                                        wrapMode: Text.WordWrap
+                                        maximumLineCount: 2
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                                MaterialIcon {
+                                    name: "chevron-right"
+                                    tint: Theme.ink
+                                    size: 20
+                                    visible: !root.wide
                                 }
                             }
-                            MaterialIcon {
-                                name: "chevron-right"
-                                tint: Theme.ink
-                                visible: !root.wide
-                            }
-                        }
 
-                        TapHandler { onTapped: root.showPane(sectionCard.index) }
+                            HoverHandler {
+                                id: sectionHover
+                            }
+
+                            TapHandler { onTapped: root.showPane(sectionCard.index) }
+                        }
                     }
                 }
             }
@@ -1178,6 +1211,13 @@ Item {
                 }
             }
             }
+        }
+
+        // Takes the width past the pane's 760px cap, so the list, divider and
+        // pane stay together on the left instead of spreading apart.
+        Item {
+            visible: root.wide
+            Layout.fillWidth: true
         }
     }
 

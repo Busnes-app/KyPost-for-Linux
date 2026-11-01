@@ -1414,9 +1414,10 @@ worse than no comment: the next reader stops looking.
   the classes; tests that need root wiring read `qrc:/qml/AppShell.qml`.
 - **Look like Android, and prove it with screenshots.** The UI follows
   kypost-android `origin/main` (store shots, `res/layout*/`, `AppTheme.kt`):
-  AppHeader, Card for every panel, Chip for filters, bundled Material Icons
-  (filled, Apache-2.0) in `app/qml/icons/` through MaterialIcon/IconButton,
-  never theme icon names.
+  AppHeader, Card for every panel, Chip for filters, bundled outline icons
+  (lucide, ISC, stroke 1.75; council round 2 replaced the filled Material
+  set) in `app/qml/icons/` through MaterialIcon/IconButton, never theme icon
+  names and never a filled glyph.
 - **The suite shell rules win over Android where they differ (council round
   1, 2026-11-01).** AppHeader is the logo and an ink "KyPost" wordmark with
   nothing under it; the page name is a separate sentence-case title
