@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Window
 import com.kysecurity.mail 1.0
 
-// A bundled Material Icons (filled) glyph, tinted by MaterialIconProvider
+// A bundled outline glyph (lucide, see icons/LICENSE.md), tinted by MaterialIconProvider
 // (image://icon/<name>/<colour>). The colour is part of the URL, so a theme
 // change fetches a freshly tinted image.
 //

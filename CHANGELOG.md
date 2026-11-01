@@ -28,6 +28,12 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- Every icon is now an outline glyph (council round 2): the header actions,
+  the reader toolbar, Settings and the rest match the rail's outline icons
+  instead of mixing in filled ones.
+- The Settings section list is one grouped panel with a hairline between
+  rows, in a narrower column that sits right against the open section, with
+  no empty band before the divider.
 - The shell follows the Ky suite's look (council round 1). The header is
   the logo and an ink "KyPost" wordmark with nothing under it, and the page
   name ("Inbox", "Settings") is its own title below. The rail and tab bar sit

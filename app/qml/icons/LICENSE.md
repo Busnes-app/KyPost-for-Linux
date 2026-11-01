@@ -1,8 +1,10 @@
-Material Icons (filled), Google, Apache License 2.0:
-https://github.com/google/material-design-icons/blob/master/LICENSE
+Outline icons from lucide (https://lucide.dev), ISC License:
+https://github.com/lucide-icons/lucide/blob/main/LICENSE
 
-Most paths are copied from kypost-android's `app/src/main/res/drawable/ic_*.xml`, which uses the same
-icons. The app recolours them at runtime, so every file is plain black.
+Every icon is one consistent outline set at stroke width 1.75, the weight of the
+rail glyphs. The file names are the old Material names, so no caller changed
+(for example `delete.svg` is lucide's Trash 2 and `more-vert.svg` is Ellipsis
+Vertical). The app recolours them at runtime, so every file is plain black.
 
 The `nav-*.svg` stroke icons are the KyPost web app's navigation glyphs
 (`frontend/src/pages/read/icons.tsx` in KyPost-Server), so the rail and tab bar
