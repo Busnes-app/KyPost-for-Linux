@@ -40,6 +40,8 @@ explains the signed remote and the standalone-bundle update-origin limitation.
   teal. Errors, warnings and "Paired" badges use them, and the warning banner
   and the Connection pane's last error now show a dot beside their words.
   Every half passes ky-ui's status colour gate (180 checks), now a unit test.
+- Documentation only: before/after screenshots in
+  [docs/screenshots/](docs/screenshots/README.md).
 
 ### Upgrade impact
 
