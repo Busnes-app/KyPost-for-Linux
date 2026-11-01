@@ -1,110 +1,180 @@
 #include "theme/AppTheme.h"
 
-#include <QHash>
-
 namespace {
 
-const QHash<QString, ThemePalette>& allPalettes()
+// ky-ui tokens.css :root status defaults, chosen by each half's own scheme.
+constexpr quint32 kDangerLight = 0xA8174E;
+constexpr quint32 kDangerDark = 0xFF8FB1;
+constexpr quint32 kWarningLight = 0x7A5F00;
+constexpr quint32 kWarningDark = 0xFFD25E;
+constexpr quint32 kSuccessLight = 0x267442;
+constexpr quint32 kSuccessDark = 0x86EFAC;
+
+struct Colours
 {
-    static const QHash<QString, ThemePalette> palettes = {
-        // Busnes pair: Android themePalettes. accentSoft has no Android source:
-        // panel blended 30 % toward accent with Android's truncating blend().
-        {QStringLiteral("Busnes Light"),
-         ThemePalette{0xF8F6F0, 0xFFFFFF, 0x566461, 0x182326, 0xBF3F18, 0xEBC5B9, 0xCCCFCF,
-                      0xBF3F18, 0xE65124, 0xBF3F18}},
-        {QStringLiteral("Busnes Dark"),
-         ThemePalette{0x182326, 0x1F2B2E, 0xB3BCB8, 0xF2EFE8, 0xF5865F, 0x5F463C, 0x525A5B,
-                      0xF5865F, 0xF26A3D, 0xF5865F}},
-        {QStringLiteral("Dark Matter"),
-         ThemePalette{0x1A1A1E, 0x252530, 0xD4C5E2, 0xE8DDF5, 0xC29A72, 0x5A3F31, 0x404050,
-                      0xC29A72, 0x9A7450, 0x8F6B4A}},
-        {QStringLiteral("Light Matter"),
-         ThemePalette{0xF5EFE5, 0xFFF8EE, 0x4C3D32, 0x2D1F15, 0xC29A72, 0xE6D2BE, 0xC5B29D,
-                      0xC29A72, 0x9A7450, 0x8F6B4A}},
-        {QStringLiteral("Tropics"),
-         ThemePalette{0xF4F1EB, 0xFFFAF0, 0x43362D, 0x241A14, 0x9BC400, 0xD4E3A0, 0xC4B7A3,
-                      0x9BC400, 0x7EA100, 0x78A100}},
-        {QStringLiteral("Tropic Night"),
-         ThemePalette{0x15131A, 0x221F2B, 0xCDBDE0, 0xE8DDF5, 0x9BC400, 0x6B4A42, 0x3C3650,
-                      0x9BC400, 0x7EA100, 0x78A100}},
-        {QStringLiteral("Ocean"),
-         ThemePalette{0x0F1B24, 0x152A36, 0xB8D8E8, 0xE0F2FB, 0x5EA9BE, 0x214657, 0x2F5567,
-                      0x74BACD, 0x4F91A6, 0x4F91A6}},
-        {QStringLiteral("Coffee"),
-         ThemePalette{0x1D1714, 0x2A211D, 0xD6C0B3, 0xF0DED2, 0xB47F5C, 0x5F3F2F, 0x4A3830,
-                      0xB47F5C, 0x8F5F42, 0x8F5F42}},
-        {QStringLiteral("White Cliffs"),
-         ThemePalette{0xF7F9FB, 0xFFFFFF, 0x2E4C63, 0x163246, 0x5EA8D8, 0xDFF1FB, 0x8FC3DF,
-                      0x4F9BC8, 0x58B65A, 0x2F7FB0}},
-        {QStringLiteral("Cyber Punk"),
-         ThemePalette{0x120918, 0x1E1028, 0xF5D0FF, 0xFFE9FF, 0x00F5D4, 0x3B1760, 0x5C2D84,
-                      0x00F5D4, 0x00C9AD, 0x00C9AD}},
-        {QStringLiteral("Neon Purple"),
-         ThemePalette{0x130B1D, 0x231233, 0xE4CCFF, 0xF2E6FF, 0xC86CFF, 0x47206C, 0x63358A,
-                      0xC86CFF, 0x9D45D3, 0x9D45D3}},
-        {QStringLiteral("Space"),
-         ThemePalette{0x0B0F1A, 0x151C2D, 0xC8D5F0, 0xE7EFFF, 0x86A8FF, 0x263E74, 0x34496F,
-                      0x86A8FF, 0x6788DD, 0x6788DD}},
-        {QStringLiteral("Sky"),
-         ThemePalette{0xDFF1FF, 0xF4FBFF, 0x2F4F64, 0x183142, 0x6DB3D6, 0xB6DCED, 0x93BDD2,
-                      0x6DB3D6, 0x4F93B8, 0x4F93B8}},
-        {QStringLiteral("Forest"),
-         ThemePalette{0x142018, 0x1F2F24, 0xC7DBC7, 0xE3F0DF, 0x8FAA74, 0x3A5837, 0x4F694F,
-                      0x8FAA74, 0x6F8D5A, 0x6F8D5A}},
-        {QStringLiteral("Sun"),
-         ThemePalette{0xFFF3DC, 0xFFF9EC, 0x5A4024, 0x392611, 0xE0AB4F, 0xF1D9A2, 0xD4B27A,
-                      0xE0AB4F, 0xBB8631, 0xBB8631}},
-        {QStringLiteral("Patina Ky"),
-         ThemePalette{0x0D0F14, 0x161A22, 0x64748B, 0xE2E8F0, 0x4DEEEA, 0x0E4A48, 0x1E293B,
-                      0x4DEEEA, 0x10B981, 0x0E9668}},
-        {QStringLiteral("Polished Ky"),
-         ThemePalette{0xEEF2F6, 0xFFFFFF, 0x475569, 0x0F172A, 0x0891B2, 0xCFFAFE, 0xCBD5E1,
-                      0x0891B2, 0x10B981, 0x059669}},
+    quint32 bg, panel, ink, inkStrong, accent, accentSoft, line, onAccent;
+};
+
+// A half with the shared status colours for its scheme, and avatar stops
+// from its accent: accent toward 15 % inkStrong, ringed in accent.
+ThemePalette half(const Colours& c, bool dark, quint32 success = 0, quint32 danger = 0)
+{
+    return ThemePalette{
+        .bg = c.bg,
+        .panel = c.panel,
+        .ink = c.ink,
+        .inkStrong = c.inkStrong,
+        .accent = c.accent,
+        .accentSoft = c.accentSoft,
+        .line = c.line,
+        .onAccent = c.onAccent,
+        .danger = danger ? danger : (dark ? kDangerDark : kDangerLight),
+        .warning = dark ? kWarningDark : kWarningLight,
+        .success = success ? success : (dark ? kSuccessDark : kSuccessLight),
+        .avatarStart = c.accent,
+        .avatarEnd = ThemePalette::mix(c.accent, 85, c.inkStrong),
+        .avatarBorder = c.accent,
     };
-    return palettes;
+}
+
+QList<AppTheme::Half> buildHalves()
+{
+    using AppTheme::Half;
+    // Busnes: tokens.css. line and accentSoft over panel are flattened
+    // there; avatar stops stay Android's.
+    ThemePalette busnesLight = half({0xF8F6F0, 0xFFFFFF, 0x566461, 0x182326, 0xBF3F18, 0xFBF0EC, 0xCCCFCF, 0xFFFFFF},
+                                    false);
+    busnesLight.avatarStart = 0xBF3F18;
+    busnesLight.avatarEnd = 0xE65124;
+    busnesLight.avatarBorder = 0xBF3F18;
+    ThemePalette busnesDark = half({0x182326, 0x1F2B2E, 0xB3BCB8, 0xF2EFE8, 0xF5865F, 0x2B2622, 0x525A5B, 0x182326},
+                                   true);
+    busnesDark.avatarStart = 0xF5865F;
+    busnesDark.avatarEnd = 0xF26A3D;
+    busnesDark.avatarBorder = 0xF5865F;
+
+    const auto s = [](const char* text) { return QString::fromLatin1(text); };
+    return {
+        {s("busnes-light"), s("Busnes Light"), false, s("busnes-pair"), {}, busnesLight},
+        {s("busnes-dark"), s("Busnes Dark"), true, s("busnes-pair"), {}, busnesDark},
+        {s("light-matter"), s("Matter Light"), false, s("matter-pair"), {s("Light Matter")},
+         half({0xF5EFE5, 0xFFF8EE, 0x4C3D32, 0x2D1F15, 0x805A39, 0xE2D0B8, 0xD4C7B5, 0xFFFFFF}, false)},
+        {s("dark-matter"), s("Matter Dark"), true, s("matter-pair"), {s("Dark Matter"), s("Current")},
+         half({0x1D1B19, 0x292725, 0xCFC6BB, 0xF0E9DF, 0xC29A72, 0x49392C, 0x45403A, 0x24170F}, true)},
+        {s("white-cliffs"), s("Ocean Light"), false, s("ocean-pair"), {s("White Cliffs"), s("Cliffs")},
+         half({0xF7F9FB, 0xFFFFFF, 0x2E4C63, 0x163246, 0x1D5FA6, 0xDDE9F7, 0xC7D6DF, 0xFFFFFF}, false)},
+        {s("ocean"), s("Ocean Dark"), true, s("ocean-pair"), {s("Ocean")},
+         half({0x0F1B24, 0x152A36, 0xB8D8E8, 0xE0F2FB, 0x6AA8E8, 0x1F3A55, 0x2F5567, 0x0A1B22}, true)},
+        // Forest's success is teal: the shared green sits too close to its accent.
+        {s("forest-light"), s("Forest Light"), false, s("forest-pair"), {},
+         half({0xF3F6EF, 0xFCFDF9, 0x435342, 0x203322, 0x4B6B37, 0xE2EBDA, 0xC5D0BC, 0xFFFFFF}, false, 0x00737A)},
+        {s("forest"), s("Forest Dark"), true, s("forest-pair"), {s("Forest")},
+         half({0x142018, 0x1F2F24, 0xC7DBC7, 0xE3F0DF, 0x8FAA74, 0x3A5837, 0x4F694F, 0x12200F}, true, 0x6EE0D0)},
+        {s("polished-ky"), s("Ky Light"), false, s("ky-pair"), {s("Polished Ky")},
+         half({0xEEF2F6, 0xFFFFFF, 0x475569, 0x0F172A, 0x08758B, 0xDAF2F4, 0xC2CDD8, 0xFFFFFF}, false)},
+        {s("patina-ky"), s("Ky Dark"), true, s("ky-pair"), {s("Patina Ky"), s("patina"), s("Patina Ky (base)")},
+         half({0x10161E, 0x1B2530, 0xAFBDCA, 0xE2E8F0, 0x6FC9CC, 0x203D41, 0x34414D, 0x10161E}, true)},
+        {s("paper"), s("Nord Light"), false, s("nord-pair"), {s("Paper Clean")},
+         half({0xECEFF4, 0xFFFFFF, 0x4C566A, 0x2E3440, 0x4A6A94, 0xDBE4EF, 0xC5CDD9, 0xFFFFFF}, false)},
+        // Nord keeps its own danger and success; accentSoft is rgba(136,192,208,.2) over panel.
+        {s("nord"), s("Nord Dark"), true, s("nord-pair"), {s("Nord"), s("Nord Slate")},
+         half({0x2E3440, 0x3B4252, 0xD8DEE9, 0xECEFF4, 0x88C0D0, 0x4A5B6B, 0x4C566A, 0x0D0F14}, true, 0xBCD4AA,
+              0xECC4C8)},
+    };
 }
 
 } // namespace
 
 namespace AppTheme {
 
-QStringList themeNames()
+const QList<Pair>& pairs()
 {
-    return {
-        QStringLiteral("Follow system"),
-        QStringLiteral("Busnes Light"),
-        QStringLiteral("Busnes Dark"),
-        QStringLiteral("Dark Matter"),
-        QStringLiteral("Light Matter"),
-        QStringLiteral("Tropics"),
-        QStringLiteral("Tropic Night"),
-        QStringLiteral("Ocean"),
-        QStringLiteral("Coffee"),
-        QStringLiteral("White Cliffs"),
-        QStringLiteral("Cyber Punk"),
-        QStringLiteral("Neon Purple"),
-        QStringLiteral("Space"),
-        QStringLiteral("Sky"),
-        QStringLiteral("Forest"),
-        QStringLiteral("Sun"),
-        QStringLiteral("Patina Ky"),
-        QStringLiteral("Polished Ky"),
+    static const QList<Pair> list = {
+        {QStringLiteral("busnes-pair"), QStringLiteral("Busnes"), QStringLiteral("busnes-light"),
+         QStringLiteral("busnes-dark")},
+        {QStringLiteral("matter-pair"), QStringLiteral("Matter"), QStringLiteral("light-matter"),
+         QStringLiteral("dark-matter")},
+        {QStringLiteral("ocean-pair"), QStringLiteral("Ocean"), QStringLiteral("white-cliffs"),
+         QStringLiteral("ocean")},
+        {QStringLiteral("forest-pair"), QStringLiteral("Forest"), QStringLiteral("forest-light"),
+         QStringLiteral("forest")},
+        {QStringLiteral("ky-pair"), QStringLiteral("Ky"), QStringLiteral("polished-ky"), QStringLiteral("patina-ky")},
+        {QStringLiteral("nord-pair"), QStringLiteral("Nord"), QStringLiteral("paper"), QStringLiteral("nord")},
     };
+    return list;
 }
 
-QString defaultThemeName()
+const QList<Half>& halves()
 {
-    return QStringLiteral("Follow system");
+    static const QList<Half> list = buildHalves();
+    return list;
 }
 
-ThemePalette palette(const QString& name, bool systemDark)
+const Half* findHalf(const QString& idNameOrAlias)
 {
-    const QHash<QString, ThemePalette>& palettes = allPalettes();
-    const auto it = palettes.constFind(name);
-    if (it != palettes.constEnd())
-        return it.value();
-    // Follow system, and any unknown name (it falls back to Follow system).
-    return palettes.value(systemDark ? QStringLiteral("Busnes Dark") : QStringLiteral("Busnes Light"));
+    for (const Half& h : halves()) {
+        if (h.id == idNameOrAlias || h.name == idNameOrAlias || h.aliases.contains(idNameOrAlias))
+            return &h;
+    }
+    return nullptr;
+}
+
+const Pair* findPair(const QString& pairId)
+{
+    for (const Pair& p : pairs()) {
+        if (p.id == pairId)
+            return &p;
+    }
+    return nullptr;
+}
+
+QString defaultPairId()
+{
+    return QStringLiteral("busnes-pair");
+}
+
+Selection selectionFor(const QString& saved)
+{
+    if (findPair(saved))
+        return {saved, Mode::System};
+    if (const Half* h = findHalf(saved))
+        return {h->pairId, h->dark ? Mode::Dark : Mode::Light};
+    return {defaultPairId(), Mode::System};
+}
+
+QString savedId(const Selection& selection)
+{
+    const Pair* p = findPair(selection.pairId);
+    if (!p)
+        p = findPair(defaultPairId());
+    switch (selection.mode) {
+    case Mode::Light:
+        return p->lightId;
+    case Mode::Dark:
+        return p->darkId;
+    case Mode::System:
+        break;
+    }
+    return p->id;
+}
+
+const Half& resolve(const Selection& selection, bool systemDark)
+{
+    const Pair* p = findPair(selection.pairId);
+    if (!p)
+        p = findPair(defaultPairId());
+    const bool dark = selection.mode == Mode::System ? systemDark : selection.mode == Mode::Dark;
+    return *findHalf(dark ? p->darkId : p->lightId);
+}
+
+ThemePalette palette(const Selection& selection, bool systemDark)
+{
+    return resolve(selection, systemDark).palette;
+}
+
+ThemePalette palette(const QString& saved, bool systemDark)
+{
+    return palette(selectionFor(saved), systemDark);
 }
 
 bool systemPrefersDark(SystemScheme hint, quint32 windowRgb)

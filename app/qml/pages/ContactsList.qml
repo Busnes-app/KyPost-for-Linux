@@ -160,7 +160,7 @@ Item {
             visible: root.showSyncStatus && (error !== "" || ContactsApp.statusMessage !== "")
             textFormat: Text.PlainText
             text: error !== "" ? error : ContactsApp.statusMessage
-            color: error !== "" ? Theme.dangerActionText : Theme.ink
+            color: error !== "" ? Theme.danger : Theme.ink
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontDate
             wrapMode: Text.WordWrap

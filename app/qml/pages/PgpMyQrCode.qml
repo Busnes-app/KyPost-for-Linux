@@ -96,7 +96,7 @@ Item {
             visible: PgpQr.lastError !== ""
             textFormat: Text.PlainText
             text: PgpQr.lastError
-            color: Theme.dangerActionText
+            color: Theme.danger
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontPreview
             wrapMode: Text.WordWrap
@@ -150,7 +150,7 @@ Item {
             visible: root.qrDataUrl !== "" && !PgpQr.myFingerprintIsLocal
             textFormat: Text.PlainText
             text: i18n("This device holds no private key for your account, so this code can't be verified in person.")
-            color: Theme.warningActionText
+            color: Theme.warning
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontDate
             wrapMode: Text.WordWrap

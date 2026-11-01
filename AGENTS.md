@@ -119,16 +119,20 @@ Carried forward verbatim (in substance) from `Linux_QT_Client_Plan.md`'s own
   `RelayModels.kt`/`ContactSyncModels.kt` and `kypost-for-Mac`'s
   `Data/Networking/*` (relay-only, live-verified, test-locked clients).
   **Never guess shapes** — guessed shapes have caused live 400s before.
-- **The theme palettes are a binding contract**, sourced from Android
-  `kypost-android` `app/src/main/java/org/kysecurity/mail/AppTheme.kt`
-  (`origin/main`): the Busnes Light/Dark palettes, every palette's avatar
-  stops, Follow system (the default, resolved by `AppTheme::palette(name,
-  systemDark)`), the semantic colours and their light-palette affordances,
-  and the type scale. Copy values, don't approximate. `accentSoft` is
-  Linux-only (selection highlight): the original 15 keep the Mac
-  `AppTheme.swift` values; the Busnes pair derives it as `panel` blended 30 %
-  toward `accent`. Today 17 palettes plus Follow system, but
-  `AppTheme::themeNames()` is the source of truth, not a number here.
+- **The theme palettes are a binding contract**, sourced from ky-ui
+  (`~/git/ky-redesign/ky-ui`, `src/themes.js` `THEME_PAIRS`/`THEME_PALETTES`
+  and `src/tokens.css` for Busnes; owner rule 2026-10-31): six light/dark
+  pairs (Busnes, Matter, Ocean, Forest, Ky, Nord), a Mode of System (the
+  default), Light or Dark, and per-half status colours (danger, warning,
+  success and their 12 % `*Soft` tints over panel). Copy values, don't
+  approximate; rgba values are flattened over panel. Saved values follow
+  ky-ui: a pair ID follows the system, a half's ID, name or alias forces that
+  half, anything else is Busnes following the system (`AppTheme::selectionFor`,
+  never written back on read). Status colours pass `StatusColoursTest`, the
+  port of ky-ui's `scripts/check-status-colours.mjs`; a status always shows a
+  word plus a dot or icon, never colour alone. Busnes keeps Android's avatar
+  stops and the Android type scale; `AppTheme::pairs()`/`halves()` are the
+  source of truth, not a number here.
   QML text sizes come from `Theme.font*` tokens or
   `Math.round(N * Theme.fontScale)`, never a literal `font.pixelSize`.
 - **StandardFolder wire names**: `INBOX`, `Drafts`, `Junk`, `Sent`, `Trash`,

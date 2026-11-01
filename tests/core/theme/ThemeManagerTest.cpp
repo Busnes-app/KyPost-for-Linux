@@ -6,12 +6,13 @@
 #include <QTemporaryDir>
 #include <QTest>
 
-namespace {
-const QString kFollow = QStringLiteral("Follow system");
+using AppTheme::Mode;
+using AppTheme::Selection;
 
-ThemePalette named(const char* name)
+namespace {
+ThemePalette half(const char* id)
 {
-    return AppTheme::palette(QString::fromLatin1(name), false);
+    return AppTheme::findHalf(QString::fromLatin1(id))->palette;
 }
 
 // The raw stored value, bypassing SettingsStore's fallback.
@@ -26,17 +27,18 @@ class ThemeManagerTest : public QObject
     Q_OBJECT
 
 private slots:
-    void freshStoreFollowsSystem();
-    void setSystemDarkSwitchesFollowSystem();
-    void savedNameIgnoresSystemDark_data();
-    void savedNameIgnoresSystemDark();
-    void unknownSavedNameFollowsSystemWithoutWriting();
-    void setThemeFollowSystemPersists();
-    void setThemeIgnoresUnknownName();
+    void freshStoreIsBusnesFollowingSystem();
+    void setSystemDarkSwitchesSystemMode();
+    void migratesSavedValueWithoutWriting_data();
+    void migratesSavedValueWithoutWriting();
+    void forcedHalfIgnoresSystemDark();
+    void setPairKeepsModeAndPersists();
+    void setModePersistsHalfId();
+    void setPairIgnoresUnknownPair();
     void persistenceRoundTripsAcrossManagers();
 };
 
-void ThemeManagerTest::freshStoreFollowsSystem()
+void ThemeManagerTest::freshStoreIsBusnesFollowingSystem()
 {
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
@@ -44,97 +46,125 @@ void ThemeManagerTest::freshStoreFollowsSystem()
     SettingsStore store(path);
 
     ThemeManager dark(store, true);
-    QCOMPARE(dark.themeName(), kFollow);
-    QCOMPARE(dark.palette(), named("Busnes Dark"));
+    QCOMPARE(dark.selection(), (Selection{"busnes-pair", Mode::System}));
+    QCOMPARE(dark.palette(), half("busnes-dark"));
 
     ThemeManager light(store, false);
-    QCOMPARE(light.themeName(), kFollow);
-    QCOMPARE(light.palette(), named("Busnes Light"));
+    QCOMPARE(light.palette(), half("busnes-light"));
+    QCOMPARE(light.half().name, QStringLiteral("Busnes Light"));
 
     QVERIFY(!storedThemeId(path).isValid());
 }
 
-void ThemeManagerTest::setSystemDarkSwitchesFollowSystem()
+void ThemeManagerTest::setSystemDarkSwitchesSystemMode()
 {
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
     SettingsStore store(dir.filePath(QStringLiteral("settings.ini")));
+    store.setThemeId(QStringLiteral("forest-pair"));
 
     ThemeManager manager(store, false);
+    QCOMPARE(manager.palette(), half("forest-light"));
     manager.setSystemDark(true);
-    QCOMPARE(manager.palette(), named("Busnes Dark"));
+    QCOMPARE(manager.palette(), half("forest"));
     manager.setSystemDark(false);
-    QCOMPARE(manager.palette(), named("Busnes Light"));
-    QCOMPARE(manager.themeName(), kFollow);
+    QCOMPARE(manager.palette(), half("forest-light"));
 }
 
-void ThemeManagerTest::savedNameIgnoresSystemDark_data()
+// What an older build saved under appearance/themeId, what it paints now
+// under a light and a dark desktop. The stored value is left as it was.
+void ThemeManagerTest::migratesSavedValueWithoutWriting_data()
 {
-    QTest::addColumn<QString>("name");
-    for (const QString& name : AppTheme::themeNames().mid(1))
-        QTest::newRow(qPrintable(name)) << name;
+    QTest::addColumn<QString>("saved");
+    QTest::addColumn<QString>("onLight");
+    QTest::addColumn<QString>("onDark");
+
+    QTest::newRow("Busnes Light forced") << "Busnes Light" << "busnes-light" << "busnes-light";
+    QTest::newRow("Busnes Dark forced") << "Busnes Dark" << "busnes-dark" << "busnes-dark";
+    QTest::newRow("Follow system") << "Follow system" << "busnes-light" << "busnes-dark";
+    QTest::newRow("Ocean keeps its half") << "Ocean" << "ocean" << "ocean";
+    QTest::newRow("Polished Ky keeps its half") << "Polished Ky" << "polished-ky" << "polished-ky";
+    QTest::newRow("removed Sky") << "Sky" << "busnes-light" << "busnes-dark";
+    QTest::newRow("removed Cyber Punk") << "Cyber Punk" << "busnes-light" << "busnes-dark";
+    QTest::newRow("garbage") << "Bogus" << "busnes-light" << "busnes-dark";
 }
 
-void ThemeManagerTest::savedNameIgnoresSystemDark()
+void ThemeManagerTest::migratesSavedValueWithoutWriting()
 {
-    QFETCH(QString, name);
+    QFETCH(QString, saved);
+    QFETCH(QString, onLight);
+    QFETCH(QString, onDark);
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
     const QString path = dir.filePath(QStringLiteral("settings.ini"));
     SettingsStore store(path);
-    store.setThemeId(name);
-
-    ThemeManager manager(store, true);
-    QCOMPARE(manager.themeName(), name);
-    QCOMPARE(manager.palette(), AppTheme::palette(name, false));
-    manager.setSystemDark(false);
-    QCOMPARE(manager.palette(), AppTheme::palette(name, false));
-    manager.setSystemDark(true);
-    QCOMPARE(manager.palette(), AppTheme::palette(name, false));
-    QCOMPARE(storedThemeId(path).toString(), name);
-}
-
-void ThemeManagerTest::unknownSavedNameFollowsSystemWithoutWriting()
-{
-    QTemporaryDir dir;
-    QVERIFY(dir.isValid());
-    const QString path = dir.filePath(QStringLiteral("settings.ini"));
-    SettingsStore store(path);
-    store.setThemeId(QStringLiteral("Bogus"));
-
-    ThemeManager manager(store, true);
-    QCOMPARE(manager.themeName(), kFollow);
-    QCOMPARE(manager.palette(), named("Busnes Dark"));
-    QCOMPARE(storedThemeId(path).toString(), QStringLiteral("Bogus"));
-}
-
-void ThemeManagerTest::setThemeFollowSystemPersists()
-{
-    QTemporaryDir dir;
-    QVERIFY(dir.isValid());
-    const QString path = dir.filePath(QStringLiteral("settings.ini"));
-    SettingsStore store(path);
-    store.setThemeId(QStringLiteral("Ocean"));
+    store.setThemeId(saved);
 
     ThemeManager manager(store, false);
-    manager.setTheme(kFollow);
-    QCOMPARE(manager.themeName(), kFollow);
-    QCOMPARE(manager.palette(), named("Busnes Light"));
-    QCOMPARE(storedThemeId(path).toString(), kFollow);
+    QCOMPARE(manager.palette(), AppTheme::findHalf(onLight)->palette);
+    manager.setSystemDark(true);
+    QCOMPARE(manager.palette(), AppTheme::findHalf(onDark)->palette);
+    QCOMPARE(storedThemeId(path).toString(), saved);
 }
 
-void ThemeManagerTest::setThemeIgnoresUnknownName()
+void ThemeManagerTest::forcedHalfIgnoresSystemDark()
 {
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
     SettingsStore store(dir.filePath(QStringLiteral("settings.ini")));
+    store.setThemeId(QStringLiteral("paper"));
+
+    ThemeManager manager(store, true);
+    QCOMPARE(manager.selection(), (Selection{"nord-pair", Mode::Light}));
+    QCOMPARE(manager.palette(), half("paper"));
+    manager.setSystemDark(false);
+    QCOMPARE(manager.palette(), half("paper"));
+}
+
+void ThemeManagerTest::setPairKeepsModeAndPersists()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.ini"));
+    SettingsStore store(path);
+    store.setThemeId(QStringLiteral("Busnes Dark"));
 
     ThemeManager manager(store, false);
-    manager.setTheme(QStringLiteral("Ocean"));
-    manager.setTheme(QStringLiteral("Not A Theme"));
+    manager.setPair(QStringLiteral("ocean-pair"));
+    QCOMPARE(manager.selection(), (Selection{"ocean-pair", Mode::Dark}));
+    QCOMPARE(manager.palette(), half("ocean"));
+    QCOMPARE(storedThemeId(path).toString(), QStringLiteral("ocean"));
+}
 
-    QCOMPARE(manager.themeName(), QStringLiteral("Ocean"));
-    QCOMPARE(manager.palette(), named("Ocean"));
+void ThemeManagerTest::setModePersistsHalfId()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.ini"));
+    SettingsStore store(path);
+
+    ThemeManager manager(store, true);
+    manager.setMode(Mode::Light);
+    QCOMPARE(manager.palette(), half("busnes-light"));
+    QCOMPARE(storedThemeId(path).toString(), QStringLiteral("busnes-light"));
+    manager.setMode(Mode::System);
+    QCOMPARE(manager.palette(), half("busnes-dark"));
+    QCOMPARE(storedThemeId(path).toString(), QStringLiteral("busnes-pair"));
+}
+
+void ThemeManagerTest::setPairIgnoresUnknownPair()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.ini"));
+    SettingsStore store(path);
+    store.setThemeId(QStringLiteral("ky-pair"));
+
+    ThemeManager manager(store, false);
+    for (const QString& bogus : {QStringLiteral("Sky"), QStringLiteral("ocean"), QStringLiteral("Ocean"), QString()})
+        manager.setPair(bogus);
+    QCOMPARE(manager.selection(), (Selection{"ky-pair", Mode::System}));
+    QCOMPARE(storedThemeId(path).toString(), QStringLiteral("ky-pair"));
 }
 
 void ThemeManagerTest::persistenceRoundTripsAcrossManagers()
@@ -142,15 +172,17 @@ void ThemeManagerTest::persistenceRoundTripsAcrossManagers()
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
     const QString path = dir.filePath(QStringLiteral("settings.ini"));
+    {
+        SettingsStore store(path);
+        ThemeManager manager(store, false);
+        manager.setPair(QStringLiteral("matter-pair"));
+        manager.setMode(Mode::Dark);
+    }
     SettingsStore store(path);
-
-    ThemeManager first(store, false);
-    first.setTheme(QStringLiteral("Ocean"));
-
-    SettingsStore secondStore(path);
-    ThemeManager second(secondStore, true);
-    QCOMPARE(second.themeName(), QStringLiteral("Ocean"));
+    ThemeManager manager(store, false);
+    QCOMPARE(manager.selection(), (Selection{"matter-pair", Mode::Dark}));
+    QCOMPARE(manager.palette(), half("dark-matter"));
 }
 
-QTEST_GUILESS_MAIN(ThemeManagerTest)
+QTEST_APPLESS_MAIN(ThemeManagerTest)
 #include "ThemeManagerTest.moc"

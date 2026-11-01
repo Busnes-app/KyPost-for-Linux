@@ -49,7 +49,9 @@ Commands and unlinked file paths below are relative to the repository root.
   chain on first use, anchored to the issuer rather than the leaf so a routine certificate
   renewal is not reported as an impersonation. Hostile Location Protection writes nothing to
   disk, and refuses to turn on at all if it cannot first erase what is already there.
-- **17 themes plus Follow system** — copied byte for byte from the Android app. The default
-  follows your desktop between Busnes Light and Busnes Dark; text follows your system font size.
+- **Six light/dark theme pairs** — Busnes, Matter, Ocean, Forest, Ky and Nord, the Ky suite's
+  ky-ui palettes. Mode follows your desktop (System, the default) or stays Light or Dark; Busnes
+  is the default pair. Danger, warning and success have their own colours in every theme; text
+  follows your system font size.
 - **Device pairing** — paste a link, or use a `kypost://` deep link.
 - **Localized** — the code wraps every user-facing string for translation (`po/`).

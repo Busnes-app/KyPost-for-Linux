@@ -670,9 +670,9 @@ every message as undecryptable — check that first, it is the cheapest of these
       opens in a `Kirigami.OverlaySheet`.
   - **Connection**: paired badge, Server/Device rows, Pair/Remove buttons
     (see Pairing section above).
-  - **Appearance**: a name-only list of Follow system, Busnes Light,
-    Busnes Dark and the 15 older palettes (Android's order) with a
-    checkmark on the active one; tapping a row calls `Theme.setTheme(name)`.
+  - **Appearance**: a Mode row (System, Light, Dark chips; `Theme.setMode`)
+    and the six pairs, each with a light and a dark preview and a checkmark
+    on the active one; tapping a row calls `Theme.setPair(id)`.
   - **Keywords**: lists every known keyword with a Visible/Hidden PillTab;
     toggling calls `MailApp.setKeywordVisible(keyword, !visible)` and the
     row updates immediately. Known limitation: a keyword only ever seen on
@@ -684,16 +684,17 @@ every message as undecryptable — check that first, it is the cheapest of these
     `Pairing.transport`, `Pairing.pushServerBaseUrl` — "Not yet
     registered" before first pairing. There is deliberately no editable
     push-server-URL field.
-- [ ] **Theme switching applies live across all 17 palettes.** Selecting
-      each theme in Appearance should repaint every screen without a
-      restart — colours come from `Theme`'s live `QColor` properties
-      (`core/theme/AppTheme.cpp`, sourced from Android `AppTheme.kt`, a
-      binding contract). Palette names are intentionally not translated.
+- [ ] **Theme switching applies live across all six pairs and modes.**
+      Selecting each pair and each mode in Appearance should repaint every
+      screen without a restart — colours come from `Theme`'s live `QColor`
+      properties (`core/theme/AppTheme.cpp`, sourced from ky-ui, a binding
+      contract). Pair names are intentionally not translated.
 - [ ] **A fresh install (or cleared `QSettings`/theme storage) launches
-      into "Follow system".** With the desktop in dark mode it paints Busnes
-      Dark; switch System Settings → Colours to a light scheme and it
-      repaints Busnes Light without a restart. A user who had saved a theme
-      (e.g. "Patina Ky") keeps it.
+      into Busnes, Mode System.** With the desktop in dark mode it paints
+      Busnes Dark; switch System Settings → Colours to a light scheme and it
+      repaints Busnes Light without a restart. A saved older theme carries
+      over: "Busnes Dark" opens as Busnes with Mode Dark, "Patina Ky" as Ky
+      with Mode Dark, and a removed palette such as "Sky" as Busnes, System.
 - [ ] **The layout follows the window width.** Drag a desktop window from
       wide to narrow: list and detail side by side at 840px and up, the
       left rail from 600px, the bottom bar below 600px, with no restart and

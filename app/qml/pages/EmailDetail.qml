@@ -729,9 +729,9 @@ Item {
             visible: phishingBanner.flagged
             implicitHeight: visible ? phishingBannerLayout.implicitHeight + 24 : 0
             radius: Theme.shapePanel
-            color: Theme.dangerActionFill
+            color: Theme.dangerSoft
             border.width: 1
-            border.color: Theme.dangerActionBorder
+            border.color: Theme.dangerBorder
 
             ColumnLayout {
                 id: phishingBannerLayout
@@ -788,9 +788,9 @@ Item {
             radius: Theme.shapePanel
             // A problem state gets the warning accent; "the server decrypted
             // this" is disclosure, not a fault, so it stays neutral.
-            color: pgpBanner.isProblem ? Theme.dangerActionFill : Theme.panel
+            color: pgpBanner.isProblem ? Theme.dangerSoft : Theme.panel
             border.width: 1
-            border.color: pgpBanner.isProblem ? Theme.dangerActionBorder : Theme.line
+            border.color: pgpBanner.isProblem ? Theme.dangerBorder : Theme.line
 
             ColumnLayout {
                 id: pgpBannerLayout
@@ -835,7 +835,7 @@ Item {
                     textFormat: Text.PlainText
                     visible: root.hasDecryptedBody && !!MailApp.decryptedSignature
                     text: MailApp.decryptedSignature || ""
-                    color: MailApp.decryptedSignatureIsWarning ? Theme.dangerActionText : Theme.ink
+                    color: MailApp.decryptedSignatureIsWarning ? Theme.danger : Theme.ink
                     font.family: Theme.fontUi
                     font.pixelSize: Theme.fontSender
                     font.bold: MailApp.decryptedSignatureIsWarning

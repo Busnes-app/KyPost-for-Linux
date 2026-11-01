@@ -28,6 +28,39 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- Themes are now the Ky suite's six light/dark pairs (ky-ui 0.11.0): Busnes,
+  Matter, Ocean, Forest, Ky and Nord. Settings → Appearance has a Mode choice
+  (System, the default; Light; Dark) and the six pairs, each previewing both
+  halves. Busnes following the system is the default. Tropics, Tropic Night,
+  Coffee, Cyber Punk, Neon Purple, Space, Sky and Sun are gone. Matter, Ocean
+  and Ky take ky-ui's revised colours, Forest gains a light half and Nord is
+  new.
+- Danger, warning and success are per theme and separate from the accent:
+  danger is a cool crimson, never the rust accent, and Forest's success is
+  teal. Errors, warnings and "Paired" badges use them, and the warning banner
+  and the Connection pane's last error now show a dot beside their words.
+  Every half passes ky-ui's status colour gate (180 checks), now a unit test.
+- Documentation only: before/after screenshots in
+  [docs/screenshots/](docs/screenshots/README.md).
+
+### Upgrade impact
+
+- A saved theme carries over. Busnes Light or Busnes Dark becomes Busnes with
+  that half kept; Follow system becomes Busnes following the system; an old
+  Matter, Ocean, White Cliffs, Forest or Ky palette becomes its pair with that
+  half kept. A removed palette resets to Busnes following the system. The
+  setting is not rewritten until you pick a theme, and picking one stores the
+  ky-ui ID (such as `busnes-pair` or `ocean`) under the same key, which an
+  older KyPost reads as Follow system.
+
+## Source notes at 2fe0ab01
+
+These are the prior source summary, preserved from
+[`2fe0ab01`](https://github.com/Busnes-app/KyPost-for-Linux/commit/2fe0ab01).
+Their presence does not establish that this source was distributed.
+
+### Changes
+
 - Documentation only: the README's Features, Building and Architecture sections
   moved verbatim to [docs/FEATURES.md](docs/FEATURES.md),
   [docs/BUILDING.md](docs/BUILDING.md) and

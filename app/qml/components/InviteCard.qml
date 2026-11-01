@@ -61,9 +61,9 @@ Card {
             visible: (root.invite.notices || []).length > 0
             implicitHeight: visible ? noticeText.implicitHeight + 20 : 0
             radius: Theme.shapeButton
-            color: Theme.warningActionFill
+            color: Theme.warningSoft
             border.width: 1
-            border.color: Theme.warningActionBorder
+            border.color: Theme.warningBorder
 
             Text {
                 id: noticeText
@@ -74,7 +74,7 @@ Card {
                 anchors.margins: 10
                 textFormat: Text.PlainText
                 text: (root.invite.notices || []).join("\n\n")
-                color: Theme.warningActionText
+                color: Theme.warning
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontPreview
                 wrapMode: Text.Wrap

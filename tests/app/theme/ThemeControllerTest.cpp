@@ -17,9 +17,11 @@ class ThemeControllerTest : public QObject
 private slots:
     void cleanup();
     void followSystemSwitchesWithScheme();
-    void namedThemeIgnoresScheme();
+    void forcedHalfIgnoresScheme();
+    void setPairAndModePersist();
+    void pairsListsSixWithBothHalves();
     void tokens();
-    void dangerAffordanceFollowsPalette();
+    void statusColoursFollowHalf();
     void fontTokensFollowSystemFont();
     void windowColourDecidesWhenSchemeUnknown();
 
@@ -38,10 +40,12 @@ void ThemeControllerTest::followSystemSwitchesWithScheme()
 {
     SettingsStore store(m_dir.filePath(QStringLiteral("settings.ini")));
     ThemeController theme(store);
-    QCOMPARE(theme.themeName(), QStringLiteral("Follow system"));
+    QCOMPARE(theme.pairId(), QStringLiteral("busnes-pair"));
+    QCOMPARE(theme.mode(), QStringLiteral("system"));
 
     theme.setSystemDark(true);
     QCOMPARE(theme.bg(), QColor(QStringLiteral("#182326")));
+    QCOMPARE(theme.halfName(), QStringLiteral("Busnes Dark"));
 
     QSignalSpy spy(&theme, &ThemeController::themeChanged);
     theme.setSystemDark(false);
@@ -51,11 +55,13 @@ void ThemeControllerTest::followSystemSwitchesWithScheme()
     QCOMPARE(spy.count(), 1);
 }
 
-void ThemeControllerTest::namedThemeIgnoresScheme()
+void ThemeControllerTest::forcedHalfIgnoresScheme()
 {
     SettingsStore store(m_dir.filePath(QStringLiteral("settings.ini")));
-    store.setThemeId(QStringLiteral("Ocean"));
+    store.setThemeId(QStringLiteral("Ocean")); // an old save: Ocean Dark, forced
     ThemeController theme(store);
+    QCOMPARE(theme.pairId(), QStringLiteral("ocean-pair"));
+    QCOMPARE(theme.mode(), QStringLiteral("dark"));
     const QColor ocean = theme.bg();
     QCOMPARE(ocean, QColor(QStringLiteral("#0f1b24")));
 
@@ -67,48 +73,86 @@ void ThemeControllerTest::namedThemeIgnoresScheme()
     QCOMPARE(theme.bg(), ocean);
 }
 
+void ThemeControllerTest::setPairAndModePersist()
+{
+    const QString path = m_dir.filePath(QStringLiteral("settings.ini"));
+    SettingsStore store(path);
+    ThemeController theme(store);
+    theme.setSystemDark(false);
+    QSignalSpy spy(&theme, &ThemeController::themeChanged);
+
+    theme.setPair(QStringLiteral("nord-pair"));
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(theme.bg(), QColor(QStringLiteral("#eceff4")));
+    theme.setMode(QStringLiteral("dark"));
+    QCOMPARE(spy.count(), 2);
+    QCOMPARE(theme.halfName(), QStringLiteral("Nord Dark"));
+    QCOMPARE(store.themeId(), QStringLiteral("nord"));
+
+    theme.setMode(QStringLiteral("sepia"));
+    theme.setPair(QStringLiteral("Sky"));
+    theme.setMode(QStringLiteral("dark"));
+    QCOMPARE(spy.count(), 2);
+    QCOMPARE(store.themeId(), QStringLiteral("nord"));
+}
+
+void ThemeControllerTest::pairsListsSixWithBothHalves()
+{
+    SettingsStore store(m_dir.filePath(QStringLiteral("settings.ini")));
+    ThemeController theme(store);
+    const QVariantList pairs = theme.pairs();
+    QCOMPARE(pairs.size(), 6);
+    const QVariantMap forest = pairs.at(3).toMap();
+    QCOMPARE(forest.value(QStringLiteral("id")).toString(), QStringLiteral("forest-pair"));
+    QCOMPARE(forest.value(QStringLiteral("name")).toString(), QStringLiteral("Forest"));
+    QCOMPARE(forest.value(QStringLiteral("light")).toMap().value(QStringLiteral("accent")).value<QColor>(),
+             QColor(QStringLiteral("#4b6b37")));
+    QCOMPARE(forest.value(QStringLiteral("dark")).toMap().value(QStringLiteral("bg")).value<QColor>(),
+             QColor(QStringLiteral("#142018")));
+}
+
 void ThemeControllerTest::tokens()
 {
     SettingsStore store(m_dir.filePath(QStringLiteral("settings.ini")));
     ThemeController theme(store);
-    QCOMPARE(theme.themeNames().first(), QStringLiteral("Follow system"));
     QCOMPARE(theme.fieldStroke(), 2);
 
-    theme.setTheme(QStringLiteral("Busnes Light"));
+    theme.setMode(QStringLiteral("light"));
     QCOMPARE(theme.avatarStart(), QColor(QStringLiteral("#bf3f18")));
     QCOMPARE(theme.avatarEnd(), QColor(QStringLiteral("#e65124")));
     QCOMPARE(theme.avatarBorder(), QColor(QStringLiteral("#bf3f18")));
     QCOMPARE(theme.readableOnAccent(), QColor(Qt::white));
-    // Busnes Light's panel 30 % toward accent is its accentSoft.
+    QCOMPARE(theme.accentSoft(), QColor(QStringLiteral("#fbf0ec")));
+    // Busnes Light's panel 30 % toward accent.
     QCOMPARE(theme.selection(), QColor(QStringLiteral("#ebc5b9")));
-    QCOMPARE(theme.successFillColor().rgb() & 0xFFFFFF, 0x7BBF7Bu);
-    QCOMPARE(qRound(theme.successFillColor().alphaF() * 100), 12);
 
-    // The mobile swipe surfaces: both are light enough for black text.
-    QCOMPARE(theme.readableOn(theme.warningColor()), QColor(Qt::black));
-    QCOMPARE(theme.readableOn(theme.dangerColor()), QColor(Qt::black));
+    // The mobile swipe surfaces: white on the light half's danger and warning.
+    QCOMPARE(theme.readableOn(theme.warning()), QColor(Qt::white));
+    QCOMPARE(theme.readableOn(theme.danger()), QColor(Qt::white));
     QCOMPARE(theme.readableOn(QColor(QStringLiteral("#182326"))), QColor(Qt::white));
 }
 
-void ThemeControllerTest::dangerAffordanceFollowsPalette()
+void ThemeControllerTest::statusColoursFollowHalf()
 {
     SettingsStore store(m_dir.filePath(QStringLiteral("settings.ini")));
     ThemeController theme(store);
-    const auto rgba = [](const QColor& c) {
-        return qMakePair(c.rgb() & 0xFFFFFF, qRound(c.alphaF() * 100));
-    };
 
     theme.setSystemDark(true);
-    QCOMPARE(rgba(theme.dangerActionFill()), qMakePair(0xFFB4ABu, 12));
-    QCOMPARE(rgba(theme.dangerActionBorder()), qMakePair(0xFFB4ABu, 40));
-    QCOMPARE(rgba(theme.dangerActionText()), qMakePair(0xFFD8D3u, 100));
-    QCOMPARE(rgba(theme.warningActionText()), qMakePair(0xFFF0B8u, 100));
+    QCOMPARE(theme.danger(), QColor(QStringLiteral("#ff8fb1")));
+    QCOMPARE(theme.dangerSoft(), QColor(QStringLiteral("#3a373e")));
+    QCOMPARE(theme.warning(), QColor(QStringLiteral("#ffd25e")));
+    QCOMPARE(theme.success(), QColor(QStringLiteral("#86efac")));
+    QCOMPARE(theme.successSoft(), QColor(QStringLiteral("#2b433d")));
 
     theme.setSystemDark(false);
-    QCOMPARE(rgba(theme.dangerActionFill()), qMakePair(0xFF5F5Fu, 18));
-    QCOMPARE(rgba(theme.dangerActionBorder()), qMakePair(0xFF5F5Fu, 65));
-    QCOMPARE(rgba(theme.dangerActionText()), qMakePair(0x722A2Au, 100));
-    QCOMPARE(rgba(theme.warningActionText()), qMakePair(0x726022u, 100));
+    QCOMPARE(theme.danger(), QColor(QStringLiteral("#a8174e")));
+    QCOMPARE(theme.dangerSoft(), QColor(QStringLiteral("#f5e3ea")));
+    QCOMPARE(theme.warning(), QColor(QStringLiteral("#7a5f00")));
+    QCOMPARE(theme.success(), QColor(QStringLiteral("#267442")));
+    QCOMPARE(theme.dangerBorder(), QColor(QStringLiteral("#d48ba7")));
+
+    theme.setPair(QStringLiteral("forest-pair"));
+    QCOMPARE(theme.success(), QColor(QStringLiteral("#00737a")));
 }
 
 void ThemeControllerTest::fontTokensFollowSystemFont()

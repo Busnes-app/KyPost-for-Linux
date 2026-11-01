@@ -3,8 +3,8 @@ import com.kysecurity.mail 1.0
 
 // STYLE_GUIDE.md §4 "Danger button" (mirrors web's `.users-action-danger`,
 // `.contacts-action-danger`, Android applyDangerButtonTheme()): 1px
-// Theme.dangerActionBorder stroke, Theme.dangerActionFill fill and
-// Theme.dangerActionText text, darkened on light palettes. Same
+// Theme.dangerBorder stroke, Theme.dangerSoft fill and
+// Theme.danger text, darkened on light palettes. Same
 // `text`/`enabled`/`clicked()` API shape as PrimaryButton/GhostButton for
 // interchangeability.
 Rectangle {
@@ -29,9 +29,9 @@ Rectangle {
     implicitHeight: label.implicitHeight + verticalPadding * 2
 
     radius: Theme.shapeButton
-    color: Theme.dangerActionFill
+    color: Theme.dangerSoft
     border.width: 1
-    border.color: Theme.dangerActionBorder
+    border.color: Theme.dangerBorder
     opacity: !root.enabled ? 0.5 : (tapHandler.pressed ? 0.85 : (hoverHandler.hovered ? 0.92 : 1.0))
 
     Behavior on opacity {
@@ -43,7 +43,7 @@ Rectangle {
         anchors.centerIn: parent
         textFormat: Text.PlainText
         text: root.text
-        color: Theme.dangerActionText
+        color: Theme.danger
         font.family: Theme.fontUi
         font.pixelSize: Math.round(15 * Theme.fontScale)
         font.weight: Font.Medium

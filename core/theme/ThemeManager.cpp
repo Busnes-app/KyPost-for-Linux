@@ -4,34 +4,49 @@
 
 ThemeManager::ThemeManager(SettingsStore& settingsStore, bool systemDark)
     : m_settingsStore(settingsStore)
+    // The saved id is untrusted: selectionFor() maps an old palette name to
+    // its pair and anything unknown to Busnes, and a migrated value is never
+    // written back on read -- only setPair()/setMode() persist.
+    , m_selection(AppTheme::selectionFor(settingsStore.themeId()))
     , m_systemDark(systemDark)
 {
-    // The saved id is untrusted: allowlist it, and never write a fallback
-    // back on read -- only setTheme() persists.
-    const QString name = m_settingsStore.themeId();
-    m_themeName = AppTheme::themeNames().contains(name) ? name : AppTheme::defaultThemeName();
 }
 
-QString ThemeManager::themeName() const
+AppTheme::Selection ThemeManager::selection() const
 {
-    return m_themeName;
+    return m_selection;
 }
 
 ThemePalette ThemeManager::palette() const
 {
-    return AppTheme::palette(m_themeName, m_systemDark);
+    return AppTheme::palette(m_selection, m_systemDark);
 }
 
-void ThemeManager::setTheme(const QString& name)
+const AppTheme::Half& ThemeManager::half() const
 {
-    if (!AppTheme::themeNames().contains(name))
-        return;
+    return AppTheme::resolve(m_selection, m_systemDark);
+}
 
-    m_themeName = name;
-    m_settingsStore.setThemeId(m_themeName);
+void ThemeManager::setPair(const QString& pairId)
+{
+    if (!AppTheme::findPair(pairId))
+        return;
+    m_selection.pairId = pairId;
+    save();
+}
+
+void ThemeManager::setMode(AppTheme::Mode mode)
+{
+    m_selection.mode = mode;
+    save();
 }
 
 void ThemeManager::setSystemDark(bool systemDark)
 {
     m_systemDark = systemDark;
+}
+
+void ThemeManager::save()
+{
+    m_settingsStore.setThemeId(AppTheme::savedId(m_selection));
 }
