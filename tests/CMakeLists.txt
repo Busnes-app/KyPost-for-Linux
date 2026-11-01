@@ -157,7 +157,7 @@ kypost_add_test(VCardImportTest core/vcard/VCardImportTest.cpp)
 kypost_add_test(ThemePaletteTest core/theme/ThemePaletteTest.cpp)
 kypost_add_test(AppThemeTest core/theme/AppThemeTest.cpp)
 kypost_add_test(ThemeManagerTest core/theme/ThemeManagerTest.cpp)
-kypost_add_test(SemanticColorsTest core/theme/SemanticColorsTest.cpp)
+kypost_add_test(StatusColoursTest core/theme/StatusColoursTest.cpp)
 kypost_add_test(TypeScaleTest core/theme/TypeScaleTest.cpp)
 
 # Everything below tests app/ code, which is Qt 6/KF6 only.

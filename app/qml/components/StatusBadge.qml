@@ -4,12 +4,10 @@ import com.kysecurity.mail 1.0
 // STYLE_GUIDE.md §4 "Status badge + dot" (mirrors web's `.users-badge`,
 // `.contacts-status-active/inactive`): pill-outline badge (stadium shape,
 // radius = height / 2, same convention as PillTab) with a small leading
-// circular dot. Active uses the theme-invariant success semantic colors --
-// Theme.successBorderColor for the outline + dot over Theme.successFillColor
-// (Android applySuccessChipTheme()), Theme.successTextColor
-// for the label, per STYLE_GUIDE's two-tone split (dot mirrors the outline
-// color, text is its own tone). Inactive deliberately does NOT use
-// Theme.dangerColor or any other semantic-color constant -- STYLE_GUIDE §1
+// circular dot. Active uses the palette's success status colours --
+// Theme.success for the dot and label, Theme.successBorder for the outline,
+// over Theme.successSoft (ky-ui --ky-success-soft). Inactive deliberately
+// does NOT use Theme.danger or any other status colour -- STYLE_GUIDE §1
 // is explicit that "inactive status uses line/panel/ink from the active
 // palette, not a fixed color" -- so inactive reads Theme.line (outline +
 // dot, mirroring the active outline/dot pairing), Theme.panel (fill), and
@@ -36,9 +34,9 @@ Rectangle {
     // The light-green text needs a dark chip on a light palette, as in
     // Android's contact shots; the 12% tint alone left it near 1.6:1.
     color: !root.active ? Theme.panel
-        : Theme.isLight ? Qt.tint(Theme.inkStrong, Theme.successFillColor) : Theme.successFillColor
+        : Theme.successSoft
     border.width: 1
-    border.color: root.active ? Theme.successBorderColor : Theme.line
+    border.color: root.active ? Theme.successBorder : Theme.line
 
     Behavior on color {
         ColorAnimation { duration: 120 }
@@ -57,7 +55,7 @@ Rectangle {
             height: root.dotDiameter
             radius: width / 2
             anchors.verticalCenter: parent.verticalCenter
-            color: root.active ? Theme.successBorderColor : Theme.line
+            color: root.active ? Theme.success : Theme.line
 
             Behavior on color {
                 ColorAnimation { duration: 120 }
@@ -68,7 +66,7 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
             text: root.text
-            color: root.active ? Theme.successTextColor : Theme.ink
+            color: root.active ? Theme.success : Theme.ink
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontDate
             font.weight: Font.Medium

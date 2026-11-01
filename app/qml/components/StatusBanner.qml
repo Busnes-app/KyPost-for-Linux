@@ -195,9 +195,9 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         implicitHeight: summaryRow.implicitHeight + 16
-        color: Theme.panel
+        color: Theme.dangerSoft
         border.width: 1
-        border.color: Theme.dangerActionBorder
+        border.color: Theme.dangerBorder
 
         RowLayout {
             id: summaryRow
@@ -205,11 +205,20 @@ Item {
             anchors.margins: 8
             spacing: 8
 
+            // A status is a word plus a dot, never colour alone.
+            Rectangle {
+                Layout.alignment: Qt.AlignVCenter
+                implicitWidth: 8
+                implicitHeight: 8
+                radius: 4
+                color: Theme.danger
+            }
+
             Text {
                 Layout.fillWidth: true
                 textFormat: Text.PlainText
                 text: root.summaryText
-                color: Theme.dangerActionText
+                color: Theme.danger
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontDate
                 font.weight: Font.Medium
@@ -223,7 +232,7 @@ Item {
                 objectName: "statusBannerToggle"
                 textFormat: Text.PlainText
                 text: root.collapsed ? i18n("Show") : i18n("Hide")
-                color: Theme.dangerActionText
+                color: Theme.danger
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontDate
                 font.underline: toggleArea.containsMouse
@@ -281,7 +290,7 @@ Item {
                     implicitHeight: modelData.active ? bannerLabel.implicitHeight + 16 : 0
                     color: Theme.panel
                     border.width: 1
-                    border.color: Theme.dangerActionBorder
+                    border.color: Theme.dangerBorder
 
                     RowLayout {
                         id: bannerLabel
@@ -293,7 +302,7 @@ Item {
                             Layout.fillWidth: true
                             textFormat: Text.PlainText
                             text: modelData.message
-                            color: Theme.dangerActionText
+                            color: Theme.danger
                             font.family: Theme.fontUi
                             font.pixelSize: Theme.fontDate
                             wrapMode: Text.WordWrap

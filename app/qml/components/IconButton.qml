@@ -22,16 +22,16 @@ Rectangle {
     radius: Math.min(width, height) / 2
 
     readonly property color restColor: variant === "primary" ? Theme.accent
-        : (variant === "danger" ? Theme.dangerActionFill : "transparent")
+        : (variant === "danger" ? Theme.dangerSoft : "transparent")
     readonly property color hoverColor: variant === "primary" ? Theme.accent
-        : (variant === "danger" ? Theme.dangerActionFill : Theme.panel)
+        : (variant === "danger" ? Theme.dangerSoft : Theme.panel)
     readonly property color iconColor: variant === "primary" ? Theme.readableOnAccent
-        : (variant === "danger" ? Theme.dangerActionText : Theme.inkStrong)
+        : (variant === "danger" ? Theme.danger : Theme.inkStrong)
 
     color: (hoverHandler.hovered && !tapHandler.pressed) ? hoverColor : restColor
     // Android's toolbar icons are borderless; danger and outline keep a stroke.
     border.width: variant === "danger" || variant === "outline" ? 1 : 0
-    border.color: variant === "danger" ? Theme.dangerActionBorder : Theme.line
+    border.color: variant === "danger" ? Theme.dangerBorder : Theme.line
     opacity: !root.enabled ? 0.5 : (tapHandler.pressed ? 0.85 : (hoverHandler.hovered ? 0.92 : 1.0))
 
     Behavior on color {

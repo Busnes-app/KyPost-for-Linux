@@ -91,7 +91,7 @@ Item {
             visible: PgpQr.lastError !== ""
             textFormat: Text.PlainText
             text: PgpQr.lastError
-            color: Theme.dangerActionText
+            color: Theme.danger
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontPreview
             wrapMode: Text.WordWrap
@@ -141,7 +141,7 @@ Item {
                 text: PgpQr.scannedVerified
                     ? i18n("This key matches the code they showed you.")
                     : i18n("This code carried no fingerprint, so the key couldn't be verified in person. Compare the fingerprint with theirs before relying on it.")
-                color: PgpQr.scannedVerified ? Theme.ink : Theme.warningActionText
+                color: PgpQr.scannedVerified ? Theme.ink : Theme.warning
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap

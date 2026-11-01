@@ -7,24 +7,29 @@
 
 class SettingsStore; // forward-declared, core/stores/SettingsStore.h
 
-// Resolves the saved theme selection against the system colour scheme.
-// themeName() is the selection (may be "Follow system"); palette() is what
-// it paints. Writes back through SettingsStore only from setTheme().
+// Resolves the saved theme selection (a pair plus System/Light/Dark) against
+// the system colour scheme. The saved value stays one string under the same
+// settings key: AppTheme::savedId(). Writes back through SettingsStore only
+// from setPair()/setMode().
 class ThemeManager
 {
 public:
     ThemeManager(SettingsStore& settingsStore, bool systemDark);
 
-    QString themeName() const;
+    AppTheme::Selection selection() const;
     ThemePalette palette() const;
+    // The half palette() paints, e.g. "Busnes Dark".
+    const AppTheme::Half& half() const;
 
-    // No-op if `name` is not one of AppTheme::themeNames(); on success,
-    // persists via settingsStore.setThemeId(name).
-    void setTheme(const QString& name);
+    // No-op unless `pairId` is one of AppTheme::pairs(); keeps the mode.
+    void setPair(const QString& pairId);
+    void setMode(AppTheme::Mode mode);
     void setSystemDark(bool systemDark);
 
 private:
+    void save();
+
     SettingsStore& m_settingsStore;
-    QString m_themeName;
+    AppTheme::Selection m_selection;
     bool m_systemDark;
 };

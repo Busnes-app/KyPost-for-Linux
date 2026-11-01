@@ -88,7 +88,7 @@ Item {
             textFormat: Text.PlainText
             text: i18n("%1 sign-in requests are waiting. If you did not start them, deny each one and change your password.",
                        Mfa.pendingCount)
-            color: Theme.dangerActionText
+            color: Theme.danger
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontDate
             horizontalAlignment: Text.AlignHCenter
@@ -233,7 +233,7 @@ Item {
             textFormat: Text.PlainText
             text: Mfa.resultMessage !== "" ? Mfa.resultMessage
                 : (Mfa.hasChallenge ? "" : i18n("No sign-in request is waiting. It expired or was already answered."))
-            color: Mfa.resultIsError ? Theme.dangerActionText : Theme.inkStrong
+            color: Mfa.resultIsError ? Theme.danger : Theme.inkStrong
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontPreview
             horizontalAlignment: Text.AlignHCenter

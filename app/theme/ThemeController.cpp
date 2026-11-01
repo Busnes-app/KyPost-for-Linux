@@ -1,11 +1,13 @@
 #include "theme/ThemeController.h"
 
+#include "theme/SemanticColors.h"
 #include "theme/Shape.h"
 #include "theme/TypeScale.h"
 
 #include <QEvent>
 #include <QFont>
 #include <QGuiApplication>
+#include <QHash>
 #include <QPalette>
 #include <QStyleHints>
 #include <QtMath>
@@ -72,9 +74,12 @@ void ThemeController::setSystemDark(bool systemDark)
         emit themeChanged();
 }
 
-SemanticColors::Affordance ThemeController::affordance(SemanticColors::Hue hue) const
+void ThemeController::changeSelection(const std::function<void()>& change)
 {
-    return SemanticColors::affordance(hue, m_manager.palette());
+    const AppTheme::Selection before = m_manager.selection();
+    change();
+    if (m_manager.selection() != before)
+        emit themeChanged();
 }
 
 int ThemeController::scaled(int sp) const
@@ -89,21 +94,49 @@ QColor ThemeController::fromHex(quint32 rgbHex)
                   static_cast<int>(rgbHex & 0xFF));
 }
 
-QColor ThemeController::fromSemantic(const SemanticColor& color)
+
+QString ThemeController::pairId() const
 {
-    QColor qcolor = fromHex(color.rgb);
-    qcolor.setAlphaF(static_cast<float>(color.alpha));
-    return qcolor;
+    return m_manager.selection().pairId;
 }
 
-QString ThemeController::themeName() const
+QString ThemeController::mode() const
 {
-    return m_manager.themeName();
+    switch (m_manager.selection().mode) {
+    case AppTheme::Mode::Light:
+        return QStringLiteral("light");
+    case AppTheme::Mode::Dark:
+        return QStringLiteral("dark");
+    case AppTheme::Mode::System:
+        break;
+    }
+    return QStringLiteral("system");
 }
 
-QStringList ThemeController::themeNames() const
+QString ThemeController::halfName() const
 {
-    return AppTheme::themeNames();
+    return m_manager.half().name;
+}
+
+QVariantList ThemeController::pairs() const
+{
+    const auto preview = [](const QString& halfId) {
+        const ThemePalette p = AppTheme::findHalf(halfId)->palette;
+        return QVariantMap{{QStringLiteral("bg"), fromHex(p.bg)},
+                           {QStringLiteral("panel"), fromHex(p.panel)},
+                           {QStringLiteral("ink"), fromHex(p.ink)},
+                           {QStringLiteral("inkStrong"), fromHex(p.inkStrong)},
+                           {QStringLiteral("accent"), fromHex(p.accent)},
+                           {QStringLiteral("line"), fromHex(p.line)}};
+    };
+    QVariantList list;
+    for (const AppTheme::Pair& pair : AppTheme::pairs()) {
+        list.append(QVariantMap{{QStringLiteral("id"), pair.id},
+                                {QStringLiteral("name"), pair.name},
+                                {QStringLiteral("light"), preview(pair.lightId)},
+                                {QStringLiteral("dark"), preview(pair.darkId)}});
+    }
+    return list;
 }
 
 QColor ThemeController::bg() const
@@ -158,7 +191,7 @@ QColor ThemeController::avatarBorder() const
 
 QColor ThemeController::readableOnAccent() const
 {
-    return fromHex(m_manager.palette().readableOnAccent());
+    return fromHex(m_manager.palette().onAccent);
 }
 
 QColor ThemeController::selection() const
@@ -172,69 +205,55 @@ bool ThemeController::isLight() const
     return m_manager.palette().isLight();
 }
 
-QColor ThemeController::dangerActionFill() const
+QColor ThemeController::danger() const
 {
-    return fromSemantic(affordance(SemanticColors::Hue::Danger).fill);
+    return fromHex(m_manager.palette().danger);
 }
 
-QColor ThemeController::dangerActionBorder() const
+QColor ThemeController::dangerSoft() const
 {
-    return fromSemantic(affordance(SemanticColors::Hue::Danger).border);
+    const ThemePalette p = m_manager.palette();
+    return fromHex(p.statusSoft(p.danger));
 }
 
-QColor ThemeController::dangerActionText() const
+QColor ThemeController::dangerBorder() const
 {
-    return fromSemantic(affordance(SemanticColors::Hue::Danger).text);
+    const ThemePalette p = m_manager.palette();
+    return fromHex(p.statusBorder(p.danger));
 }
 
-QColor ThemeController::warningActionFill() const
+QColor ThemeController::warning() const
 {
-    return fromSemantic(affordance(SemanticColors::Hue::Warning).fill);
+    return fromHex(m_manager.palette().warning);
 }
 
-QColor ThemeController::warningActionBorder() const
+QColor ThemeController::warningSoft() const
 {
-    return fromSemantic(affordance(SemanticColors::Hue::Warning).border);
+    const ThemePalette p = m_manager.palette();
+    return fromHex(p.statusSoft(p.warning));
 }
 
-QColor ThemeController::warningActionText() const
+QColor ThemeController::warningBorder() const
 {
-    return fromSemantic(affordance(SemanticColors::Hue::Warning).text);
+    const ThemePalette p = m_manager.palette();
+    return fromHex(p.statusBorder(p.warning));
 }
 
-QColor ThemeController::dangerColor() const
+QColor ThemeController::success() const
 {
-    return fromSemantic(SemanticColors::danger);
+    return fromHex(m_manager.palette().success);
 }
 
-QColor ThemeController::dangerBorderColor() const
+QColor ThemeController::successSoft() const
 {
-    return fromSemantic(SemanticColors::dangerBorder);
+    const ThemePalette p = m_manager.palette();
+    return fromHex(p.statusSoft(p.success));
 }
 
-QColor ThemeController::dangerFillColor() const
+QColor ThemeController::successBorder() const
 {
-    return fromSemantic(SemanticColors::dangerFill);
-}
-
-QColor ThemeController::warningColor() const
-{
-    return fromSemantic(SemanticColors::warning);
-}
-
-QColor ThemeController::successBorderColor() const
-{
-    return fromSemantic(SemanticColors::successBorder);
-}
-
-QColor ThemeController::successTextColor() const
-{
-    return fromSemantic(SemanticColors::successText);
-}
-
-QColor ThemeController::successFillColor() const
-{
-    return fromSemantic(SemanticColors::successFill);
+    const ThemePalette p = m_manager.palette();
+    return fromHex(p.statusBorder(p.success));
 }
 
 int ThemeController::shapeField() const
@@ -327,10 +346,20 @@ QColor ThemeController::readableOn(const QColor& background) const
     return fromHex(ThemePalette::readableOn(background.rgb() & 0xFFFFFF));
 }
 
-void ThemeController::setTheme(const QString& name)
+void ThemeController::setPair(const QString& pairId)
 {
-    const QString before = m_manager.themeName();
-    m_manager.setTheme(name);
-    if (m_manager.themeName() != before)
-        emit themeChanged();
+    changeSelection([&] { m_manager.setPair(pairId); });
+}
+
+void ThemeController::setMode(const QString& mode)
+{
+    static const QHash<QString, AppTheme::Mode> modes = {
+        {QStringLiteral("system"), AppTheme::Mode::System},
+        {QStringLiteral("light"), AppTheme::Mode::Light},
+        {QStringLiteral("dark"), AppTheme::Mode::Dark},
+    };
+    const auto it = modes.constFind(mode);
+    if (it == modes.constEnd())
+        return;
+    changeSelection([&] { m_manager.setMode(it.value()); });
 }

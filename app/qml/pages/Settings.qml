@@ -241,6 +241,41 @@ Item {
     }
 
     // Explanation text under a row, as Android's 16sp body copy.
+    // A theme half in miniature: its bg, a panel with an ink line and an accent bar.
+    component HalfPreview: Rectangle {
+        id: preview
+        property var half
+        implicitWidth: 44
+        implicitHeight: 32
+        radius: 6
+        color: preview.half.bg
+        border.width: 1
+        border.color: preview.half.line
+
+        Rectangle {
+            id: previewPanel
+            anchors.fill: parent
+            anchors.margins: 6
+            radius: 3
+            color: preview.half.panel
+
+            Rectangle {
+                x: 4; y: 4
+                width: previewPanel.width * 0.6
+                height: 3
+                radius: 1.5
+                color: preview.half.inkStrong
+            }
+            Rectangle {
+                x: 4; y: previewPanel.height - 7
+                width: previewPanel.width * 0.4
+                height: 3
+                radius: 1.5
+                color: preview.half.accent
+            }
+        }
+    }
+
     component Explain: MutedHint {
         Layout.fillWidth: true
         font.pixelSize: Theme.fontBody
@@ -449,63 +484,91 @@ Item {
             }
 
             // ---- 2. Appearance ------------------------------------------
-            // Name-only list + checkmark, not per-theme color swatches:
-            // ThemeController only exposes the ACTIVE theme's palette, so
-            // there is no QML-reachable way to preview another theme.
+            // ky-ui's Appearance page: a System/Light/Dark mode control, then
+            // the six pairs, each previewing its light and dark half.
             PaneBody {
+                SectionLabel { text: i18n("Mode") }
+
+                Panel {
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Repeater {
+                            model: [
+                                { "mode": "system", "label": i18nc("@option:radio follow the desktop's light or dark setting", "System") },
+                                { "mode": "light", "label": i18nc("@option:radio", "Light") },
+                                { "mode": "dark", "label": i18nc("@option:radio", "Dark") }
+                            ]
+                            delegate: Chip {
+                                required property var modelData
+                                objectName: "themeMode-" + modelData.mode
+                                text: modelData.label
+                                checked: Theme.mode === modelData.mode
+                                onClicked: if (!AppLock.locked) Theme.setMode(modelData.mode)
+                            }
+                        }
+                    }
+
+                    Explain {
+                        text: Theme.mode === "system"
+                            ? i18nc("@info %1 is a theme half such as Busnes Dark",
+                                    "Follows your desktop's light or dark setting. Now showing %1.", Theme.halfName)
+                            : i18nc("@info %1 is a theme half such as Busnes Dark", "Always %1.", Theme.halfName)
+                    }
+                }
+
                 SectionLabel { text: i18n("Theme") }
 
                 Panel {
                     Repeater {
-                        model: Theme.themeNames
+                        model: Theme.pairs
                         delegate: Rectangle {
-                            id: themeDelegate
-                            required property string modelData
+                            id: pairDelegate
+                            required property var modelData
+                            readonly property bool current: modelData.id === Theme.pairId
+                            objectName: "themePair-" + modelData.id
                             Layout.fillWidth: true
-                            implicitHeight: themeRow.implicitHeight + 20
+                            implicitHeight: pairRow.implicitHeight + 20
                             radius: Theme.shapeButton
-                            color: modelData === Theme.themeName ? Theme.selection
-                                : (themeHover.hovered ? Theme.bg : "transparent")
+                            color: current ? Theme.selection
+                                : (pairHover.hovered ? Theme.bg : "transparent")
 
                             Behavior on color {
                                 ColorAnimation { duration: 120 }
                             }
 
                             Accessible.role: Accessible.RadioButton
-                            Accessible.name: modelData
-                            Accessible.checked: modelData === Theme.themeName
-                            Accessible.onPressAction: if (!AppLock.locked) Theme.setTheme(modelData)
+                            Accessible.name: modelData.name
+                            Accessible.checked: current
+                            Accessible.onPressAction: if (!AppLock.locked) Theme.setPair(modelData.id)
                             activeFocusOnTab: true
-                            Keys.onReturnPressed: if (!AppLock.locked) Theme.setTheme(modelData)
-                            Keys.onSpacePressed: if (!AppLock.locked) Theme.setTheme(modelData)
-                            FocusRing { cornerRadius: themeDelegate.radius }
+                            Keys.onReturnPressed: if (!AppLock.locked) Theme.setPair(modelData.id)
+                            Keys.onSpacePressed: if (!AppLock.locked) Theme.setPair(modelData.id)
+                            FocusRing { cornerRadius: pairDelegate.radius }
 
                             RowLayout {
-                                id: themeRow
+                                id: pairRow
                                 anchors.fill: parent
                                 anchors.leftMargin: 12
                                 anchors.rightMargin: 12
                                 spacing: 8
 
+                                HalfPreview { half: pairDelegate.modelData.light }
+                                HalfPreview { half: pairDelegate.modelData.dark }
+
                                 Text {
                                     Layout.fillWidth: true
-                                    // A theme's proper name (core/theme/AppTheme.cpp), not
-                                    // translated: it is also the identifier
-                                    // Theme.setTheme() stores and compares.
+                                    Layout.leftMargin: 4
+                                    // A pair's proper name (core/theme/AppTheme.cpp), not translated.
                                     textFormat: Text.PlainText
-                                    // Under Follow system, say which palette is in effect.
-                                    text: themeDelegate.modelData === "Follow system"
-                                          && Theme.themeName === "Follow system"
-                                        ? i18nc("@item theme name, then the palette it currently resolves to",
-                                                "%1 (currently %2)", themeDelegate.modelData,
-                                                Theme.isLight ? i18n("light") : i18n("dark"))
-                                        : themeDelegate.modelData
+                                    text: pairDelegate.modelData.name
                                     color: Theme.inkStrong
                                     font.family: Theme.fontUi
                                     font.pixelSize: Theme.fontSender
                                 }
                                 MaterialIcon {
-                                    visible: themeDelegate.modelData === Theme.themeName
+                                    visible: pairDelegate.current
                                     name: "check"
                                     tint: Theme.accent
                                     size: 20
@@ -513,11 +576,11 @@ Item {
                             }
 
                             HoverHandler {
-                                id: themeHover
+                                id: pairHover
                             }
 
                             TapHandler {
-                                onTapped: Theme.setTheme(themeDelegate.modelData)
+                                onTapped: Theme.setPair(pairDelegate.modelData.id)
                             }
                         }
                     }
@@ -687,7 +750,7 @@ Item {
                     Explain {
                         text: ContactsApp.lastError !== "" ? ContactsApp.lastError
                             : (ContactsApp.statusMessage !== "" ? ContactsApp.statusMessage : i18n("No sync yet."))
-                        color: ContactsApp.lastError !== "" ? Theme.dangerActionText : Theme.ink
+                        color: ContactsApp.lastError !== "" ? Theme.danger : Theme.ink
                     }
                     PrimaryButton {
                         text: i18n("Sync now")
@@ -1075,9 +1138,9 @@ Item {
                         Layout.fillWidth: true
                         implicitHeight: pushWarningText.implicitHeight + 24
                         radius: Theme.shapeButton
-                        color: Theme.dangerActionFill
+                        color: Theme.dangerSoft
                         border.width: 1
-                        border.color: Theme.dangerActionBorder
+                        border.color: Theme.dangerBorder
 
                         Text {
                             id: pushWarningText
@@ -1086,7 +1149,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             anchors.margins: 12
                             text: i18n("This pairing predates push encryption: notifications send the sender and subject through a relay server (UnifiedPush/ntfy) in the clear, even with the settings above enabled. Pair this device again to encrypt them, or ask your server admin to switch it to Pull mode. Sign-in approvals reach this device only after it is paired again.")
-                            color: Theme.dangerActionText
+                            color: Theme.danger
                             font.family: Theme.fontUi
                             font.pixelSize: Theme.fontSender
                             wrapMode: Text.WordWrap
@@ -1216,7 +1279,7 @@ Item {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 visible: securityPrompt.newPinProblem !== "" || securityPrompt.confirmMismatch
-                color: Theme.dangerActionText
+                color: Theme.danger
                 text: securityPrompt.confirmMismatch
                           ? i18n("The two PINs do not match.")
                           : securityPrompt.newPinProblem
@@ -1227,7 +1290,7 @@ Item {
                 visible: securityPrompt.errorText !== ""
                 textFormat: Text.PlainText
                 text: securityPrompt.errorText
-                color: Theme.dangerActionText
+                color: Theme.danger
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontSender
                 wrapMode: Text.WordWrap

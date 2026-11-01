@@ -684,7 +684,7 @@ Item {
                 Layout.fillWidth: true
                 textFormat: Text.PlainText
                 text: root.notice
-                color: Theme.warningActionText
+                color: Theme.warning
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontSender
                 wrapMode: Text.WordWrap
@@ -701,7 +701,7 @@ Item {
             visible: root.validationError !== "" || MailApp.lastError !== ""
             textFormat: Text.PlainText
             text: root.validationError !== "" ? root.validationError : MailApp.lastError
-            color: Theme.dangerActionText
+            color: Theme.danger
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontSender
             wrapMode: Text.WordWrap

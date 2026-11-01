@@ -185,7 +185,7 @@ Item {
                 visible: root.customError !== ""
                 textFormat: Text.PlainText
                 text: root.customError
-                color: Theme.dangerActionText
+                color: Theme.danger
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontPreview
                 wrapMode: Text.WordWrap

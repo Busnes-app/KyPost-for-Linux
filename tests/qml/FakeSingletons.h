@@ -106,32 +106,29 @@ class FakeTheme : public QObject
     Q_PROPERTY(QColor ink MEMBER m_colour CONSTANT)
     Q_PROPERTY(QColor inkStrong MEMBER m_colour CONSTANT)
     Q_PROPERTY(QColor accent MEMBER m_colour CONSTANT)
-    Q_PROPERTY(QColor dangerColor MEMBER m_colour CONSTANT)
-    // DangerButton binds these two. Absent until the certificate-trust
-    // dialog became the first test to instantiate one, at which point every
-    // run logged "Unable to assign [undefined] to QColor" and the button
-    // under test rendered with no fill or border at all.
-    Q_PROPERTY(QColor dangerFillColor MEMBER m_colour CONSTANT)
-    Q_PROPERTY(QColor dangerBorderColor MEMBER m_colour CONSTANT)
     Q_PROPERTY(QColor readableOnAccent MEMBER m_colour CONSTANT)
     Q_PROPERTY(QColor accentSoft MEMBER m_colour CONSTANT)
     Q_PROPERTY(QColor selection MEMBER m_colour CONSTANT)
-    Q_PROPERTY(QColor warningColor MEMBER m_colour CONSTANT)
-    Q_PROPERTY(QColor successBorderColor MEMBER m_colour CONSTANT)
-    Q_PROPERTY(QColor successTextColor MEMBER m_colour CONSTANT)
-    Q_PROPERTY(QColor successFillColor MEMBER m_colour CONSTANT)
-    Q_PROPERTY(QColor dangerActionFill MEMBER m_colour CONSTANT)
-    Q_PROPERTY(QColor dangerActionBorder MEMBER m_colour CONSTANT)
-    Q_PROPERTY(QColor dangerActionText MEMBER m_colour CONSTANT)
-    Q_PROPERTY(QColor warningActionFill MEMBER m_colour CONSTANT)
-    Q_PROPERTY(QColor warningActionBorder MEMBER m_colour CONSTANT)
-    Q_PROPERTY(QColor warningActionText MEMBER m_colour CONSTANT)
+    // Status colours. DangerButton binds dangerSoft and dangerBorder; without
+    // them every run logged "Unable to assign [undefined] to QColor" and the
+    // button under test rendered with no fill or border at all.
+    Q_PROPERTY(QColor danger MEMBER m_colour CONSTANT)
+    Q_PROPERTY(QColor dangerSoft MEMBER m_colour CONSTANT)
+    Q_PROPERTY(QColor dangerBorder MEMBER m_colour CONSTANT)
+    Q_PROPERTY(QColor warning MEMBER m_colour CONSTANT)
+    Q_PROPERTY(QColor warningSoft MEMBER m_colour CONSTANT)
+    Q_PROPERTY(QColor warningBorder MEMBER m_colour CONSTANT)
+    Q_PROPERTY(QColor success MEMBER m_colour CONSTANT)
+    Q_PROPERTY(QColor successSoft MEMBER m_colour CONSTANT)
+    Q_PROPERTY(QColor successBorder MEMBER m_colour CONSTANT)
     // Distinct, so a test can tell which stop is which.
     Q_PROPERTY(QColor avatarStart MEMBER m_avatarStart CONSTANT)
     Q_PROPERTY(QColor avatarEnd MEMBER m_avatarEnd CONSTANT)
     Q_PROPERTY(QColor avatarBorder MEMBER m_avatarBorder CONSTANT)
-    Q_PROPERTY(QString themeName MEMBER m_themeName CONSTANT)
-    Q_PROPERTY(QStringList themeNames MEMBER m_themeNames CONSTANT)
+    Q_PROPERTY(QString pairId MEMBER m_pairId CONSTANT)
+    Q_PROPERTY(QString mode MEMBER m_mode CONSTANT)
+    Q_PROPERTY(QString halfName MEMBER m_halfName CONSTANT)
+    Q_PROPERTY(QVariantList pairs MEMBER m_pairs CONSTANT)
     Q_PROPERTY(QString fontUi MEMBER m_font CONSTANT)
     Q_PROPERTY(QString fontMono MEMBER m_font CONSTANT)
     Q_PROPERTY(int shapeField MEMBER m_shape CONSTANT)
@@ -153,7 +150,8 @@ class FakeTheme : public QObject
 
 public:
     using QObject::QObject;
-    Q_INVOKABLE void setTheme(const QString&) { }
+    Q_INVOKABLE void setPair(const QString&) { }
+    Q_INVOKABLE void setMode(const QString&) { }
     Q_INVOKABLE QColor readableOn(const QColor&) const { return Qt::black; }
 
 private:
@@ -161,8 +159,10 @@ private:
     QColor m_avatarStart = QColor(QStringLiteral("#bf3f18"));
     QColor m_avatarEnd = QColor(QStringLiteral("#e65124"));
     QColor m_avatarBorder = QColor(QStringLiteral("#123456"));
-    QString m_themeName = QStringLiteral("Follow system");
-    QStringList m_themeNames = {QStringLiteral("Follow system")};
+    QString m_pairId = QStringLiteral("busnes-pair");
+    QString m_mode = QStringLiteral("system");
+    QString m_halfName = QStringLiteral("Busnes Light");
+    QVariantList m_pairs;
     QString m_font = QStringLiteral("sans-serif");
     int m_shape = 4;
     int m_fieldStroke = 2;

@@ -63,12 +63,21 @@ ColumnLayout {
             visible: modelData.value !== ""
             spacing: 12
             SectionLabel { Layout.preferredWidth: 70; text: modelData.label }
+            // The error row's word ("Last error") gets a danger dot too.
+            Rectangle {
+                visible: modelData.name === "errorRow"
+                Layout.alignment: Qt.AlignVCenter
+                implicitWidth: 8
+                implicitHeight: 8
+                radius: 4
+                color: Theme.danger
+            }
             Text {
                 objectName: "value"
                 Layout.fillWidth: true
                 textFormat: Text.PlainText
                 text: modelData.value
-                color: modelData.name === "errorRow" ? Theme.dangerActionText : Theme.inkStrong
+                color: modelData.name === "errorRow" ? Theme.danger : Theme.inkStrong
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontSender
                 wrapMode: Text.WordWrap

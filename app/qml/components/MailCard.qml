@@ -136,14 +136,14 @@ SwipeDelegate {
         anchors.fill: parent
         anchors.margins: 8
         elevated: false
-        color: Theme.dangerColor
+        color: Theme.danger
 
         Text {
             anchors.left: parent.left
             anchors.leftMargin: 24
             anchors.verticalCenter: parent.verticalCenter
             text: i18n("Delete")
-            color: Theme.readableOn(Theme.dangerColor)
+            color: Theme.readableOn(Theme.danger)
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontSender
             font.weight: Font.Medium
@@ -161,7 +161,7 @@ SwipeDelegate {
         anchors.fill: parent
         anchors.margins: 8
         elevated: false
-        color: Theme.warningColor
+        color: Theme.warning
 
         Text {
             readonly property bool inSnoozed: model.folder === MailApp.snoozedFolder
@@ -170,7 +170,7 @@ SwipeDelegate {
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
             text: inSnoozed ? i18n("Unsnooze") : i18n("Snooze")
-            color: Theme.readableOn(Theme.warningColor)
+            color: Theme.readableOn(Theme.warning)
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontSender
             font.weight: Font.Medium
@@ -193,7 +193,7 @@ SwipeDelegate {
             anchors.rightMargin: 24
             anchors.verticalCenter: parent.verticalCenter
             text: i18n("Archive")
-            color: Theme.readableOn(Theme.warningColor)
+            color: Theme.readableOn(Theme.warning)
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontSender
             font.weight: Font.Medium

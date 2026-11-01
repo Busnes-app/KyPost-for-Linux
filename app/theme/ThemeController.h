@@ -1,25 +1,32 @@
 #pragma once
 
-#include "theme/SemanticColors.h"
 #include "theme/ThemeManager.h"
 
 #include <QColor>
 #include <QObject>
-#include <QStringList>
+#include <QVariantList>
+
+#include <functional>
 
 class SettingsStore;
 
 // QML-facing wrapper around core::ThemeManager: the resolved palette as
 // live QColor properties, semantic colours, shape radii, font families and
 // the system-scaled type scale. Follows the desktop colour scheme (for the
-// Follow system theme) and the application font (for the type scale).
+// System mode) and the application font (for the type scale).
 // Registered as the `Theme` QML singleton instance in main.cpp -- QML must
 // never construct its own.
 class ThemeController : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(QString themeName READ themeName NOTIFY themeChanged)
-    Q_PROPERTY(QStringList themeNames READ themeNames CONSTANT)
+    // The selection: a pair ID (AppTheme::pairs()) and "system", "light" or "dark".
+    Q_PROPERTY(QString pairId READ pairId NOTIFY themeChanged)
+    Q_PROPERTY(QString mode READ mode NOTIFY themeChanged)
+    // The half in effect, e.g. "Busnes Dark".
+    Q_PROPERTY(QString halfName READ halfName NOTIFY themeChanged)
+    // Every pair for the picker: {id, name, light, dark}, each half a map of
+    // bg, panel, ink, inkStrong, accent and line.
+    Q_PROPERTY(QVariantList pairs READ pairs CONSTANT)
     Q_PROPERTY(QColor bg READ bg NOTIFY themeChanged)
     Q_PROPERTY(QColor panel READ panel NOTIFY themeChanged)
     Q_PROPERTY(QColor ink READ ink NOTIFY themeChanged)
@@ -34,21 +41,19 @@ class ThemeController : public QObject
     // A selected row: panel blended 30 % toward accent (Android's selected card).
     Q_PROPERTY(QColor selection READ selection NOTIFY themeChanged)
     Q_PROPERTY(bool isLight READ isLight NOTIFY themeChanged)
-    // Danger/warning affordances depend on the palette's lightness.
-    Q_PROPERTY(QColor dangerActionFill READ dangerActionFill NOTIFY themeChanged)
-    Q_PROPERTY(QColor dangerActionBorder READ dangerActionBorder NOTIFY themeChanged)
-    Q_PROPERTY(QColor dangerActionText READ dangerActionText NOTIFY themeChanged)
-    Q_PROPERTY(QColor warningActionFill READ warningActionFill NOTIFY themeChanged)
-    Q_PROPERTY(QColor warningActionBorder READ warningActionBorder NOTIFY themeChanged)
-    Q_PROPERTY(QColor warningActionText READ warningActionText NOTIFY themeChanged)
-    // Theme-invariant semantic colours and shapes.
-    Q_PROPERTY(QColor dangerColor READ dangerColor CONSTANT)
-    Q_PROPERTY(QColor dangerBorderColor READ dangerBorderColor CONSTANT)
-    Q_PROPERTY(QColor dangerFillColor READ dangerFillColor CONSTANT)
-    Q_PROPERTY(QColor warningColor READ warningColor CONSTANT)
-    Q_PROPERTY(QColor successBorderColor READ successBorderColor CONSTANT)
-    Q_PROPERTY(QColor successTextColor READ successTextColor CONSTANT)
-    Q_PROPERTY(QColor successFillColor READ successFillColor CONSTANT)
+    // Status colours, per half (ky-ui 0.8.0). The plain colour is for text,
+    // dots and icons; *Soft is its pill/banner fill; *Border its outline.
+    // Pair a status colour with a word and a dot or icon, never colour alone.
+    Q_PROPERTY(QColor danger READ danger NOTIFY themeChanged)
+    Q_PROPERTY(QColor dangerSoft READ dangerSoft NOTIFY themeChanged)
+    Q_PROPERTY(QColor dangerBorder READ dangerBorder NOTIFY themeChanged)
+    Q_PROPERTY(QColor warning READ warning NOTIFY themeChanged)
+    Q_PROPERTY(QColor warningSoft READ warningSoft NOTIFY themeChanged)
+    Q_PROPERTY(QColor warningBorder READ warningBorder NOTIFY themeChanged)
+    Q_PROPERTY(QColor success READ success NOTIFY themeChanged)
+    Q_PROPERTY(QColor successSoft READ successSoft NOTIFY themeChanged)
+    Q_PROPERTY(QColor successBorder READ successBorder NOTIFY themeChanged)
+    // Shapes.
     Q_PROPERTY(int shapeField READ shapeField CONSTANT)
     Q_PROPERTY(int shapeButton READ shapeButton CONSTANT)
     Q_PROPERTY(int shapePanel READ shapePanel CONSTANT)
@@ -71,8 +76,10 @@ class ThemeController : public QObject
 public:
     explicit ThemeController(SettingsStore& settingsStore, QObject* parent = nullptr);
 
-    QString themeName() const;
-    QStringList themeNames() const;
+    QString pairId() const;
+    QString mode() const;
+    QString halfName() const;
+    QVariantList pairs() const;
 
     QColor bg() const;
     QColor panel() const;
@@ -88,20 +95,15 @@ public:
     QColor selection() const;
     bool isLight() const;
 
-    QColor dangerActionFill() const;
-    QColor dangerActionBorder() const;
-    QColor dangerActionText() const;
-    QColor warningActionFill() const;
-    QColor warningActionBorder() const;
-    QColor warningActionText() const;
-
-    QColor dangerColor() const;
-    QColor dangerBorderColor() const;
-    QColor dangerFillColor() const;
-    QColor warningColor() const;
-    QColor successBorderColor() const;
-    QColor successTextColor() const;
-    QColor successFillColor() const;
+    QColor danger() const;
+    QColor dangerSoft() const;
+    QColor dangerBorder() const;
+    QColor warning() const;
+    QColor warningSoft() const;
+    QColor warningBorder() const;
+    QColor success() const;
+    QColor successSoft() const;
+    QColor successBorder() const;
 
     int shapeField() const;
     int shapeButton() const;
@@ -123,7 +125,9 @@ public:
     int fontEyebrow() const;
     double eyebrowLetterSpacing() const;
 
-    Q_INVOKABLE void setTheme(const QString& name);
+    // No-op for an unknown pair ID or mode. Both persist the selection.
+    Q_INVOKABLE void setPair(const QString& pairId);
+    Q_INVOKABLE void setMode(const QString& mode);
     // Black or white text for an opaque `background` (Android readableOn()).
     Q_INVOKABLE QColor readableOn(const QColor& background) const;
     // What the platform colour-scheme signal calls.
@@ -138,11 +142,10 @@ protected:
 
 private:
     static QColor fromHex(quint32 rgbHex);
-    static QColor fromSemantic(const SemanticColor& color);
     static bool systemDarkNow();
     static double systemFontScale();
     int scaled(int sp) const;
-    SemanticColors::Affordance affordance(SemanticColors::Hue hue) const;
+    void changeSelection(const std::function<void()>& change);
 
     ThemeManager m_manager; // core::ThemeManager, owns the SettingsStore&
     double m_fontScale;

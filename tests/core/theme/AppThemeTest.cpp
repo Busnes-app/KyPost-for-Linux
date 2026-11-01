@@ -1,41 +1,35 @@
 #include "theme/AppTheme.h"
 
-#include <QSet>
-#include <iterator>
 #include <QTest>
+#include <iterator>
+
+using AppTheme::Mode;
+using AppTheme::Selection;
 
 namespace {
 
-const QString kFollow = QStringLiteral("Follow system");
-const QString kBusnesLight = QStringLiteral("Busnes Light");
-const QString kBusnesDark = QStringLiteral("Busnes Dark");
-
-// Copied from kypost-android origin/main AppTheme.kt themePalettes:
-// bg, panel, ink, inkStrong, accent, line, avatarStart, avatarEnd, avatarBorder.
-struct AndroidRow
+// Copied from ky-ui 0.11.0 src/themes.js THEME_PALETTES and src/tokens.css
+// (Busnes): bg, panel, ink, inkStrong, accent, accentSoft, line, buttonText,
+// danger, warning, success. rgba accentSoft/line are flattened over panel.
+struct KyUiRow
 {
-    const char* name;
-    quint32 v[9];
+    const char* id;
+    quint32 v[11];
 };
 
-const AndroidRow kAndroid[] = {
-    {"Busnes Light", {0xF8F6F0, 0xFFFFFF, 0x566461, 0x182326, 0xBF3F18, 0xCCCFCF, 0xBF3F18, 0xE65124, 0xBF3F18}},
-    {"Busnes Dark", {0x182326, 0x1F2B2E, 0xB3BCB8, 0xF2EFE8, 0xF5865F, 0x525A5B, 0xF5865F, 0xF26A3D, 0xF5865F}},
-    {"Dark Matter", {0x1A1A1E, 0x252530, 0xD4C5E2, 0xE8DDF5, 0xC29A72, 0x404050, 0xC29A72, 0x9A7450, 0x8F6B4A}},
-    {"Light Matter", {0xF5EFE5, 0xFFF8EE, 0x4C3D32, 0x2D1F15, 0xC29A72, 0xC5B29D, 0xC29A72, 0x9A7450, 0x8F6B4A}},
-    {"Tropics", {0xF4F1EB, 0xFFFAF0, 0x43362D, 0x241A14, 0x9BC400, 0xC4B7A3, 0x9BC400, 0x7EA100, 0x78A100}},
-    {"Tropic Night", {0x15131A, 0x221F2B, 0xCDBDE0, 0xE8DDF5, 0x9BC400, 0x3C3650, 0x9BC400, 0x7EA100, 0x78A100}},
-    {"Ocean", {0x0F1B24, 0x152A36, 0xB8D8E8, 0xE0F2FB, 0x5EA9BE, 0x2F5567, 0x74BACD, 0x4F91A6, 0x4F91A6}},
-    {"Coffee", {0x1D1714, 0x2A211D, 0xD6C0B3, 0xF0DED2, 0xB47F5C, 0x4A3830, 0xB47F5C, 0x8F5F42, 0x8F5F42}},
-    {"White Cliffs", {0xF7F9FB, 0xFFFFFF, 0x2E4C63, 0x163246, 0x5EA8D8, 0x8FC3DF, 0x4F9BC8, 0x58B65A, 0x2F7FB0}},
-    {"Cyber Punk", {0x120918, 0x1E1028, 0xF5D0FF, 0xFFE9FF, 0x00F5D4, 0x5C2D84, 0x00F5D4, 0x00C9AD, 0x00C9AD}},
-    {"Neon Purple", {0x130B1D, 0x231233, 0xE4CCFF, 0xF2E6FF, 0xC86CFF, 0x63358A, 0xC86CFF, 0x9D45D3, 0x9D45D3}},
-    {"Space", {0x0B0F1A, 0x151C2D, 0xC8D5F0, 0xE7EFFF, 0x86A8FF, 0x34496F, 0x86A8FF, 0x6788DD, 0x6788DD}},
-    {"Sky", {0xDFF1FF, 0xF4FBFF, 0x2F4F64, 0x183142, 0x6DB3D6, 0x93BDD2, 0x6DB3D6, 0x4F93B8, 0x4F93B8}},
-    {"Forest", {0x142018, 0x1F2F24, 0xC7DBC7, 0xE3F0DF, 0x8FAA74, 0x4F694F, 0x8FAA74, 0x6F8D5A, 0x6F8D5A}},
-    {"Sun", {0xFFF3DC, 0xFFF9EC, 0x5A4024, 0x392611, 0xE0AB4F, 0xD4B27A, 0xE0AB4F, 0xBB8631, 0xBB8631}},
-    {"Patina Ky", {0x0D0F14, 0x161A22, 0x64748B, 0xE2E8F0, 0x4DEEEA, 0x1E293B, 0x4DEEEA, 0x10B981, 0x0E9668}},
-    {"Polished Ky", {0xEEF2F6, 0xFFFFFF, 0x475569, 0x0F172A, 0x0891B2, 0xCBD5E1, 0x0891B2, 0x10B981, 0x059669}},
+const KyUiRow kKyUi[] = {
+    {"busnes-light", {0xF8F6F0, 0xFFFFFF, 0x566461, 0x182326, 0xBF3F18, 0xFBF0EC, 0xCCCFCF, 0xFFFFFF, 0xA8174E, 0x7A5F00, 0x267442}},
+    {"busnes-dark", {0x182326, 0x1F2B2E, 0xB3BCB8, 0xF2EFE8, 0xF5865F, 0x2B2622, 0x525A5B, 0x182326, 0xFF8FB1, 0xFFD25E, 0x86EFAC}},
+    {"light-matter", {0xF5EFE5, 0xFFF8EE, 0x4C3D32, 0x2D1F15, 0x805A39, 0xE2D0B8, 0xD4C7B5, 0xFFFFFF, 0xA8174E, 0x7A5F00, 0x267442}},
+    {"dark-matter", {0x1D1B19, 0x292725, 0xCFC6BB, 0xF0E9DF, 0xC29A72, 0x49392C, 0x45403A, 0x24170F, 0xFF8FB1, 0xFFD25E, 0x86EFAC}},
+    {"white-cliffs", {0xF7F9FB, 0xFFFFFF, 0x2E4C63, 0x163246, 0x1D5FA6, 0xDDE9F7, 0xC7D6DF, 0xFFFFFF, 0xA8174E, 0x7A5F00, 0x267442}},
+    {"ocean", {0x0F1B24, 0x152A36, 0xB8D8E8, 0xE0F2FB, 0x6AA8E8, 0x1F3A55, 0x2F5567, 0x0A1B22, 0xFF8FB1, 0xFFD25E, 0x86EFAC}},
+    {"forest-light", {0xF3F6EF, 0xFCFDF9, 0x435342, 0x203322, 0x4B6B37, 0xE2EBDA, 0xC5D0BC, 0xFFFFFF, 0xA8174E, 0x7A5F00, 0x00737A}},
+    {"forest", {0x142018, 0x1F2F24, 0xC7DBC7, 0xE3F0DF, 0x8FAA74, 0x3A5837, 0x4F694F, 0x12200F, 0xFF8FB1, 0xFFD25E, 0x6EE0D0}},
+    {"polished-ky", {0xEEF2F6, 0xFFFFFF, 0x475569, 0x0F172A, 0x08758B, 0xDAF2F4, 0xC2CDD8, 0xFFFFFF, 0xA8174E, 0x7A5F00, 0x267442}},
+    {"patina-ky", {0x10161E, 0x1B2530, 0xAFBDCA, 0xE2E8F0, 0x6FC9CC, 0x203D41, 0x34414D, 0x10161E, 0xFF8FB1, 0xFFD25E, 0x86EFAC}},
+    {"paper", {0xECEFF4, 0xFFFFFF, 0x4C566A, 0x2E3440, 0x4A6A94, 0xDBE4EF, 0xC5CDD9, 0xFFFFFF, 0xA8174E, 0x7A5F00, 0x267442}},
+    {"nord", {0x2E3440, 0x3B4252, 0xD8DEE9, 0xECEFF4, 0x88C0D0, 0x4A5B6B, 0x4C566A, 0x0D0F14, 0xECC4C8, 0xFFD25E, 0xBCD4AA}},
 };
 
 } // namespace
@@ -45,96 +39,167 @@ class AppThemeTest : public QObject
     Q_OBJECT
 
 private slots:
-    void themeNamesMatchAndroidList();
-    void busnesPalettes();
-    void allPalettesMatchAndroid();
-    void existingAccentSoftUnchanged();
-    void followSystemResolvesBusnesPair();
+    void pairsMatchKyUi();
+    void halvesMatchKyUi();
+    void palettesMatchKyUi();
+    void busnesKeepsAndroidAvatarStops();
+    void selectionForSavedValue_data();
+    void selectionForSavedValue();
+    void savedIdRoundTrips();
+    void resolveFollowsMode();
     void systemPrefersDark();
-    void lightThemesGetLightColorScheme();
+    void halfSchemeMatchesLightness();
 };
 
-void AppThemeTest::themeNamesMatchAndroidList()
+void AppThemeTest::pairsMatchKyUi()
 {
-    const QStringList expected = {
-        kFollow,
-        kBusnesLight,
-        kBusnesDark,
-        QStringLiteral("Dark Matter"),
-        QStringLiteral("Light Matter"),
-        QStringLiteral("Tropics"),
-        QStringLiteral("Tropic Night"),
-        QStringLiteral("Ocean"),
-        QStringLiteral("Coffee"),
-        QStringLiteral("White Cliffs"),
-        QStringLiteral("Cyber Punk"),
-        QStringLiteral("Neon Purple"),
-        QStringLiteral("Space"),
-        QStringLiteral("Sky"),
-        QStringLiteral("Forest"),
-        QStringLiteral("Sun"),
-        QStringLiteral("Patina Ky"),
-        QStringLiteral("Polished Ky"),
+    const QList<AppTheme::Pair>& pairs = AppTheme::pairs();
+    QCOMPARE(pairs.size(), 6);
+    const QStringList ids = {"busnes-pair", "matter-pair", "ocean-pair", "forest-pair", "ky-pair", "nord-pair"};
+    const QStringList names = {"Busnes", "Matter", "Ocean", "Forest", "Ky", "Nord"};
+    const QStringList lights = {"busnes-light", "light-matter", "white-cliffs", "forest-light", "polished-ky", "paper"};
+    const QStringList darks = {"busnes-dark", "dark-matter", "ocean", "forest", "patina-ky", "nord"};
+    for (int i = 0; i < pairs.size(); ++i) {
+        QCOMPARE(pairs[i].id, ids[i]);
+        QCOMPARE(pairs[i].name, names[i]);
+        QCOMPARE(pairs[i].lightId, lights[i]);
+        QCOMPARE(pairs[i].darkId, darks[i]);
+    }
+    QCOMPARE(AppTheme::defaultPairId(), QStringLiteral("busnes-pair"));
+}
+
+void AppThemeTest::halvesMatchKyUi()
+{
+    struct Row
+    {
+        const char* id;
+        const char* name;
+        bool dark;
+        const char* pair;
+        QStringList aliases;
     };
-    QCOMPARE(AppTheme::themeNames().size(), 18);
-    QCOMPARE(AppTheme::themeNames(), expected);
-    QCOMPARE(AppTheme::defaultThemeName(), kFollow);
-}
-
-void AppThemeTest::busnesPalettes()
-{
-    const ThemePalette light = AppTheme::palette(kBusnesLight, true);
-    QCOMPARE(light, (ThemePalette{0xF8F6F0, 0xFFFFFF, 0x566461, 0x182326, 0xBF3F18, 0xEBC5B9, 0xCCCFCF,
-                                  0xBF3F18, 0xE65124, 0xBF3F18}));
-    const ThemePalette dark = AppTheme::palette(kBusnesDark, false);
-    QCOMPARE(dark, (ThemePalette{0x182326, 0x1F2B2E, 0xB3BCB8, 0xF2EFE8, 0xF5865F, 0x5F463C, 0x525A5B,
-                                 0xF5865F, 0xF26A3D, 0xF5865F}));
-}
-
-void AppThemeTest::allPalettesMatchAndroid()
-{
-    QCOMPARE(std::size(kAndroid), size_t(17));
-    for (const AndroidRow& row : kAndroid) {
-        const QString name = QString::fromLatin1(row.name);
-        QVERIFY2(AppTheme::themeNames().contains(name), row.name);
-        const ThemePalette p = AppTheme::palette(name, false);
-        const quint32 got[9] = {p.bg, p.panel, p.ink, p.inkStrong, p.accent, p.line,
-                                p.avatarStart, p.avatarEnd, p.avatarBorder};
-        for (int i = 0; i < 9; ++i)
-            QVERIFY2(got[i] == row.v[i], qPrintable(QStringLiteral("%1 field %2").arg(name).arg(i)));
+    const Row rows[] = {
+        {"busnes-light", "Busnes Light", false, "busnes-pair", {}},
+        {"busnes-dark", "Busnes Dark", true, "busnes-pair", {}},
+        {"light-matter", "Matter Light", false, "matter-pair", {"Light Matter"}},
+        {"dark-matter", "Matter Dark", true, "matter-pair", {"Dark Matter", "Current"}},
+        {"white-cliffs", "Ocean Light", false, "ocean-pair", {"White Cliffs", "Cliffs"}},
+        {"ocean", "Ocean Dark", true, "ocean-pair", {"Ocean"}},
+        {"forest-light", "Forest Light", false, "forest-pair", {}},
+        {"forest", "Forest Dark", true, "forest-pair", {"Forest"}},
+        {"polished-ky", "Ky Light", false, "ky-pair", {"Polished Ky"}},
+        {"patina-ky", "Ky Dark", true, "ky-pair", {"Patina Ky", "patina", "Patina Ky (base)"}},
+        {"paper", "Nord Light", false, "nord-pair", {"Paper Clean"}},
+        {"nord", "Nord Dark", true, "nord-pair", {"Nord", "Nord Slate"}},
+    };
+    const QList<AppTheme::Half>& halves = AppTheme::halves();
+    QCOMPARE(halves.size(), qsizetype(std::size(rows)));
+    for (qsizetype i = 0; i < halves.size(); ++i) {
+        QCOMPARE(halves[i].id, QString::fromLatin1(rows[i].id));
+        QCOMPARE(halves[i].name, QString::fromLatin1(rows[i].name));
+        QCOMPARE(halves[i].dark, rows[i].dark);
+        QCOMPARE(halves[i].pairId, QString::fromLatin1(rows[i].pair));
+        QCOMPARE(halves[i].aliases, rows[i].aliases);
     }
 }
 
-void AppThemeTest::existingAccentSoftUnchanged()
+void AppThemeTest::palettesMatchKyUi()
 {
-    const QList<QPair<QString, quint32>> expected = {
-        {QStringLiteral("Dark Matter"), 0x5A3F31}, {QStringLiteral("Light Matter"), 0xE6D2BE},
-        {QStringLiteral("Tropics"), 0xD4E3A0},     {QStringLiteral("Tropic Night"), 0x6B4A42},
-        {QStringLiteral("Ocean"), 0x214657},       {QStringLiteral("Coffee"), 0x5F3F2F},
-        {QStringLiteral("White Cliffs"), 0xDFF1FB}, {QStringLiteral("Cyber Punk"), 0x3B1760},
-        {QStringLiteral("Neon Purple"), 0x47206C}, {QStringLiteral("Space"), 0x263E74},
-        {QStringLiteral("Sky"), 0xB6DCED},         {QStringLiteral("Forest"), 0x3A5837},
-        {QStringLiteral("Sun"), 0xF1D9A2},         {QStringLiteral("Patina Ky"), 0x0E4A48},
-        {QStringLiteral("Polished Ky"), 0xCFFAFE},
-    };
-    for (const auto& [name, accentSoft] : expected)
-        QVERIFY2(AppTheme::palette(name, true).accentSoft == accentSoft, qPrintable(name));
+    QCOMPARE(std::size(kKyUi), size_t(12));
+    for (const KyUiRow& row : kKyUi) {
+        const AppTheme::Half* half = AppTheme::findHalf(QString::fromLatin1(row.id));
+        QVERIFY2(half, row.id);
+        const ThemePalette& p = half->palette;
+        const quint32 got[11] = {p.bg, p.panel, p.ink, p.inkStrong, p.accent, p.accentSoft,
+                                 p.line, p.onAccent, p.danger, p.warning, p.success};
+        for (int i = 0; i < 11; ++i)
+            QVERIFY2(got[i] == row.v[i], qPrintable(QStringLiteral("%1 field %2").arg(row.id).arg(i)));
+    }
 }
 
-void AppThemeTest::followSystemResolvesBusnesPair()
+void AppThemeTest::busnesKeepsAndroidAvatarStops()
 {
-    const ThemePalette light = AppTheme::palette(kBusnesLight, false);
-    const ThemePalette dark = AppTheme::palette(kBusnesDark, false);
-    QVERIFY(light != dark);
-    QCOMPARE(AppTheme::palette(kFollow, true), dark);
-    QCOMPARE(AppTheme::palette(kFollow, false), light);
-    QCOMPARE(AppTheme::palette(QStringLiteral("Nope"), true), dark);
-    QCOMPARE(AppTheme::palette(QStringLiteral("Nope"), false), light);
-    QCOMPARE(AppTheme::palette(QString(), false), light);
-    // A named palette ignores the system scheme.
-    for (const QString& name : AppTheme::themeNames().mid(1))
-        QVERIFY2(AppTheme::palette(name, true) == AppTheme::palette(name, false), qPrintable(name));
-    QCOMPARE(AppTheme::palette(kBusnesLight, true), light);
+    const ThemePalette light = AppTheme::findHalf(QStringLiteral("busnes-light"))->palette;
+    QCOMPARE(light.avatarStart, 0xBF3F18u);
+    QCOMPARE(light.avatarEnd, 0xE65124u);
+    QCOMPARE(light.avatarBorder, 0xBF3F18u);
+    const ThemePalette dark = AppTheme::findHalf(QStringLiteral("busnes-dark"))->palette;
+    QCOMPARE(dark.avatarStart, 0xF5865Fu);
+    QCOMPARE(dark.avatarEnd, 0xF26A3Du);
+    QCOMPARE(dark.avatarBorder, 0xF5865Fu);
+    // Other halves start and ring in their accent.
+    for (const AppTheme::Half& h : AppTheme::halves()) {
+        QVERIFY2(h.palette.avatarStart == h.palette.accent, qPrintable(h.id));
+        QVERIFY2(h.palette.avatarBorder == h.palette.accent, qPrintable(h.id));
+    }
+}
+
+// The migration: every value an older build could have saved, plus the new IDs.
+void AppThemeTest::selectionForSavedValue_data()
+{
+    QTest::addColumn<QString>("saved");
+    QTest::addColumn<QString>("pairId");
+    QTest::addColumn<int>("mode");
+
+    const int system = int(Mode::System), light = int(Mode::Light), dark = int(Mode::Dark);
+    // Busnes Light/Dark: the Busnes pair with that half forced (owner rule).
+    QTest::newRow("Busnes Light") << "Busnes Light" << "busnes-pair" << light;
+    QTest::newRow("Busnes Dark") << "Busnes Dark" << "busnes-pair" << dark;
+    // The old default.
+    QTest::newRow("Follow system") << "Follow system" << "busnes-pair" << system;
+    // Old palettes that are now a half keep their look (pairs-spec: a saved
+    // half applies that half).
+    QTest::newRow("Dark Matter") << "Dark Matter" << "matter-pair" << dark;
+    QTest::newRow("Light Matter") << "Light Matter" << "matter-pair" << light;
+    QTest::newRow("Ocean") << "Ocean" << "ocean-pair" << dark;
+    QTest::newRow("White Cliffs") << "White Cliffs" << "ocean-pair" << light;
+    QTest::newRow("Forest") << "Forest" << "forest-pair" << dark;
+    QTest::newRow("Patina Ky") << "Patina Ky" << "ky-pair" << dark;
+    QTest::newRow("Polished Ky") << "Polished Ky" << "ky-pair" << light;
+    // Removed palettes reset to Busnes following the system.
+    for (const char* removed : {"Tropics", "Tropic Night", "Coffee", "Cyber Punk", "Neon Purple", "Space", "Sky", "Sun"})
+        QTest::newRow(removed) << removed << "busnes-pair" << system;
+    // Unknown, empty, case-mangled.
+    QTest::newRow("garbage") << "Bogus" << "busnes-pair" << system;
+    QTest::newRow("empty") << "" << "busnes-pair" << system;
+    QTest::newRow("lowercase name") << "busnes light" << "busnes-pair" << system;
+    // What this build saves.
+    QTest::newRow("pair id") << "nord-pair" << "nord-pair" << system;
+    QTest::newRow("half id") << "forest-light" << "forest-pair" << light;
+    QTest::newRow("new name") << "Ky Dark" << "ky-pair" << dark;
+}
+
+void AppThemeTest::selectionForSavedValue()
+{
+    QFETCH(QString, saved);
+    QFETCH(QString, pairId);
+    QFETCH(int, mode);
+    QCOMPARE(AppTheme::selectionFor(saved), (Selection{pairId, Mode(mode)}));
+}
+
+void AppThemeTest::savedIdRoundTrips()
+{
+    for (const AppTheme::Pair& pair : AppTheme::pairs()) {
+        for (Mode mode : {Mode::System, Mode::Light, Mode::Dark}) {
+            const Selection s{pair.id, mode};
+            QCOMPARE(AppTheme::selectionFor(AppTheme::savedId(s)), s);
+        }
+        QCOMPARE(AppTheme::savedId({pair.id, Mode::System}), pair.id);
+        QCOMPARE(AppTheme::savedId({pair.id, Mode::Light}), pair.lightId);
+        QCOMPARE(AppTheme::savedId({pair.id, Mode::Dark}), pair.darkId);
+    }
+}
+
+void AppThemeTest::resolveFollowsMode()
+{
+    const auto name = [](const Selection& s, bool systemDark) { return AppTheme::resolve(s, systemDark).name; };
+    QCOMPARE(name({"ocean-pair", Mode::System}, false), QStringLiteral("Ocean Light"));
+    QCOMPARE(name({"ocean-pair", Mode::System}, true), QStringLiteral("Ocean Dark"));
+    QCOMPARE(name({"ocean-pair", Mode::Light}, true), QStringLiteral("Ocean Light"));
+    QCOMPARE(name({"ocean-pair", Mode::Dark}, false), QStringLiteral("Ocean Dark"));
+    QCOMPARE(name({"no-such-pair", Mode::System}, true), QStringLiteral("Busnes Dark"));
+    QCOMPARE(AppTheme::palette(QStringLiteral("Sky"), false), AppTheme::findHalf("busnes-light")->palette);
+    QCOMPARE(AppTheme::palette(QStringLiteral("Sky"), true), AppTheme::findHalf("busnes-dark")->palette);
 }
 
 void AppThemeTest::systemPrefersDark()
@@ -146,25 +211,13 @@ void AppThemeTest::systemPrefersDark()
     QVERIFY(!AppTheme::systemPrefersDark(SystemScheme::Unknown, 0xEFF0F1));
 }
 
-void AppThemeTest::lightThemesGetLightColorScheme()
+void AppThemeTest::halfSchemeMatchesLightness()
 {
-    const QSet<QString> lightThemes = {
-        kBusnesLight,
-        QStringLiteral("Light Matter"),
-        QStringLiteral("Tropics"),
-        QStringLiteral("White Cliffs"),
-        QStringLiteral("Sky"),
-        QStringLiteral("Sun"),
-        QStringLiteral("Polished Ky"),
-    };
-
-    for (const QString& name : AppTheme::themeNames().mid(1)) {
-        const ThemePalette p = AppTheme::palette(name, false);
-        const bool expectedLight = lightThemes.contains(name);
-        QVERIFY2(p.isLight() == expectedLight, qPrintable(name));
-        QVERIFY2(p.preferredColorScheme() ==
-                     (expectedLight ? ThemePalette::ColorScheme::Light : ThemePalette::ColorScheme::Dark),
-                 qPrintable(name));
+    for (const AppTheme::Half& h : AppTheme::halves()) {
+        QVERIFY2(h.palette.isLight() == !h.dark, qPrintable(h.id));
+        QVERIFY2(h.palette.preferredColorScheme() ==
+                     (h.dark ? ThemePalette::ColorScheme::Dark : ThemePalette::ColorScheme::Light),
+                 qPrintable(h.id));
     }
 }
 
