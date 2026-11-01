@@ -11,5 +11,6 @@
     <file alias="IBMPlexMono-SemiBold.ttf">../../fonts/IBM_Plex_Mono/IBMPlexMono-SemiBold.ttf</file>
     <file alias="IBMPlexMono-Bold.ttf">../../fonts/IBM_Plex_Mono/IBMPlexMono-Bold.ttf</file>
     <file alias="IBMPlexMono-BoldItalic.ttf">../../fonts/IBM_Plex_Mono/IBMPlexMono-BoldItalic.ttf</file>
+    <file alias="NotoEmoji-Regular.ttf">../../fonts/Noto_Emoji/NotoEmoji-Regular.ttf</file>
   </qresource>
 </RCC>

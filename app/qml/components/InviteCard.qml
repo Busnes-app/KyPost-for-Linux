@@ -19,7 +19,6 @@ Card {
 
     visible: root.shown
     implicitHeight: visible ? column.implicitHeight + 28 : 0
-    elevated: false
 
     ColumnLayout {
         id: column

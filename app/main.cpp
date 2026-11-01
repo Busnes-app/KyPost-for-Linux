@@ -94,7 +94,7 @@
 // Task 28: every bundled font file (see app/resources/fonts.qrc) loaded via
 // QFontDatabase::addApplicationFont before the QQmlApplicationEngine is
 // constructed, so QML content can reference these families from the very
-// first frame. These 11 files are baked into the resource bundle at build
+// first frame. These 12 files are baked into the resource bundle at build
 // time (app/resources/fonts.qrc), so a load failure here is a packaging
 // defect, not an expected runtime condition -- unlike the mobile
 // counterparts' system-font-fallback pattern, there is no silent fallback:
@@ -113,6 +113,8 @@ static void loadBundledFonts()
         ":/fonts/IBMPlexMono-SemiBold.ttf",
         ":/fonts/IBMPlexMono-Bold.ttf",
         ":/fonts/IBMPlexMono-BoldItalic.ttf",
+        // Emoji fallback: Space Grotesk has none (subjects like "Seed swap 🌱").
+        ":/fonts/NotoEmoji-Regular.ttf",
     };
     for (const char* resource : kFontResources) {
         const int id = QFontDatabase::addApplicationFont(QString::fromLatin1(resource));

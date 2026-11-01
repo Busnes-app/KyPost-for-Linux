@@ -123,8 +123,8 @@ void ThemeControllerTest::tokens()
     QCOMPARE(theme.avatarBorder(), QColor(QStringLiteral("#bf3f18")));
     QCOMPARE(theme.readableOnAccent(), QColor(Qt::white));
     QCOMPARE(theme.accentSoft(), QColor(QStringLiteral("#fbf0ec")));
-    // Busnes Light's panel 30 % toward accent.
-    QCOMPARE(theme.selection(), QColor(QStringLiteral("#ebc5b9")));
+    // Selection is accent-soft (the QML adds the accent bar).
+    QCOMPARE(theme.selection(), theme.accentSoft());
 
     // The mobile swipe surfaces: white on the light half's danger and warning.
     QCOMPARE(theme.readableOn(theme.warning()), QColor(Qt::white));

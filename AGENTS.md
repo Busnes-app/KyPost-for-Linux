@@ -1414,11 +1414,19 @@ worse than no comment: the next reader stops looking.
   the classes; tests that need root wiring read `qrc:/qml/AppShell.qml`.
 - **Look like Android, and prove it with screenshots.** The UI follows
   kypost-android `origin/main` (store shots, `res/layout*/`, `AppTheme.kt`):
-  AppHeader (logo, "KyPost" wordmark, monospace place line), Card for every
-  panel, Chip for filters, bundled Material Icons (filled, Apache-2.0) in
-  `app/qml/icons/` through MaterialIcon/IconButton, never theme icon names.
-  Labels are sentence case; the only all-caps text is the AppHeader place
-  line and SectionLabel eyebrows. Folder names come from
+  AppHeader, Card for every panel, Chip for filters, bundled Material Icons
+  (filled, Apache-2.0) in `app/qml/icons/` through MaterialIcon/IconButton,
+  never theme icon names.
+- **The suite shell rules win over Android where they differ (council round
+  1, 2026-11-01).** AppHeader is the logo and an ink "KyPost" wordmark with
+  nothing under it; the page name is a separate sentence-case title
+  (`headerPlace`). NavBar sits on `Theme.bg` with a hairline, outline
+  `nav-*.svg` icons and an accent-soft pill on the current item. Labels are
+  sentence case, never all caps or tracked. Selection is `Theme.accentSoft`
+  plus a 3px accent bar, never an accent fill; accent dots mark status or
+  unread only, never chips. Cards are flat with a 1px line, no shadow. Never
+  accent text on accent-soft: use `Theme.inkStrong`. The mail list is flat
+  rows with hairlines, about 72px (64 on a phone). Folder names come from
   `standardFolderDisplayName()` ("INBOX" shows as "Inbox"). After a UI change
   run `scripts/screenshots.sh` (offscreen, fixture data from Android's demo
   mailbox in `tests/screenshots/`, mobile 412x732 and desktop 1920x1080,

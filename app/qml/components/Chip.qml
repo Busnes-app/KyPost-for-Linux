@@ -1,8 +1,9 @@
 import QtQuick
 import com.kysecurity.mail 1.0
 
-// A stadium filter chip with a leading dot: accent fill when checked, panel
-// with a line stroke otherwise (Android's keyword chips, 120ms fade).
+// A stadium filter chip: accent-soft with an accent edge and ink text when
+// checked (never accent text on accent-soft), page surface with a line
+// stroke otherwise. No dot: accent dots mark status and unread only.
 Rectangle {
     id: root
 
@@ -10,12 +11,12 @@ Rectangle {
     property bool checked: false
     signal clicked()
 
-    implicitWidth: row.implicitWidth + 28
-    implicitHeight: Math.max(36, label.implicitHeight + 14)
+    implicitWidth: label.implicitWidth + 28
+    implicitHeight: Math.max(32, label.implicitHeight + 12)
     radius: height / 2
-    color: checked ? Theme.accent : Theme.panel
-    border.width: checked ? 0 : 1
-    border.color: Theme.line
+    color: checked ? Theme.accentSoft : (hover.hovered ? Qt.rgba(Theme.ink.r, Theme.ink.g, Theme.ink.b, 0.06) : "transparent")
+    border.width: 1
+    border.color: checked ? Theme.accent : Theme.line
 
     Behavior on color { ColorAnimation { duration: 120 } }
 
@@ -24,29 +25,15 @@ Rectangle {
     Accessible.checked: root.checked
     Accessible.onPressAction: if (!AppLock.locked) root.clicked()
 
-    Row {
-        id: row
+    Text {
+        id: label
         anchors.centerIn: parent
-        spacing: 8
-
-        Rectangle {
-            anchors.verticalCenter: parent.verticalCenter
-            width: 8
-            height: 8
-            radius: 4
-            color: root.checked ? Theme.readableOnAccent : Theme.accent
-        }
-        Text {
-            id: label
-            anchors.verticalCenter: parent.verticalCenter
-            textFormat: Text.PlainText
-            text: root.text
-            color: root.checked ? Theme.readableOnAccent : Theme.inkStrong
-            font.family: Theme.fontUi
-            font.pixelSize: Theme.fontSender
-            font.weight: Font.Medium
-            Behavior on color { ColorAnimation { duration: 120 } }
-        }
+        textFormat: Text.PlainText
+        text: root.text
+        color: Theme.inkStrong
+        font.family: Theme.fontUi
+        font.pixelSize: Theme.fontSender
+        font.weight: Font.Medium
     }
 
     activeFocusOnTab: true
@@ -54,5 +41,6 @@ Rectangle {
     Keys.onSpacePressed: if (!AppLock.locked) root.clicked()
     FocusRing { cornerRadius: root.radius }
 
+    HoverHandler { id: hover }
     TapHandler { onTapped: root.clicked() }
 }

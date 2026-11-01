@@ -195,7 +195,7 @@ Item {
                 id: contactCard
                 width: listView.width - 32
                 height: Math.max(76, rowContent.implicitHeight + 28)
-                color: tapHandler.pressed ? Theme.selection : Theme.panel
+                color: tapHandler.pressed ? Theme.accentSoft : Theme.panel
 
                 RowLayout {
                     id: rowContent

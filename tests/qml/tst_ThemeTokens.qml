@@ -65,11 +65,11 @@ TestCase {
         verify(!Qt.colorEqual(Theme.avatarStart, Theme.avatarEnd))
     }
 
-    function test_eyebrow_type() {
-        compare(eyebrow.font.pixelSize, Theme.fontEyebrow)
-        compare(eyebrow.font.capitalization, Font.AllUppercase)
-        // QFont stores spacing in 1/64 px.
-        fuzzyCompare(eyebrow.font.letterSpacing, Theme.eyebrowLetterSpacing, 1 / 64)
+    // The suite shell: group labels are sentence case, never all caps or tracked.
+    function test_section_label_is_sentence_case() {
+        compare(eyebrow.font.pixelSize, Theme.fontPreview)
+        compare(eyebrow.font.capitalization, Font.MixedCase)
+        compare(eyebrow.font.letterSpacing, 0)
     }
 
     // The glyph carries the tint, never the SVG's own black: a black glyph is

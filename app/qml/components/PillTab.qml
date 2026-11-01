@@ -7,7 +7,9 @@ import com.kysecurity.mail 1.0
 // one of the Theme.shape* constants (those are for rectangular
 // panels/buttons/fields, never pills/tabs/toggles per STYLE_GUIDE.md §3).
 // Inactive = transparent fill + 1px Theme.line stroke + Theme.ink text.
-// Active = Theme.accent fill + Theme.readableOnAccent text, no stroke.
+// Active = Theme.accentSoft fill + Theme.accent stroke + Theme.inkStrong
+// text (the suite's selection: never an accent fill, never accent text on
+// accent-soft).
 Rectangle {
     id: root
 
@@ -28,9 +30,9 @@ Rectangle {
     implicitHeight: label.implicitHeight + verticalPadding * 2
 
     radius: height / 2
-    color: root.selected ? Theme.accent : (hoverHandler.hovered && !tapHandler.pressed ? Theme.panel : "transparent")
-    border.width: root.selected ? 0 : 1
-    border.color: Theme.line
+    color: root.selected ? Theme.accentSoft : (hoverHandler.hovered && !tapHandler.pressed ? Theme.panel : "transparent")
+    border.width: 1
+    border.color: root.selected ? Theme.accent : Theme.line
     opacity: !root.enabled ? 0.5 : (tapHandler.pressed ? 0.85 : (root.selected && hoverHandler.hovered ? 0.92 : 1.0))
 
     Behavior on color {
@@ -45,7 +47,7 @@ Rectangle {
         anchors.centerIn: parent
         textFormat: Text.PlainText
         text: root.text
-        color: root.selected ? Theme.readableOnAccent : Theme.ink
+        color: root.selected ? Theme.inkStrong : Theme.ink
         font.family: Theme.fontUi
         font.pixelSize: Theme.fontPreview
         font.weight: Font.Medium

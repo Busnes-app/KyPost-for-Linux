@@ -919,20 +919,16 @@ Kirigami.ApplicationWindow {
                         visible: root.currentSection === "mail"
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        // A 1920px row of 13px text is unreadable; Android's
-                        // 7-inch list is under 1000dp wide.
-                        Layout.maximumWidth: 960
-                        Layout.alignment: Qt.AlignHCenter
-                        Layout.leftMargin: 12
-                        Layout.rightMargin: 12
+                        // Gmail's list: full width, flat rows. The rows keep
+                        // their own 20px inset, the header's brand edge.
                         spacing: 8
 
                         MailSearchField {
                             id: mailSearchField
                             objectName: "mailSearchField"
                             Layout.fillWidth: true
-                            Layout.leftMargin: 8
-                            Layout.rightMargin: 8
+                            Layout.leftMargin: 20
+                            Layout.rightMargin: 20
                             visible: root.searchOpen
                             findShortcutEnabled: root.currentSection === "mail"
                             placeholderText: i18n("Search %1", root.folderDisplayName(root.currentFolder))
@@ -950,8 +946,8 @@ Kirigami.ApplicationWindow {
 
                         KeywordChips {
                             Layout.fillWidth: true
-                            Layout.leftMargin: 8
-                            Layout.rightMargin: 8
+                            Layout.leftMargin: 20
+                            Layout.rightMargin: 20
                             visible: !MailApp.searchActive // keywords filter the folder, not search results
                         }
 
@@ -970,8 +966,8 @@ Kirigami.ApplicationWindow {
                         Rectangle {
                             objectName: "syncErrorCard"
                             Layout.fillWidth: true
-                            Layout.leftMargin: 8
-                            Layout.rightMargin: 8
+                            Layout.leftMargin: 20
+                            Layout.rightMargin: 20
                             visible: MailApp.lastError !== ""
                             implicitHeight: syncError.implicitHeight + 24
                             radius: Theme.shapePanel
@@ -1182,7 +1178,7 @@ Kirigami.ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
-                spacing: 6
+                spacing: 2
                 model: MailApp.mailFolders()
 
                 Connections {
@@ -1194,14 +1190,24 @@ Kirigami.ApplicationWindow {
                     function onPairingChanged() { folderList.model = MailApp.mailFolders() }
                 }
 
-                delegate: Card {
+                // A nav row, as the suite's sidebar: the current folder is
+                // accent-soft with an accent bar.
+                delegate: Rectangle {
                     required property var modelData
                     readonly property bool isCurrent: root.currentFolder === modelData.wireName
                     width: folderList.width
-                    height: 48
-                    elevated: false
-                    color: isCurrent ? Theme.selection : Theme.panel
-                    border.width: isCurrent ? 0 : 1
+                    height: 44
+                    radius: 6
+                    color: isCurrent ? Theme.accentSoft : "transparent"
+
+                    Rectangle {
+                        visible: parent.isCurrent
+                        y: 8
+                        width: 3
+                        height: parent.height - 16
+                        radius: 1.5
+                        color: Theme.accent
+                    }
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter

@@ -4,6 +4,8 @@ import com.kysecurity.mail 1.0
 
 // The five destinations, as Android: a bottom bar on narrow windows, a left
 // rail from 600px (see utils/layout.js). Lock is an action, not a place.
+// The suite shell: on the page surface with a hairline edge, outline icons,
+// and an accent-soft pill behind the active item.
 Rectangle {
     id: root
 
@@ -12,16 +14,16 @@ Rectangle {
     signal activated(string destination)
 
     readonly property var destinations: [
-        {key: "inbox", label: i18n("Inbox"), icon: "inbox"},
-        {key: "compose", label: i18n("Compose"), icon: "edit"},
-        {key: "lock", label: i18n("Lock"), icon: "lock"},
-        {key: "contacts", label: i18n("Contacts"), icon: "person"},
-        {key: "settings", label: i18n("Settings"), icon: "settings"},
+        {key: "inbox", label: i18n("Inbox"), icon: "nav-inbox"},
+        {key: "compose", label: i18n("Compose"), icon: "nav-compose"},
+        {key: "lock", label: i18n("Lock"), icon: "nav-lock"},
+        {key: "contacts", label: i18n("Contacts"), icon: "nav-contacts"},
+        {key: "settings", label: i18n("Settings"), icon: "nav-settings"},
     ]
 
     implicitWidth: rail ? 88 : 360
     implicitHeight: rail ? 400 : 80
-    color: Theme.panel
+    color: Theme.bg
 
     Rectangle {
         // hairline toward the content
@@ -73,9 +75,9 @@ Rectangle {
                     Rectangle {
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: 56
-                        height: 30
-                        radius: 15
-                        color: "transparent"
+                        height: 32
+                        radius: 16
+                        color: cell.active ? Theme.accentSoft : "transparent"
 
                         MaterialIcon {
                             anchors.centerIn: parent
