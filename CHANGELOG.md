@@ -28,6 +28,23 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- The shell follows the Ky suite's look (council round 1). The header is
+  the logo and an ink "KyPost" wordmark with nothing under it, and the page
+  name ("Inbox", "Settings") is its own title below. The rail and tab bar sit
+  on the page surface with outline icons and an accent-soft pill behind the
+  current item.
+- The mail list is flat, like Gmail's: full-width rows with a hairline
+  between them, about 72 px tall on the desktop and 64 px on a phone, with
+  the preview on one line. The open message's row, the current folder,
+  Settings section and theme are accent-soft with an accent bar instead of a
+  solid tint.
+- Keyword and Mode chips lose their dots; the chosen chip is accent-soft
+  with ink text. Cards are flat with a 1 px line and no shadow, switch rows
+  no longer fill with the accent, and group labels are sentence case
+  instead of spaced capitals.
+- Emoji in subjects and bodies no longer show as a missing-glyph box on a
+  system without an emoji font: KyPost bundles Noto Emoji (OFL) as a
+  fallback.
 - Themes are now the Ky suite's six light/dark pairs (ky-ui 0.11.0): Busnes,
   Matter, Ocean, Forest, Ky and Nord. Settings → Appearance has a Mode choice
   (System, the default; Light; Dark) and the six pairs, each previewing both

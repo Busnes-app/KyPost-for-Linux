@@ -68,6 +68,11 @@
     <file>icons/forward.svg</file>
     <file>icons/image.svg</file>
     <file>icons/inbox.svg</file>
+    <file>icons/nav-inbox.svg</file>
+    <file>icons/nav-compose.svg</file>
+    <file>icons/nav-lock.svg</file>
+    <file>icons/nav-contacts.svg</file>
+    <file>icons/nav-settings.svg</file>
     <file>icons/italic.svg</file>
     <file>icons/link.svg</file>
     <file>icons/lock.svg</file>

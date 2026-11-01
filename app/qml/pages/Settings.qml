@@ -173,7 +173,8 @@ Item {
         }
     }
 
-    // Android's accent switch row ("Require unlock to open").
+    // A switch row ("Require unlock to open"): a flat row with a line; only
+    // the switch takes the accent when on, never the whole row.
     component ToggleRow: Rectangle {
         id: toggle
         property string text: ""
@@ -183,10 +184,9 @@ Item {
         Layout.fillWidth: true
         implicitHeight: Math.max(52, toggleLabel.implicitHeight + 24)
         radius: Theme.shapeButton
-        // Off is an outline, so an off switch never reads as an active one.
-        color: checked ? Theme.accent : Theme.panel
-        border.width: checked ? 0 : 2
-        border.color: Theme.accent
+        color: Theme.panel
+        border.width: 1
+        border.color: Theme.line
         opacity: enabled ? 1.0 : 0.5
 
         Accessible.role: Accessible.CheckBox
@@ -207,7 +207,7 @@ Item {
             anchors.rightMargin: 12
             textFormat: Text.PlainText
             text: toggle.text
-            color: toggle.checked ? Theme.readableOnAccent : Theme.inkStrong
+            color: Theme.inkStrong
             font.family: Theme.fontUi
             font.pixelSize: Math.round(17 * Theme.fontScale)
             wrapMode: Text.WordWrap
@@ -220,9 +220,7 @@ Item {
             width: 40
             height: 22
             radius: height / 2
-            color: toggle.checked
-                ? Qt.rgba(Theme.readableOnAccent.r, Theme.readableOnAccent.g, Theme.readableOnAccent.b, 0.45)
-                : Qt.rgba(Theme.ink.r, Theme.ink.g, Theme.ink.b, 0.3)
+            color: toggle.checked ? Theme.accent : Qt.rgba(Theme.ink.r, Theme.ink.g, Theme.ink.b, 0.3)
 
             Rectangle {
                 x: toggle.checked ? parent.width - width - 3 : 3
@@ -334,7 +332,19 @@ Item {
                         readonly property bool current: root.wide && root.currentPane === index
                         Layout.fillWidth: true
                         implicitHeight: sectionRow.implicitHeight + 28
-                        color: current ? Theme.selection : Theme.panel
+                        color: current ? Theme.accentSoft : Theme.panel
+                        border.color: current ? Theme.accent : Theme.line
+
+                        Rectangle {
+                            // the selection bar
+                            visible: sectionCard.current
+                            x: 1
+                            y: 12
+                            width: 3
+                            height: parent.height - 24
+                            radius: 1.5
+                            color: Theme.accent
+                        }
 
                         Accessible.role: Accessible.Button
                         Accessible.name: modelData.name
@@ -355,7 +365,7 @@ Item {
 
                             MaterialIcon {
                                 name: sectionCard.modelData.icon
-                                tint: Theme.accent
+                                tint: Theme.inkStrong
                             }
                             ColumnLayout {
                                 Layout.fillWidth: true
@@ -531,8 +541,18 @@ Item {
                             Layout.fillWidth: true
                             implicitHeight: pairRow.implicitHeight + 20
                             radius: Theme.shapeButton
-                            color: current ? Theme.selection
+                            color: current ? Theme.accentSoft
                                 : (pairHover.hovered ? Theme.bg : "transparent")
+
+                            Rectangle {
+                                // the selection bar
+                                visible: pairDelegate.current
+                                y: 10
+                                width: 3
+                                height: parent.height - 20
+                                radius: 1.5
+                                color: Theme.accent
+                            }
 
                             Behavior on color {
                                 ColorAnimation { duration: 120 }
@@ -570,7 +590,7 @@ Item {
                                 MaterialIcon {
                                     visible: pairDelegate.current
                                     name: "check"
-                                    tint: Theme.accent
+                                    tint: Theme.inkStrong
                                     size: 20
                                 }
                             }

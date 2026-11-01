@@ -1,23 +1,13 @@
 import QtQuick
 import com.kysecurity.mail 1.0
 
-// STYLE_GUIDE.md §4 "Section eyebrow label" (mirrors web's
-// `.sidebar-section-label`, `.contact-details-section-title`): small
-// uppercase, letter-spaced text at ~72%-opacity Theme.inkStrong. Group
-// headers only, not body copy -- no interactive behavior, so this
-// component is a plain styled Text rather than a Rectangle wrapper.
+// A group header: sentence case at the caller's casing, never all caps or
+// tracked (the suite shell's label rule). Medium weight in ink, a step under
+// body size. Group headers only, not body copy -- no interactive behavior,
+// so this is a plain styled Text.
 //
-// `text` is Text's own built-in property -- reused as-is rather than
-// re-declared, same reasoning as `enabled` on the button components: QML
-// forbids shadowing a property already defined on the base type.
-//
-// Judgment call: the ~72% opacity is applied via the Text element's own
-// `opacity` property (0.72) rather than pre-multiplying alpha into a
-// custom color -- keeps Theme.inkStrong's live theme-swap binding intact
-// with one extra property, instead of recomputing an alpha-blended QColor
-// by hand on every themeChanged().
-//
-// Size and 0.08 em letter spacing are Android applySectionEyebrowLabel().
+// `text` is Text's own built-in property, reused as-is: QML forbids
+// shadowing a property already defined on the base type.
 Text {
     id: root
 
@@ -25,11 +15,8 @@ Text {
     // (ContactDetail's field labels are vCard data). Pinned here so no
     // call site has to remember.
     textFormat: Text.PlainText
-    color: Theme.inkStrong
-    opacity: 0.72
+    color: Theme.ink
     font.family: Theme.fontUi
-    font.pixelSize: Theme.fontEyebrow
+    font.pixelSize: Theme.fontPreview
     font.weight: Font.Medium
-    font.capitalization: Font.AllUppercase
-    font.letterSpacing: Theme.eyebrowLetterSpacing
 }

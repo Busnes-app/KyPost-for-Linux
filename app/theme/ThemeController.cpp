@@ -1,6 +1,5 @@
 #include "theme/ThemeController.h"
 
-#include "theme/SemanticColors.h"
 #include "theme/Shape.h"
 #include "theme/TypeScale.h"
 
@@ -194,10 +193,11 @@ QColor ThemeController::readableOnAccent() const
     return fromHex(m_manager.palette().onAccent);
 }
 
+// The suite shell's selection is accent-soft plus an accent bar, never a
+// heavy accent fill; the QML draws the bar.
 QColor ThemeController::selection() const
 {
-    const ThemePalette p = m_manager.palette();
-    return fromHex(SemanticColors::blend(p.panel, p.accent, 0.3));
+    return accentSoft();
 }
 
 bool ThemeController::isLight() const

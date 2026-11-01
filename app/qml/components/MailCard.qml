@@ -4,9 +4,11 @@ import QtQuick.Layouts
 import com.kysecurity.mail 1.0
 import "../utils/format.js" as Format
 
-// One mail row as Android draws it (item_email.xml): a rounded panel card,
-// 8px margin and 16px padding, an accent dot and bold subject when unread,
-// subject 18 / sender 14 / preview 13 / date 12, no avatar. Swipe right
+// One mail row, flat on the page surface as Gmail's list: a hairline under
+// each row, about 72px tall with the preview and 64px without it. An accent
+// dot in the left gutter and a bold subject mark unread; the selected row is
+// accent-soft with an accent bar. Subject 16 / sender 14 / preview 13 /
+// date 12, no avatar. Swipe right
 // deletes, swipe left offers Snooze and Archive; right-click opens the menu.
 // Used as a ListView delegate, so the row's roles arrive as `model.*`.
 SwipeDelegate {
@@ -24,9 +26,10 @@ SwipeDelegate {
     property bool actionTriggered: false
 
     width: ListView.view ? ListView.view.width : implicitWidth
-    padding: 24
-    topPadding: 24
-    bottomPadding: 24
+    leftPadding: 36
+    rightPadding: 20
+    topPadding: showDetails ? 8 : 12
+    bottomPadding: showDetails ? 8 : 12
     Accessible.name: model.accessibleName
 
     Connections {
@@ -37,43 +40,59 @@ SwipeDelegate {
         }
     }
 
-    // A control's background takes no anchors, so the 8px card margin lives
-    // on a child.
-    background: Item {
-        Card {
-            anchors.fill: parent
-            anchors.margins: 8
-            color: card.selected ? Theme.selection : (card.down ? Qt.darker(Theme.panel, 1.03) : Theme.panel)
+    background: Rectangle {
+        color: card.selected ? Theme.accentSoft
+            : (card.down || card.hovered ? Qt.rgba(Theme.ink.r, Theme.ink.g, Theme.ink.b, 0.06) : Theme.bg)
 
+        Rectangle {
+            // the selection bar
+            visible: card.selected
+            width: 3
+            height: parent.height
+            color: Theme.accent
+        }
+        Rectangle {
+            // unread, in the gutter, centred on the subject line
+            visible: model.unread
+            x: 20
+            y: card.topPadding + Math.round(subjectLine.height / 2) - 4
+            width: 8
+            height: 8
+            radius: 4
+            color: Theme.accent
+        }
+        Rectangle {
+            // the hairline between rows
+            anchors.bottom: parent.bottom
+            width: parent.width
+            height: 1
+            color: Theme.line
+        }
+        Item {
+            anchors.fill: parent
+            anchors.margins: 3
             FocusRing {
-                cornerRadius: Theme.shapePanel
+                cornerRadius: 4
                 visible: card.visualFocus
             }
         }
     }
 
     contentItem: ColumnLayout {
-        spacing: 4
+        spacing: 1
 
         RowLayout {
+            id: subjectLine
             Layout.fillWidth: true
             spacing: 8
 
-            Rectangle {
-                visible: model.unread
-                Layout.alignment: Qt.AlignVCenter
-                implicitWidth: 8
-                implicitHeight: 8
-                radius: 4
-                color: Theme.accent
-            }
             Text {
                 visible: !!model.pgpMarker
                 textFormat: Text.PlainText
                 text: model.pgpMarker || ""
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
-                font.pixelSize: Theme.fontSubject
+                font.pixelSize: Theme.fontBody
                 Accessible.role: Accessible.StaticText
                 Accessible.name: model.pgpMarkerAccessibleName || ""
             }
@@ -84,7 +103,7 @@ SwipeDelegate {
                 text: model.subject
                 color: model.unread ? Theme.inkStrong : Theme.ink
                 font.family: Theme.fontUi
-                font.pixelSize: Theme.fontSubject
+                font.pixelSize: Theme.fontBody
                 font.weight: model.unread ? Font.Bold : Font.Normal
                 elide: Text.ElideRight
             }
@@ -126,16 +145,13 @@ SwipeDelegate {
             opacity: 0.85
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontPreview
-            wrapMode: Text.Wrap
-            maximumLineCount: 2
+            maximumLineCount: 1
             elide: Text.ElideRight
         }
     }
 
-    swipe.left: Card {
+    swipe.left: Rectangle {
         anchors.fill: parent
-        anchors.margins: 8
-        elevated: false
         color: Theme.danger
 
         Text {
@@ -157,10 +173,8 @@ SwipeDelegate {
         }
     }
 
-    swipe.right: Card {
+    swipe.right: Rectangle {
         anchors.fill: parent
-        anchors.margins: 8
-        elevated: false
         color: Theme.warning
 
         Text {
