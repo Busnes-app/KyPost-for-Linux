@@ -45,6 +45,8 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 - Emoji in subjects and bodies no longer show as a missing-glyph box on a
   system without an emoji font: KyPost bundles Noto Emoji (OFL) as a
   fallback.
+- Documentation only: council round 1 before/after screenshots in
+  [docs/screenshots/](docs/screenshots/README.md).
 - Themes are now the Ky suite's six light/dark pairs (ky-ui 0.11.0): Busnes,
   Matter, Ocean, Forest, Ky and Nord. Settings → Appearance has a Mode choice
   (System, the default; Light; Dark) and the six pairs, each previewing both
