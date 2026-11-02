@@ -385,9 +385,11 @@ Added 2026-07-25 (parity work with `kypost-android`):
   success. The wait polls only while its page shows; any close of that page
   cancels it. Every end of the wait (cancel, 410, expiry, refused poll) goes
   through `endApproval()`, which bumps a generation so a late poll answer is
-  dropped. The `PairAttempt` keeps the registration's pin state for the wait,
-  bounded by `DeviceApproval::kMaxWaitSeconds` (marked `ponytail:`). There is
-  no client-side bypass, as there is none on the server.
+  dropped. The wait restores the previous pin at once
+  (`PairAttempt::restorePreviousPin()`); each poll is pinned on its own
+  (`HttpClient::getPinnedTo()`) to the link's pin, else the SPKI that served
+  the registration, and a mismatch ends the wait before the credential is
+  sent. There is no client-side bypass, as there is none on the server.
 
 - **Biometric unlock and window-content protection are non-goals** — no
   portable Linux equivalent (no `FLAG_SECURE` analogue on Wayland).

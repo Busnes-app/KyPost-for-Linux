@@ -18,8 +18,8 @@ constexpr int kDefaultPollSeconds = 3;
 constexpr int kMinPollSeconds = 1;
 constexpr int kMaxPollSeconds = 30;
 // The server keeps a pending device for 5 minutes. A deadline further out than
-// this is clamped, so a server cannot keep the wait (and the registration's
-// pin state, which PairAttempt holds until it ends) open indefinitely.
+// this is clamped, so a server cannot keep the wait (and the pending
+// credential held in memory for it) open indefinitely.
 constexpr int kDefaultWaitSeconds = 5 * 60;
 constexpr int kMaxWaitSeconds = 6 * 60;
 

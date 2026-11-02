@@ -460,17 +460,31 @@ void PairingController::beginAwaitingApproval(const PairingParams& params,
                                               DeviceRegistrationService::PairAttempt attempt,
                                               const NativeRegistrationResult& pending, bool fromLink)
 {
+    // Every poll, and so the approval, must reach the server the registration
+    // reached: the link's pin, else the key that served the registration. A
+    // fresh connection is otherwise checked only against the system CAs, and
+    // a locally trusted interceptor would collect the pending secret, which
+    // becomes this device's credential once approved. Over https there is
+    // always a key; none means it could not be read, and the wait is refused
+    // rather than run unpinned (dropping the attempt drops the secret).
+    const QByteArray pollPin = !params.spkiPin.isEmpty() ? params.spkiPin : pending.peerSpkiSha256;
+    if (pollPin.isEmpty() && QUrl(params.serverBaseUrl).scheme() == QLatin1String("https")) {
+        setPairingState(State::Failed, i18n("Could not verify the server's certificate. Scan a new code."),
+                        /*forceNotify=*/true);
+        return;
+    }
+
     // The attempt is held, not finished: it carries the push keys this
-    // registration sent, the sealing key snapshot, and the pin state the
-    // registration ran under. Only an approval reaches finishPair(); every
-    // other ending drops it, which restores the previous pin and stores nothing.
-    // ponytail: the pin state of the registration (suspended for a link without
-    // a pin) lasts for the wait, at most DeviceApproval::kMaxWaitSeconds. A
-    // per-request pin on HttpClient would let the wait restore it at once.
+    // registration sent and the sealing key snapshot. Only an approval reaches
+    // finishPair(); every other ending drops it, which stores nothing. The
+    // previous pin goes back now: the polls carry pollPin per request, so the
+    // paired account stays pinned for the whole wait.
+    attempt.restorePreviousPin();
     m_approval = std::make_unique<AwaitingApproval>(AwaitingApproval {
         params,
         std::move(attempt),
         pending,
+        pollPin,
         DeviceApproval::statusEndpoint(pending.response.statusEndpoint, QUrl(params.serverBaseUrl)),
         DeviceApproval::deadline(pending.response.expiresAt, QDateTime::currentDateTimeUtc()),
         pending.response.pollIntervalSeconds,
@@ -499,11 +513,14 @@ void PairingController::pollApproval()
         return;
     const QUrl endpoint = m_approval->statusEndpoint;
     const RelayAuth auth { m_approval->pending.response.deviceId, m_approval->pending.response.deviceSecret };
+    const QByteArray pin = m_approval->pollPin;
     const quint64 generation = m_approvalGeneration;
     m_approvalPollInFlight = true;
     m_executor.run(
         this,
-        [endpoint, auth](HttpClient& http) { return NativeRegistrationClient(http).pairingStatus(endpoint, auth); },
+        [endpoint, auth, pin](HttpClient& http) {
+            return NativeRegistrationClient(http).pairingStatus(endpoint, auth, pin);
+        },
         [this, generation](const PairingStatusResult& status) {
             // A stale answer must not clear the flag of a wait begun since.
             if (generation == m_approvalGeneration)
@@ -536,8 +553,22 @@ void PairingController::applyApprovalStatus(quint64 generation, const PairingSta
     case PairingStatusResult::Status::Refused:
         endApproval(State::Failed, i18n("Pairing failed, please try again."));
         return;
+    case PairingStatusResult::Status::CertificateMismatch:
+        // A fresh connection is refused at the handshake, before the pending
+        // credential is written.
+        endApproval(State::Failed, i18n("The server's certificate changed while waiting for approval, so "
+                                        "pairing was stopped. Scan a new code."));
+        return;
     case PairingStatusResult::Status::Approved:
         break;
+    }
+
+    // Belt and braces for the pin: an https approval must have been checked
+    // against pollPin, not merely have avoided a mismatch.
+    if (!m_approval->pollPin.isEmpty() && m_approval->statusEndpoint.scheme() == QLatin1String("https")
+        && !status.certificatePinVerified) {
+        endApproval(State::Failed, i18n("Could not verify the server's certificate. Scan a new code."));
+        return;
     }
 
     // Approved: from here on this is the 200 path a direct registration takes.
@@ -565,7 +596,7 @@ void PairingController::endApproval(State state, const QString& error)
     ++m_approvalGeneration;
     m_approvalPollInFlight = false; // a poll still out belongs to the old generation
     // Dropping the wait is the wipe: the pending id and secret were never
-    // stored, and ~PairAttempt restores the previous pin.
+    // stored, and the previous pin was restored when the wait began.
     m_approval.reset();
     setPairingState(state, error, /*forceNotify=*/true);
 }

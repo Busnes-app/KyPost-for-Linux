@@ -236,7 +236,21 @@ HttpClient::HttpResult HttpClient::get(const QUrl& url, const QList<QPair<QStrin
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::UserVerifiedRedirectPolicy);
 
     return waitForReply(m_manager.get(request), effectiveRedirectValidator(requestUrl, redirectValidator),
-                         maxResponseBytes.value_or(m_maxResponseBytes));
+                         maxResponseBytes.value_or(m_maxResponseBytes), certificatePinState(), true);
+}
+
+HttpClient::HttpResult HttpClient::getPinnedTo(const CertificatePinState& pin, const QUrl& url,
+                                                const QList<QPair<QString, QString>>& headers)
+{
+    assertOwningThread("HttpClient::getPinnedTo");
+    if (std::optional<HttpResult> refused = refuseBeforeSending(url))
+        return *refused;
+
+    QNetworkRequest request(url);
+    prepareRequest(request, headers);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::UserVerifiedRedirectPolicy);
+
+    return waitForReply(m_manager.get(request), effectiveRedirectValidator(url, {}), m_maxResponseBytes, pin, false);
 }
 
 HttpClient::HttpResult HttpClient::post(const QUrl& url, const QList<QPair<QString, QString>>& query,
@@ -254,7 +268,8 @@ HttpClient::HttpResult HttpClient::post(const QUrl& url, const QList<QPair<QStri
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::UserVerifiedRedirectPolicy);
 
     return waitForReply(m_manager.post(request, QJsonDocument(jsonBody).toJson(QJsonDocument::Compact)),
-                        effectiveRedirectValidator(requestUrl, redirectValidator), m_maxResponseBytes);
+                        effectiveRedirectValidator(requestUrl, redirectValidator), m_maxResponseBytes,
+                        certificatePinState(), true);
 }
 
 HttpClient::HttpResult HttpClient::put(const QUrl& url, const QList<QPair<QString, QString>>& query,
@@ -272,7 +287,8 @@ HttpClient::HttpResult HttpClient::put(const QUrl& url, const QList<QPair<QStrin
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::UserVerifiedRedirectPolicy);
 
     return waitForReply(m_manager.put(request, QJsonDocument(jsonBody).toJson(QJsonDocument::Compact)),
-                        effectiveRedirectValidator(requestUrl, redirectValidator), m_maxResponseBytes);
+                        effectiveRedirectValidator(requestUrl, redirectValidator), m_maxResponseBytes,
+                        certificatePinState(), true);
 }
 
 HttpClient::HttpResult HttpClient::del(const QUrl& url, const QList<QPair<QString, QString>>& query,
@@ -289,7 +305,8 @@ HttpClient::HttpResult HttpClient::del(const QUrl& url, const QList<QPair<QStrin
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::UserVerifiedRedirectPolicy);
 
     return waitForReply(m_manager.deleteResource(request),
-                        effectiveRedirectValidator(requestUrl, redirectValidator), m_maxResponseBytes);
+                        effectiveRedirectValidator(requestUrl, redirectValidator), m_maxResponseBytes,
+                        certificatePinState(), true);
 }
 
 bool sameUrlOrigin(const QUrl& a, const QUrl& b)
@@ -315,7 +332,8 @@ QUrl HttpClient::urlWithQuery(const QUrl& url, const QList<QPair<QString, QStrin
 }
 
 HttpClient::HttpResult HttpClient::waitForReply(QNetworkReply* reply, const RedirectValidator& redirectValidator,
-                                                 qint64 maxResponseBytes) const
+                                                 qint64 maxResponseBytes, const CertificatePinState& pin,
+                                                 bool reportMismatch) const
 {
     QEventLoop loop;
     QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
@@ -379,14 +397,14 @@ HttpClient::HttpResult HttpClient::waitForReply(QNetworkReply* reply, const Redi
     // impersonated" alarm.
     bool pinMismatch = false;
     QByteArray observedSpki;
-    const bool enforcePin = !m_certificatePin.isEmpty() && sameUrlOrigin(reply->request().url(), m_pinnedOrigin);
+    const bool enforcePin = pin.isEnforcing() && sameUrlOrigin(reply->request().url(), pin.origin);
     QObject::connect(reply, &QNetworkReply::encrypted, reply,
-                      [this, reply, enforcePin, &weakTls, &pinMismatch, &observedSpki]() {
+                      [reply, enforcePin, &pin, &weakTls, &pinMismatch, &observedSpki]() {
         if (!enforcePin || weakTls)
             return;
 
         const std::optional<QByteArray> observed =
-            pinMismatchFor(m_certificatePin, reply->sslConfiguration().peerCertificateChain());
+            pinMismatchFor(pin.spkiSha256, reply->sslConfiguration().peerCertificateChain());
         if (!observed)
             return;
 
@@ -466,7 +484,7 @@ HttpClient::HttpResult HttpClient::waitForReply(QNetworkReply* reply, const Redi
         weakTls = true;
     if (enforcePin && !pinMismatch && !weakTls) {
         if (const std::optional<QByteArray> observed =
-                pinMismatchFor(m_certificatePin, reply->sslConfiguration().peerCertificateChain())) {
+                pinMismatchFor(pin.spkiSha256, reply->sslConfiguration().peerCertificateChain())) {
             pinMismatch = true;
             observedSpki = *observed;
         }
@@ -521,7 +539,9 @@ HttpClient::HttpResult HttpClient::waitForReply(QNetworkReply* reply, const Redi
         // Reported out-of-band as well, because the enum reaches callers one
         // failed request at a time while this condition is global to the
         // pairing and needs a persistent explanation with a way out.
-        if (m_certificateMismatchHandler)
+        // Not for a request-scoped pin (getPinnedTo): that anchor is not the
+        // paired relay's, so the paired account has nothing to recover from.
+        if (reportMismatch && m_certificateMismatchHandler)
             m_certificateMismatchHandler(observedSpki);
     } else if (redirectRefused) {
         // Ranked above the status code for the same reason the pin mismatch

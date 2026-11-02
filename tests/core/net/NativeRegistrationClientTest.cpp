@@ -330,7 +330,7 @@ void NativeRegistrationClientTest::pairingStatusMapsEveryAnswer()
 
     const PairingStatusResult result = client.pairingStatus(
         QUrl(QStringLiteral("http://127.0.0.1:%1/api/notifications/native/pairing-status").arg(fake.port())),
-        RelayAuth { QStringLiteral("dev"), QStringLiteral("secret") });
+        RelayAuth { QStringLiteral("dev"), QStringLiteral("secret") }, {});
     QCOMPARE(int(result.status), status);
     QCOMPARE(result.retryAfterSeconds, retryAfter);
     QCOMPARE(result.response.deviceId, deviceId);
@@ -345,7 +345,7 @@ void NativeRegistrationClientTest::pairingStatusSendsThePendingCredentialAsHeade
 
     client.pairingStatus(
         QUrl(QStringLiteral("http://127.0.0.1:%1/api/notifications/native/pairing-status").arg(fake.port())),
-        RelayAuth { QStringLiteral("dev-pending"), QStringLiteral("pending-secret") });
+        RelayAuth { QStringLiteral("dev-pending"), QStringLiteral("pending-secret") }, {});
     const QByteArray request = fake.receivedRequest();
     QVERIFY(request.startsWith("GET /api/notifications/native/pairing-status HTTP/1.1"));
     QVERIFY(request.contains("X-Kypost-Device-Id: dev-pending"));

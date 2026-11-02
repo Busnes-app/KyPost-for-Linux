@@ -78,6 +78,13 @@ DeviceRegistrationService::PairAttempt::operator=(PairAttempt&& other) noexcept
     return *this;
 }
 
+void DeviceRegistrationService::PairAttempt::restorePreviousPin()
+{
+    if (m_restorePin && m_pinSink)
+        m_pinSink->restorePin(m_savedPin);
+    m_restorePin = false;
+}
+
 DeviceRegistrationService::PairAttempt DeviceRegistrationService::beginPair(const PairingParams& params)
 {
     PairAttempt attempt;

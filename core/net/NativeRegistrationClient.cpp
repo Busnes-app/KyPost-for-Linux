@@ -175,9 +175,10 @@ NativeRegistrationResult NativeRegistrationClient::registerDevice(
 }
 
 PairingStatusResult NativeRegistrationClient::pairingStatus(const QUrl& statusEndpoint,
-                                                            const RelayAuth& pendingAuth) const
+                                                            const RelayAuth& pendingAuth, const QByteArray& pin) const
 {
-    const HttpClient::HttpResult result = m_httpClient.get(statusEndpoint, {}, pendingAuth.headerItems());
+    const HttpClient::HttpResult result =
+        m_httpClient.getPinnedTo({ pin, statusEndpoint }, statusEndpoint, pendingAuth.headerItems());
 
     PairingStatusResult out;
     out.peerSpkiSha256 = result.peerSpkiSha256;
@@ -186,6 +187,8 @@ PairingStatusResult NativeRegistrationClient::pairingStatus(const QUrl& statusEn
     if (result.error.has_value()) {
         switch (*result.error) {
         case NetworkError::CertificateMismatch:
+            out.status = PairingStatusResult::Status::CertificateMismatch;
+            return out;
         case NetworkError::RedirectRefused:
         case NetworkError::ResponseTooLarge:
             out.status = PairingStatusResult::Status::Refused;

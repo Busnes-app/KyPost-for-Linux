@@ -357,9 +357,10 @@ private:
     void pairFromParsedParams(PairingParams params);
     // The completion half, running back on this object's own thread.
     void applyRegistrationResult(const NativeRegistrationResult& result);
-    // A 202 from register: hold the attempt (push keys, sealing key, pin state)
-    // and the pending credential in memory and start polling. fromLink says
-    // whether an approval should emit pairedFromLink().
+    // A 202 from register: hold the attempt (push keys, sealing key) and the
+    // pending credential in memory, pin the polls to the registration's TLS
+    // identity, and start polling. fromLink says whether an approval should
+    // emit pairedFromLink().
     void beginAwaitingApproval(const PairingParams& params, DeviceRegistrationService::PairAttempt attempt,
                                const NativeRegistrationResult& pending, bool fromLink);
     void scheduleApprovalPoll(int delayMs);
@@ -423,6 +424,7 @@ private:
         PairingParams params;
         DeviceRegistrationService::PairAttempt attempt;
         NativeRegistrationResult pending; // deviceId/deviceSecret valid for pairing-status only
+        QByteArray pollPin; // SPKI every poll must match: the link's pin, else the registration's key
         QUrl statusEndpoint;
         QDateTime deadline;
         int pollIntervalSeconds = 0;

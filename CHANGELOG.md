@@ -38,6 +38,9 @@ explains the signed remote and the standalone-bundle update-origin limitation.
   denied or timed out. Scan a new code." Cancel, or closing or locking the
   page, stops it. The waiting device's credential is kept in memory only, and
   an account already paired stays untouched until the new device is approved.
+  Every check while it waits must reach the same server certificate the
+  pairing started with; if the certificate changes, pairing stops with a
+  message to scan a new code.
   Sign-on links the server marks as direct still pair at once.
 - Every icon is now an outline glyph (council round 2): the header actions,
   the reader toolbar, Settings and the rest match the rail's outline icons

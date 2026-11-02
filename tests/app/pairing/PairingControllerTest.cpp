@@ -12,6 +12,7 @@
 #include "stores/SettingsStore.h"
 
 #include "../../core/net/FakeRelayServer.h"
+#include "../../core/net/TestTls.h"
 
 #include <QJsonObject>
 #include <QMap>
@@ -19,6 +20,7 @@
 #include <QDateTime>
 #include <QElapsedTimer>
 #include <QSignalSpy>
+#include <QSslSocket>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QSysInfo>
@@ -78,6 +80,8 @@ private slots:
     void approvalDeniedReturnsToTheStart();
     void cancelApprovalStopsPollingAndWipesTheCredential();
     void approvalExpiresAtTheServersDeadline();
+    void approvalPollToAnotherTrustedIssuerIsRefusedBeforeTheCredentialIsSent();
+    void approvalOverTlsCompletesPinnedToTheRegistrationsIssuer();
     void aNewWaitStillPollsWhileACancelledPollIsOut();
     void aDirectRegistrationPairsAtOnceWithoutPolling();
 
@@ -1585,7 +1589,8 @@ namespace {
 // docs/device-approval.md's 202, with a poll interval of 1 s so the tests
 // run in seconds. expiresAt is far enough out not to matter unless a test
 // sets its own.
-QByteArray pendingRegistration(int port, const QString& expiresAt = QString())
+QByteArray pendingRegistration(int port, const QString& expiresAt = QString(),
+                               const QString& scheme = QStringLiteral("http"))
 {
     const QString expires = expiresAt.isEmpty()
         ? QDateTime::currentDateTimeUtc().addSecs(300).toString(Qt::ISODate)
@@ -1595,23 +1600,39 @@ QByteArray pendingRegistration(int port, const QString& expiresAt = QString())
                                        R"("error":"approve this device on the web page that showed the pairing code",)"
                                        R"("deviceId":"dev-pending","deviceSecret":"pending-secret",)"
                                        R"("approvalCode":"048213","expiresAt":"%1",)"
-                                       R"("statusEndpoint":"http://127.0.0.1:%2/api/notifications/native/pairing-status",)"
+                                       R"("statusEndpoint":"%3://127.0.0.1:%2/api/notifications/native/pairing-status",)"
                                        R"("pollIntervalSeconds":1})")
                             .arg(expires)
                             .arg(port)
+                            .arg(scheme)
                             .toUtf8());
 }
 
 const QByteArray kStillPending = httpResponse(
     202, "Accepted", R"({"status":"pending","approvalCode":"048213","pollIntervalSeconds":1})");
 
-int statusRequests(const FakeRelayServer& fake)
+int statusRequests(const QList<QByteArray>& requests)
 {
     int n = 0;
-    for (const QByteArray& request : fake.receivedRequests())
+    for (const QByteArray& request : requests)
         n += request.startsWith("GET /api/notifications/native/pairing-status") ? 1 : 0;
     return n;
 }
+
+int statusRequests(const FakeRelayServer& fake)
+{
+    return statusRequests(fake.receivedRequests());
+}
+
+QString httpsLinkFor(quint16 port)
+{
+    return QStringLiteral("kypost://native-pair?sub=sub-new&srv=https://127.0.0.1:%1&pt=tok-new").arg(port);
+}
+
+// The paired account's pin, on another origin: the approval wait must leave
+// it in force rather than suspend it.
+const QUrl kPairedOrigin(QStringLiteral("https://paired.example"));
+const QByteArray kPairedPin(32, '\x02');
 
 } // namespace
 
@@ -1770,6 +1791,95 @@ void PairingControllerTest::approvalExpiresAtTheServersDeadline()
     QVERIFY(polls >= 1);
     QTest::qWait(1500);
     QCOMPARE(statusRequests(f.fake), polls);
+}
+
+// THE INTERCEPTION THIS CLOSES. A link without a pin registers trust on first
+// use, and the polls then run on fresh connections. Checked only against the
+// system CAs, a poll would accept any locally trusted issuer on the same
+// origin and hand it the pending secret -- the credential the device keeps
+// once approved. Each poll is pinned to the key the registration saw instead:
+// a server under another trusted issuer is refused at the handshake, before
+// the credential is written, and the wait ends with nothing kept. The paired
+// account's pin stays in force throughout, and its mismatch banner is not
+// raised for a key it never pinned.
+void PairingControllerTest::approvalPollToAnotherTrustedIssuerIsRefusedBeforeTheCredentialIsSent()
+{
+    if (!QSslSocket::supportsSsl())
+        QSKIP("no TLS backend available in this build");
+    const TestTls::SslDefaultsGuard sslDefaults;
+    TestTls::trustRoots({ TestTls::certOf(TestTls::kTrustedRootPem), TestTls::certOf(TestTls::kTrustedRootBPem) });
+    TestTls::TlsRelayServer relay(kStillPending);
+    QVERIFY(relay.isListening());
+    relay.setResponseForPath("/native/register",
+                             pendingRegistration(relay.serverPort(), QString(), QStringLiteral("https")));
+
+    ReplacementFixture f(kStillPending);
+    QVERIFY(f.build(QString()));
+    f.pinSink->setPin(kPairedPin, kPairedOrigin);
+
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(httpsLinkFor(relay.serverPort()))));
+    f.controller->confirmPendingPair();
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("approval"), 5000);
+    QCOMPARE(f.pinSink->pinState().spkiSha256, kPairedPin);
+    QCOMPARE(f.pinSink->pinState().origin, kPairedOrigin);
+
+    // Under the registration's issuer a poll goes through, credential and all.
+    QTRY_VERIFY_WITH_TIMEOUT(statusRequests(relay.receivedRequests()) >= 1, 5000);
+    QVERIFY(relay.receivedRequests().last().contains("X-Kypost-Device-Secret: pending-secret"));
+
+    relay.serveChainB();
+    const int served = relay.receivedRequests().size();
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("failed"), 8000);
+    QCOMPARE(f.controller->pairingError(),
+             QStringLiteral("The server's certificate changed while waiting for approval, so pairing was "
+                            "stopped. Scan a new code."));
+    QCOMPARE(relay.receivedRequests().size(), served);
+    for (const QByteArray& request : relay.receivedRequests().mid(served))
+        QVERIFY(!request.contains("X-Kypost-Device-Secret"));
+    QVERIFY(f.controller->approvalCode().isEmpty());
+    QVERIFY(!f.pairingStore->load().has_value());
+    QVERIFY(!f.controller->certificateMismatch());
+    QCOMPARE(f.pinSink->pinState().spkiSha256, kPairedPin);
+
+    // The wait is over: no further polls.
+    QTest::qWait(1500);
+    QCOMPARE(relay.receivedRequests().size(), served);
+}
+
+// The other half: the same server, still under the registration's issuer,
+// approves, and the pairing is stored and pinned to that issuer's key.
+void PairingControllerTest::approvalOverTlsCompletesPinnedToTheRegistrationsIssuer()
+{
+    if (!QSslSocket::supportsSsl())
+        QSKIP("no TLS backend available in this build");
+    const TestTls::SslDefaultsGuard sslDefaults;
+    TestTls::trustRoots({ TestTls::certOf(TestTls::kTrustedRootPem), TestTls::certOf(TestTls::kTrustedRootBPem) });
+    TestTls::TlsRelayServer relay(kStillPending);
+    QVERIFY(relay.isListening());
+    relay.setResponseForPath("/native/register",
+                             pendingRegistration(relay.serverPort(), QString(), QStringLiteral("https")));
+
+    ReplacementFixture f(kStillPending);
+    QVERIFY(f.build(QString()));
+    f.pinSink->setPin(kPairedPin, kPairedOrigin);
+
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(httpsLinkFor(relay.serverPort()))));
+    f.controller->confirmPendingPair();
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("approval"), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(statusRequests(relay.receivedRequests()) >= 1, 5000);
+
+    relay.setResponse(httpResponse(200, "OK",
+                                   R"({"ok":true,"synced":true,"status":"approved","deviceId":"dev-pending",)"
+                                   R"("deliveryMode":"pull","transport":"unifiedpush"})"));
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("paired"), 8000);
+
+    const QByteArray pinA = HttpClient::pinnedSpkiFromChain(
+        { TestTls::certOf(TestTls::kServedLeafPem), TestTls::certOf(TestTls::kServedIssuerPem) });
+    const std::optional<DevicePairing> stored = f.pairingStore->load();
+    QVERIFY(stored.has_value());
+    QCOMPARE(stored->deviceSecret, QStringLiteral("pending-secret"));
+    QCOMPARE(stored->certificateSpkiSha256, QString::fromLatin1(pinA.toBase64()));
+    QCOMPARE(f.pinSink->pinState().spkiSha256, pinA);
 }
 
 // A token with the signed `direct` claim gets 200 from register, now with

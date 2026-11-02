@@ -118,6 +118,12 @@ public:
             return { m_pushKeys.publicKey, m_pushKeys.authSecret.bytes() };
         }
 
+        // Puts the previous pin back now rather than on destruction. For an
+        // attempt that outlives its registration -- the new-device approval
+        // wait -- so the paired account is not left unpinned (or pinned to
+        // the link's key) for the whole wait. The polls carry their own pin.
+        void restorePreviousPin();
+
     private:
         friend class DeviceRegistrationService;
         PairAttempt() = default;

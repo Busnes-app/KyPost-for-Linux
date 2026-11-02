@@ -128,7 +128,8 @@ struct PairingStatusResult
         Approved, // 200: response carries the deviceId to store (it may differ from the pending one)
         Rejected, // 410: denied, expired or unknown -- final
         Retry,    // 429/503, a transport error or a garbled answer: back off and ask again
-        Refused,  // the request itself was unsafe (pin mismatch, redirect) -- final
+        Refused,  // the request itself was unsafe (redirect, oversized answer) -- final
+        CertificateMismatch, // the server did not present the registration's key -- final
     };
     Status status = Status::Retry;
     NativeRegistrationResponse response; // Approved: deviceId and delivery fields. Pending: expiresAt, pollIntervalSeconds
@@ -147,7 +148,12 @@ public:
                                              const QString& deviceId, const QString& deviceName,
                                              const WebPushSubscription& pushKeys) const;
 
-    PairingStatusResult pairingStatus(const QUrl& statusEndpoint, const RelayAuth& pendingAuth) const;
+    // `pin` is the SPKI SHA-256 the poll must match: the pairing link's pin,
+    // else the key that served the registration. It is enforced on this
+    // request alone, not installed on the client, so a paired account's own
+    // pin is untouched. Empty only over plain http.
+    PairingStatusResult pairingStatus(const QUrl& statusEndpoint, const RelayAuth& pendingAuth,
+                                      const QByteArray& pin) const;
 
 private:
     HttpClient& m_httpClient;
