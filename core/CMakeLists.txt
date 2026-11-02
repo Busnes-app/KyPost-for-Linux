@@ -13,6 +13,8 @@ add_library(kypostcore STATIC
   domain/DevicePairing.h
   domain/PairingStore.cpp
   domain/PairingStore.h
+  domain/DeviceApproval.cpp
+  domain/DeviceApproval.h
   domain/DeviceRegistrationService.cpp
   domain/DeviceRegistrationService.h
   domain/MailRepository.cpp

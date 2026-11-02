@@ -88,6 +88,7 @@ kypost_add_test(SecureStoreFileTest core/stores/SecureStoreFileTest.cpp)
 kypost_add_test(ContactPhotoCacheTest core/stores/ContactPhotoCacheTest.cpp)
 
 kypost_add_test(PairingStoreTest core/domain/PairingStoreTest.cpp)
+kypost_add_test(DeviceApprovalTest core/domain/DeviceApprovalTest.cpp)
 kypost_add_test(DeviceRegistrationServiceTest core/domain/DeviceRegistrationServiceTest.cpp)
 kypost_add_test(MailRepositoryTest core/domain/MailRepositoryTest.cpp)
 kypost_add_test(MailPagingTest core/domain/MailPagingTest.cpp)

@@ -2,12 +2,15 @@
 
 #include "domain/DeviceRegistrationService.h"
 
+#include <QDateTime>
 #include <QObject>
+#include <QTimer>
 
 #include <functional>
 #include <QString>
 #include <QUrl>
 
+#include <memory>
 #include <optional>
 
 class QUrl;
@@ -48,8 +51,10 @@ class PairingController : public QObject
     Q_PROPERTY(State state READ state NOTIFY pairingStateChanged)
     // Kept for the existing QML bindings; derived from `state` above, never
     // assigned independently.
-    Q_PROPERTY(QString pairingState READ pairingState NOTIFY pairingStateChanged) // "idle" | "confirm" | "working" | "paired" | "failed"
-    Q_PROPERTY(QString pairingError READ pairingError NOTIFY pairingStateChanged) // meaningful only when pairingState == "failed"
+    Q_PROPERTY(QString pairingState READ pairingState NOTIFY pairingStateChanged) // "idle" | "confirm" | "working" | "approval" | "paired" | "failed"
+    // Meaningful when pairingState == "failed", and in "idle" right after an
+    // approval wait ended without approval (the reason it returned to the start).
+    Q_PROPERTY(QString pairingError READ pairingError NOTIFY pairingStateChanged)
     // Origin ("scheme://host[:port]") of the server a not-yet-confirmed
     // pairFromDeepLink()/pairFromPastedLink() call wants to pair with --
     // meaningful only when pairingState == "confirm". Lets the confirmation UI
@@ -69,6 +74,12 @@ class PairingController : public QObject
     // legitimate self-hosted/dev case -- but it must be announced rather than
     // blending in with https.
     Q_PROPERTY(bool pendingPairInsecure READ pendingPairInsecure NOTIFY pairingStateChanged)
+    // Meaningful only while pairingState == "approval" (#516): the six-digit
+    // code the server also shows on the web page, so the user can tell their
+    // own device from another app that redeemed the same link, and the origin
+    // (displayOrigin form) of the server being waited on.
+    Q_PROPERTY(QString approvalCode READ approvalCode NOTIFY pairingStateChanged)
+    Q_PROPERTY(QString approvalServer READ approvalServer NOTIFY pairingStateChanged)
     // True once a background re-registration was rejected with 401.
     //
     // AGENTS.md section 8 records this as a known live-system gotcha ("Re-
@@ -149,7 +160,9 @@ public:
     // property below is kept, and is now produced from this enum in exactly
     // one place (stateToString), so the existing QML comparisons keep
     // working without five more literals to maintain.
-    enum class State { Idle, Confirm, Working, Paired, Failed };
+    // AwaitingApproval ("approval"): the server answered register with 202 and
+    // holds the device until the user approves it on the web (#516).
+    enum class State { Idle, Confirm, Working, AwaitingApproval, Paired, Failed };
     Q_ENUM(State)
 
     PairingController(DeviceRegistrationService& service, PairingStore& pairingStore, SettingsStore& settingsStore,
@@ -168,6 +181,8 @@ public:
     QString pairingError() const;
     QString pendingPairOrigin() const;
     bool pendingPairInsecure() const;
+    QString approvalCode() const;
+    QString approvalServer() const;
     QString deliveryMode() const;
     QString transport() const;
     bool reregistrationRejected() const;
@@ -216,6 +231,11 @@ public slots:
     // ever making a network call, returning pairingState to "idle".
     void cancelPendingPair();
     void reset(); // sets pairingState back to "idle" (for a "Try Again" button after a failure)
+    // Leaves the "approval" wait: stops polling, drops any poll still in
+    // flight, and wipes the pending device id and secret, which only ever
+    // lived in memory. Back to "idle". The server drops the pending device
+    // itself when it expires.
+    void cancelApproval();
     // Best-effort POST .../native/deregister (only when a deviceSecret is
     // actually stored -- a pairing from before this field existed has none,
     // and simply skips straight to the local clear below), then
@@ -337,6 +357,19 @@ private:
     void pairFromParsedParams(PairingParams params);
     // The completion half, running back on this object's own thread.
     void applyRegistrationResult(const NativeRegistrationResult& result);
+    // A 202 from register: hold the attempt (push keys, sealing key) and the
+    // pending credential in memory, pin the polls to the registration's TLS
+    // identity, and start polling. fromLink says whether an approval should
+    // emit pairedFromLink().
+    void beginAwaitingApproval(const PairingParams& params, DeviceRegistrationService::PairAttempt attempt,
+                               const NativeRegistrationResult& pending, bool fromLink);
+    void scheduleApprovalPoll(int delayMs);
+    void pollApproval();
+    void applyApprovalStatus(quint64 generation, const PairingStatusResult& status);
+    // Ends the wait without pairing: wipes the pending credential, then sets
+    // the state. The one exit for cancel, 410, expiry and a refused poll.
+    void endApproval(State state, const QString& error = QString());
+
     // forceNotify: emit pairingStateChanged() even when (state, error) is
     // unchanged from the current values -- needed when some OTHER piece of
     // NOTIFY-bound state (e.g. m_pendingPair) changed too, since QML
@@ -382,6 +415,29 @@ private:
     // executor thread, so nothing can re-enter this object. It stops a second
     // request piling up behind one already out.
     bool m_inNetworkCall = false;
+
+    // The approval wait (#516). Memory only: the pending deviceSecret is never
+    // written to the secret store, so there is nothing on disk to wipe, and an
+    // existing pairing is left untouched until the new device is approved.
+    struct AwaitingApproval
+    {
+        PairingParams params;
+        DeviceRegistrationService::PairAttempt attempt;
+        NativeRegistrationResult pending; // deviceId/deviceSecret valid for pairing-status only
+        QByteArray pollPin; // SPKI every poll must match: the link's pin, else the registration's key
+        QUrl statusEndpoint;
+        QDateTime deadline;
+        int pollIntervalSeconds = 0;
+        int failures = 0;
+        bool fromLink = false;
+    };
+    std::unique_ptr<AwaitingApproval> m_approval;
+    QTimer m_approvalTimer;
+    // Bumped whenever the wait ends, so a poll answer that arrives after a
+    // cancel is dropped rather than applied to the next wait.
+    quint64 m_approvalGeneration = 0;
+    bool m_approvalPollInFlight = false;
+
     bool m_reregistrationRejected = false;
     bool m_certificateMismatch = false;
     bool m_appLocked = false;

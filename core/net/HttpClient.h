@@ -261,6 +261,17 @@ public:
     CertificatePinState certificatePinState() const;
     void restoreCertificatePin(const CertificatePinState& state);
 
+    // One GET under `pin` instead of this client's own, which stays as it is.
+    // For a request whose trust anchor is not the paired relay's: the
+    // new-device approval polls, pinned to the key their registration saw
+    // while the paired account's pin keeps guarding everything else. Enforced
+    // exactly as the client pin is (scoped to pin.origin, checked on the
+    // handshake before the headers go out and again on a pooled reuse), but a
+    // mismatch is reported only in the result: the mismatch handler belongs
+    // to the paired account's pin.
+    HttpResult getPinnedTo(const CertificatePinState& pin, const QUrl& url,
+                           const QList<QPair<QString, QString>>& headers);
+
     // The SPKI this client pins for a given peer chain: the SHA-256 of the
     // LEAF'S ISSUER, not of the leaf.
     //
@@ -363,8 +374,11 @@ private:
     // maxResponseBytes is passed explicitly rather than read from
     // m_maxResponseBytes so the per-call override on get() has one place to
     // take effect, and so no verb can silently forget to apply a ceiling.
+    // `pin` is the one enforced on this reply: the client's own for the four
+    // verbs, the caller's for getPinnedTo(). reportMismatch says whether a
+    // mismatch also reaches the mismatch handler.
     HttpResult waitForReply(QNetworkReply* reply, const RedirectValidator& redirectValidator,
-                             qint64 maxResponseBytes) const;
+                             qint64 maxResponseBytes, const CertificatePinState& pin, bool reportMismatch) const;
 
     // An invalid URL, or HTTPS without the backend the strong TLS profile
     // needs (net/TlsPolicy.h). nullopt means the request may be sent.

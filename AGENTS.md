@@ -376,6 +376,21 @@ Added 2026-07-25 (parity work with `kypost-android`):
   the reader holding that card. KyCalendar's `/api/calendar/rsvp` is not used
   yet (neither is it on Android or Mac).
 
+- **New-device approval (#516, 2026-11-01).** The contract is KyPost-Server
+  `docs/device-approval.md`. A 202 from register is
+  `RegistrationOutcome::PendingApproval` and is never persisted: the pending
+  `deviceId`/`deviceSecret` live only in `PairingController::m_approval`, with
+  the `PairAttempt` that sent them, so an existing pairing is untouched until
+  the 200 from `pairing-status`, which goes through `finishPair()` like any
+  success. The wait polls only while its page shows; any close of that page
+  cancels it. Every end of the wait (cancel, 410, expiry, refused poll) goes
+  through `endApproval()`, which bumps a generation so a late poll answer is
+  dropped. The wait restores the previous pin at once
+  (`PairAttempt::restorePreviousPin()`); each poll is pinned on its own
+  (`HttpClient::getPinnedTo()`) to the link's pin, else the SPKI that served
+  the registration, and a mismatch ends the wait before the credential is
+  sent. There is no client-side bypass, as there is none on the server.
+
 - **Biometric unlock and window-content protection are non-goals** — no
   portable Linux equivalent (no `FLAG_SECURE` analogue on Wayland).
 
