@@ -28,6 +28,7 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- Version 0.6.0 in CMake and AppStream, for the v0.6.0 tag. See `## v0.6.0`.
 - New devices need approval (KyPost-Server #516). When the server answers a
   pairing link with "waiting for approval", the pairing page shows a
   six-digit code, large, and the server it is waiting on: approve the device
@@ -42,6 +43,20 @@ explains the signed remote and the standalone-bundle update-origin limitation.
   pairing started with; if the certificate changes, pairing stops with a
   message to scan a new code.
   Sign-on links the server marks as direct still pair at once.
+
+### Upgrade impact
+
+- Pairing with KyPost-Server 0.6.0 or later now waits for approval on the
+  web, as described above. Otherwise none beyond the v0.6.0 notes below.
+
+## Source notes at f1dbf581
+
+These are the prior source summary, preserved from
+[`f1dbf581`](https://github.com/Busnes-app/KyPost-for-Linux/commit/f1dbf581).
+Their presence does not establish that this source was distributed.
+
+### Changes
+
 - Every icon is now an outline glyph (council round 2): the header actions,
   the reader toolbar, Settings and the rest match the rail's outline icons
   instead of mixing in filled ones.
@@ -321,6 +336,55 @@ tagged GitHub Releases use the generated file as their body. These text notes
 are editorial metadata, not a replacement for package signature verification.
 Existing GitHub release bodies, tags and assets are not rewritten by adding
 this archive.
+
+## v0.6.0
+
+Prepared 2026-11-02. This section summarizes changes since v0.5.0, including
+the channel builds published between them.
+
+### Changes
+
+- New devices need approval (KyPost-Server #516). When the server answers a
+  pairing link with "waiting for approval", the pairing page shows a
+  six-digit code, large, and the server it is waiting on: approve the device
+  on the KyPost web page that showed the code, and check the code matches.
+  KyPost asks the server every 3 seconds (backing off on errors) while that
+  page is open, and finishes pairing as before once you approve. Denied or
+  timed out after 5 minutes, it goes back to the start with "Not approved:
+  denied or timed out. Scan a new code." Cancel, or closing or locking the
+  page, stops it. The waiting device's credential is kept in memory only, and
+  an account already paired stays untouched until the new device is approved.
+  Every check while it waits must reach the same server certificate the
+  pairing started with; if the certificate changes, pairing stops with a
+  message to scan a new code.
+  Sign-on links the server marks as direct still pair at once.
+- Themes are now the Ky suite's six light/dark pairs (ky-ui 0.11.0): Busnes,
+  Matter, Ocean, Forest, Ky and Nord, with a Mode choice (System, the
+  default; Light; Dark) in Settings → Appearance. Tropics, Tropic Night,
+  Coffee, Cyber Punk, Neon Purple, Space, Sky and Sun are gone.
+- Danger, warning and success colours are per theme and separate from the
+  accent; the warning banner and the Connection pane's last error show a dot
+  beside their words.
+- The shell follows the Ky suite's look: logo and ink "KyPost" wordmark with
+  the page name as its own title, outline icons throughout, and an
+  accent-soft pill behind the current rail or tab item.
+- The mail list is flat, with full-width hairline-separated rows and a
+  one-line preview. Settings is one grouped panel. Chips, cards and switch
+  rows are flat, and group labels are sentence case.
+- Emoji no longer show as a missing-glyph box on a system without an emoji
+  font: KyPost bundles Noto Emoji (OFL) as a fallback.
+- Documentation, CI and repository changes: README sections moved to
+  docs/FEATURES.md, docs/BUILDING.md and docs/ARCHITECTURE.md, before/after
+  screenshots, and the release-notes check exempts `.github/`-only changes.
+
+### Upgrade impact
+
+- A saved theme carries over to its pair, keeping the half it had; a removed
+  palette resets to Busnes following the system. The setting is not
+  rewritten until you pick a theme, and picking one stores the ky-ui ID
+  (such as `busnes-pair` or `ocean`) under the same key, which an older
+  KyPost reads as Follow system.
+- No relay, schema, keyring or profile migration. Keep the GnuPG keyring.
 
 ## v0.5.0
 
