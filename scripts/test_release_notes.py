@@ -1,10 +1,16 @@
 """Protect tag selection, upgrade guidance and source-note freshness."""
 from pathlib import Path
+import os
 import runpy
 import shutil
 import subprocess
 import tempfile
 import unittest
+
+# release-notes.py takes its --tag default from these. On a tag run of CI they
+# name the real tag, which the fixture repositories below do not have.
+for name in ("GITHUB_REF_TYPE", "GITHUB_REF_NAME"):
+    os.environ.pop(name, None)
 
 check = runpy.run_path(str(Path(__file__).with_name("release-notes.py")))["check_notes"]
 CURRENT = """## Current source
