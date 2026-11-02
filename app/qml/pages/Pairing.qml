@@ -71,6 +71,19 @@ Item {
                 font.weight: Font.Bold
                 horizontalAlignment: Text.AlignHCenter
             }
+            // Why the last approval wait returned here (#516): denied, timed out.
+            Text {
+                Layout.fillWidth: true
+                visible: text !== ""
+                textFormat: Text.PlainText
+                text: Pairing.pairingError
+                color: Theme.danger
+                font.family: Theme.fontUi
+                font.pixelSize: Theme.fontSender
+                font.weight: Font.DemiBold
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+            }
             Text {
                 Layout.fillWidth: true
                 text: i18n("Open a pairing link from the web app, or paste it below.")
@@ -202,6 +215,97 @@ Item {
                 font.family: Theme.fontUi
                 font.pixelSize: Math.round(15 * Theme.fontScale)
                 horizontalAlignment: Text.AlignHCenter
+            }
+        }
+
+        // ---- approval --------------------------------------------------
+        // #516: register answered 202. The server holds this device until the
+        // user approves it on the web page that showed the pairing code, and
+        // shows the same six digits there, so the user can tell their own
+        // device from another app that redeemed the same link. Polling runs
+        // in PairingController only while this state lasts; Cancel (or the
+        // host closing this page) ends it and wipes the pending credential.
+        ColumnLayout {
+            Layout.fillWidth: true
+            visible: Pairing.pairingState === "approval"
+            spacing: 16
+
+            Text {
+                Layout.fillWidth: true
+                text: i18n("Waiting for approval")
+                color: Theme.inkStrong
+                font.family: Theme.fontUi
+                font.pixelSize: Math.round(22 * Theme.fontScale)
+                font.weight: Font.Bold
+                horizontalAlignment: Text.AlignHCenter
+            }
+            Card {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: codeText.implicitWidth + 48
+                Layout.preferredHeight: codeText.implicitHeight + 28
+                Text {
+                    id: codeText
+                    objectName: "approvalCode"
+                    anchors.centerIn: parent
+                    textFormat: Text.PlainText
+                    // "048 213": two groups of three, as the web page shows it.
+                    text: Pairing.approvalCode.length === 6
+                          ? Pairing.approvalCode.slice(0, 3) + " " + Pairing.approvalCode.slice(3)
+                          : Pairing.approvalCode
+                    color: Theme.inkStrong
+                    font.family: Theme.fontMono
+                    font.pixelSize: Math.round(40 * Theme.fontScale)
+                    font.weight: Font.Bold
+                    font.letterSpacing: Math.round(2 * Theme.fontScale)
+                    Accessible.name: i18n("Approval code %1", Pairing.approvalCode.split("").join(" "))
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                objectName: "approvalInstructions"
+                text: i18n("Approve this device on the KyPost web page that showed the code. Check the code matches.")
+                color: Theme.ink
+                font.family: Theme.fontUi
+                font.pixelSize: Theme.fontSender
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignHCenter
+                spacing: 12
+                SectionLabel { id: serverLabel; text: i18n("Server") }
+                Text {
+                    // Centred with the rest; wraps only when it cannot fit.
+                    Layout.maximumWidth: root.width - 48 - serverLabel.implicitWidth - 12
+                    objectName: "approvalServer"
+                    textFormat: Text.PlainText
+                    text: Pairing.approvalServer
+                    color: Theme.inkStrong
+                    font.family: Theme.fontMono
+                    font.pixelSize: Theme.fontSender
+                    wrapMode: Text.WrapAnywhere
+                }
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignHCenter
+                spacing: 8
+                BusyIndicator {
+                    Layout.preferredWidth: 24
+                    Layout.preferredHeight: 24
+                    running: Pairing.pairingState === "approval"
+                }
+                Text {
+                    text: i18n("Waiting…")
+                    color: Theme.ink
+                    font.family: Theme.fontUi
+                    font.pixelSize: Theme.fontDate
+                }
+            }
+            GhostButton {
+                objectName: "approvalCancel"
+                Layout.alignment: Qt.AlignHCenter
+                text: i18n("Cancel")
+                onClicked: Pairing.cancelApproval()
             }
         }
 

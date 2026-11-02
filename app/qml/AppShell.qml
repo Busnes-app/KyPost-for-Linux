@@ -491,6 +491,12 @@ Kirigami.ApplicationWindow {
                 root.raise()
                 root.requestActivate()
                 pairingConfirmPopup.open()
+            } else if (Pairing.pairingState === "approval") {
+                // A deep-link pairing was confirmed in the popup above, so
+                // the pairing page is not on screen: the code must be (#516).
+                pairingConfirmPopup.close()
+                if (!settingsPane.pairingOpen)
+                    root.openPairing()
             } else {
                 pairingConfirmPopup.close()
             }

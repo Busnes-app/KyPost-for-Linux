@@ -2,6 +2,7 @@
 #include "net/NetworkError.h"
 
 #include "FakeRelayServer.h"
+#include "TestTls.h"
 
 #include <QHostAddress>
 #include <QJsonDocument>
@@ -18,114 +19,7 @@
 
 namespace {
 
-// A real chain for the pooled-connection test: a leaf for 127.0.0.1 issued
-// by "KyPost Test Issuer", under a root that is trusted but not served. The
-// pin anchors to the ISSUER (HttpClient::pinnedSpkiFromChain), so the chain
-// has to be two deep or the pin cannot be computed at all. Generated with openssl,
-// valid to 2036; used nowhere else.
-const char* kServedLeafPem = R"PEM(
------BEGIN CERTIFICATE-----
-MIIDPDCCAiSgAwIBAgIBAzANBgkqhkiG9w0BAQsFADAdMRswGQYDVQQDDBJLeVBv
-c3QgVGVzdCBJc3N1ZXIwHhcNMjYxMDI3MjEyNzE2WhcNMzYxMDI0MjEyNzE2WjAU
-MRIwEAYDVQQDDAkxMjcuMC4wLjEwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEK
-AoIBAQDJA8qztywdbJqKEVJikP3cIkANUuHeAHXm4t8PaZZF4ROFfy0v5CjFoz+9
-tAS7qtkNAwk+JfFxIyYUqsijpNu/rAxHbJf1XFavik1PjnEQvAWgwiINIuhroXdc
-z9bSzGoAthNJqR1x24Q6N7VoQ8LX54q8H3R0QWL/55eHA0mnTsZOdneWx19BvPeZ
-/M112ecFCOvZ8Xl6ADtJmTiI9SEAADUcNSmbky55bEbfRu5Eh9Te+oedz0rnbNWz
-KuSXV77WuzC7pxPrF1EUXTcuGK8v31tOphtel9nQJfPS1L9rvknHDcFLk1tR8V4s
-ogCO17fNlLAT02d9QWM9GPLqOdw1AgMBAAGjgY8wgYwwCQYDVR0TBAIwADAOBgNV
-HQ8BAf8EBAMCBaAwEwYDVR0lBAwwCgYIKwYBBQUHAwEwGgYDVR0RBBMwEYcEfwAA
-AYIJbG9jYWxob3N0MB0GA1UdDgQWBBQB/scun4urNGIpUcMJ8hnX3OAm1zAfBgNV
-HSMEGDAWgBS2xJ1hEG1njmFQwlNqPqpNM982QDANBgkqhkiG9w0BAQsFAAOCAQEA
-EvyExpiOvz3e7oXQcaZKaOhh8OwMuekAAooRxpyk/fc3YutQbrT6fD+ZDAttaM/k
-qs3DkVGaRat70gSDP4Rs9G8n+tEF3sX8GW9WlPKb8uWuXQ1HJyihcjLM+snLyTvL
-OwlJQU7fkKhIRFtsEb1X1B71Mj6n9SJzg2kjMJ+29EvWkIEZKu/CPIoi81mn7cvG
-hK2/dVLq3CDd3zOu/xGXBuAYVMbwfBRJN3/UYZbpoHWBiDdxI8Im5IecYdRC5PFc
-vr1Lo/5XHGopbU17NM11VC07Db+RbGJ1uOiiZcVPOYTbMi+ehTXVFl9Ey9hQL9hE
-ZAjK1bfCBGJDW/L4EG111g==
------END CERTIFICATE-----
-)PEM";
-
-const char* kServedIssuerPem = R"PEM(
------BEGIN CERTIFICATE-----
-MIIDFjCCAf6gAwIBAgIBAjANBgkqhkiG9w0BAQsFADAbMRkwFwYDVQQDDBBLeVBv
-c3QgVGVzdCBSb290MB4XDTI2MTAyNzIxMjcxNloXDTM2MTAyNDIxMjcxNlowHTEb
-MBkGA1UEAwwSS3lQb3N0IFRlc3QgSXNzdWVyMIIBIjANBgkqhkiG9w0BAQEFAAOC
-AQ8AMIIBCgKCAQEA8dDUDn9ldHwKlFh4InFFprJ+IOMeVL7Uw9OhjNRaC2Xpc6TS
-9LydEEFBz/Izcq0xEpwXAQyud62ritSyJtCJKju62wd9T21s6r9QslIDSN0gUPZW
-nL+IqhHI43wYXtFLu6ymlWmJDo9Nv3a+B+aIb+AqflYyPDJN8J2UX+fzgo4mVvuX
-mDfZjxDvHf6dEWGXVtZFRJLlcTEKZCH8wKJtJ0GpVU/E1ocM+/SgeihfflIuCT6v
-UzOqOSQZavLscAv8AfPGSpp4qWPn9xeulCPhA35hd8jf9g44sRaIHi6iGu/iGcfW
-vG/22A6bT9kQ0uZ7qfG54r5g7/nbK8JwGts8NQIDAQABo2MwYTAPBgNVHRMBAf8E
-BTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUtsSdYRBtZ45hUMJTaj6q
-TTPfNkAwHwYDVR0jBBgwFoAUXPX1DSLoti6Qcog4nnevx8iHz8QwDQYJKoZIhvcN
-AQELBQADggEBAIAAsemDdokHEAwR9fDNJdUuDpu11wFZpKJDgRyIVfEZJdYZ8Aa3
-ntVT6gGAsv01UpZgINTc3pWSrCe4vGSjzkH7mnN5adGWfyhX8IM04WAzZj+ZqpZT
-lc4a9L2v2K8O0x6VRKJARvIAJb/aM3FzGlyY5QHTfPBttjCfEY0ywxX971oHR5ri
-OM05fuUL4zKBVJdr3tlzRu7tUaKVIHIyICzYKGDU2Jl9+OXP4NI3oLlVHJYTXLGi
-fOYjnIAHBRSNIWztf0EoccinG318ChmF7ofzudhSR4Io9HUo9Ge2xxDpF9XT25w1
-wvkyzgESvSQ67BIU8XOrgUFtJTeCDL/fr14=
------END CERTIFICATE-----
-)PEM";
-
-// The root the issuer chains to. Trusted by the pinned tests, never served.
-const char* kTrustedRootPem = R"PEM(
------BEGIN CERTIFICATE-----
-MIIDJzCCAg+gAwIBAgIUY8yXOt++Bud0ylZsETEdVQXadsYwDQYJKoZIhvcNAQEL
-BQAwGzEZMBcGA1UEAwwQS3lQb3N0IFRlc3QgUm9vdDAeFw0yNjEwMjcyMTI3MTZa
-Fw0zNjEwMjQyMTI3MTZaMBsxGTAXBgNVBAMMEEt5UG9zdCBUZXN0IFJvb3QwggEi
-MA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCXcTgPuqCrRTMFSgtkSwjfwvmr
-njGMcrtBahwekR3ReF34JkFWrXy2LcTK+n2kdmqXTlD7cyDCVduIzkDIDpkW4gnm
-5HuDavFARVgxSr2wIn5V7IzLd1ZPXKH6XP2+HGA0BRcrLK4xLB/27m4P2RM35euR
-5XjvUiQUKGArnKKA7bj1GB9fn4/eMAc2Mi1caj2JOyFRL0FA//9CbS8cBcTpIROz
-mI5faGI3jKXz7cjSlAhm5tpRl1RoszbuMMUtXccgNDcC6eyezpJ5mt3bKaEwKtzQ
-INjBEb5J+egJtjsncvZNtGiiXa6UkIy7OJUHyL0Set1w/CuIRvpwhavW0+D5AgMB
-AAGjYzBhMB0GA1UdDgQWBBRc9fUNIui2LpByiDied6/HyIfPxDAfBgNVHSMEGDAW
-gBRc9fUNIui2LpByiDied6/HyIfPxDAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB
-/wQEAwIBBjANBgkqhkiG9w0BAQsFAAOCAQEAPuwbb4KG5LGufiucYjljOo0blUZQ
-ESfIF5hf9E3fPHXBxrvPSlC11I5nyKBl6VzW8WPcX6/7m3JTX+3dOAnwdIly8wpL
-MQmwbdog09/hfkqLoPNGxZQzv29anbJq584n5NO1HqOPzMmuAnUEbJxdgGseQ6YV
-MSYHL4BhpQef1YSHbk1cdkN1ydxDlWg+muNVBNm07rmAxpOfVqw9mD6f/EESIW94
-WwMLevUTo0D1o6EEzX5zxYy8jmjt4w59YaxEjpd9S5JvAO3TAV2u96Udxv9fVQfo
-F5F/vel+1NuGXBwHoOWILhrjlmmHPft9CP6dlY/QUwEkE0EevrPN447zbQ==
------END CERTIFICATE-----
-)PEM";
-
-const char* kServedLeafKeyPem = R"PEM(
------BEGIN PRIVATE KEY-----
-MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDJA8qztywdbJqK
-EVJikP3cIkANUuHeAHXm4t8PaZZF4ROFfy0v5CjFoz+9tAS7qtkNAwk+JfFxIyYU
-qsijpNu/rAxHbJf1XFavik1PjnEQvAWgwiINIuhroXdcz9bSzGoAthNJqR1x24Q6
-N7VoQ8LX54q8H3R0QWL/55eHA0mnTsZOdneWx19BvPeZ/M112ecFCOvZ8Xl6ADtJ
-mTiI9SEAADUcNSmbky55bEbfRu5Eh9Te+oedz0rnbNWzKuSXV77WuzC7pxPrF1EU
-XTcuGK8v31tOphtel9nQJfPS1L9rvknHDcFLk1tR8V4sogCO17fNlLAT02d9QWM9
-GPLqOdw1AgMBAAECggEADi5yjUcZuWdeqBQh72VtHNacwA6OHqMCg7wTQmuE/XVB
-iDxJRD+blxqV5gy5KG1HUVlFZxP3CpqRIUmi4eqrpy7ckehpzcFf4JQIXBm/mno4
-B8KnyNdNiumyDwNJvlxLXoqkkIs6EieLbAO0ocBlaA/ZiZKgMmMk4yAkCv4oItcL
-iwt+7O+AElwxoegLcokDPDGp2bIv1xD6IkbIhDZQoqlg7nXU7WzML45p4tcTfdKC
-pI8KBTga85cZJJBhsKqzLTvJwymkbkovI/IizSCIvc6V+vDtpMloE2I58RrY6uZO
-RWFVSumht3NaEE/dFPmyBAweigf/gjwAFgiLnXBXwQKBgQD1OUD2U7r96IczzziW
-WuczjXzeDncmX5IzAy4aBKSxeSriKFG11a9lPrnyYXYb7YYFisE8rMyMo+ySrnp8
-ASmePNgRWFwR0/LBVZPaVZZUm5GLfUDsHI30XE7H8h5TS8QT94qWFFqZMIaefDlO
-3VrbF2LGsd2Sxv3nBcM8FiKcwQKBgQDR2TE0z7FNuTjwjm//uSpLWDuRqFqS0XIw
-DWmAfcfliB1+/3SCdFfGyryDA7UllSAnVUZjOFFxxn69dzB9Mw3ON32Mtx8Mvksb
-OFZGctM+tvu56Lg38YjzfHO3bKwaqhmHrRq8Dze6ExKjeEm4rule5ZeMms7ApFU/
-+5goO544dQKBgQCrDAmNCDBpRRVxhPwynCuioPFVLn/bq1Qd8vzoNw7tn9fSsk70
-Z52VIGCxeVvZ9R7DpNpOyTVQcFLmqX9UGbd+4W/RAXIPGWi9hETCSWq3j1/BDVgI
-mY5GwVBOVUrjzPhy+PqY3o+nRNrRl1Kd+PaT1ccXUx97bwPRbgqVUddIwQKBgQCn
-yyZIVyYrwsYfu5Ucgj+qXVPMZTR/HxBSEfdhMbIL++mx6auMwGCLaQKRM/69nV9H
-dC1DGv4sno4rC0nvYkpQsRgn0yj1tJcznbmGvTvicsgXYFklCnH6V3HjofZ/n7Go
-RicRZo2lsKh/o6g3D001fxnN6N8XNI+iCJgi24DpHQKBgE9PAWIWuM+eKtrz5c+q
-3M0BLQZre3rtvWnNBTi7cvHvgJ7JDRJS+DG0TB94bScXJ/cTdGqMTkJIWnuN1F+f
-4LrKG0KTxnojYKiicWAgyPWmxk+TSkqgajO97zL1Hid8XLz077yhYIShqRgAy2kk
-Q1Je/KawVLddQD4wH7ok7cl3
------END PRIVATE KEY-----
-)PEM";
-
-QSslCertificate certOf(const char* pem)
-{
-    return QSslCertificate(QByteArray(pem), QSsl::Pem);
-}
+using namespace TestTls;
 
 // Not FakeRelayServer's httpResponse(): that one sends Connection: close,
 // which is precisely what stops the socket from being pooled.
@@ -134,14 +28,6 @@ QByteArray keepAliveResponse(const QByteArray& body)
     return "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: "
         + QByteArray::number(body.size()) + "\r\nConnection: keep-alive\r\n\r\n" + body;
 }
-
-// Restores the process-wide default QSslConfiguration, which the pinned
-// tests point at the test issuer: HttpClient always verifies the peer.
-struct SslDefaultsGuard
-{
-    QSslConfiguration previous = QSslConfiguration::defaultConfiguration();
-    ~SslDefaultsGuard() { QSslConfiguration::setDefaultConfiguration(previous); }
-};
 
 // A TLS server that answers every request on the SAME connection, so Qt's
 // connection pool keeps the socket and a second request reuses it without a
@@ -225,6 +111,7 @@ private slots:
     void aRequestOnAPooledConnectionIsStillPinChecked();
     void aMismatchOnAFreshHandshakeIsRefusedBeforeTheRequestIsSent();
     void aPinnedOriginOverPlaintextIsNotAMismatch();
+    void aRequestPinRefusesAnotherTrustedIssuerAndLeavesTheClientPinAlone();
 };
 
 void HttpClientTest::getSuccessReturnsBodyUnmodifiedAndPreservesExistingQuery()
@@ -700,6 +587,51 @@ void HttpClientTest::aPinnedOriginOverPlaintextIsNotAMismatch()
     QVERIFY(!result.error.has_value());
     QCOMPARE(result.statusCode, 200);
     QCOMPARE(mismatches, 0);
+}
+
+// getPinnedTo(): the pin a caller hands in is enforced like the client's own
+// -- a server under another, equally trusted issuer is refused at the
+// handshake, before the request goes out -- but it is that request's alone:
+// the client's pin is not touched and the paired account's mismatch handler
+// does not fire.
+void HttpClientTest::aRequestPinRefusesAnotherTrustedIssuerAndLeavesTheClientPinAlone()
+{
+    if (!QSslSocket::supportsSsl())
+        QSKIP("no TLS backend available in this build");
+
+    const SslDefaultsGuard sslDefaults;
+    trustRoots({ certOf(kTrustedRootPem), certOf(kTrustedRootBPem) });
+
+    TlsRelayServer server(httpResponse(200, "OK", "{\"ok\":true}"));
+    QVERIFY(server.isListening());
+    server.serveChainB();
+
+    QNetworkAccessManager manager;
+    HttpClient client(manager, 5000);
+    int reported = 0;
+    client.setCertificateMismatchHandler([&reported](const QByteArray&) { ++reported; });
+    const QUrl paired(QStringLiteral("https://paired.example"));
+    const QByteArray pairedPin(32, '\x02');
+    client.setCertificatePin(pairedPin, paired);
+
+    const QUrl url(QStringLiteral("https://127.0.0.1:%1/api/thing").arg(server.serverPort()));
+    const QByteArray pinA =
+        HttpClient::pinnedSpkiFromChain({ certOf(kServedLeafPem), certOf(kServedIssuerPem) });
+    const HttpClient::HttpResult refused =
+        client.getPinnedTo({ pinA, url }, url, { { QStringLiteral("X-Secret"), QStringLiteral("s") } });
+
+    QVERIFY(refused.error.has_value());
+    QCOMPARE(*refused.error, NetworkError::CertificateMismatch);
+    QVERIFY(server.receivedRequests().isEmpty());
+    QCOMPARE(reported, 0);
+    QCOMPARE(client.certificatePinState().spkiSha256, pairedPin);
+    QCOMPARE(client.certificatePinState().origin, paired);
+
+    server.serveChainA();
+    const HttpClient::HttpResult served = client.getPinnedTo({ pinA, url }, url, {});
+    QVERIFY2(!served.error.has_value(), qUtf8Printable(served.detail));
+    QVERIFY(served.certificatePinVerified);
+    QCOMPARE(server.receivedRequests().size(), 1);
 }
 
 QTEST_GUILESS_MAIN(HttpClientTest)

@@ -72,9 +72,30 @@ class FakePairing : public QObject
     Q_PROPERTY(bool certificateMismatch MEMBER m_certificateMismatch NOTIFY changed)
     Q_PROPERTY(QString expectedCertificateFingerprint MEMBER m_expectedFingerprint NOTIFY changed)
     Q_PROPERTY(QString observedCertificateFingerprint MEMBER m_observedFingerprint NOTIFY changed)
+    // The pairing page's state machine, for tst_PairingApproval.
+    Q_PROPERTY(QString pairingState MEMBER m_pairingState NOTIFY changed)
+    Q_PROPERTY(QString pairingError MEMBER m_pairingError NOTIFY changed)
+    Q_PROPERTY(QString approvalCode MEMBER m_approvalCode NOTIFY changed)
+    Q_PROPERTY(QString approvalServer MEMBER m_approvalServer NOTIFY changed)
+    Q_PROPERTY(int cancelApprovalCount MEMBER m_cancelApprovalCount NOTIFY changed)
+    Q_PROPERTY(QString pendingPairOrigin MEMBER m_pendingPairOrigin NOTIFY changed)
+    Q_PROPERTY(bool pendingPairInsecure MEMBER m_pendingPairInsecure NOTIFY changed)
+    Q_PROPERTY(QString pairedServerHost MEMBER m_pairedServerHost NOTIFY changed)
+    Q_PROPERTY(QString deviceId MEMBER m_deviceId NOTIFY changed)
 
 public:
     using QObject::QObject;
+
+    Q_INVOKABLE void cancelApproval()
+    {
+        ++m_cancelApprovalCount;
+        m_pairingState = QStringLiteral("idle");
+        emit changed();
+    }
+    Q_INVOKABLE void cancelPendingPair() { }
+    Q_INVOKABLE void confirmPendingPair() { }
+    Q_INVOKABLE void pairFromPastedLink(const QString&) { }
+    Q_INVOKABLE void reset() { }
 
     // Present so a root that binds it still loads under test. The dialog's
     // own test spies on its reconnectRequested signal instead: connecting
@@ -94,6 +115,15 @@ private:
     bool m_certificateMismatch = false;
     QString m_expectedFingerprint = QStringLiteral("AA:BB");
     QString m_observedFingerprint = QStringLiteral("CC:DD");
+    QString m_pairingState = QStringLiteral("idle");
+    QString m_pairingError;
+    QString m_approvalCode;
+    QString m_approvalServer;
+    int m_cancelApprovalCount = 0;
+    QString m_pendingPairOrigin;
+    bool m_pendingPairInsecure = false;
+    QString m_pairedServerHost;
+    QString m_deviceId;
 };
 
 // Just enough of the theme for components that bind colours/fonts.

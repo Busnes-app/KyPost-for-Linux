@@ -33,6 +33,12 @@ private slots:
     void unusableCredentialInA200IsRefused_data();
     void unusableCredentialInA200IsRefused();
     void missingPushKeysAreRefusedWithoutARequest();
+    void pendingFrom202CarriesTheApprovalCodeAndCredential();
+    void a202WithoutAUsablePendingDeviceIsRefused_data();
+    void a202WithoutAUsablePendingDeviceIsRefused();
+    void pairingStatusMapsEveryAnswer_data();
+    void pairingStatusMapsEveryAnswer();
+    void pairingStatusSendsThePendingCredentialAsHeaders();
 };
 
 void NativeRegistrationClientTest::successParsesResponseAndSendsExpectedBody()
@@ -223,6 +229,127 @@ void NativeRegistrationClientTest::missingPushKeysAreRefusedWithoutARequest()
 
     QCOMPARE(result.outcome, RegistrationOutcome::Failure);
     QCOMPARE(fake.connectionCount(), 0);
+}
+
+
+void NativeRegistrationClientTest::pendingFrom202CarriesTheApprovalCodeAndCredential()
+{
+    const QByteArray body = R"({"ok":false,"synced":false,"status":"pending","error":"approve this device",)"
+                             R"("deviceId":"3f1c","deviceSecret":"pending-secret","approvalCode":"048213",)"
+                             R"("expiresAt":"2026-11-01T12:05:00Z",)"
+                             R"("statusEndpoint":"https://mail.example.com/api/notifications/native/pairing-status",)"
+                             R"("pollIntervalSeconds":3})";
+    FakeRelayServer fake(httpResponse(202, "Accepted", body));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    NativeRegistrationClient client(http);
+
+    const QUrl endpoint(QStringLiteral("http://127.0.0.1:%1/api/notifications/native/register").arg(fake.port()));
+    const NativeRegistrationResult result = client.registerDevice(
+        endpoint, QStringLiteral("sub-1"), QStringLiteral("pair-tok"), QStringLiteral("https://push.example/e"),
+        QString(), QStringLiteral("host - Linux"), keys());
+
+    QCOMPARE(result.outcome, RegistrationOutcome::PendingApproval);
+    QCOMPARE(result.response.deviceId, QStringLiteral("3f1c"));
+    QCOMPARE(result.response.deviceSecret, QStringLiteral("pending-secret"));
+    QCOMPARE(result.response.approvalCode, QStringLiteral("048213"));
+    QCOMPARE(result.response.expiresAt.toUTC().toString(Qt::ISODate), QStringLiteral("2026-11-01T12:05:00Z"));
+    QCOMPARE(result.response.statusEndpoint,
+             QStringLiteral("https://mail.example.com/api/notifications/native/pairing-status"));
+    QCOMPARE(result.response.pollIntervalSeconds, 3);
+    QVERIFY(!result.response.ok);
+
+    // The approval prompt shows the OS next to the device name.
+    QVERIFY(fake.receivedJsonBody().contains(QStringLiteral("osVersion")));
+}
+
+void NativeRegistrationClientTest::a202WithoutAUsablePendingDeviceIsRefused_data()
+{
+    QTest::addColumn<QByteArray>("body");
+    QTest::newRow("no secret") << QByteArray(R"({"status":"pending","deviceId":"d","approvalCode":"048213"})");
+    QTest::newRow("no id") << QByteArray(R"({"status":"pending","deviceSecret":"s","approvalCode":"048213"})");
+    QTest::newRow("short code") << QByteArray(R"({"status":"pending","deviceId":"d","deviceSecret":"s","approvalCode":"4821"})");
+    QTest::newRow("non-digit code") << QByteArray(R"({"status":"pending","deviceId":"d","deviceSecret":"s","approvalCode":"04821x"})");
+    QTest::newRow("not pending") << QByteArray(R"({"status":"approved","deviceId":"d","deviceSecret":"s","approvalCode":"048213"})");
+}
+
+void NativeRegistrationClientTest::a202WithoutAUsablePendingDeviceIsRefused()
+{
+    QFETCH(QByteArray, body);
+    FakeRelayServer fake(httpResponse(202, "Accepted", body));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    NativeRegistrationClient client(http);
+
+    const QUrl endpoint(QStringLiteral("http://127.0.0.1:%1/api/notifications/native/register").arg(fake.port()));
+    const NativeRegistrationResult result = client.registerDevice(
+        endpoint, QStringLiteral("sub-1"), QStringLiteral("pair-tok"), QStringLiteral("https://push.example/e"),
+        QString(), QString(), keys());
+    QCOMPARE(result.outcome, RegistrationOutcome::Failure);
+}
+
+void NativeRegistrationClientTest::pairingStatusMapsEveryAnswer_data()
+{
+    using Status = PairingStatusResult::Status;
+    QTest::addColumn<QByteArray>("response");
+    QTest::addColumn<int>("status");
+    QTest::addColumn<int>("retryAfter");
+    QTest::addColumn<QString>("deviceId");
+
+    QTest::newRow("202 pending") << httpResponse(202, "Accepted", R"({"status":"pending","pollIntervalSeconds":5})")
+                                 << int(Status::Pending) << 0 << QString();
+    QTest::newRow("200 approved")
+        << httpResponse(200, "OK", R"({"ok":true,"synced":true,"status":"approved","deviceId":"merged",)"
+                                   R"("deliveryMode":"pull","transport":"unifiedpush"})")
+        << int(Status::Approved) << 0 << QStringLiteral("merged");
+    QTest::newRow("200 without a device id")
+        << httpResponse(200, "OK", R"({"ok":true,"status":"approved"})") << int(Status::Retry) << 0 << QString();
+    QTest::newRow("200 not approved")
+        << httpResponse(200, "OK", R"({"ok":true,"status":"pending","deviceId":"x"})") << int(Status::Retry) << 0
+        << QString();
+    QTest::newRow("410 rejected")
+        << httpResponse(410, "Gone", R"({"status":"rejected","error":"denied or expired"})") << int(Status::Rejected)
+        << 0 << QString();
+    QTest::newRow("429 retry-after")
+        << httpResponse(429, "Too Many Requests", "{}", "application/json", { { "Retry-After", "12" } })
+        << int(Status::Retry) << 12 << QString();
+    QTest::newRow("503") << httpResponse(503, "Service Unavailable", "{}") << int(Status::Retry) << 0 << QString();
+    QTest::newRow("garbled 202") << httpResponse(202, "Accepted", "not json") << int(Status::Retry) << 0 << QString();
+}
+
+void NativeRegistrationClientTest::pairingStatusMapsEveryAnswer()
+{
+    QFETCH(QByteArray, response);
+    QFETCH(int, status);
+    QFETCH(int, retryAfter);
+    QFETCH(QString, deviceId);
+    FakeRelayServer fake(response);
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    NativeRegistrationClient client(http);
+
+    const PairingStatusResult result = client.pairingStatus(
+        QUrl(QStringLiteral("http://127.0.0.1:%1/api/notifications/native/pairing-status").arg(fake.port())),
+        RelayAuth { QStringLiteral("dev"), QStringLiteral("secret") }, {});
+    QCOMPARE(int(result.status), status);
+    QCOMPARE(result.retryAfterSeconds, retryAfter);
+    QCOMPARE(result.response.deviceId, deviceId);
+}
+
+void NativeRegistrationClientTest::pairingStatusSendsThePendingCredentialAsHeaders()
+{
+    FakeRelayServer fake(httpResponse(202, "Accepted", R"({"status":"pending"})"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    NativeRegistrationClient client(http);
+
+    client.pairingStatus(
+        QUrl(QStringLiteral("http://127.0.0.1:%1/api/notifications/native/pairing-status").arg(fake.port())),
+        RelayAuth { QStringLiteral("dev-pending"), QStringLiteral("pending-secret") }, {});
+    const QByteArray request = fake.receivedRequest();
+    QVERIFY(request.startsWith("GET /api/notifications/native/pairing-status HTTP/1.1"));
+    QVERIFY(request.contains("X-Kypost-Device-Id: dev-pending"));
+    QVERIFY(request.contains("X-Kypost-Device-Secret: pending-secret"));
 }
 
 QTEST_GUILESS_MAIN(NativeRegistrationClientTest)

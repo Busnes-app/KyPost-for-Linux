@@ -73,6 +73,11 @@ public:
         m_byPath.append({ needle, std::move(response) });
     }
 
+    // Leaves the NEXT request whose path contains `needle` unanswered, with its
+    // connection open, so the client is still waiting when the test acts --
+    // e.g. cancels -- and gets its answer only from its own transfer timeout.
+    void holdNextForPath(const QByteArray& needle) { m_holdNeedle = needle; }
+
     // Every request received, in order, so a test can assert what a multi-step
     // flow actually asked for.
     const QList<QByteArray>& receivedRequests() const { return m_requests; }
@@ -113,6 +118,11 @@ private:
             if (!requestComplete(*request))
                 return;
             m_requests.append(*request);
+            const int lineEnd = request->indexOf("\r\n");
+            if (!m_holdNeedle.isEmpty() && request->left(lineEnd).contains(m_holdNeedle)) {
+                m_holdNeedle.clear();
+                return;
+            }
             socket->write(responseFor(*request));
             socket->flush();
             socket->disconnectFromHost();
@@ -157,4 +167,5 @@ private:
     QList<QByteArray> m_requests;
     QByteArray m_response;
     QByteArray m_received;
+    QByteArray m_holdNeedle;
 };

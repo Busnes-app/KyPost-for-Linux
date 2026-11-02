@@ -17,10 +17,13 @@ QtObject {
     property string expectedCertificateFingerprint: "AA:BB"
     property string observedCertificateFingerprint: "CC:DD"
     property bool reregistrationRejected: false
+    property string approvalCode: "048213"
+    property string approvalServer: "https://relay.kypost-demo.local"
     signal pairingChanged()
     signal pairedFromLink()
     function confirmPendingPair() {}
     function cancelPendingPair() { pairingState = "idle" }
+    function cancelApproval() { pairingState = "idle" }
     function pairFromDeepLink() {}
     function pairFromPastedLink() {}
     function reset() {}
