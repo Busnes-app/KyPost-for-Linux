@@ -249,6 +249,20 @@ jobs:
             --repo="repo-${{ matrix.arch }}" \
             build-flatpak "$MANIFEST"
 
+      # libargon2's Makefile once built with -march=native, and the Flatpak
+      # crashed with SIGILL on CPUs older than the builder's. AVX registers in
+      # it mean CPU-specific code is back.
+      - name: Check libargon2 is built for baseline x86-64
+        if: matrix.arch == 'x86_64'
+        run: |
+          set -euo pipefail
+          lib=$(find build-flatpak/files/lib -name 'libargon2.so*' -type f | head -1)
+          test -n "$lib"
+          if objdump -d "$lib" | grep -qE '%[yz]mm'; then
+            echo "::error::$lib contains AVX code; build it with OPTTARGET=x86-64"
+            exit 1
+          fi
+
       # DIAGNOSTIC, failure-only. This job has never once succeeded (36/36
       # failures since 2026-07-26), always at flatpak-builder's export step
       # with appstreamcli compose reporting:

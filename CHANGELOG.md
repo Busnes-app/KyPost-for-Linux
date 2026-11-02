@@ -28,6 +28,12 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- The Flatpak no longer crashes with "Illegal instruction" on older x86-64
+  CPUs when it seals or opens stored credentials. The bundled Argon2 library
+  was compiled for the build machine's CPU (`-march=native`), so a CPU
+  without the same instructions (AVX2 or AVX-512) stopped at the first
+  password-derived key. It is now built for baseline x86-64, and CI fails if
+  AVX code appears in it again.
 - Version 0.6.0 in CMake and AppStream, for the v0.6.0 tag. See `## v0.6.0`.
 - New devices need approval (KyPost-Server #516). When the server answers a
   pairing link with "waiting for approval", the pairing page shows a
@@ -344,6 +350,12 @@ the channel builds published between them.
 
 ### Changes
 
+- The Flatpak no longer crashes with "Illegal instruction" on older x86-64
+  CPUs when it seals or opens stored credentials. The bundled Argon2 library
+  was compiled for the build machine's CPU (`-march=native`), so a CPU
+  without the same instructions (AVX2 or AVX-512) stopped at the first
+  password-derived key. It is now built for baseline x86-64, and CI fails if
+  AVX code appears in it again.
 - New devices need approval (KyPost-Server #516). When the server answers a
   pairing link with "waiting for approval", the pairing page shows a
   six-digit code, large, and the server it is waiting on: approve the device
