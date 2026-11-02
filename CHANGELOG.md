@@ -28,6 +28,10 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- The release-notes unit tests no longer fail on a tag build: they cleared
+  nothing from the CI environment, so `release-notes.py` in their fixture
+  repositories took the real tag (`v0.6.0`) as its `--tag` and failed. The
+  v0.6.0 tag build stopped there, before building anything.
 - The Flatpak no longer crashes with "Illegal instruction" on older x86-64
   CPUs when it seals or opens stored credentials. The bundled Argon2 library
   was compiled for the build machine's CPU (`-march=native`), so a CPU
