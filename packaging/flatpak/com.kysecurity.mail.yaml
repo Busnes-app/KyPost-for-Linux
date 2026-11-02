@@ -187,8 +187,13 @@ modules:
   - name: libargon2
     buildsystem: simple
     build-commands:
-      - make PREFIX=/app LIBRARY_REL=lib -j $FLATPAK_BUILDER_N_JOBS
-      - make install PREFIX=/app LIBRARY_REL=lib
+      # OPTTARGET defaults to native, which compiles the whole library with
+      # -march=native: code for the builder's CPU that crashes (SIGILL) on a
+      # user's older one, or on a CI runner reusing the cached module. Baseline
+      # x86-64 keeps the SSE2 path; on aarch64 the probe fails and the portable
+      # ref.c is used, as before.
+      - make PREFIX=/app LIBRARY_REL=lib OPTTARGET=x86-64 -j $FLATPAK_BUILDER_N_JOBS
+      - make install PREFIX=/app LIBRARY_REL=lib OPTTARGET=x86-64
     cleanup:
       - /bin
       - /lib/libargon2.a
