@@ -3,8 +3,33 @@
 #include "net/HttpClient.h"
 
 #include <QJsonObject>
+#include <QSysInfo>
 
 namespace {
+
+bool isApprovalCode(const QString& code)
+{
+    if (code.size() != 6)
+        return false;
+    for (const QChar c : code) {
+        if (c < QLatin1Char('0') || c > QLatin1Char('9'))
+            return false;
+    }
+    return true;
+}
+
+// Seconds from a delta-seconds Retry-After; 0 for an HTTP-date or anything else.
+int retryAfterSeconds(const QList<QPair<QString, QString>>& headers)
+{
+    for (const auto& header : headers) {
+        if (header.first.compare(QLatin1String("Retry-After"), Qt::CaseInsensitive) != 0)
+            continue;
+        bool ok = false;
+        const int seconds = header.second.trimmed().toInt(&ok);
+        return ok && seconds > 0 ? seconds : 0;
+    }
+    return 0;
+}
 
 // Reconstructs {scheme}://{host}[:port]/api/notifications/native/pull from
 // the registration endpoint's authority, for when the server response omits
@@ -52,6 +77,10 @@ NativeRegistrationResult NativeRegistrationClient::registerDevice(
         body[QStringLiteral("deviceName")] = deviceName;
     body[QStringLiteral("platform")] = QStringLiteral("linux");
     body[QStringLiteral("transport")] = QStringLiteral("unifiedpush");
+    // Shown on the web approval prompt next to deviceName. Display only.
+    const QString osVersion = QSysInfo::prettyProductName().trimmed();
+    if (!osVersion.isEmpty())
+        body[QStringLiteral("osVersion")] = osVersion;
     body[QStringLiteral("p256dh")] = b64url(pushKeys.p256dh);
     body[QStringLiteral("auth")] = b64url(pushKeys.auth);
 
@@ -89,6 +118,29 @@ NativeRegistrationResult NativeRegistrationClient::registerDevice(
     }
 
     const QJsonObject json = *decoded;
+
+    // 202: the server holds this device until the user approves it on the web
+    // page that showed the code. The credential works only for the status
+    // endpoint, so it is handed back to the caller and not persisted.
+    if (result.statusCode == 202) {
+        NativeRegistrationResponse pending;
+        pending.deviceId = json.value(QStringLiteral("deviceId")).toString();
+        pending.deviceSecret = json.value(QStringLiteral("deviceSecret")).toString();
+        pending.approvalCode = json.value(QStringLiteral("approvalCode")).toString();
+        pending.expiresAt = QDateTime::fromString(json.value(QStringLiteral("expiresAt")).toString(), Qt::ISODate);
+        pending.statusEndpoint = json.value(QStringLiteral("statusEndpoint")).toString();
+        pending.pollIntervalSeconds = json.value(QStringLiteral("pollIntervalSeconds")).toInt();
+        if (json.value(QStringLiteral("status")).toString() != QLatin1String("pending") || pending.deviceId.isEmpty()
+            || pending.deviceSecret.isEmpty() || !isApprovalCode(pending.approvalCode)) {
+            out.outcome = RegistrationOutcome::Failure;
+            out.detail = QStringLiteral("The server did not return a usable pending device.");
+            return out;
+        }
+        out.outcome = RegistrationOutcome::PendingApproval;
+        out.response = pending;
+        return out;
+    }
+
     NativeRegistrationResponse response;
     response.ok = json.value(QStringLiteral("ok")).toBool();
     response.synced = json.value(QStringLiteral("synced")).toBool();
@@ -120,4 +172,57 @@ NativeRegistrationResult NativeRegistrationClient::registerDevice(
     out.outcome = RegistrationOutcome::Success;
     out.response = response;
     return out;
+}
+
+PairingStatusResult NativeRegistrationClient::pairingStatus(const QUrl& statusEndpoint,
+                                                            const RelayAuth& pendingAuth) const
+{
+    const HttpClient::HttpResult result = m_httpClient.get(statusEndpoint, {}, pendingAuth.headerItems());
+
+    PairingStatusResult out;
+    out.peerSpkiSha256 = result.peerSpkiSha256;
+    out.certificatePinVerified = result.certificatePinVerified;
+
+    if (result.error.has_value()) {
+        switch (*result.error) {
+        case NetworkError::CertificateMismatch:
+        case NetworkError::RedirectRefused:
+        case NetworkError::ResponseTooLarge:
+            out.status = PairingStatusResult::Status::Refused;
+            return out;
+        default:
+            break;
+        }
+        // Denied, expired and unknown are deliberately one answer.
+        out.status = result.statusCode == 410 ? PairingStatusResult::Status::Rejected
+                                              : PairingStatusResult::Status::Retry;
+        out.retryAfterSeconds = retryAfterSeconds(result.headers);
+        return out;
+    }
+
+    const std::optional<QJsonObject> decoded = decodeJsonObject(result.body);
+    if (!decoded.has_value())
+        return out; // Retry
+    const QJsonObject& json = *decoded;
+    const QString status = json.value(QStringLiteral("status")).toString();
+
+    if (result.statusCode == 202 && status == QLatin1String("pending")) {
+        out.status = PairingStatusResult::Status::Pending;
+        out.response.expiresAt = QDateTime::fromString(json.value(QStringLiteral("expiresAt")).toString(), Qt::ISODate);
+        out.response.pollIntervalSeconds = json.value(QStringLiteral("pollIntervalSeconds")).toInt();
+        return out;
+    }
+
+    if (result.statusCode == 200 && status == QLatin1String("approved") && json.value(QStringLiteral("ok")).toBool()) {
+        NativeRegistrationResponse& approved = out.response;
+        approved.ok = true;
+        approved.synced = json.value(QStringLiteral("synced")).toBool();
+        approved.deviceId = json.value(QStringLiteral("deviceId")).toString();
+        approved.deliveryMode = json.value(QStringLiteral("deliveryMode")).toString();
+        approved.pullEndpoint = json.value(QStringLiteral("pullEndpoint")).toString();
+        approved.transport = json.value(QStringLiteral("transport")).toString();
+        if (!approved.deviceId.isEmpty())
+            out.status = PairingStatusResult::Status::Approved;
+    }
+    return out; // Retry unless set above
 }

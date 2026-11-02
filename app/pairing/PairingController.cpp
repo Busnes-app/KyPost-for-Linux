@@ -1,5 +1,6 @@
 #include "pairing/PairingController.h"
 
+#include "domain/DeviceApproval.h"
 #include "domain/DeviceRegistrationService.h"
 #include "domain/DevicePairing.h"
 #include "domain/PairingStore.h"
@@ -12,6 +13,7 @@
 #include <KLocalizedString>
 
 #include <QHostAddress>
+#include <algorithm>
 #include <QSysInfo>
 #include <QUrl>
 #include <QUrlQuery>
@@ -125,6 +127,8 @@ QString stateToString(PairingController::State state)
         return QStringLiteral("confirm");
     case PairingController::State::Working:
         return QStringLiteral("working");
+    case PairingController::State::AwaitingApproval:
+        return QStringLiteral("approval");
     case PairingController::State::Paired:
         return QStringLiteral("paired");
     case PairingController::State::Failed:
@@ -237,6 +241,9 @@ PairingController::PairingController(DeviceRegistrationService& service, Pairing
     // very first frame -- there is no reasonable "unknown" state to show
     // meanwhile -- so this one refreshes eagerly on construction.
     refreshFromStore();
+
+    m_approvalTimer.setSingleShot(true);
+    connect(&m_approvalTimer, &QTimer::timeout, this, &PairingController::pollApproval);
 }
 
 bool PairingController::isPaired() const
@@ -267,6 +274,16 @@ QString PairingController::pairingState() const
 QString PairingController::pairingError() const
 {
     return m_pairingError;
+}
+
+QString PairingController::approvalCode() const
+{
+    return m_approval ? m_approval->pending.response.approvalCode : QString();
+}
+
+QString PairingController::approvalServer() const
+{
+    return m_approval ? displayOrigin(QUrl(m_approval->params.serverBaseUrl)) : QString();
 }
 
 QString PairingController::pendingPairOrigin() const
@@ -328,6 +345,14 @@ void PairingController::refreshFromStore()
 
 bool PairingController::pairFromDeepLink(const QUrl& url)
 {
+    // A link arriving while a device waits for approval must not knock the
+    // code off the screen: any app can send this process a kypost:// link.
+    // The user cancels the wait first.
+    if (m_approval) {
+        qWarning("PairingController: ignoring a pairing link while another device waits for approval");
+        return false;
+    }
+
     // A locked app must not raise a confirmable pairing prompt. The prompt is a
     // QQC2 Popup, drawn inside QQuickOverlay, which Qt stacks above ordinary
     // siblings -- including the app-lock overlay at z: 1000 -- so relying on
@@ -384,7 +409,7 @@ bool PairingController::confirmPendingPair()
     // loop to be re-entered through; what is left to prevent is two
     // overlapping registrations, which would race to set pairingState and
     // could both mint (and burn) a server-side device secret.
-    if (m_inNetworkCall)
+    if (m_inNetworkCall || m_approval)
         return false;
 
     // Re-checked here, not just in pairFromDeepLink: this covers the lock
@@ -417,8 +442,132 @@ void PairingController::cancelPendingPair()
 
 void PairingController::reset()
 {
+    if (m_approval) {
+        cancelApproval();
+        return;
+    }
     m_pendingPair.reset();
     setPairingState(State::Idle);
+}
+
+void PairingController::cancelApproval()
+{
+    if (m_approval)
+        endApproval(State::Idle);
+}
+
+void PairingController::beginAwaitingApproval(const PairingParams& params,
+                                              DeviceRegistrationService::PairAttempt attempt,
+                                              const NativeRegistrationResult& pending, bool fromLink)
+{
+    // The attempt is held, not finished: it carries the push keys this
+    // registration sent, the sealing key snapshot, and the pin state the
+    // registration ran under. Only an approval reaches finishPair(); every
+    // other ending drops it, which restores the previous pin and stores nothing.
+    // ponytail: the pin state of the registration (suspended for a link without
+    // a pin) lasts for the wait, at most DeviceApproval::kMaxWaitSeconds. A
+    // per-request pin on HttpClient would let the wait restore it at once.
+    m_approval = std::make_unique<AwaitingApproval>(AwaitingApproval {
+        params,
+        std::move(attempt),
+        pending,
+        DeviceApproval::statusEndpoint(pending.response.statusEndpoint, QUrl(params.serverBaseUrl)),
+        DeviceApproval::deadline(pending.response.expiresAt, QDateTime::currentDateTimeUtc()),
+        pending.response.pollIntervalSeconds,
+        0,
+        fromLink,
+    });
+    setPairingState(State::AwaitingApproval, QString(), /*forceNotify=*/true);
+    scheduleApprovalPoll(DeviceApproval::nextPollDelayMs(m_approval->pollIntervalSeconds, 0, 0));
+}
+
+void PairingController::scheduleApprovalPoll(int delayMs)
+{
+    // The last poll lands on the deadline itself, so an approval given in the
+    // final seconds is still seen; a pending answer after it ends the wait.
+    const qint64 left = QDateTime::currentDateTimeUtc().msecsTo(m_approval->deadline);
+    if (left <= 0) {
+        endApproval(State::Idle, i18n("Not approved: denied or timed out. Scan a new code."));
+        return;
+    }
+    m_approvalTimer.start(static_cast<int>(std::min<qint64>(delayMs, left)));
+}
+
+void PairingController::pollApproval()
+{
+    if (!m_approval || m_approvalPollInFlight)
+        return;
+    const QUrl endpoint = m_approval->statusEndpoint;
+    const RelayAuth auth { m_approval->pending.response.deviceId, m_approval->pending.response.deviceSecret };
+    const quint64 generation = m_approvalGeneration;
+    m_approvalPollInFlight = true;
+    m_executor.run(
+        this,
+        [endpoint, auth](HttpClient& http) { return NativeRegistrationClient(http).pairingStatus(endpoint, auth); },
+        [this, generation](const PairingStatusResult& status) {
+            // A stale answer must not clear the flag of a wait begun since.
+            if (generation == m_approvalGeneration)
+                m_approvalPollInFlight = false;
+            applyApprovalStatus(generation, status);
+        });
+}
+
+void PairingController::applyApprovalStatus(quint64 generation, const PairingStatusResult& status)
+{
+    // Cancelled, or another wait began, while this poll was out.
+    if (!m_approval || generation != m_approvalGeneration)
+        return;
+
+    switch (status.status) {
+    case PairingStatusResult::Status::Pending:
+        m_approval->failures = 0;
+        if (status.response.pollIntervalSeconds > 0)
+            m_approval->pollIntervalSeconds = status.response.pollIntervalSeconds;
+        scheduleApprovalPoll(DeviceApproval::nextPollDelayMs(m_approval->pollIntervalSeconds, 0, 0));
+        return;
+    case PairingStatusResult::Status::Retry:
+        ++m_approval->failures;
+        scheduleApprovalPoll(DeviceApproval::nextPollDelayMs(m_approval->pollIntervalSeconds, m_approval->failures,
+                                                             status.retryAfterSeconds));
+        return;
+    case PairingStatusResult::Status::Rejected:
+        endApproval(State::Idle, i18n("Not approved: denied or timed out. Scan a new code."));
+        return;
+    case PairingStatusResult::Status::Refused:
+        endApproval(State::Failed, i18n("Pairing failed, please try again."));
+        return;
+    case PairingStatusResult::Status::Approved:
+        break;
+    }
+
+    // Approved: from here on this is the 200 path a direct registration takes.
+    const std::unique_ptr<AwaitingApproval> approval = std::move(m_approval);
+    m_approvalTimer.stop();
+    ++m_approvalGeneration;
+    const NativeRegistrationResult result = DeviceApproval::approvedRegistration(approval->pending, status);
+    if (!purgePreviousAccountIfReplaced(approval->params)) {
+        NativeRegistrationResult refused = result;
+        refused.outcome = RegistrationOutcome::Failure;
+        refused.detail = i18n("Could not remove the previous account's data from this device, so this device "
+                              "has been erased instead. Pair again to continue.");
+        applyRegistrationResult(refused);
+        return;
+    }
+    const NativeRegistrationResult applied = m_service.finishPair(std::move(approval->attempt), approval->params, result);
+    applyRegistrationResult(applied);
+    if (applied.outcome == RegistrationOutcome::Success && approval->fromLink)
+        emit pairedFromLink();
+}
+
+void PairingController::endApproval(State state, const QString& error)
+{
+    m_approvalTimer.stop();
+    ++m_approvalGeneration;
+    m_approvalPollInFlight = false; // a poll still out belongs to the old generation
+    // Dropping the wait is the wipe: the pending id and secret were never
+    // stored, and ~PairAttempt restores the previous pin.
+    m_approval.reset();
+    setPairingState(state, error, /*forceNotify=*/true);
 }
 
 void PairingController::removePairing()
@@ -433,7 +582,7 @@ void PairingController::removePairing()
     if (m_appLocked)
         return;
 
-    if (m_inNetworkCall)
+    if (m_inNetworkCall || m_approval)
         return;
 
     // The deregister POST is best-effort and its result was already ignored,
@@ -619,7 +768,7 @@ void PairingController::reconnectToServer()
     // boundary (AGENTS.md 6d).
     if (m_appLocked)
         return;
-    if (m_inNetworkCall)
+    if (m_inNetworkCall || m_approval)
         return;
 
     const std::optional<DevicePairing> pairing = m_pairingStore.load();
@@ -688,6 +837,10 @@ void PairingController::reconnectToServer()
         },
         [this, params, attempt = std::move(attempt)](const NativeRegistrationResult& result) mutable {
             m_inNetworkCall = false;
+            if (result.outcome == RegistrationOutcome::PendingApproval) {
+                beginAwaitingApproval(params, std::move(attempt), result, /*fromLink=*/false);
+                return;
+            }
             // Reconnect targets the account already paired, so this is a no-op
             // by construction. Run it anyway rather than depending on that
             // staying true if this method ever grows a second caller.
@@ -779,6 +932,10 @@ void PairingController::pairFromParsedParams(PairingParams params)
         },
         [this, params, attempt = std::move(attempt)](const NativeRegistrationResult& result) mutable {
             m_inNetworkCall = false;
+            if (result.outcome == RegistrationOutcome::PendingApproval) {
+                beginAwaitingApproval(params, std::move(attempt), result, /*fromLink=*/true);
+                return;
+            }
             // The replacement is proven here and nothing has been persisted
             // yet -- the only moment at which erasing the previous account's
             // data is both safe and still possible before it becomes readable
@@ -840,6 +997,7 @@ void PairingController::applyRegistrationResult(const NativeRegistrationResult& 
                               "(gnome-keyring or kwallet) is running, then pair again. The "
                               "partially-written pairing record could also not be removed."));
         return;
+    case RegistrationOutcome::PendingApproval: // routed to beginAwaitingApproval() before this
     case RegistrationOutcome::Failure:
         setPairingState(State::Failed,
                          result.detail.isEmpty() ? i18n("Pairing failed, please try again.") : result.detail);

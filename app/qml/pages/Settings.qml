@@ -57,6 +57,7 @@ Item {
     // destination, so the shell closes these when the app locks.
     readonly property bool popupOpen: securityPrompt.opened || pairingPopup.opened
     readonly property bool securityPromptOpen: securityPrompt.opened
+    readonly property bool pairingOpen: pairingPopup.opened
 
     // The PIN prompt in one of its modes ("setPin", "changePin", ...).
     function promptPin(mode, heading) { securityPrompt.begin(mode, heading) }
@@ -1439,6 +1440,11 @@ Item {
         padding: 0
 
         background: Rectangle { color: Theme.bg }
+
+        // Polling for approval runs only while its screen shows (#516): any
+        // close -- Escape, the lock closing popups -- cancels the wait and
+        // wipes the pending credential.
+        onClosed: if (Pairing.pairingState === "approval") Pairing.cancelApproval()
 
         contentItem: PagesDir.Pairing {
             anchors.fill: parent

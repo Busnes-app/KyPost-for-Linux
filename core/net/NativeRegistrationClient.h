@@ -1,8 +1,10 @@
 #pragma once
 
 #include "net/NetworkError.h"
+#include "net/RelayAuth.h"
 
 #include <QByteArray>
+#include <QDateTime>
 #include <QString>
 #include <QUrl>
 
@@ -39,6 +41,15 @@ struct NativeRegistrationResponse
     QString pullEndpoint;
     QString transport; // server-normalized value, not necessarily what was sent
 
+    // Set only by a 202 (RegistrationOutcome::PendingApproval): a pairing from a
+    // web-minted token waits for the user's approval on the web page that showed
+    // the code (kypost-server docs/device-approval.md). deviceId/deviceSecret
+    // above are then valid for the pairing-status endpoint and nothing else.
+    QString approvalCode;   // six digits, shown large so the user can compare it with the web page
+    QDateTime expiresAt;    // when the server drops the pending device; invalid if absent
+    QString statusEndpoint; // advertised; trust it only same-origin (DeviceApproval::statusEndpoint)
+    int pollIntervalSeconds = 0;
+
     bool operator==(const NativeRegistrationResponse&) const = default;
 };
 
@@ -63,9 +74,14 @@ struct NativeRegistrationResponse
 // pairing is still on disk. They are distinct values rather than a Failure
 // carrying an English sentence because core/ owns error values, never error
 // wording (AGENTS.md 6c); PairingController's switch holds both sentences.
+//
+// PendingApproval is a 202: the server holds the device until the user approves
+// it on the web. Nothing is persisted for it; the caller polls
+// pairingStatus() and only an approval reaches finishPair() as a Success.
 enum class RegistrationOutcome
 {
     Success,
+    PendingApproval,
     Unauthorized,
     BackendMisconfigured,
     Failure,
@@ -102,6 +118,25 @@ struct NativeRegistrationResult
 //
 // `pushKeys` is mandatory. A registration without them is one the relay
 // serves in cleartext, so a malformed pair fails here without a request.
+// `GET /api/notifications/native/pairing-status` with a pending device's
+// credentials (docs/device-approval.md, "Poll for the outcome").
+struct PairingStatusResult
+{
+    enum class Status
+    {
+        Pending,  // 202: keep polling
+        Approved, // 200: response carries the deviceId to store (it may differ from the pending one)
+        Rejected, // 410: denied, expired or unknown -- final
+        Retry,    // 429/503, a transport error or a garbled answer: back off and ask again
+        Refused,  // the request itself was unsafe (pin mismatch, redirect) -- final
+    };
+    Status status = Status::Retry;
+    NativeRegistrationResponse response; // Approved: deviceId and delivery fields. Pending: expiresAt, pollIntervalSeconds
+    int retryAfterSeconds = 0;           // from a Retry-After header, 0 if none
+    QByteArray peerSpkiSha256;
+    bool certificatePinVerified = false;
+};
+
 class NativeRegistrationClient
 {
 public:
@@ -111,6 +146,8 @@ public:
                                              const QString& pairingToken, const QString& deviceToken,
                                              const QString& deviceId, const QString& deviceName,
                                              const WebPushSubscription& pushKeys) const;
+
+    PairingStatusResult pairingStatus(const QUrl& statusEndpoint, const RelayAuth& pendingAuth) const;
 
 private:
     HttpClient& m_httpClient;

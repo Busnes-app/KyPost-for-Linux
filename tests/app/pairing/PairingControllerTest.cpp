@@ -16,6 +16,7 @@
 #include <QJsonObject>
 #include <QMap>
 #include <QNetworkAccessManager>
+#include <QDateTime>
 #include <QElapsedTimer>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -71,6 +72,14 @@ private slots:
     void registrationUrlWithAForeignPathIsRejected();
     void punycodeHostsAreShownInAsciiFormNotDecoded();
     void removePairingIsRefusedWhileLocked();
+
+    // New-device approval (#516): register answers 202 for a web-minted token.
+    void approvalThenApprovedCompletesPairing();
+    void approvalDeniedReturnsToTheStart();
+    void cancelApprovalStopsPollingAndWipesTheCredential();
+    void approvalExpiresAtTheServersDeadline();
+    void aNewWaitStillPollsWhileACancelledPollIsOut();
+    void aDirectRegistrationPairsAtOnceWithoutPolling();
 
 private:
     // Builds a kypost://native-pair?... link from a param map, letting
@@ -1571,6 +1580,225 @@ const char* const kRegisterOk =
 // Pairing a different account left the previous one's mail in the inbox,
 // readable by whoever just paired -- hand over a laptop, let the next person
 // pair, and they are reading the previous owner's mail.
+namespace {
+
+// docs/device-approval.md's 202, with a poll interval of 1 s so the tests
+// run in seconds. expiresAt is far enough out not to matter unless a test
+// sets its own.
+QByteArray pendingRegistration(int port, const QString& expiresAt = QString())
+{
+    const QString expires = expiresAt.isEmpty()
+        ? QDateTime::currentDateTimeUtc().addSecs(300).toString(Qt::ISODate)
+        : expiresAt;
+    return httpResponse(202, "Accepted",
+                        QStringLiteral(R"({"ok":false,"synced":false,"status":"pending",)"
+                                       R"("error":"approve this device on the web page that showed the pairing code",)"
+                                       R"("deviceId":"dev-pending","deviceSecret":"pending-secret",)"
+                                       R"("approvalCode":"048213","expiresAt":"%1",)"
+                                       R"("statusEndpoint":"http://127.0.0.1:%2/api/notifications/native/pairing-status",)"
+                                       R"("pollIntervalSeconds":1})")
+                            .arg(expires)
+                            .arg(port)
+                            .toUtf8());
+}
+
+const QByteArray kStillPending = httpResponse(
+    202, "Accepted", R"({"status":"pending","approvalCode":"048213","pollIntervalSeconds":1})");
+
+int statusRequests(const FakeRelayServer& fake)
+{
+    int n = 0;
+    for (const QByteArray& request : fake.receivedRequests())
+        n += request.startsWith("GET /api/notifications/native/pairing-status") ? 1 : 0;
+    return n;
+}
+
+} // namespace
+
+// 202 then 200: the code shows while the server waits, nothing is stored
+// meanwhile, and the approval finishes the pairing exactly as a 200 from
+// register does -- under the deviceId the approval names.
+void PairingControllerTest::approvalThenApprovedCompletesPairing()
+{
+    ReplacementFixture f(kStillPending);
+    f.fake.setResponseForPath("/native/register", pendingRegistration(f.fake.port()));
+    QVERIFY(f.build(QString()));
+    QSignalSpy pairedFromLinkSpy(f.controller.get(), &PairingController::pairedFromLink);
+
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-new")))));
+    f.controller->confirmPendingPair();
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("approval"), 5000);
+    QCOMPARE(f.controller->approvalCode(), QStringLiteral("048213"));
+    QCOMPARE(f.controller->approvalServer(), QStringLiteral("http://127.0.0.1:%1").arg(f.fake.port()));
+    QVERIFY(!f.controller->isPaired());
+    QVERIFY2(!f.pairingStore->load().has_value(), "a pending device is not a pairing");
+    QVERIFY(!f.pairingStore->hasPushKeys());
+
+    QTRY_VERIFY_WITH_TIMEOUT(statusRequests(f.fake) >= 1, 5000);
+    QCOMPARE(f.controller->pairingState(), QStringLiteral("approval"));
+    const QByteArray poll = f.fake.receivedRequests().last();
+    QVERIFY(poll.contains("X-Kypost-Device-Id: dev-pending"));
+    QVERIFY(poll.contains("X-Kypost-Device-Secret: pending-secret"));
+
+    f.fake.setResponse(httpResponse(200, "OK",
+                                    R"({"ok":true,"synced":true,"status":"approved","deviceId":"dev-merged",)"
+                                    R"("deliveryMode":"pull","transport":"unifiedpush"})"));
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("paired"), 8000);
+    QVERIFY(f.controller->isPaired());
+    QCOMPARE(f.controller->deviceId(), QStringLiteral("dev-merged"));
+    QCOMPARE(pairedFromLinkSpy.count(), 1);
+    QVERIFY(f.controller->approvalCode().isEmpty());
+
+    const std::optional<DevicePairing> stored = f.pairingStore->load();
+    QVERIFY(stored.has_value());
+    QCOMPARE(stored->subscriberId, QStringLiteral("sub-new"));
+    QCOMPARE(stored->deviceId, QStringLiteral("dev-merged"));
+    QCOMPARE(stored->deviceSecret, QStringLiteral("pending-secret"));
+    QVERIFY(f.pairingStore->hasPushKeys());
+    QCOMPARE(f.settingsStore->deliveryMode(), QStringLiteral("pull"));
+
+    // Polling stopped with the wait.
+    const int polls = statusRequests(f.fake);
+    QTest::qWait(1500);
+    QCOMPARE(statusRequests(f.fake), polls);
+}
+
+// 410 (denied, expired or unknown) goes back to the start with the reason,
+// and leaves the account that was already here exactly as it was.
+void PairingControllerTest::approvalDeniedReturnsToTheStart()
+{
+    ReplacementFixture f(httpResponse(410, "Gone",
+                                      R"({"status":"rejected","error":"this pairing was denied or has expired; )"
+                                      R"(scan a new pairing code"})"));
+    f.fake.setResponseForPath("/native/register", pendingRegistration(f.fake.port()));
+    QVERIFY(f.build(QStringLiteral("sub-previous")));
+
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-new")))));
+    f.controller->confirmPendingPair();
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("approval"), 5000);
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("idle"), 5000);
+
+    QCOMPARE(f.controller->pairingError(), QStringLiteral("Not approved: denied or timed out. Scan a new code."));
+    QVERIFY(f.controller->approvalCode().isEmpty());
+    QCOMPARE(f.purgeCalls, 0);
+    const std::optional<DevicePairing> after = f.pairingStore->load();
+    QVERIFY(after.has_value());
+    QCOMPARE(after->subscriberId, QStringLiteral("sub-previous"));
+    QCOMPARE(after->deviceSecret, QStringLiteral("secret-old"));
+
+    // A new link is accepted again.
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-new")))));
+    QCOMPARE(f.controller->pairingState(), QStringLiteral("confirm"));
+}
+
+// Cancel stops the polling at once and nothing of the pending device
+// survives: the next poll would have answered "approved".
+void PairingControllerTest::cancelApprovalStopsPollingAndWipesTheCredential()
+{
+    ReplacementFixture f(httpResponse(200, "OK",
+                                      R"({"ok":true,"synced":true,"status":"approved","deviceId":"dev-pending",)"
+                                      R"("deliveryMode":"pull","transport":"unifiedpush"})"));
+    f.fake.setResponseForPath("/native/register", pendingRegistration(f.fake.port()));
+    QVERIFY(f.build(QString()));
+
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-new")))));
+    f.controller->confirmPendingPair();
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("approval"), 5000);
+
+    // Before the first poll (due in 1 s), whose answer would be an approval.
+    f.controller->cancelApproval();
+    QCOMPARE(f.controller->pairingState(), QStringLiteral("idle"));
+    QVERIFY(f.controller->pairingError().isEmpty());
+    QVERIFY(f.controller->approvalCode().isEmpty());
+    QVERIFY(f.controller->approvalServer().isEmpty());
+
+    QTest::qWait(2500);
+    QCOMPARE(statusRequests(f.fake), 0);
+    QCOMPARE(f.controller->pairingState(), QStringLiteral("idle"));
+    QVERIFY(!f.controller->isPaired());
+    QVERIFY(!f.pairingStore->load().has_value());
+    QVERIFY(!f.pairingStore->hasPushKeys());
+}
+
+// Cancel while a poll is out, then pair again before that poll times out:
+// the new wait must still poll, and the stale answer must not touch it.
+void PairingControllerTest::aNewWaitStillPollsWhileACancelledPollIsOut()
+{
+    ReplacementFixture f(kStillPending);
+    f.fake.setResponseForPath("/native/register", pendingRegistration(f.fake.port()));
+    f.fake.holdNextForPath("/native/pairing-status");
+    QVERIFY(f.build(QString()));
+
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-new")))));
+    f.controller->confirmPendingPair();
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("approval"), 5000);
+    QTRY_COMPARE_WITH_TIMEOUT(statusRequests(f.fake), 1, 5000); // held: no answer until the 3 s timeout
+    f.controller->cancelApproval();
+
+    f.fake.setResponse(httpResponse(200, "OK",
+                                    R"({"ok":true,"synced":true,"status":"approved","deviceId":"dev-pending",)"
+                                    R"("deliveryMode":"pull","transport":"unifiedpush"})"));
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-new")))));
+    f.controller->confirmPendingPair();
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("approval"), 5000);
+    // The new wait's first poll is due at 1 s, while the held one is still out.
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("paired"), 2500);
+    QVERIFY(f.controller->isPaired());
+
+    // The held poll is still out; receivers must outlive shutdown() (NetworkExecutor.h).
+    f.executor->shutdown();
+}
+
+// The server forgets a pending device at expiresAt; the app stops there too
+// and says so, rather than polling a device that no longer exists.
+void PairingControllerTest::approvalExpiresAtTheServersDeadline()
+{
+    ReplacementFixture f(kStillPending);
+    QVERIFY(f.build(QString()));
+    f.fake.setResponseForPath(
+        "/native/register",
+        pendingRegistration(f.fake.port(), QDateTime::currentDateTimeUtc().addSecs(2).toString(Qt::ISODate)));
+
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-new")))));
+    f.controller->confirmPendingPair();
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("approval"), 5000);
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("idle"), 8000);
+    QCOMPARE(f.controller->pairingError(), QStringLiteral("Not approved: denied or timed out. Scan a new code."));
+    QVERIFY(f.controller->approvalCode().isEmpty());
+    QVERIFY(!f.pairingStore->load().has_value());
+    const int polls = statusRequests(f.fake);
+    QVERIFY(polls >= 1);
+    QTest::qWait(1500);
+    QCOMPARE(statusRequests(f.fake), polls);
+}
+
+// A token with the signed `direct` claim gets 200 from register, now with
+// "status":"approved". That is today's path: paired at once, no wait, no poll.
+void PairingControllerTest::aDirectRegistrationPairsAtOnceWithoutPolling()
+{
+    ReplacementFixture f(httpResponse(200, "OK",
+                                      R"({"ok":true,"synced":true,"status":"approved","deviceId":"dev-direct",)"
+                                      R"("deviceSecret":"direct-secret","devices":1,"deliveryMode":"push",)"
+                                      R"("transport":"unifiedpush"})"));
+    QVERIFY(f.build(QString()));
+    QSignalSpy pairedFromLinkSpy(f.controller.get(), &PairingController::pairedFromLink);
+    QStringList states;
+    connect(f.controller.get(), &PairingController::pairingStateChanged, f.controller.get(),
+            [&]() { states << f.controller->pairingState(); });
+
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-new")))));
+    f.controller->confirmPendingPair();
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("paired"), 5000);
+
+    QCOMPARE(states, (QStringList { QStringLiteral("confirm"), QStringLiteral("working"), QStringLiteral("paired") }));
+    QCOMPARE(f.controller->deviceId(), QStringLiteral("dev-direct"));
+    QCOMPARE(pairedFromLinkSpy.count(), 1);
+    QCOMPARE(f.pairingStore->load()->deviceSecret, QStringLiteral("direct-secret"));
+    QTest::qWait(1500);
+    QCOMPARE(statusRequests(f.fake), 0);
+    QCOMPARE(f.fake.connectionCount(), 1);
+}
+
 void PairingControllerTest::pairingADifferentAccountPurgesThePreviousAccountsCachedData()
 {
     ReplacementFixture f(httpResponse(200, "OK", kRegisterOk));

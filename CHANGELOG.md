@@ -28,6 +28,17 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- New devices need approval (KyPost-Server #516). When the server answers a
+  pairing link with "waiting for approval", the pairing page shows a
+  six-digit code, large, and the server it is waiting on: approve the device
+  on the KyPost web page that showed the code, and check the code matches.
+  KyPost asks the server every 3 seconds (backing off on errors) while that
+  page is open, and finishes pairing as before once you approve. Denied or
+  timed out after 5 minutes, it goes back to the start with "Not approved:
+  denied or timed out. Scan a new code." Cancel, or closing or locking the
+  page, stops it. The waiting device's credential is kept in memory only, and
+  an account already paired stays untouched until the new device is approved.
+  Sign-on links the server marks as direct still pair at once.
 - Every icon is now an outline glyph (council round 2): the header actions,
   the reader toolbar, Settings and the rest match the rail's outline icons
   instead of mixing in filled ones.
@@ -70,6 +81,11 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Upgrade impact
 
+- Pairing with a KyPost server from 0.6.0 on needs the approval step above;
+  older KyPost for Linux builds report it as "The server did not return a
+  usable device credential." An existing pairing is not affected. The
+  registration now also sends the OS name (`osVersion`), shown on the
+  approval prompt.
 - A saved theme carries over. Busnes Light or Busnes Dark becomes Busnes with
   that half kept; Follow system becomes Busnes following the system; an old
   Matter, Ocean, White Cliffs, Forest or Ky palette becomes its pair with that

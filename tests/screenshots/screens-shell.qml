@@ -8,7 +8,7 @@ QtObject {
         AppLock.locked = false; Mfa.open = false; MailApp.empty = false; MailApp.isBusy = false
         MailApp.lastError = ""; MailApp.clearSearch(); root.searchOpen = false
         ContactsApp.empty = false; ContactsApp.reload()
-        Pairing.pairingState = "idle"; Pairing.isPaired = true
+        Pairing.pairingState = "idle"; Pairing.isPaired = true; Pairing.pairingError = ""
         Invites.confirmation = ({})
         root.closeOverlays(); root.selectFolder("INBOX"); root.navigate("inbox")
     }
@@ -85,6 +85,11 @@ QtObject {
         {name: "pgp-scan", setup: function (root) { root.openPgpScan() }},
         {name: "pairing", setup: function (root) { Pairing.isPaired = false; root.openPairing() }},
         {name: "pairing-confirm", setup: function (root) { Pairing.pairingState = "confirm" }},
+        {name: "pairing-approval", setup: function (root) {
+            Pairing.isPaired = false; root.openPairing(); Pairing.pairingState = "approval" }},
+        {name: "pairing-not-approved", setup: function (root) {
+            Pairing.isPaired = false; root.openPairing()
+            Pairing.pairingError = "Not approved: denied or timed out. Scan a new code." }},
         {name: "unlock", setup: function (root) { AppLock.locked = true }},
         {name: "inbox-empty", setup: function (root) { MailApp.empty = true; MailApp.reload() }},
         {name: "inbox-loading", setup: function (root) { MailApp.isBusy = true }},
