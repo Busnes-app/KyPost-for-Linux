@@ -122,8 +122,10 @@ the session can.
   `DeviceRegistrationService::reregistrationParams` (`core/domain/DeviceRegistrationService.cpp`).
 - **Pairing without `pin=` is trust on first use,** and the pin names the issuing CA's key,
   so a certificate from the same issuer passes it ([SECURITY.md](../SECURITY.md)).
-- **The Flatpak remote follows `main`,** and a bundle is checked only if the user passes
-  `--gpg-file` ([VERIFYING-RELEASES.md](VERIFYING-RELEASES.md)).
+- **The Flatpak remote follows `main`.** A release bundle carries no key, so its signature
+  is checked against the release key only when the user passes `--gpg-file`, and that check
+  is decisive only in an installation that trusts no other key
+  ([VERIFYING-RELEASES.md](VERIFYING-RELEASES.md#a-release-bundle)).
 - **A pairing made without push keys** takes plaintext mail notifications through the
   distributor (sign-in challenges are still refused unless encrypted).
 - **A build without SQLCipher** keeps an unencrypted database ([docs/BUILDING.md](BUILDING.md)).

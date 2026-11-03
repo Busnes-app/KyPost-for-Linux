@@ -100,41 +100,49 @@ build: `gh-pages` holds a single commit, which each publish replaces.
 
 ## A release bundle
 
+Check the bundle's signature in a new, empty Flatpak installation, where the key you pass
+with `--gpg-file` is the only key Flatpak trusts:
+
 ```bash
 v=0.6.0
 gh release download v$v -R Busnes-app/KyPost-for-Linux -p kypost-x86_64.flatpak
 gh release view v$v -R Busnes-app/KyPost-for-Linux --json assets --jq '.assets[]|"\(.digest)  \(.name)"'
 sha256sum kypost-x86_64.flatpak
 sed -n 's/^GPGKey=//p' kypost.flatpakrepo | base64 -d > kypost.gpg
-flatpak --user install --bundle --gpg-file=kypost.gpg kypost-x86_64.flatpak
-flatpak --user info com.kysecurity.mail
+check=$(mktemp -d)
+FLATPAK_USER_DIR=$check flatpak --user install --no-deps --bundle --gpg-file=kypost.gpg kypost-x86_64.flatpak
+FLATPAK_USER_DIR=$check flatpak --user info com.kysecurity.mail
+rm -rf "$check"
 ```
 
 For `v0.6.0`, `sha256sum` printed
 `6193009a0a89dae544e59859c306e695c5e251f00e288dc55cdb97b3fbec5823`, the same as GitHub's
 `digest` for `kypost-x86_64.flatpak` (`kypost-aarch64.flatpak`:
 `7c8e7e7dc4fd0f046b5dcdbf511e6343221f916588604c6af63c55029af91980`, also matching). The
-install exited 0 and `flatpak info` reported `Version: 0.6.0` and commit
+digest comes from the same GitHub account as the bundle, so it shows the download is
+intact, not who made it; the signature check does that. The install exited 0 and
+`flatpak info` reported `Version: 0.6.0` and commit
 `9d6a5f1e3ff1ef878aa8d238c6c55fd8d34efb756e82bc3eb1f91a59c59a6222`. The aarch64 bundle
-also installed with the KyPost key and was refused with another key. These installs, and
-the ones below, were run with `--no-deps`, so the runtime was not fetched. The app was
-never started.
+also installed with the KyPost key and was refused with another key. `--no-deps` skips
+the runtime, which the check does not need. The app was never started.
 
-In an installation that does not already trust the KyPost key, another key in
-`--gpg-file` stops the install with exit 1:
+With another key in `--gpg-file`, the install in the empty installation stops with exit 1:
 
 ```
 Error: Failed to install bundle com.kysecurity.mail: GPG signatures found, but none are in trusted keyring
 ```
 
-In an installation that already has the `kypost` remote, the bundle installs with any
-`--gpg-file`, because its signature checks against the key that remote added.
+**Do not rely on `--gpg-file` in your everyday installation.** There, it is not the only
+key Flatpak trusts. In an installation that already had the `kypost` remote, the bundle
+installed with a wrong key in `--gpg-file`. Whether the keys of other remotes, such as
+Flathub's, also count was not tested. Checking in an empty installation avoids the question.
 
-**Pass `--gpg-file`.** The bundle is signed but does not carry the key or the repository
-URL (`build-bundle` runs without `--gpg-keys` or `--repo-url`). Without `--gpg-file`, the
-install also exits 0, and the signature is not checked against the release key. The
-installed app's origin remote has an empty `url=`, so it never updates
-([DISTRIBUTION.md](DISTRIBUTION.md), "Known gap").
+The bundle is signed but does not carry the key or the repository URL (`build-bundle`
+runs without `--gpg-keys` or `--repo-url`). Without `--gpg-file`, the install also exits
+0, and the signature is not checked against the release key. An app installed from the
+bundle has an origin remote with an empty `url=`, so it never updates
+([DISTRIBUTION.md](DISTRIBUTION.md), "Known gap"). For updates, install from the remote
+instead.
 
 ## What this project cannot offer
 
