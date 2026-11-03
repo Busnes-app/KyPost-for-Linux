@@ -37,16 +37,23 @@ curl -sSfO https://busnes-app.github.io/KyPost-for-Linux/kypost.flatpakrepo
 sed -n 's/^GPGKey=//p' kypost.flatpakrepo | base64 -d | gpg --show-keys --with-fingerprint
 ```
 
-The second command prints the key block above. The fingerprint must be the one above. This
-page and the `.flatpakrepo` are served from the same GitHub account, so read the
-fingerprint from a copy of this repository you trust, not only from the website.
+The second command prints the key block above. It must show exactly one key, with the
+fingerprint above: Flatpak trusts every key in `GPGKey`. This page and the `.flatpakrepo`
+are served from the same GitHub account, so read the fingerprint from a copy of this
+repository you trust, not only from the website.
 
 ## The remote
 
 ```bash
-flatpak --user remote-add --if-not-exists kypost https://busnes-app.github.io/KyPost-for-Linux/kypost.flatpakrepo
+flatpak --user remote-add kypost kypost.flatpakrepo
 flatpak --user remote-info kypost com.kysecurity.mail
 ```
+
+Add the remote from the file you just checked, not from the URL: fetching the URL again
+could return a different file. Leave out `--if-not-exists`. With it, an existing remote
+named `kypost`, with whatever key it was added with, is kept silently. Without it,
+`remote-add` stops with `error: Remote kypost already exists` (exit 1); check or remove
+that remote first.
 
 `remote-info` succeeds only if the summary signature checks out against the key. It
 printed, in part:
