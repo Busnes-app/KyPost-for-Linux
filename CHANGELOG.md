@@ -75,8 +75,8 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 - A contact field removed elsewhere before this version stays on this device
   until that contact changes again.
 - A device that was unpaired before this version does not know whose cache it
-  kept, so pairing a different account on it does not clear that cache.
-  Unpairing and pairing from this version on does.
+  kept. The next pairing on it clears that cache and fetches mail again, even
+  for the same account.
 
 ## Source notes at 6994f6b0
 

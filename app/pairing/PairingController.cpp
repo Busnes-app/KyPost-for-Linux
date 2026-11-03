@@ -684,10 +684,12 @@ void PairingController::setDistributorActive(bool active)
     emit pushStatusChanged();
 }
 
-void PairingController::setAccountReplacementHandlers(std::function<bool()> purge, std::function<void()> escalate)
+void PairingController::setAccountReplacementHandlers(std::function<bool()> purge, std::function<void()> escalate,
+                                                       std::function<bool()> cacheHoldsData)
 {
     m_purgeCachedAccountData = std::move(purge);
     m_escalateToFullWipe = std::move(escalate);
+    m_cacheHoldsData = std::move(cacheHoldsData);
 }
 
 // Runs after a registration has SUCCEEDED and before its result is persisted.
@@ -738,6 +740,8 @@ bool PairingController::purgePreviousAccountIfReplaced(const PairingParams& para
 // account, or failing that the one "Remove pairing" left the cache behind
 // for. Without the second, unpair-then-pair-someone-else skipped the purge
 // and handed the new account the old one's mail and queued contact edits.
+// A cache with neither (left by an unpair from before the record existed)
+// belongs to nobody known, so it counts as another account's.
 void PairingController::capturePreviousAccount(const std::optional<DevicePairing>& paired)
 {
     if (paired.has_value() && !paired->subscriberId.isEmpty()) {
@@ -747,7 +751,7 @@ void PairingController::capturePreviousAccount(const std::optional<DevicePairing
         return;
     }
     const std::optional<std::pair<QString, QString>> unpaired = m_settingsStore.unpairedCacheOwner();
-    m_registrationHadPreviousAccount = unpaired.has_value();
+    m_registrationHadPreviousAccount = unpaired.has_value() || (m_cacheHoldsData && m_cacheHoldsData());
     m_registrationStartSubscriberId = unpaired ? unpaired->first : QString();
     m_registrationStartServerBaseUrl = unpaired ? unpaired->second : QString();
 }

@@ -1301,7 +1301,10 @@ quint64 MailController::confirmPickupFallbackSend(quint64 token)
 {
     if (!m_pendingSend.valid || m_pendingSend.token != token)
         return 0;
-    if (!m_pairingStore.stillCurrent(m_pendingSend.owner)) {
+    // The account, not the registration: a Reconnect of the same account
+    // mints a new device id, and its refused message is still its own.
+    const QString currentSubscriber = m_pairingStore.currentIdentity().subscriberId;
+    if (currentSubscriber.isEmpty() || currentSubscriber != m_pendingSend.owner.subscriberId) {
         discardPendingSend(token);
         return 0;
     }

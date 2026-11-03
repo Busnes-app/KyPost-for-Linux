@@ -62,6 +62,7 @@ private slots:
     void pairingTheSameAccountAgainPurgesNothing();
     void unpairingThenPairingAnotherAccountStillPurges();
     void unpairingThenPairingTheSameAccountKeepsTheCache();
+    void aCacheWithNoKnownOwnerIsPurgedBeforePairing();
     void aFailedRegistrationDestroysNothing();
     void aFailedPurgeRefusesTheNewPairingAndEscalates();
     void anUnreadableSecretStoreRefusesToPairRatherThanSkipThePurge();
@@ -1523,6 +1524,7 @@ struct ReplacementFixture
     int purgeCalls = 0;
     int escalateCalls = 0;
     bool purgeSucceeds = true;
+    bool cacheHoldsData = false;
     // Swaps SecureStoreFile for a store whose reads FAIL rather than answer
     // "absent" -- a locked wallet, no Secret Service, a D-Bus timeout.
     bool storeUnreadable = false;
@@ -1564,7 +1566,8 @@ struct ReplacementFixture
         controller = std::make_unique<PairingController>(*service, *pairingStore, *settingsStore, *pinSink,
                                                           *executor);
         controller->setAccountReplacementHandlers([this]() { ++purgeCalls; return purgeSucceeds; },
-                                                   [this]() { ++escalateCalls; });
+                                                   [this]() { ++escalateCalls; },
+                                                   [this]() { return cacheHoldsData; });
         return true;
     }
 
@@ -1971,6 +1974,24 @@ void PairingControllerTest::unpairingThenPairingTheSameAccountKeepsTheCache()
     QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("paired"), 5000);
 
     QCOMPARE(f.purgeCalls, 0);
+}
+
+// An unpair from before the owner record existed left a cache with no
+// pairing and no record. Whose it is cannot be known, so it is purged; an
+// empty cache (a fresh install) is not touched.
+void PairingControllerTest::aCacheWithNoKnownOwnerIsPurgedBeforePairing()
+{
+    for (const bool holdsData : { false, true }) {
+        ReplacementFixture f(httpResponse(200, "OK", kRegisterOk));
+        f.cacheHoldsData = holdsData;
+        QVERIFY(f.build(QString()));
+
+        QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-new")))));
+        f.controller->confirmPendingPair();
+        QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("paired"), 5000);
+
+        QCOMPARE(f.purgeCalls, holdsData ? 1 : 0);
+    }
 }
 
 // ORDER IS THE DESIGN. Purging first would mean a replacement that failed --

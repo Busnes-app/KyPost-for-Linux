@@ -95,6 +95,11 @@ public:
     // all, so it is set explicitly rather than assumed.
     bool wipeAllTables();
 
+    // Whether any account-scoped table has a row. True when it cannot tell:
+    // the callers decide whether to discard sync cursors and whether a cache
+    // of unknown ownership must be purged, and "maybe" must keep both safe.
+    bool holdsAccountData() const;
+
 private:
     // Sets the key, then proves both that SQLCipher is what is on the other
     // end and that the key actually opens this file. See open()'s comment.

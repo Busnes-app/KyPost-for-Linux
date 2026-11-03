@@ -136,9 +136,12 @@ public:
         // so the stored keys are always the ones the relay last accepted.
         WebPushCrypto::Keys m_pushKeys;
         std::optional<RegistrationOutcome> m_refusedOutcome;
-        // The pairing current when the attempt began; finishReregistration()
-        // refuses to save over anything else.
-        PairingIdentity m_owner;
+        // The account paired when the attempt began; finishReregistration()
+        // refuses to save over anything else. The account, not the device
+        // id: every re-registration mints a new device id, and two
+        // re-registrations in flight together must let the later one land.
+        QString m_ownerSubscriberId;
+        QString m_ownerServerBaseUrl;
         bool m_restorePin = false;
     };
 
@@ -159,7 +162,7 @@ public:
     // Phase 3 for an UNATTENDED re-registration of the stored pairing. The
     // user can remove or replace that pairing while the request is out, and
     // finishPair() would then save the old account straight back. So it
-    // finishes only while the pairing beginPair() saw is still current;
+    // finishes only while the account beginPair() saw is still the paired one;
     // otherwise it saves nothing, leaves the pin to whoever owns it now, and
     // reports Failure.
     NativeRegistrationResult finishReregistration(PairAttempt attempt, const PairingParams& params,

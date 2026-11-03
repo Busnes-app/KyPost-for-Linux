@@ -910,7 +910,9 @@ never once run.
   `contacts`, `groups` and `push_notifications` are per-DEVICE. Pairing a
   different account purges them (`LocalDataWipe::wipeCachedAccountData`) --
   also after "Remove pairing", which keeps the cache and records whose it is
-  (`SettingsStore::unpairedCacheOwner`, cleared by every wipe) -- but
+  (`SettingsStore::unpairedCacheOwner`, cleared by every `LocalDataWipe`
+  path); a cache with neither a pairing nor that record (an unpair from an
+  older build) counts as another account's (`Database::holdsAccountData`) -- but
   a request already in flight completes *after* that purge and writes its rows
   back in behind it — the previous account's mail, in the new account's inbox,
   readable by whoever is now holding the machine. So an apply step compares

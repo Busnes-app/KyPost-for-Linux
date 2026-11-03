@@ -108,6 +108,7 @@ private slots:
     void anAbandonedPairAttemptRestoresThePin();
     void aReregistrationThatOutlivesItsPairingSavesNothing_data();
     void aReregistrationThatOutlivesItsPairingSavesNothing();
+    void aLaterReregistrationOfTheSameAccountStillLands();
     void aPairAttemptRefusedByTheGuardsNeverClearsThePin();
 
     // The pairing link's server-published `pin`.
@@ -728,6 +729,50 @@ void DeviceRegistrationServiceTest::aReregistrationThatOutlivesItsPairingSavesNo
     QTest::addColumn<bool>("replaced");
     QTest::newRow("unpaired meanwhile") << false;
     QTest::newRow("another account paired meanwhile") << true;
+}
+
+// Two rotations can put two re-registrations in flight, and the first to land
+// mints a new device id. The later one is still this account's, carries the
+// newer endpoint, and must not be thrown away for the device id alone.
+void DeviceRegistrationServiceTest::aLaterReregistrationOfTheSameAccountStillLands()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    SecureStoreFile secureStore(dir.path());
+    PairingStore pairingStore(secureStore);
+    SettingsStore settingsStore(dir.filePath(QStringLiteral("settings.ini")));
+
+    DevicePairing existing;
+    existing.subscriberId = QStringLiteral("sub-1");
+    existing.serverBaseUrl = QStringLiteral("http://relay.example");
+    existing.registrationUrl = QStringLiteral("http://relay.example/api/notifications/native/register");
+    existing.deviceId = QStringLiteral("dev-1");
+    existing.deviceSecret = QStringLiteral("secret-1");
+    QVERIFY(pairingStore.save(existing));
+
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    NativeRegistrationClient client(http);
+    HttpClientPinSink pinSink(http);
+    DeviceRegistrationService service(client, pairingStore, settingsStore, pinSink);
+
+    const std::optional<PairingParams> params = service.reregistrationParams();
+    QVERIFY(params.has_value());
+    DeviceRegistrationService::PairAttempt attempt = service.beginPair(*params);
+
+    // The earlier re-registration landed meanwhile, under a new device id.
+    DevicePairing earlier = existing;
+    earlier.deviceId = QStringLiteral("dev-1a");
+    QVERIFY(pairingStore.save(earlier));
+
+    NativeRegistrationResult served;
+    served.outcome = RegistrationOutcome::Success;
+    served.response.deviceId = QStringLiteral("dev-1b");
+    served.response.deviceSecret = QStringLiteral("fresh");
+
+    const NativeRegistrationResult applied = service.finishReregistration(std::move(attempt), *params, served);
+    QCOMPARE(applied.outcome, RegistrationOutcome::Success);
+    QCOMPARE(PairingStore(secureStore).load()->deviceId, QStringLiteral("dev-1b"));
 }
 
 // An endpoint rotation re-registers in the background. "Remove pairing"

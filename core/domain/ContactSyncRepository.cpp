@@ -13,6 +13,7 @@
 #include <QDateTime>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSet>
 #include <QSqlDatabase>
 #include <QStringList>
 #include <QUrl>
@@ -341,7 +342,9 @@ ContactSyncOutcome ContactSyncRepository::applySync(const ContactSyncPlan& plan,
                  ContactSyncSummary{ static_cast<int>(pending.size()), 0, 0 },
                  QString(),
                  {},
-                 /*fullPullNeeded=*/true };
+                 // Only from a real cursor: a relay that answered since=0 with
+                 // tooOld would otherwise be asked again forever.
+                 /*fullPullNeeded=*/plan.cursor > 0 };
     }
 
     QVector<Contact> pendingCreates;
@@ -373,8 +376,20 @@ ContactSyncOutcome ContactSyncRepository::applySync(const ContactSyncPlan& plan,
                 return false;
         }
 
+        // Contacts the user edited while this request was out: their queued
+        // change is newer than this reply and goes up on the next sync, so the
+        // cached row keeps the user's version until then.
+        QSet<QString> editedMeanwhile;
+        QSet<int> pushedIds;
+        for (const PendingContactChangeRecord& record : pending)
+            pushedIds.insert(record.id);
+        for (const PendingContactChangeRecord& record : m_pendingDao.findAll()) {
+            if (!pushedIds.contains(record.id))
+                editedMeanwhile.insert(record.contactUid);
+        }
+
         for (const Contact& c : result.changed) {
-            if (c.uid.isEmpty())
+            if (c.uid.isEmpty() || editedMeanwhile.contains(c.uid))
                 continue;
             // The relay sends every changed contact WHOLE (contacts.Store::
             // ChangedSince), and its omitempty drops a cleared field from the
