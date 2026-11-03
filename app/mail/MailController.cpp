@@ -1173,11 +1173,12 @@ quint64 MailController::sendMail(const QString& to, const QString& cc, const QSt
     const quint64 sendToken = m_nextPendingSendToken++;
     captureDraftReplacement(sendToken, draftToken);
 
-    // Field order matters -- PendingSend is aggregate-initialized. Thirteen
+    // Field order matters -- PendingSend is aggregate-initialized. Fourteen
     // fields: valid, to, cc, bcc, subject, body, mode, attachments, sign,
-    // encrypt, token, replyToMessageId, replyToMailbox.
+    // encrypt, token, replyToMessageId, replyToMailbox, owner.
     m_pendingSend = PendingSend{ true, to, cc, bcc, subject, body, sendMode, attachments,
-                                 sign, encrypt, sendToken, replyToMessageId, replyToMailbox };
+                                 sign, encrypt, sendToken, replyToMessageId, replyToMailbox,
+                                 m_pairingStore.currentIdentity() };
     // The pickup re-send carries no sendAt, so a scheduled send never offers it.
     if (sendAt.isValid())
         m_pendingSend = {};
@@ -1300,6 +1301,10 @@ quint64 MailController::confirmPickupFallbackSend(quint64 token)
 {
     if (!m_pendingSend.valid || m_pendingSend.token != token)
         return 0;
+    if (!m_pairingStore.stillCurrent(m_pendingSend.owner)) {
+        discardPendingSend(token);
+        return 0;
+    }
 
     QUrl serverBaseUrl;
     RelayAuth auth;
@@ -1337,9 +1342,12 @@ quint64 MailController::confirmPickupFallbackSend(quint64 token)
 }
 
 // Cancelling the dialog drops the cached plaintext rather than holding it
-// for a confirm that may never come.
-void MailController::discardPendingSend()
+// for a confirm that may never come. Only the send the dialog was opened for:
+// another composer's newer refusal may be pending by now.
+void MailController::discardPendingSend(quint64 token)
 {
+    if (!m_pendingSend.valid || m_pendingSend.token != token)
+        return;
     settleDraftReplacement(m_pendingSend.token, false);
     m_pendingSend = {};
 }
@@ -2183,7 +2191,9 @@ MailController::ClientEncryptedOutcome runClientEncryptedSend(
     message.cc = ccList;
     message.subject = subject;
     message.body = body;
-    message.mode = QStringLiteral("plain");
+    // The composer hands every send its editor HTML (sendMail() sends the same
+    // body as "html"). Labelled text/plain, recipients saw the markup.
+    message.mode = QStringLiteral("html");
     message.date = date;
     // Inside the encrypted part, so the filenames are encrypted too.
     message.attachments = attachments;

@@ -634,6 +634,15 @@ void PairingController::removePairing()
             client.deregister(serverBaseUrl, deviceId, deviceSecret);
         });
     }
+    // The cache stays (unpair is not a wipe), so remember whose it is. If
+    // that cannot be written, erase it now rather than leave it for whoever
+    // pairs next.
+    if (pairing.has_value() && !pairing->subscriberId.isEmpty()
+        && !m_settingsStore.setUnpairedCacheOwner(pairing->subscriberId, pairing->serverBaseUrl)) {
+        qCritical("PairingController: could not record whose cache survived the unpair -- erasing it");
+        if (!m_purgeCachedAccountData || !m_purgeCachedAccountData())
+            qCritical("PairingController: and the cached data could not be erased either");
+    }
     if (!m_pairingStore.clear()) {
         // Local state still clears below, but say so: "unpaired" with the
         // credential still sitting in the keychain is a different situation
@@ -723,6 +732,24 @@ bool PairingController::purgePreviousAccountIfReplaced(const PairingParams& para
     if (m_escalateToFullWipe)
         m_escalateToFullWipe();
     return false;
+}
+
+// Whose cached data a registration starting now would replace: the paired
+// account, or failing that the one "Remove pairing" left the cache behind
+// for. Without the second, unpair-then-pair-someone-else skipped the purge
+// and handed the new account the old one's mail and queued contact edits.
+void PairingController::capturePreviousAccount(const std::optional<DevicePairing>& paired)
+{
+    if (paired.has_value() && !paired->subscriberId.isEmpty()) {
+        m_registrationHadPreviousAccount = true;
+        m_registrationStartSubscriberId = paired->subscriberId;
+        m_registrationStartServerBaseUrl = paired->serverBaseUrl;
+        return;
+    }
+    const std::optional<std::pair<QString, QString>> unpaired = m_settingsStore.unpairedCacheOwner();
+    m_registrationHadPreviousAccount = unpaired.has_value();
+    m_registrationStartSubscriberId = unpaired ? unpaired->first : QString();
+    m_registrationStartServerBaseUrl = unpaired ? unpaired->second : QString();
 }
 
 bool PairingController::reregistrationRejected() const
@@ -840,10 +867,7 @@ void PairingController::reconnectToServer()
         applyRegistrationResult(out);
         return;
     }
-    const std::optional<DevicePairing>& previousAccount = previous.pairing;
-    m_registrationHadPreviousAccount = previousAccount.has_value() && !previousAccount->subscriberId.isEmpty();
-    m_registrationStartSubscriberId = previousAccount.has_value() ? previousAccount->subscriberId : QString();
-    m_registrationStartServerBaseUrl = previousAccount.has_value() ? previousAccount->serverBaseUrl : QString();
+    capturePreviousAccount(previous.pairing);
 
     // Phase 1 here: suspends the pin, which is what lets the request reach a
     // server presenting the NEW certificate at all. If this attempt is
@@ -932,10 +956,7 @@ void PairingController::pairFromParsedParams(PairingParams params)
         applyRegistrationResult(out);
         return;
     }
-    const std::optional<DevicePairing>& previousAccount = previous.pairing;
-    m_registrationHadPreviousAccount = previousAccount.has_value() && !previousAccount->subscriberId.isEmpty();
-    m_registrationStartSubscriberId = previousAccount.has_value() ? previousAccount->subscriberId : QString();
-    m_registrationStartServerBaseUrl = previousAccount.has_value() ? previousAccount->serverBaseUrl : QString();
+    capturePreviousAccount(previous.pairing);
 
     // Phase 1 on this thread: the guards, the sealing-key snapshot and the
     // certificate-pin suspension all touch PairingStore or the pin fan-out,

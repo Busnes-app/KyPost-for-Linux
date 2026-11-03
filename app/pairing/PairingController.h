@@ -344,6 +344,7 @@ private:
     // Returns false when the caller must abandon the pairing entirely -- see
     // the .cpp for why the purge deliberately happens in that order.
     bool purgePreviousAccountIfReplaced(const PairingParams& params);
+    void capturePreviousAccount(const std::optional<DevicePairing>& paired);
 
     // Takes the already-validated params confirmPendingPair() held, fills in
     // deviceName, sets pairingState="working", dispatches the registration,

@@ -114,7 +114,7 @@ private:
     void setBusy(bool busy);
     void setLastError(const QString& error);
     // The completion halves, running back on this object's own thread.
-    void applyTokenOutcome(const PgpQrTokenOutcome& outcome);
+    void applyTokenOutcome(const PgpQrTokenOutcome& outcome, const PairingIdentity& requestedFor);
     void applyKeyResult(const PgpQrKeyResult& result, const PgpQrCode& code);
     void refuseScan(const QString& error);
     static QString mismatchError();

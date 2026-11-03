@@ -120,7 +120,7 @@ QtObject {
     function reopenDecryptedDraft() {}
     function releaseDraft() {}
     function forwardWithAttachments() { return false }
-    function discardPendingSend() {}
+    function discardPendingSend(token) {}
     function confirmPickupFallbackSend() {}
     function preflightRecipients() { return ({}) }
     function replyAllRecipients() { return ({to: [], cc: []}) }

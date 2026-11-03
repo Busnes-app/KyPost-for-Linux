@@ -47,14 +47,14 @@ Item {
     // than navigate away.
     signal draftSaved()
     // Detach into a standalone top-level window (Desktop mode only -- see
-    // the pop-out IconButton below). Carries the current To/Subject/Body so
-    // the draft continues in the new window; Cc/Bcc/attachments don't
-    // transfer (Compose's own initialTo/initialSubject/initialBody seed API
-    // -- the same one Reply/Reply All/Forward already use via
-    // EmailDetail.composeRequested -- doesn't carry those either). The host
-    // is expected to close this embedded copy in response, same "host
-    // decides what to do" shape as sendSucceeded() above.
-    signal popOutRequested(string to, string subject, string body, bool bodyIsHtml, var replyTo)
+    // the pop-out IconButton below). Carries the whole composition --
+    // recipients, subject, body, attachment paths and the Encrypt/Sign
+    // choice -- as currentDraftForPopOut()'s snapshot, which the new window
+    // takes as a token-less restoredDraft. Dropping Encrypt here sent a
+    // message the user had asked to encrypt in the clear. The host is
+    // expected to close this embedded copy in response, same "host decides
+    // what to do" shape as sendSucceeded() above.
+    signal popOutRequested(var draft, var replyTo)
 
     implicitWidth: 360
     implicitHeight: 640
@@ -175,6 +175,9 @@ Item {
         seedTokensFromString(ccField, root.restoredDraft.cc || "")
         seedTokensFromString(bccField, root.restoredDraft.bcc || "")
         root.attachmentPaths = root.restoredDraft.paths || []
+        // Only a pop-out snapshot carries these; a saved draft leaves both off.
+        encryptToggle.checked = root.restoredDraft.encrypt === true
+        signToggle.checked = root.restoredDraft.sign === true
         subjectField.text = root.restoredDraft.subject || root.initialSubject
         root.notice = root.restoredDraft.notice || root.initialNotice
         // Every path goes through loadInitialHtml, so through seedScript's
@@ -285,11 +288,15 @@ Item {
 
     // Commits any still-uncommitted address text the same way trySend()
     // does, so a pop-out doesn't silently drop a typed-but-not-yet-tokenized
-    // "To" address.
+    // address.
     function currentDraftForPopOut(callback) {
         toField.commitInputAsToken()
+        ccField.commitInputAsToken()
+        bccField.commitInputAsToken()
         bodyEditor.requestSendableHtml(function(result) {
-            callback({ to: toField.joinedText, subject: subjectField.text, body: result.html })
+            callback({ to: toField.joinedText, cc: ccField.joinedText, bcc: bccField.joinedText,
+                       subject: subjectField.text, body: result.html, paths: root.attachmentPaths.slice(),
+                       encrypt: encryptToggle.checked, sign: signToggle.checked })
         })
     }
 
@@ -376,7 +383,7 @@ Item {
                 tooltip: i18n("Open in new window")
                 onClicked: {
                     root.currentDraftForPopOut(function(draft) {
-                        root.popOutRequested(draft.to, draft.subject, draft.body, true, root.replyTo)
+                        root.popOutRequested(draft, root.replyTo)
                     })
                 }
             }
@@ -834,8 +841,8 @@ Item {
             // stay disabled for the rest of its life, because sendCompleted
             // for the refusal deliberately left it set.
             root.awaitingPickupConfirmation = false
+            MailApp.discardPendingSend(root.mySendToken)
             root.mySendToken = 0
-            MailApp.discardPendingSend()
         }
     }
 

@@ -124,8 +124,11 @@ QVector<PushNotification> PushRepository::pullOnce(qint64 minCreatedAtMs)
 
 QString PushRepository::resolvePullEndpoint(const QString& serverBaseUrl) const
 {
+    // Same origin only, checked here as well as when it was written:
+    // settings.ini is a plain file, and this request carries the device
+    // secret to whatever host it names, outside the paired relay's pin.
     const QString stored = m_settingsStore.pullEndpoint();
-    if (!stored.isEmpty())
+    if (!stored.isEmpty() && sameUrlOrigin(QUrl(stored), QUrl(serverBaseUrl)))
         return stored;
 
     return joinUrlPath(QUrl(serverBaseUrl), QStringLiteral("api/notifications/native/pull")).toString();

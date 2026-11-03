@@ -71,6 +71,7 @@ DeviceRegistrationService::PairAttempt::operator=(PairAttempt&& other) noexcept
     m_sealingKey = other.m_sealingKey;
     m_pushKeys = std::move(other.m_pushKeys);
     m_refusedOutcome = other.m_refusedOutcome;
+    m_owner = other.m_owner;
     m_restorePin = other.m_restorePin;
     // The moved-from attempt must not also restore.
     other.m_restorePin = false;
@@ -115,6 +116,7 @@ DeviceRegistrationService::PairAttempt DeviceRegistrationService::beginPair(cons
     // Captured BEFORE the request. Re-reading it afterwards is a TOCTOU: the
     // app can lock while the request is out, dropping the session key.
     attempt.m_sealingKey = m_pairingStore.sealingKeySnapshot();
+    attempt.m_owner = m_pairingStore.currentIdentity();
 
     // The registration is what establishes a new trust anchor, so the old
     // pin must not be allowed to abort it -- that is what made the
@@ -140,6 +142,21 @@ DeviceRegistrationService::PairAttempt DeviceRegistrationService::beginPair(cons
         m_pinSink.setPin(params.spkiPin, QUrl(params.serverBaseUrl));
     }
     return attempt;
+}
+
+NativeRegistrationResult DeviceRegistrationService::finishReregistration(PairAttempt attempt,
+                                                                          const PairingParams& params,
+                                                                          const NativeRegistrationResult& result)
+{
+    if (!m_pairingStore.stillCurrent(attempt.m_owner)) {
+        // Unpaired or replaced meanwhile. The pin now belongs to that change
+        // (cleared by unpair, or the new pairing's), so do not restore ours.
+        attempt.m_restorePin = false;
+        NativeRegistrationResult stale = result;
+        stale.outcome = RegistrationOutcome::Failure;
+        return stale;
+    }
+    return finishPair(std::move(attempt), params, result);
 }
 
 NativeRegistrationResult DeviceRegistrationService::sendRegistration(HttpClient& httpClient,

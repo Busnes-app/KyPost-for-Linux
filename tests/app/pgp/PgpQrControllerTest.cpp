@@ -32,6 +32,7 @@ private slots:
     void refreshMyQrCodeWithoutPairingSetsNotPairedError();
     void refreshMyQrCodeSuccessPopulatesUrlAndExpiresAt();
     void myQrCodeIsNotOfferedForAnAccountThisDeviceNoLongerHas();
+    void aQrCodeThatLandsAfterAnAccountChangeIsNotOffered();
     void refreshMyQrCodeNoPgpIdentitySetsFriendlyMessage();
     void myQrImageDataUrlIsEmptyBeforeRefreshAndPopulatedAfter();
     void scanQrPayloadRejectsNonPgpQrUrl();
@@ -212,6 +213,44 @@ void PgpQrControllerTest::myQrCodeIsNotOfferedForAnAccountThisDeviceNoLongerHas(
              "the previous account's key-exchange QR is still on offer");
     QVERIFY2(controller.myQrExpiresAt().isEmpty(),
              "the previous account's QR expiry is still shown");
+}
+
+// The reply to a fetch started for one account can land after another has
+// paired. It used to be stamped with the account current at ARRIVAL, which
+// made the read-time check pass for the previous account's code.
+void PgpQrControllerTest::aQrCodeThatLandsAfterAnAccountChangeIsNotOffered()
+{
+    const QByteArray body =
+        R"({"token":"tok-1","expiresAt":"2026-07-17T12:02:00Z","url":"https://example.com/api/pgp/qr/key?t=tok-1"})";
+    FakeRelayServer fake(httpResponse(200, "OK", body));
+
+    QTemporaryDir secureDir;
+    QVERIFY(secureDir.isValid());
+    SecureStoreFile secureStore(secureDir.path());
+    PairingStore pairingStore(secureStore);
+    savePairing(pairingStore, fake.port());
+
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    PgpQrClient client(http);
+    PgpQrRepository repository(client, pairingStore);
+    NetworkExecutor executor(3000);
+    PgpQrController controller(repository, executor);
+
+    controller.refreshMyQrCode();
+    QVERIFY(controller.isBusy());
+
+    // Replaced before the completion can run: it is queued to this thread.
+    DevicePairing replacement;
+    replacement.subscriberId = QStringLiteral("sub-2");
+    replacement.deviceSecret = QStringLiteral("secret-2");
+    replacement.serverBaseUrl = QStringLiteral("http://127.0.0.1:%1").arg(fake.port());
+    replacement.deviceId = QStringLiteral("dev-2");
+    QVERIFY(pairingStore.save(replacement));
+
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.isBusy(), 5000);
+    QVERIFY2(controller.myQrUrl().isEmpty(),
+             "the previous account's key-exchange QR is offered under the new account");
 }
 
 void PgpQrControllerTest::refreshMyQrCodeNoPgpIdentitySetsFriendlyMessage()

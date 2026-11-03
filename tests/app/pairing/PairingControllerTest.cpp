@@ -60,6 +60,8 @@ private slots:
     void reconnectToServerKeepsThePairingAndDoesNotDeregister();
     void pairingADifferentAccountPurgesThePreviousAccountsCachedData();
     void pairingTheSameAccountAgainPurgesNothing();
+    void unpairingThenPairingAnotherAccountStillPurges();
+    void unpairingThenPairingTheSameAccountKeepsTheCache();
     void aFailedRegistrationDestroysNothing();
     void aFailedPurgeRefusesTheNewPairingAndEscalates();
     void anUnreadableSecretStoreRefusesToPairRatherThanSkipThePurge();
@@ -1935,6 +1937,40 @@ void PairingControllerTest::pairingTheSameAccountAgainPurgesNothing()
 
     QCOMPARE(f.purgeCalls, 0);
     QCOMPARE(f.escalateCalls, 0);
+}
+
+// "Remove pairing" keeps the cache but empties the pairing store, so the next
+// pairing looked like a first one and skipped the purge: unpair, hand the
+// laptop over, and the next account saw the previous one's mail and pushed
+// its queued contact edits.
+void PairingControllerTest::unpairingThenPairingAnotherAccountStillPurges()
+{
+    ReplacementFixture f(httpResponse(200, "OK", kRegisterOk));
+    QVERIFY(f.build(QStringLiteral("sub-previous")));
+
+    f.controller->removePairing();
+    QVERIFY(!f.pairingStore->load().has_value());
+
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-new")))));
+    f.controller->confirmPendingPair();
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("paired"), 5000);
+
+    QCOMPARE(f.purgeCalls, 1);
+    QCOMPARE(f.escalateCalls, 0);
+}
+
+// ...while coming back to the same account keeps what it had.
+void PairingControllerTest::unpairingThenPairingTheSameAccountKeepsTheCache()
+{
+    ReplacementFixture f(httpResponse(200, "OK", kRegisterOk));
+    QVERIFY(f.build(QStringLiteral("sub-previous")));
+
+    f.controller->removePairing();
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-previous")))));
+    f.controller->confirmPendingPair();
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("paired"), 5000);
+
+    QCOMPARE(f.purgeCalls, 0);
 }
 
 // ORDER IS THE DESIGN. Purging first would mean a replacement that failed --

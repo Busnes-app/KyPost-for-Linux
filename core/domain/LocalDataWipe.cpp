@@ -104,6 +104,8 @@ LocalDataWipeResult LocalDataWipe::wipeCaches(bool removeCurrentDatabase)
     // sync ask for a delta against a cache that no longer exists, and the
     // messages before that cursor would never be re-fetched.
     result.syncCursorsCleared = m_cursorStore.wipeAll();
+    // The cache it named is gone, so there is nobody left to replace.
+    m_settingsStore.clearUnpairedCacheOwner();
 
     return result;
 }

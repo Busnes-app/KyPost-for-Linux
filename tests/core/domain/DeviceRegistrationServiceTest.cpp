@@ -106,6 +106,8 @@ private slots:
 
     // The async three-phase split.
     void anAbandonedPairAttemptRestoresThePin();
+    void aReregistrationThatOutlivesItsPairingSavesNothing_data();
+    void aReregistrationThatOutlivesItsPairingSavesNothing();
     void aPairAttemptRefusedByTheGuardsNeverClearsThePin();
 
     // The pairing link's server-published `pin`.
@@ -719,6 +721,80 @@ void DeviceRegistrationServiceTest::anAbandonedPairAttemptRestoresThePin()
         QVERIFY(pinSink.pinState().spkiSha256.isEmpty());
     }
     QCOMPARE(pinSink.pinState().spkiSha256, pin);
+}
+
+void DeviceRegistrationServiceTest::aReregistrationThatOutlivesItsPairingSavesNothing_data()
+{
+    QTest::addColumn<bool>("replaced");
+    QTest::newRow("unpaired meanwhile") << false;
+    QTest::newRow("another account paired meanwhile") << true;
+}
+
+// An endpoint rotation re-registers in the background. "Remove pairing"
+// while that request was out used to be undone when it landed: finishPair()
+// saved the old account and its fresh secret straight back, or over the
+// account the user had just paired instead.
+void DeviceRegistrationServiceTest::aReregistrationThatOutlivesItsPairingSavesNothing()
+{
+    QFETCH(bool, replaced);
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    SecureStoreFile secureStore(dir.path());
+    PairingStore pairingStore(secureStore);
+    SettingsStore settingsStore(dir.filePath(QStringLiteral("settings.ini")));
+
+    DevicePairing existing;
+    existing.subscriberId = QStringLiteral("sub-1");
+    existing.serverBaseUrl = QStringLiteral("https://relay.example");
+    existing.registrationUrl = QStringLiteral("https://relay.example/api/notifications/native/register");
+    existing.deviceId = QStringLiteral("dev-1");
+    existing.deviceSecret = QStringLiteral("secret-1");
+    QVERIFY(pairingStore.save(existing));
+
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    NativeRegistrationClient client(http);
+    HttpClientPinSink pinSink(http);
+    DeviceRegistrationService service(client, pairingStore, settingsStore, pinSink);
+
+    const std::optional<PairingParams> params = service.reregistrationParams();
+    QVERIFY(params.has_value());
+    DeviceRegistrationService::PairAttempt attempt = service.beginPair(*params);
+    QVERIFY(!attempt.refusedOutcome().has_value());
+
+    const QByteArray newPin(32, 'N');
+    if (replaced) {
+        DevicePairing other;
+        other.subscriberId = QStringLiteral("sub-2");
+        other.serverBaseUrl = QStringLiteral("https://other.example");
+        other.deviceId = QStringLiteral("dev-2");
+        other.deviceSecret = QStringLiteral("secret-2");
+        QVERIFY(pairingStore.save(other));
+        pinSink.setPin(newPin, QUrl(other.serverBaseUrl));
+    } else {
+        QVERIFY(pairingStore.clear());
+        pinSink.clearPin();
+    }
+
+    NativeRegistrationResult served;
+    served.outcome = RegistrationOutcome::Success;
+    served.response.deviceId = QStringLiteral("dev-1b");
+    served.response.deviceSecret = QStringLiteral("fresh");
+    served.peerSpkiSha256 = QByteArray(32, 'O');
+
+    const NativeRegistrationResult applied = service.finishReregistration(std::move(attempt), *params, served);
+
+    QVERIFY(applied.outcome != RegistrationOutcome::Success);
+    PairingStore verifyStore(secureStore);
+    const std::optional<DevicePairing> now = verifyStore.load();
+    if (replaced) {
+        QVERIFY(now.has_value());
+        QCOMPARE(now->subscriberId, QStringLiteral("sub-2"));
+        QCOMPARE(pinSink.pinState().spkiSha256, newPin);
+    } else {
+        QVERIFY(!now.has_value());
+        QVERIFY(pinSink.pinState().spkiSha256.isEmpty());
+    }
 }
 
 // The guards refuse before the pin is touched at all, so a deferred attempt

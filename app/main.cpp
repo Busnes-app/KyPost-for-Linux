@@ -766,6 +766,16 @@ int main(int argc, char* argv[])
     // 4. CursorStore -- reuses settingsDir (already computed for
     // SettingsStore above), not a second directory-resolution block.
     CursorStore cursorStore(settingsDir + QStringLiteral("/cursors.ini"));
+    // An in-memory database starts empty on every launch; cursors.ini does
+    // not. A surviving cursor asked the relay for a delta against mail this
+    // process never had, so every in-memory session (Hostile Location
+    // Protection, no key storage, an unprotected data directory) showed only
+    // what had arrived since the last one. The cache and its cursors share a
+    // lifetime, so they go together. reset(), not wipeAll(): the notification
+    // cursor is what keeps the relay's queued notifications from being shown
+    // again, and it describes no cached rows.
+    if (database.handle().databaseName() == QStringLiteral(":memory:") && !cursorStore.reset())
+        qCritical("main: the database is in memory but the stale sync cursors could not be erased");
 
     // 5. PairingStore -- the one shared "are we paired" contract every
     // repository below reads instead of re-deriving SecureStore key names.
@@ -1565,8 +1575,8 @@ int main(int argc, char* argv[])
              attempt = std::move(attempt)](const NativeRegistrationResult& result) mutable {
                 // Phase 3, back on this thread: persists, installs the new
                 // pin, writes the delivery settings.
-                reportReregistration(deviceRegistrationService.finishPair(std::move(attempt), params, result),
-                                      endpoint);
+                reportReregistration(
+                    deviceRegistrationService.finishReregistration(std::move(attempt), params, result), endpoint);
             });
     };
 

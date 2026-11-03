@@ -598,3 +598,16 @@ core/pgp/OpenPgpDecryptor.cpp	            result.belowStrengthFloor = !signer.st
 core/pgp/EncryptedMessageReader.cpp	    if (signature.belowStrengthFloor)	    if (false)	EncryptedMessageReaderTest:detachedSignatureVerdicts
 # Not listed: the ECC 224-bit floor and the unknown-algorithm refusal. GnuPG
 # offers no ECC curve below 255 bits and no unclassified algorithm to test with.
+
+# --- council pass 1 (2026-11-03) -----------------------------------------
+#
+# Unpair then pair another account must still purge; the issuer pin must have
+# signed the leaf; a pickup confirm, a QR code and a background
+# re-registration must not cross an account change; the device secret must
+# not follow a pull endpoint off the paired origin.
+app/pairing/PairingController.cpp	    m_registrationHadPreviousAccount = unpaired.has_value();	    m_registrationHadPreviousAccount = false;	PairingControllerTest:unpairingThenPairingAnotherAccountStillPurges
+core/net/HttpClient.cpp	    if (issuer.subjectDisplayName() != leaf.issuerDisplayName() || !signedBy(leaf, issuer))	    if (issuer.subjectDisplayName() != leaf.issuerDisplayName())	CertificatePinAnchorTest:aSameNamedIssuerThatDidNotSignTheLeafPinsNothing
+app/mail/MailController.cpp	    if (!m_pairingStore.stillCurrent(m_pendingSend.owner)) {	    if (false) {	MailControllerTest:aPickupConfirmAfterAnAccountChangeSendsNothing
+app/pgp/PgpQrController.cpp	        m_myQrIdentity = requestedFor;	        m_myQrIdentity = m_repository.currentIdentity();	PgpQrControllerTest:aQrCodeThatLandsAfterAnAccountChangeIsNotOffered
+core/domain/DeviceRegistrationService.cpp	    if (!m_pairingStore.stillCurrent(attempt.m_owner)) {	    if (false) {	DeviceRegistrationServiceTest:aReregistrationThatOutlivesItsPairingSavesNothing
+core/domain/PushRepository.cpp	    if (!stored.isEmpty() && sameUrlOrigin(QUrl(stored), QUrl(serverBaseUrl)))	    if (!stored.isEmpty())	PushRepositoryTest:aStoredPullEndpointOnAnotherOriginIsIgnored

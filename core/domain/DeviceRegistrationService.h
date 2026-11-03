@@ -1,5 +1,6 @@
 #pragma once
 
+#include "domain/DevicePairing.h"
 #include "net/HttpClient.h"
 #include "net/NativeRegistrationClient.h"
 #include "security/CredentialCipher.h"
@@ -135,6 +136,9 @@ public:
         // so the stored keys are always the ones the relay last accepted.
         WebPushCrypto::Keys m_pushKeys;
         std::optional<RegistrationOutcome> m_refusedOutcome;
+        // The pairing current when the attempt began; finishReregistration()
+        // refuses to save over anything else.
+        PairingIdentity m_owner;
         bool m_restorePin = false;
     };
 
@@ -151,6 +155,15 @@ public:
     // writes the delivery settings, and consumes the attempt.
     NativeRegistrationResult finishPair(PairAttempt attempt, const PairingParams& params,
                                          const NativeRegistrationResult& result);
+
+    // Phase 3 for an UNATTENDED re-registration of the stored pairing. The
+    // user can remove or replace that pairing while the request is out, and
+    // finishPair() would then save the old account straight back. So it
+    // finishes only while the pairing beginPair() saw is still current;
+    // otherwise it saves nothing, leaves the pin to whoever owns it now, and
+    // reports Failure.
+    NativeRegistrationResult finishReregistration(PairAttempt attempt, const PairingParams& params,
+                                                   const NativeRegistrationResult& result);
 
 private:
     NativeRegistrationClient& m_client;

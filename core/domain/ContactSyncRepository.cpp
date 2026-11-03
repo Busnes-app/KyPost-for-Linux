@@ -17,7 +17,7 @@
 #include <QStringList>
 #include <QUrl>
 #include <QUuid>
-#include <type_traits>
+#include <algorithm>
 
 namespace {
 
@@ -34,74 +34,6 @@ Contact deserializeContact(const QString& json)
 QString nowUtc()
 {
     return QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
-}
-
-// A partial delta response (e.g. only fn+phones present) must not null out
-// fields the server didn't include -- every std::optional<QString> field
-// (including the extended-contact-fields and self/dedupe additions) takes
-// the response's value if present, else falls back to the existing cached
-// value. Every QVector<T> field (emails/phones/addresses/groupIds/ims/
-// websites/relations/events/customFields/mergedUIDs) can't distinguish
-// "server omitted this field because unchanged" from "server explicitly
-// cleared it to empty" -- the wire's omitempty convention produces the same
-// empty JSON array either way -- so they take the response's value only
-// when non-empty, else fall back to the existing cached value too;
-// preserving existing data on any ambiguous empty response is the safer
-// failure mode of the two. uid/rev/isSelf/deleted are taken directly from
-// the response (never merged) -- plain bools have no "omitted" state to
-// disambiguate, and uid/rev are always authoritative from the server.
-Contact mergeContact(const Contact& c, const std::optional<Contact>& existing)
-{
-    // member is a pointer-to-member (e.g. &Contact::fn) so the same
-    // "response value if present, else fall back to cached" rule from the
-    // comment above runs once per field instead of being copy-pasted.
-    auto mergeOpt = [&c, &existing](auto member) {
-        return (c.*member) ? (c.*member) : (existing ? (*existing).*member : std::nullopt);
-    };
-    auto mergeVec = [&c, &existing](auto member) {
-        using VecT = std::decay_t<decltype(c.*member)>;
-        return !(c.*member).isEmpty() ? (c.*member) : (existing ? (*existing).*member : VecT{});
-    };
-
-    Contact merged;
-    merged.uid = c.uid;
-    merged.rev = c.rev;
-    merged.createdAt = mergeOpt(&Contact::createdAt);
-    merged.updatedAt = mergeOpt(&Contact::updatedAt);
-    merged.fn = mergeOpt(&Contact::fn);
-    merged.givenName = mergeOpt(&Contact::givenName);
-    merged.familyName = mergeOpt(&Contact::familyName);
-    merged.middleName = mergeOpt(&Contact::middleName);
-    merged.prefix = mergeOpt(&Contact::prefix);
-    merged.suffix = mergeOpt(&Contact::suffix);
-    merged.nickname = mergeOpt(&Contact::nickname);
-    merged.org = mergeOpt(&Contact::org);
-    merged.title = mergeOpt(&Contact::title);
-    merged.notes = mergeOpt(&Contact::notes);
-    merged.birthday = mergeOpt(&Contact::birthday);
-    merged.emails = mergeVec(&Contact::emails);
-    merged.phones = mergeVec(&Contact::phones);
-    merged.addresses = mergeVec(&Contact::addresses);
-    merged.groupIds = mergeVec(&Contact::groupIds);
-    merged.photoRef = mergeOpt(&Contact::photoRef);
-    merged.pgpKey = mergeOpt(&Contact::pgpKey);
-    merged.ims = mergeVec(&Contact::ims);
-    merged.websites = mergeVec(&Contact::websites);
-    merged.relations = mergeVec(&Contact::relations);
-    merged.events = mergeVec(&Contact::events);
-    merged.phoneticGivenName = mergeOpt(&Contact::phoneticGivenName);
-    merged.phoneticFamilyName = mergeOpt(&Contact::phoneticFamilyName);
-    merged.department = mergeOpt(&Contact::department);
-    merged.customFields = mergeVec(&Contact::customFields);
-    merged.pronouns = mergeOpt(&Contact::pronouns);
-    // isSelf/deleted are plain bools with no way to distinguish "server
-    // omitted this" from "server explicitly cleared it" -- like deleted
-    // below, the response's value is authoritative and taken directly.
-    merged.isSelf = c.isSelf;
-    merged.mergedUIDs = mergeVec(&Contact::mergedUIDs);
-    merged.mergedInto = mergeOpt(&Contact::mergedInto);
-    merged.deleted = c.deleted;
-    return merged;
 }
 
 // One user action, one transaction. Every mutation below is at least two
@@ -251,9 +183,25 @@ bool ContactSyncRepository::queueUpdate(const Contact& contact)
     // wrong: the cache write can land while the queue write does not, and
     // then the local copy shows the user's edit while the server keeps the
     // old one, forever, with no pending badge to say so.
+    //
+    // A contact whose create has not been pushed yet has only a temporary
+    // uid, and the relay upserts an unknown uid as a NEW contact. Queued as
+    // an update, the edit became a second contact beside the one the create
+    // made. So an edit before the first sync rewrites the queued create.
     return inTransaction(m_db, [&] {
-        return m_contactDao.insertOrReplace(contact)
-            && m_pendingDao.enqueue(contact.uid, serializeContact(contact), nowUtc()) > 0;
+        if (!m_contactDao.insertOrReplace(contact))
+            return false;
+        const QVector<PendingContactChangeRecord> queued = m_pendingDao.findAll();
+        const bool unsyncedCreate = std::any_of(queued.cbegin(), queued.cend(), [&contact](const auto& record) {
+            return record.contactUid == contact.uid && deserializeContact(record.changeJson).uid.isEmpty();
+        });
+        if (!unsyncedCreate)
+            return m_pendingDao.enqueue(contact.uid, serializeContact(contact), nowUtc()) > 0;
+        for (const PendingContactChangeRecord& record : queued) {
+            if (record.contactUid == contact.uid && !m_pendingDao.deleteById(record.id))
+                return false;
+        }
+        return m_pendingDao.enqueue(contact.uid, createJson(contact), nowUtc()) > 0;
     });
 }
 
@@ -392,7 +340,8 @@ ContactSyncOutcome ContactSyncRepository::applySync(const ContactSyncPlan& plan,
         return { ContactSyncStatus::Success,
                  ContactSyncSummary{ static_cast<int>(pending.size()), 0, 0 },
                  QString(),
-                 {} };
+                 {},
+                 /*fullPullNeeded=*/true };
     }
 
     QVector<Contact> pendingCreates;
@@ -427,8 +376,13 @@ ContactSyncOutcome ContactSyncRepository::applySync(const ContactSyncPlan& plan,
         for (const Contact& c : result.changed) {
             if (c.uid.isEmpty())
                 continue;
-            const std::optional<Contact> existing = m_contactDao.findById(c.uid);
-            if (!m_contactDao.insertOrReplace(mergeContact(c, existing)))
+            // The relay sends every changed contact WHOLE (contacts.Store::
+            // ChangedSince), and its omitempty drops a cleared field from the
+            // JSON. So a missing field means "empty now", and the record
+            // replaces the cached one, as Android and Mac apply it. Merging
+            // kept every field anyone had ever cleared elsewhere -- a removed
+            // phone number, or a removed PGP key this device kept encrypting to.
+            if (!m_contactDao.insertOrReplace(c))
                 return false;
             ++applied;
         }

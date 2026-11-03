@@ -35,7 +35,7 @@ private slots:
     void serverEditUpdatesExistingContact();
     void serverIsSelfFlagSurvivesSync();
     void serverFullSyncAppliesExtendedFields();
-    void serverEditPreservesExtendedFieldsWhenOmitted();
+    void serverEditClearsEveryFieldTheRecordOmits();
     void tooOldResetsCursorAndCache();
     void findByUidReturnsContactWhenPresent();
     void findByUidReturnsNulloptWhenAbsent();
@@ -329,11 +329,10 @@ void ContactSyncRepositoryTest::serverEditUpdatesExistingContact()
     QCOMPARE(updated->rev, qint64(4));
     QCOMPARE(updated->phones.size(), 1);
     QCOMPARE(updated->phones.at(0).value, QStringLiteral("555"));
-    // The delta response carried no "emails" key at all -- the seeded email
-    // must survive the merge, proving field-by-field merge rather than a
-    // blind insertOrReplace(c) overwrite.
-    QVERIFY(updated->emails.size() == 1);
-    QCOMPARE(updated->emails.at(0).value, QStringLiteral("ada@example.com"));
+    // The relay sends a changed contact whole and omits an empty field, so a
+    // record with no "emails" key is a contact whose emails were removed.
+    // Merging kept the old address forever.
+    QVERIFY(updated->emails.isEmpty());
 }
 
 void ContactSyncRepositoryTest::serverIsSelfFlagSurvivesSync()
@@ -451,11 +450,13 @@ void ContactSyncRepositoryTest::serverFullSyncAppliesExtendedFields()
     QCOMPARE(synced->pronouns, std::optional<QString>(QStringLiteral("she/her")));
 }
 
-void ContactSyncRepositoryTest::serverEditPreservesExtendedFieldsWhenOmitted()
+void ContactSyncRepositoryTest::serverEditClearsEveryFieldTheRecordOmits()
 {
-    // Mirrors serverEditUpdatesExistingContact's emails-preservation check,
-    // extended to every extended-contact-fields field: a delta response
-    // that omits them entirely must not wipe out the locally-cached values.
+    // Mirrors serverEditUpdatesExistingContact's emails check for every
+    // extended field. The relay's ChangedSince sends the whole contact and
+    // its omitempty drops what was cleared, so an omitted field is an empty
+    // one -- a removed PGP key above all, which this device must stop
+    // encrypting to.
     const QByteArray body = R"({"cursor":9,"tooOld":false,"changed":[)"
                              R"({"uid":"srv-1","rev":4,"fn":"Ada L."})"
                              R"(],"deleted":[]})";
@@ -507,18 +508,18 @@ void ContactSyncRepositoryTest::serverEditPreservesExtendedFieldsWhenOmitted()
     const std::optional<Contact> updated = contactDao.findById(QStringLiteral("srv-1"));
     QVERIFY(updated.has_value());
     QCOMPARE(*updated->fn, QStringLiteral("Ada L."));
-    QCOMPARE(updated->groupIds, QVector<QString>({ QStringLiteral("group-1") }));
-    QCOMPARE(updated->photoRef, std::optional<QString>(QStringLiteral("photo-ref-1")));
-    QCOMPARE(updated->pgpKey, std::optional<QString>(QStringLiteral("-----BEGIN PGP PUBLIC KEY BLOCK-----")));
-    QCOMPARE(updated->ims.size(), 1);
-    QCOMPARE(updated->websites.size(), 1);
-    QCOMPARE(updated->relations.size(), 1);
-    QCOMPARE(updated->events.size(), 1);
-    QCOMPARE(updated->phoneticGivenName, std::optional<QString>(QStringLiteral("Ay-da")));
-    QCOMPARE(updated->phoneticFamilyName, std::optional<QString>(QStringLiteral("Love-lace")));
-    QCOMPARE(updated->department, std::optional<QString>(QStringLiteral("Engineering")));
-    QCOMPARE(updated->customFields.size(), 1);
-    QCOMPARE(updated->pronouns, std::optional<QString>(QStringLiteral("she/her")));
+    QVERIFY(updated->groupIds.isEmpty());
+    QVERIFY(!updated->photoRef.has_value());
+    QVERIFY(!updated->pgpKey.has_value());
+    QVERIFY(updated->ims.isEmpty());
+    QVERIFY(updated->websites.isEmpty());
+    QVERIFY(updated->relations.isEmpty());
+    QVERIFY(updated->events.isEmpty());
+    QVERIFY(!updated->phoneticGivenName.has_value());
+    QVERIFY(!updated->phoneticFamilyName.has_value());
+    QVERIFY(!updated->department.has_value());
+    QVERIFY(updated->customFields.isEmpty());
+    QVERIFY(!updated->pronouns.has_value());
 }
 
 void ContactSyncRepositoryTest::tooOldResetsCursorAndCache()
@@ -851,7 +852,14 @@ void ContactSyncRepositoryTest::deletingAnUnsyncedContactDropsItsLaterEditsToo()
     edited.uid = tempUid;
     edited.org = QStringLiteral("Acme");
     QVERIFY(repository.queueUpdate(edited));
-    QCOMPARE(pendingDao.findAll().size(), 2);
+    // The edit rewrote the unpushed create rather than queueing an update
+    // under the temporary uid, which the relay would upsert as a second contact.
+    const QVector<PendingContactChangeRecord> queued = pendingDao.findAll();
+    QCOMPARE(queued.size(), 1);
+    QCOMPARE(queued.at(0).contactUid, tempUid);
+    const Contact wire = ContactWire::contactFromJson(QJsonDocument::fromJson(queued.at(0).changeJson.toUtf8()).object());
+    QVERIFY(wire.uid.isEmpty());
+    QCOMPARE(wire.org, std::optional<QString>(QStringLiteral("Acme")));
 
     // ...then decides to remove it.
     QVERIFY(repository.queueDelete(tempUid, 0));

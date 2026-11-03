@@ -61,6 +61,11 @@ struct ContactSyncOutcome
     // CacheWriteFailed from the cursor write, which happens after the commit:
     // see applySync().
     QVector<ContactReconciliationAssignment> uidReassignments;
+
+    // The relay said the cursor was too old: the address book was emptied
+    // and the cursor cleared, so the caller must pull it again now. Left
+    // alone, the user saw "Synced" over an empty contact list.
+    bool fullPullNeeded = false;
 };
 
 // Outcome of ContactSyncRepository::queueImport. Nothing is queued unless Queued.

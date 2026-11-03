@@ -29,6 +29,7 @@ private slots:
     void sameMessageIdArrivingTwiceReusesOneRow();
     void pullDeduplicatesBySeqAndAdvancesCursorAfterHandoff();
     void storedPullEndpointOverridesDerivedOne();
+    void aStoredPullEndpointOnAnotherOriginIsIgnored();
     void unsetPullEndpointIsDerivedFromServerBaseUrl();
     void pullWithoutPairingReturnsEmptyAndMakesNoRequest();
     void pullDiscardsAReplyTheCurrentPairingDidNotAuthorise();
@@ -211,10 +212,9 @@ void PushRepositoryTest::storedPullEndpointOverridesDerivedOne()
     QVERIFY(secureDir.isValid());
     SecureStoreFile secureStore(secureDir.path());
     PairingStore pairingStore(secureStore);
-    // serverBaseUrl deliberately points nowhere real -- if the derived
-    // fallback were used instead of the stored override, this test's
-    // FakeRelayServer would never see a connection.
-    savePairing(pairingStore, QStringLiteral("http://127.0.0.1:1"));
+    // The derived path would be /api/notifications/native/pull, so seeing
+    // the custom path proves the stored override was used.
+    savePairing(pairingStore, QStringLiteral("http://127.0.0.1:%1").arg(fake.port()));
 
     QTemporaryDir settingsDir;
     QVERIFY(settingsDir.isValid());
@@ -230,6 +230,43 @@ void PushRepositoryTest::storedPullEndpointOverridesDerivedOne()
     repository.pullOnce();
 
     QVERIFY(fake.receivedRequest().contains("GET /custom/pull/path HTTP/1.1"));
+}
+
+// settings.ini is a plain file. A pull endpoint edited to another host would
+// have the 90-second poll hand that host the device id and secret.
+void PushRepositoryTest::aStoredPullEndpointOnAnotherOriginIsIgnored()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"deliveryMode":"pull","cursor":0,"notifications":[]})"));
+    FakeRelayServer elsewhere(httpResponse(200, "OK", R"({"deliveryMode":"pull","cursor":0,"notifications":[]})"));
+
+    Database db;
+    QVERIFY(db.open(QStringLiteral(":memory:")));
+    PushDao pushDao(db.handle());
+
+    QTemporaryDir cursorDir;
+    QVERIFY(cursorDir.isValid());
+    CursorStore cursorStore(cursorDir.filePath(QStringLiteral("cursors.ini")));
+
+    QTemporaryDir secureDir;
+    QVERIFY(secureDir.isValid());
+    SecureStoreFile secureStore(secureDir.path());
+    PairingStore pairingStore(secureStore);
+    savePairing(pairingStore, QStringLiteral("http://127.0.0.1:%1").arg(fake.port()));
+
+    QTemporaryDir settingsDir;
+    QVERIFY(settingsDir.isValid());
+    SettingsStore settingsStore(settingsDir.filePath(QStringLiteral("settings.ini")));
+    settingsStore.setPullEndpoint(QStringLiteral("http://127.0.0.1:%1/steal").arg(elsewhere.port()));
+
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    PushNotificationClient client(http);
+
+    PushRepository repository(pushDao, cursorStore, client, pairingStore, settingsStore);
+    repository.pullOnce();
+
+    QVERIFY(fake.receivedRequest().contains("GET /api/notifications/native/pull"));
+    QVERIFY2(elsewhere.receivedRequests().isEmpty(), "the device secret was sent to another origin");
 }
 
 void PushRepositoryTest::unsetPullEndpointIsDerivedFromServerBaseUrl()

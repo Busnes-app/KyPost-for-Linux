@@ -532,7 +532,7 @@ public slots:
     Q_INVOKABLE quint64 confirmPickupFallbackSend(quint64 token);
     // Drops the cached pending send. Called when the user cancels the
     // pickup-fallback confirmation dialog rather than confirming it.
-    Q_INVOKABLE void discardPendingSend();
+    Q_INVOKABLE void discardPendingSend(quint64 token);
     // Saves the composition to Drafts, then opens webmail there in the user's
     // system browser (never an embedded view) -- in that order, and only if
     // the save actually landed: opening a browser onto a draft that is not
@@ -825,6 +825,9 @@ private:
         quint64 token = 0;
         QString replyToMessageId;
         QString replyToMailbox;
+        // The account that was refused. A confirm after a re-pair would send
+        // this account's message from the next one.
+        PairingIdentity owner;
     };
     PendingSend m_pendingSend;
     // Monotonic, per-session. quint64 crosses into QML as a JS number, which
