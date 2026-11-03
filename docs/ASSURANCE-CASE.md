@@ -127,9 +127,9 @@ the session can.
 - **A pairing made without push keys** takes plaintext mail notifications through the
   distributor (sign-in challenges are still refused unless encrypted).
 - **A build without SQLCipher** keeps an unencrypted database ([docs/BUILDING.md](BUILDING.md)).
-- No C++ static analyser (such as clang-tidy, cppcheck or CodeQL) runs in CI; the only static
-  check is the `qmllint` gate in the Flatpak build. No fuzzer runs. No independent security
-  audit has taken place.
+- No fuzzer runs, and no independent security audit has taken place. Static analysis is
+  limited to GitHub CodeQL and the `qmllint` gate (see [Evidence](#evidence)); no other C++
+  analyser, such as clang-tidy or cppcheck, runs.
 
 ## Evidence
 
@@ -141,8 +141,11 @@ the session can.
   and, on Qt 6.11 and later, the `qmllint` gate (`tests/CMakeLists.txt`).
 - **CI on every pull request:** in `ci.yml`, a Release build with the suite and, in parallel,
   the same suite under ASan and UBSan; `core/` on Qt 5.15 (`core-qt5`). In `flatpak.yml`, the
-  Flatpak built and tested on x86_64 and aarch64. OpenSSF Scorecard (`scorecard.yml`) runs
-  weekly and on pushes to `main`, not on pull requests.
+  Flatpak built and tested on x86_64 and aarch64, including the `qmllint` gate. GitHub CodeQL
+  (the repository's default code-scanning setup, not a workflow file; extended query suite)
+  analyses C/C++, JavaScript/TypeScript, Python and the workflows on pull requests and
+  weekly. OpenSSF Scorecard (`scorecard.yml`) runs weekly and on pushes to `main`, not on
+  pull requests.
 - **Guards:** `tests/guards.tsv` and `scripts/verify-guards.sh`.
 - **Review:** every pull request needs green CI and an adversarial review
   ([CONTRIBUTING.md](../CONTRIBUTING.md#every-pr-must-pass-hostile-ai-code-review)).
