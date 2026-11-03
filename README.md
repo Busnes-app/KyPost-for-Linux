@@ -81,6 +81,8 @@ MIT, developed by Busnes.app — see [`LICENSE.txt`](LICENSE.txt).
 - [Architecture](docs/ARCHITECTURE.md) — the source layout, the `core/` boundary and the design records. <a id="architecture"></a>
 - [Distribution](docs/DISTRIBUTION.md) — the self-hosted signed Flatpak channel.
 - [Strong cryptography](docs/STRONG-CRYPTO.md) — the keys KyPost selects or accepts, and their minimums.
+- [Assurance case](docs/ASSURANCE-CASE.md) — the threat model, the trust boundaries and the argument that the security requirements are met.
+- [Verifying releases](docs/VERIFYING-RELEASES.md) — how to check the Flatpak signing key, the remote and a release bundle.
 - [Encrypted send](Client_Encrypted_Send.md) — how the client sends encrypted and signed mail through the relay.
 - [Android parity](docs/PARITY.md) — which Android features the Linux client has.
 - [Manual testing](TESTING.md) — the human verification checklist.

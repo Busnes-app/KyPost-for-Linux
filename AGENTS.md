@@ -34,7 +34,7 @@ tests/      — QtTest, stubbed HttpClient; ctest-driven. tests/qml/ is the QML 
 packaging/  — flatpak/ (manifest, desktop file, metainfo, notifyrc, icons), dbus/ (session D-Bus activation .service), click/ (empty .gitkeep placeholder — the Ubuntu Touch app does not exist yet, there is no Clickable manifest)
 po/         — gettext catalogs
 scripts/    — build-sqlcipher.sh, verify-guards.sh, verify-version.sh, release-notes.py, verify-pgp-against-relay.sh
-docs/       — local tooling/setup notes (see docs/SETUP.md); docs/PARITY.md is the authoritative Android-parity matrix; docs/THREADING.md records the async-controller constraints; docs/STRONG-CRYPTO.md is the key-strength profile (§6k)
+docs/       — local tooling/setup notes (see docs/SETUP.md); docs/PARITY.md is the authoritative Android-parity matrix; docs/THREADING.md records the async-controller constraints; docs/STRONG-CRYPTO.md is the key-strength profile (§6k); docs/ASSURANCE-CASE.md is the security argument (a change that moves a trust boundary or a cited path updates it in the same PR); docs/VERIFYING-RELEASES.md is the user-facing signature check (its commands and outputs are from a dated run against a real release)
 ```
 
 ## 3. Build instructions

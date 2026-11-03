@@ -224,6 +224,19 @@ Notes that trip people up:
 - **Check the CI code before you push.** Historically, most pushes to `main`
   that were not themselves CI fixes broke CI (`AGENTS.md` §8).
 
+### Coding standard
+
+The table names each style rule and what checks it. A check marked "fails the build" is a red
+CI job, not a review comment.
+
+| Language | Style | Enforced by |
+|---|---|---|
+| C++20 (`core/`, `app/`) | Qt's naming (`m_` members, `camelCase` functions), and the Qt 5.15 / Qt 6 and `core/` dependency rules in [AGENTS.md](AGENTS.md) section 5 | `-Wall -Wextra -Wshadow -Wnon-virtual-dtor -Woverloaded-virtual` on GCC and Clang (warnings, not errors; `CMakeLists.txt` says why). ASan + UBSan in `build-and-test (sanitizers)` and the Qt 5.15 build in `core-qt5` fail the build. |
+| QML (`app/qml/`) | Qt's [QML coding conventions](https://doc.qt.io/qt-6/qml-codingconventions.html); any `Text` or `Label` showing a non-literal states a safe `textFormat` | `QmlTests` in `build-and-test`, and `QmlPropertyLint` (`tests/qml/qmllint-gate.sh`) in the Flatpak build, which registers it on Qt 6.11. Both fail the build |
+
+There is no formatter. Keep to the style of the file you are editing; fix the warnings your
+change adds.
+
 ## A Security Guard Is Not Proven Until Removing It Turns a Test Red
 
 This repo has a gate most do not, and it is not optional for security work.
