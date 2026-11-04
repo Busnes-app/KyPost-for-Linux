@@ -152,13 +152,16 @@ NativeRegistrationResult DeviceRegistrationService::finishReregistration(PairAtt
                                                                           const PairingParams& params,
                                                                           const NativeRegistrationResult& result)
 {
-    const std::optional<DevicePairing> now = m_pairingStore.load();
+    const PairingStore::LoadResult loaded = m_pairingStore.loadChecked();
+    const std::optional<DevicePairing>& now = loaded.pairing;
     const bool sameAccount = now && !now->subscriberId.isEmpty() && now->subscriberId == attempt.m_ownerSubscriberId
         && now->serverBaseUrl == attempt.m_ownerServerBaseUrl;
     if (!sameAccount) {
-        // Unpaired or replaced meanwhile. The pin now belongs to that change
-        // (cleared by unpair, or the new pairing's), so do not restore ours.
-        attempt.m_restorePin = false;
+        // Unpaired or replaced meanwhile: the pin now belongs to that change
+        // (cleared by unpair, or the new pairing's), so ours is not restored.
+        // A store that could not be read says neither, so the previous pin
+        // goes back rather than leave the session unpinned.
+        attempt.m_restorePin = loaded.status == PairingStore::LoadStatus::Unreadable;
         NativeRegistrationResult stale = result;
         stale.outcome = RegistrationOutcome::Failure;
         return stale;

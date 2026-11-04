@@ -611,3 +611,4 @@ app/mail/MailController.cpp	    if (currentSubscriber.isEmpty() || currentSubscr
 app/pgp/PgpQrController.cpp	        m_myQrIdentity = requestedFor;	        m_myQrIdentity = m_repository.currentIdentity();	PgpQrControllerTest:aQrCodeThatLandsAfterAnAccountChangeIsNotOffered
 core/domain/DeviceRegistrationService.cpp	    if (!sameAccount) {	    if (false) {	DeviceRegistrationServiceTest:aReregistrationThatOutlivesItsPairingSavesNothing
 core/domain/PushRepository.cpp	    if (!stored.isEmpty() && sameUrlOrigin(QUrl(stored), QUrl(serverBaseUrl)))	    if (!stored.isEmpty())	PushRepositoryTest:aStoredPullEndpointOnAnotherOriginIsIgnored
+core/domain/DeviceRegistrationService.cpp	        attempt.m_restorePin = loaded.status == PairingStore::LoadStatus::Unreadable;	        attempt.m_restorePin = false;	DeviceRegistrationServiceTest:anUnreadableStoreAtCompletionPutsThePinBack

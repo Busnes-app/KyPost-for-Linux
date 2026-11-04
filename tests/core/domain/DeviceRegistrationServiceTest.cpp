@@ -82,6 +82,18 @@ private:
     QHash<QString, QString> m_values;
 };
 
+// Reads fail on demand: a wallet that closed with the screen lock.
+class FlakySecureStore : public SecureStoreFile
+{
+public:
+    using SecureStoreFile::SecureStoreFile;
+    bool failReads = false;
+    ReadResult read(const QString& key) const override
+    {
+        return failReads ? ReadResult{ ReadStatus::Failed, QString() } : SecureStoreFile::read(key);
+    }
+};
+
 } // namespace
 
 class DeviceRegistrationServiceTest : public QObject
@@ -109,6 +121,7 @@ private slots:
     void aReregistrationThatOutlivesItsPairingSavesNothing_data();
     void aReregistrationThatOutlivesItsPairingSavesNothing();
     void aLaterReregistrationOfTheSameAccountStillLands();
+    void anUnreadableStoreAtCompletionPutsThePinBack();
     void aPairAttemptRefusedByTheGuardsNeverClearsThePin();
 
     // The pairing link's server-published `pin`.
@@ -734,6 +747,49 @@ void DeviceRegistrationServiceTest::aReregistrationThatOutlivesItsPairingSavesNo
 // Two rotations can put two re-registrations in flight, and the first to land
 // mints a new device id. The later one is still this account's, carries the
 // newer endpoint, and must not be thrown away for the device id alone.
+// A store that cannot be read at completion says neither "unpaired" nor
+// "replaced". Treating it as either left beginPair()'s cleared pin in place
+// for the rest of the session.
+void DeviceRegistrationServiceTest::anUnreadableStoreAtCompletionPutsThePinBack()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    FlakySecureStore secureStore(dir.path());
+    PairingStore pairingStore(secureStore);
+    SettingsStore settingsStore(dir.filePath(QStringLiteral("settings.ini")));
+
+    DevicePairing existing;
+    existing.subscriberId = QStringLiteral("sub-1");
+    existing.serverBaseUrl = QStringLiteral("https://relay.example");
+    existing.registrationUrl = QStringLiteral("https://relay.example/api/notifications/native/register");
+    existing.deviceId = QStringLiteral("dev-1");
+    existing.deviceSecret = QStringLiteral("secret-1");
+    QVERIFY(pairingStore.save(existing));
+
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    NativeRegistrationClient client(http);
+    HttpClientPinSink pinSink(http);
+    DeviceRegistrationService service(client, pairingStore, settingsStore, pinSink);
+    const QByteArray pin(32, 'P');
+    pinSink.setPin(pin, QUrl(existing.serverBaseUrl));
+
+    const std::optional<PairingParams> params = service.reregistrationParams();
+    QVERIFY(params.has_value());
+    DeviceRegistrationService::PairAttempt attempt = service.beginPair(*params);
+    QVERIFY(pinSink.pinState().spkiSha256.isEmpty()); // suspended while the request is out
+
+    secureStore.failReads = true;
+    pairingStore.lockDeviceSecret(); // drops the cached pairing, as the app lock does
+
+    NativeRegistrationResult served;
+    served.outcome = RegistrationOutcome::Success;
+    served.response.deviceId = QStringLiteral("dev-1b");
+    served.response.deviceSecret = QStringLiteral("fresh");
+    QVERIFY(service.finishReregistration(std::move(attempt), *params, served).outcome != RegistrationOutcome::Success);
+    QCOMPARE(pinSink.pinState().spkiSha256, pin);
+}
+
 void DeviceRegistrationServiceTest::aLaterReregistrationOfTheSameAccountStillLands()
 {
     QTemporaryDir dir;

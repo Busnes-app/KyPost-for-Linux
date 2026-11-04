@@ -62,7 +62,8 @@ explains the signed remote and the standalone-bundle update-origin limitation.
     encrypted profile and fetches mail again. Before, it stopped at every
     launch and the database had to be deleted by hand.
   - A push-endpoint change finishing in the background can no longer re-pair
-    an account you have just removed, or overwrite one you have just paired.
+    an account you have just removed, or overwrite a different account you
+    have just paired.
   - A key-exchange QR code fetched for one account is no longer shown after
     another account is paired.
   - "Send anyway" in a message's no-key dialog sends nothing once another
@@ -75,8 +76,8 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 - A contact field removed elsewhere before this version stays on this device
   until that contact changes again.
 - A device that was unpaired before this version does not know whose cache it
-  kept. The next pairing on it clears that cache and fetches mail again, even
-  for the same account.
+  kept. The next pairing on it clears that cache, including contact edits not
+  yet synced, and fetches mail again, even for the same account.
 
 ## Source notes at 6994f6b0
 
