@@ -76,6 +76,27 @@ bool databaseFileIsEncrypted(const QString& path)
     return header != QByteArray(kSqliteMagic, kSqliteMagicLength);
 }
 
+namespace {
+
+// To `path + kUnreadableDatabaseSuffix`, replacing an earlier one, sidecars
+// with it. False leaves `path` where it was.
+bool moveAside(const QString& path)
+{
+    const QString aside = path + kUnreadableDatabaseSuffix;
+    for (const QString& sidecar : { QString(), QStringLiteral("-wal"), QStringLiteral("-shm") })
+        QFile::remove(aside + sidecar);
+    if (!QFile::rename(path, aside))
+        return false;
+    for (const QString& sidecar : { QStringLiteral("-wal"), QStringLiteral("-shm") })
+        if (QFile::exists(path + sidecar))
+            QFile::rename(path + sidecar, aside + sidecar);
+    qCritical("ProfileDatabase: this profile's database could not be opened with the stored key; "
+               "it was moved to %s and a new profile was started", qUtf8Printable(aside));
+    return true;
+}
+
+} // namespace
+
 ProfileDatabaseMode openProfileDatabase(Database& database, DatabaseKeyStore& keyStore, const QString& path)
 {
     ProfileDatabaseInputs inputs;
@@ -89,6 +110,20 @@ ProfileDatabaseMode openProfileDatabase(Database& database, DatabaseKeyStore& ke
     switch (chooseProfileDatabaseMode(inputs)) {
     case ProfileDatabaseMode::EncryptedOnDisk: {
         QByteArray material = key.key;
+        if (inputs.keyStatus == DatabaseKeyStore::Status::Absent && inputs.databaseFileIsEncrypted) {
+            // Encrypted under a key the store no longer has (another keyring,
+            // a wiped wallet). A key minted for it cannot open it, and once
+            // stored it made every later launch fail to open the database,
+            // which is fatal (F13). The file is moved aside, not deleted: if
+            // the old key comes back it is still there. Failing that, nothing
+            // is minted and this session stays in memory.
+            if (!moveAside(path)) {
+                qCritical("ProfileDatabase: an encrypted database has no key and could not be moved aside; "
+                           "keeping this session in memory");
+                return database.open(QStringLiteral(":memory:")) ? ProfileDatabaseMode::InMemoryNoKeyStorage
+                                                                  : ProfileDatabaseMode::FailedToOpen;
+            }
+        }
         if (inputs.keyStatus == DatabaseKeyStore::Status::Absent) {
             material = keyStore.create();
             if (material.isEmpty()) {
@@ -127,8 +162,13 @@ ProfileDatabaseMode openProfileDatabase(Database& database, DatabaseKeyStore& ke
             return ProfileDatabaseMode::PlaintextOnDisk;
         }
 
-        if (!database.open(path, material))
-            return ProfileDatabaseMode::FailedToOpen;
+        if (!database.open(path, material)) {
+            // A stored key that does not open this encrypted file: what the
+            // F13 bug above left behind on earlier builds. Same answer, with
+            // the key kept, so renaming the file back recovers it.
+            if (!databaseFileIsEncrypted(path) || !moveAside(path) || !database.open(path, material))
+                return ProfileDatabaseMode::FailedToOpen;
+        }
         return ProfileDatabaseMode::EncryptedOnDisk;
     }
 

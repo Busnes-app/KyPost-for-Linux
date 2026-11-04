@@ -67,6 +67,10 @@ class ContactsController : public QObject
     // bounded by what is on screen, and a per-uid signal would need a
     // Connections object inside every delegate to receive it.
     Q_PROPERTY(int photoRevision READ photoRevision NOTIFY photoRevisionChanged)
+    // Owner decision Q3: a different account was paired while this device
+    // held contacts. Non-zero (how many) until the user answers "Bring your
+    // N contacts into <account>?"; nothing syncs meanwhile.
+    Q_PROPERTY(int contactsToCarry READ contactsToCarry NOTIFY carryChanged)
 
 public:
     // groupsRepository: Task 2's "refresh the groups name-cache once per
@@ -170,7 +174,18 @@ public slots:
     Q_INVOKABLE bool confirmVCardImport();
     Q_INVOKABLE void discardVCardImport();
 
+    int contactsToCarry() const;
+    // true: bring them into the account now paired (re-queued as creates,
+    // without the previous account's photos and groups, and without a key
+    // that account's relay would refuse). false: remove them. Then syncs.
+    Q_INVOKABLE bool answerCarry(bool bring);
+    // Unpair's "Also remove this device's contacts".
+    Q_INVOKABLE bool removeLocalContacts();
+    // Queued contact changes not yet on the server, for unpair's warning.
+    Q_INVOKABLE int unsyncedChangeCount() const;
+
 signals:
+    void carryChanged();
     void isBusyChanged();
     void lastErrorChanged();
     void statusMessageChanged();
@@ -227,6 +242,8 @@ private:
     // longer do by reading statusMessage() after the call. See the .cpp.
     void syncInternal(std::function<void()> onApplied);
     void applySyncOutcome(const ContactSyncOutcome& outcome);
+    // The relay's whole-batch key refusal, naming the contact; "" otherwise.
+    QString keyRefusalMessage(const QString& detail);
     void applyDedupeOutcome(const ContactDedupeOutcome& outcome);
     void refreshGroupsCache();
 };

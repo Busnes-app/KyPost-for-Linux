@@ -19,7 +19,8 @@ QJsonArray toJsonArray(const QStringList& values)
 
 QJsonObject pgpSendRequestBody(const QString& from, const PgpSendPlan& plan, const QStringList& to,
                                 const QStringList& cc, const QStringList& bcc, const QString& mode,
-                                const QDateTime& sendAt, const QByteArray& draftCopy)
+                                const QDateTime& sendAt, const QByteArray& draftCopy,
+                                std::optional<qint64> materialGeneration)
 {
     QJsonArray deliveries;
     for (const PgpDelivery& delivery : plan.deliveries) {
@@ -41,6 +42,8 @@ QJsonObject pgpSendRequestBody(const QString& from, const PgpSendPlan& plan, con
     body[QStringLiteral("cc")] = toJsonArray(cc);
     body[QStringLiteral("bcc")] = toJsonArray(bcc);
     body[QStringLiteral("mode")] = mode;
+    if (materialGeneration.has_value())
+        body[QStringLiteral("materialGeneration")] = *materialGeneration;
 
     // sentCopyEncrypted asserts the copy is ciphertext. The relay stores a copy
     // only when it is, so claiming it for anything else would be asking the

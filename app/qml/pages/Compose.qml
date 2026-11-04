@@ -283,7 +283,32 @@ Item {
             root.myDraftToken = MailApp.saveDraft(toField.joinedText, ccField.joinedText, bccField.joinedText,
                                                    subjectField.text, result.html, root.attachmentPaths, root.restoredDraft.token || "")
             root.draftHandoffToWebmail = false
+            if (!root.myDraftToken)
+                root.afterDraftSaved = null // refused before any request; lastError says why
         })
+    }
+
+    // Runs once a draft save this instance started has landed; a failed save
+    // drops it (lastError says why) and the composer stays open.
+    property var afterDraftSaved: null
+    function saveDraftThen(callback) {
+        root.afterDraftSaved = callback
+        root.trySaveDraft()
+    }
+
+    // callback(true) when closing would lose something the user has here: a
+    // recipient, subject, body text or attachment. A typed address is
+    // committed first, as trySend() does.
+    function checkHasContent(callback) {
+        toField.commitInputAsToken()
+        ccField.commitInputAsToken()
+        bccField.commitInputAsToken()
+        if (toField.joinedText !== "" || ccField.joinedText !== "" || bccField.joinedText !== ""
+                || subjectField.text.trim() !== "" || root.attachmentPaths.length > 0) {
+            callback(true)
+            return
+        }
+        bodyEditor.requestSendableHtml(function (result) { callback(!result.isEmpty) })
     }
 
     // Commits any still-uncommitted address text the same way trySend()
@@ -381,6 +406,10 @@ Item {
             IconButton {
                 icon: "open-in-new"
                 tooltip: i18n("Open in new window")
+                // Popping out destroys this composer, and with it the only
+                // owner of a send or save still in flight: the new window
+                // would offer Send again over a message already going out.
+                enabled: !root.sendInFlight && !root.draftInFlight && !root.awaitingPickupConfirmation
                 onClicked: {
                     root.currentDraftForPopOut(function(draft) {
                         root.popOutRequested(draft, root.replyTo)
@@ -899,8 +928,14 @@ Item {
             if (token !== root.myDraftToken)
                 return
             root.myDraftToken = 0
+            const after = root.afterDraftSaved
+            root.afterDraftSaved = null
             if (!ok)
                 return // MailApp.lastError carries the reason
+            if (after) {
+                after()
+                return
+            }
             // Acknowledge in place: this component already owns a Toast for
             // its other inline feedback, and the composer stays open so there
             // is no navigation change to signal a save happened.

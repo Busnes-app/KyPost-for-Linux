@@ -30,7 +30,7 @@ LocalDataWipe::LocalDataWipe(Database& database, DatabaseKeyStore& databaseKeySt
 {
 }
 
-LocalDataWipeResult LocalDataWipe::wipeCaches(bool removeCurrentDatabase)
+LocalDataWipeResult LocalDataWipe::wipeCaches(bool removeCurrentDatabase, bool keepContacts)
 {
     LocalDataWipeResult result;
 
@@ -38,7 +38,10 @@ LocalDataWipeResult LocalDataWipe::wipeCaches(bool removeCurrentDatabase)
     // connection is still open, so the unlink cannot be relied on -- and
     // emptying the tables means the content is gone even if the removal
     // loses a race with a straggling writer.
-    result.tablesWiped = m_database.wipeAllTables();
+    result.tablesWiped = m_database.wipeAllTables(
+        keepContacts ? QStringList{ QStringLiteral("contacts"), QStringLiteral("pending_contact_changes"),
+                                    QStringLiteral("native_contact_links") }
+                     : QStringList{});
 
     // Both wipe paths unlink the live database; only account replacement
     // keeps it, because the app goes on using that connection for the new
@@ -104,17 +107,22 @@ LocalDataWipeResult LocalDataWipe::wipeCaches(bool removeCurrentDatabase)
     // sync ask for a delta against a cache that no longer exists, and the
     // messages before that cursor would never be re-fetched.
     result.syncCursorsCleared = m_cursorStore.wipeAll();
+    // Kept contacts wait, unsynced, for the user's answer (owner decision Q3).
+    if (keepContacts)
+        result.syncCursorsCleared = m_cursorStore.setContactCarryPending(true) && result.syncCursorsCleared;
+    // The cache it named is gone, so there is nobody left to replace.
+    m_settingsStore.clearUnpairedCacheOwner();
 
     return result;
 }
 
-LocalDataWipeResult LocalDataWipe::wipeCachedAccountData()
+LocalDataWipeResult LocalDataWipe::wipeCachedAccountData(bool keepContacts)
 {
     // The database FILE stays, and so does its key: the app keeps running on
     // this connection and is about to sync the new account into it.
     // wipeAllTables() empties the rows, which is what "the previous account's
     // data is gone" means here.
-    return wipeCaches(/*removeCurrentDatabase=*/false);
+    return wipeCaches(/*removeCurrentDatabase=*/false, keepContacts);
 }
 
 bool LocalDataWipe::databaseIsLiveOnDisk() const

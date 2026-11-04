@@ -60,6 +60,8 @@ private slots:
     void reconnectToServerKeepsThePairingAndDoesNotDeregister();
     void pairingADifferentAccountPurgesThePreviousAccountsCachedData();
     void pairingTheSameAccountAgainPurgesNothing();
+    void unpairingThenPairingAnotherAccountStillPurges();
+    void unpairingThenPairingTheSameAccountPurgesNothing();
     void aFailedRegistrationDestroysNothing();
     void aFailedPurgeRefusesTheNewPairingAndEscalates();
     void anUnreadableSecretStoreRefusesToPairRatherThanSkipThePurge();
@@ -1935,6 +1937,39 @@ void PairingControllerTest::pairingTheSameAccountAgainPurgesNothing()
 
     QCOMPARE(f.purgeCalls, 0);
     QCOMPARE(f.escalateCalls, 0);
+}
+
+// F1: "Remove pairing" keeps the cache and empties the pairing store, and the
+// next pairing used to read that as a first pairing: the previous account's
+// mail stayed readable and its queued contact edits went to the new account.
+// The unpair records whose cache it is (owner decision Q3: the purge then
+// keeps contacts for the user to decide about).
+void PairingControllerTest::unpairingThenPairingAnotherAccountStillPurges()
+{
+    ReplacementFixture f(httpResponse(200, "OK", kRegisterOk));
+    QVERIFY(f.build(QStringLiteral("sub-previous")));
+    f.controller->removePairing();
+    QVERIFY(!f.pairingStore->load().has_value());
+    QCOMPARE(f.settingsStore->unpairedCacheOwner()->first, QStringLiteral("sub-previous"));
+
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-new")))));
+    f.controller->confirmPendingPair();
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("paired"), 5000);
+    QCOMPARE(f.purgeCalls, 1);
+    QCOMPARE(f.escalateCalls, 0);
+}
+
+void PairingControllerTest::unpairingThenPairingTheSameAccountPurgesNothing()
+{
+    ReplacementFixture f(httpResponse(200, "OK", kRegisterOk));
+    QVERIFY(f.build(QStringLiteral("sub-same")));
+    f.controller->removePairing();
+
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-same")))));
+    f.controller->confirmPendingPair();
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("paired"), 5000);
+    QCOMPARE(f.purgeCalls, 0);
+    QVERIFY(!f.settingsStore->unpairedCacheOwner().has_value());
 }
 
 // ORDER IS THE DESIGN. Purging first would mean a replacement that failed --

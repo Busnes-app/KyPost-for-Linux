@@ -634,6 +634,13 @@ void PairingController::removePairing()
             client.deregister(serverBaseUrl, deviceId, deviceSecret);
         });
     }
+    // The cache stays (unpair is not a wipe), so remember whose it is: the
+    // next pairing compares against it. If it cannot be written, that
+    // pairing treats the cache as another account's, which purges the mail
+    // and asks about the contacts -- the safe direction.
+    if (pairing.has_value() && !pairing->subscriberId.isEmpty()
+        && !m_settingsStore.setUnpairedCacheOwner(pairing->subscriberId, pairing->serverBaseUrl))
+        qWarning("PairingController: could not record whose cache survived the unpair");
     if (!m_pairingStore.clear()) {
         // Local state still clears below, but say so: "unpaired" with the
         // credential still sitting in the keychain is a different situation
@@ -698,11 +705,16 @@ bool PairingController::purgePreviousAccountIfReplaced(const PairingParams& para
     // against the store now: a second registration can land while this one is
     // in flight, and re-reading would judge this reply against an account it
     // never saw.
-    const bool sameAccount = m_registrationStartSubscriberId == params.subscriberId
+    const bool sameAccount = !m_registrationStartSubscriberId.isEmpty()
+        && m_registrationStartSubscriberId == params.subscriberId
         && m_registrationStartServerBaseUrl == params.serverBaseUrl;
-    if (sameAccount)
+    if (sameAccount) {
+        m_settingsStore.clearUnpairedCacheOwner(); // the store names the owner again
         return true;
+    }
 
+    if (!m_purgeCachedAccountData && m_registrationStartSubscriberId.isEmpty())
+        return true; // nobody known to replace, and nothing wired to look
     if (!m_purgeCachedAccountData) {
         // Unwired. Refuse rather than proceed: shipping the mixed state is
         // the failure this exists to prevent, and a missing handler is a
@@ -723,6 +735,26 @@ bool PairingController::purgePreviousAccountIfReplaced(const PairingParams& para
     if (m_escalateToFullWipe)
         m_escalateToFullWipe();
     return false;
+}
+
+// Whose cached data a registration starting now would replace: the paired
+// account; else the one "Remove pairing" left the cache behind for; else
+// nobody known (an unpair by an older build, or a fresh install), which is
+// treated as another account's. Without the second and third,
+// unpair-then-pair-someone-else skipped the purge and handed the new account
+// the old one's mail and queued contact edits (F1). The purge handler keeps
+// contacts for the user to decide about (owner decision Q3).
+void PairingController::capturePreviousAccount(const std::optional<DevicePairing>& paired)
+{
+    m_registrationHadPreviousAccount = true;
+    if (paired.has_value() && !paired->subscriberId.isEmpty()) {
+        m_registrationStartSubscriberId = paired->subscriberId;
+        m_registrationStartServerBaseUrl = paired->serverBaseUrl;
+        return;
+    }
+    const std::optional<std::pair<QString, QString>> unpaired = m_settingsStore.unpairedCacheOwner();
+    m_registrationStartSubscriberId = unpaired ? unpaired->first : QString();
+    m_registrationStartServerBaseUrl = unpaired ? unpaired->second : QString();
 }
 
 bool PairingController::reregistrationRejected() const
@@ -840,10 +872,7 @@ void PairingController::reconnectToServer()
         applyRegistrationResult(out);
         return;
     }
-    const std::optional<DevicePairing>& previousAccount = previous.pairing;
-    m_registrationHadPreviousAccount = previousAccount.has_value() && !previousAccount->subscriberId.isEmpty();
-    m_registrationStartSubscriberId = previousAccount.has_value() ? previousAccount->subscriberId : QString();
-    m_registrationStartServerBaseUrl = previousAccount.has_value() ? previousAccount->serverBaseUrl : QString();
+    capturePreviousAccount(previous.pairing);
 
     // Phase 1 here: suspends the pin, which is what lets the request reach a
     // server presenting the NEW certificate at all. If this attempt is
@@ -932,10 +961,7 @@ void PairingController::pairFromParsedParams(PairingParams params)
         applyRegistrationResult(out);
         return;
     }
-    const std::optional<DevicePairing>& previousAccount = previous.pairing;
-    m_registrationHadPreviousAccount = previousAccount.has_value() && !previousAccount->subscriberId.isEmpty();
-    m_registrationStartSubscriberId = previousAccount.has_value() ? previousAccount->subscriberId : QString();
-    m_registrationStartServerBaseUrl = previousAccount.has_value() ? previousAccount->serverBaseUrl : QString();
+    capturePreviousAccount(previous.pairing);
 
     // Phase 1 on this thread: the guards, the sealing-key snapshot and the
     // certificate-pin suspension all touch PairingStore or the pin fan-out,

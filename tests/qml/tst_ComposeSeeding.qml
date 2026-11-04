@@ -57,6 +57,34 @@ TestCase {
         compare(source.responseText.split("enabled: !MailApp.isBusy\n                    onClicked: MailApp.").length - 1, 0)
     }
 
+    // Popping out destroys the composer that owns a send in flight; the new
+    // window would offer Send again over a message already going out.
+    function test_no_popout_while_a_send_or_save_is_out() {
+        var source = new XMLHttpRequest()
+        source.open("GET", "qrc:/qml/pages/Compose.qml", false)
+        source.send()
+        compare(source.status, 200)
+        var text = source.responseText
+        var start = text.indexOf('icon: "open-in-new"')
+        verify(start >= 0)
+        var button = text.slice(start, text.indexOf("onClicked:", start))
+        verify(button.indexOf("enabled: !root.sendInFlight && !root.draftInFlight && !root.awaitingPickupConfirmation") !== -1, button)
+    }
+
+    // target="_blank", a middle-click or <base target> reach the reader as a
+    // new-window request, not a navigation; with no handler they did nothing.
+    function test_a_new_window_link_goes_through_the_same_checks() {
+        var source = new XMLHttpRequest()
+        source.open("GET", "qrc:/qml/pages/EmailDetail.qml", false)
+        source.send()
+        compare(source.status, 200)
+        var text = source.responseText
+        verify(text.indexOf("onNewWindowRequested: function (request) {") !== -1)
+        verify(text.indexOf("handleLinkClick(request.requestedUrl)") !== -1)
+        verify(text.indexOf("handleLinkClick(request.url)") !== -1)
+        compare(text.split("openIn(").length - 1, 0)
+    }
+
     function test_draft_recipients_keep_quoted_commas() {
         var source = new XMLHttpRequest()
         source.open("GET", "qrc:/qml/pages/Compose.qml", false)

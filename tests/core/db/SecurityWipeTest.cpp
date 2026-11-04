@@ -1,4 +1,5 @@
 #include "db/SecurityWipe.h"
+#include "db/ProfileDatabase.h"
 
 #include "db/Database.h"
 #include "db/DatabaseEncryptionMigration.h"
@@ -149,7 +150,9 @@ void SecurityWipeTest::removesEveryCopyTheEncryptionMigrationCanLeave()
     const QStringList databases = { dbPath,
                                      dbPath + DatabaseEncryptionMigration::kMarkerSuffix,
                                      dbPath + DatabaseEncryptionMigration::kWorkingCopySuffix,
-                                     dbPath + DatabaseEncryptionMigration::kSupersededSuffix };
+                                     dbPath + DatabaseEncryptionMigration::kSupersededSuffix,
+                                     // the profile set aside when its key was gone (F13)
+                                     dbPath + kUnreadableDatabaseSuffix };
     // Each copy is a database in its own right, so each can carry its own
     // sidecars, and -wal can hold committed pages of somebody's mail.
     QStringList all;

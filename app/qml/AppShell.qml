@@ -111,9 +111,43 @@ Kirigami.ApplicationWindow {
         : destination === "settings" ? i18n("Settings")
         : root.folderDisplayName(root.currentFolder)
 
+    // Runs proceed() at once, unless the compose pane holds something the
+    // user wrote: then it asks "Discard this message?" first (owner decision
+    // Q1). Save draft leaves once the draft has landed, Discard leaves now,
+    // Keep writing stays and runs cancel(). Either way out closes the composer
+    // BEFORE proceed(), so a guarded function called from proceed() passes.
+    property var pendingLeave: null
+    property var pendingLeaveCancel: null
+    function leaveCompose(proceed, cancel) {
+        const composer = composeLoader.item
+        if (root.detailMode !== "compose" || !composer) {
+            proceed()
+            return
+        }
+        composer.checkHasContent(function (hasContent) {
+            if (composeLoader.item !== composer || root.detailMode !== "compose") {
+                if (cancel) cancel() // the pane changed while this was asked
+                return
+            }
+            if (!hasContent) {
+                root.detailMode = "empty"
+                proceed()
+                return
+            }
+            if (root.pendingLeaveCancel) root.pendingLeaveCancel() // superseded
+            root.pendingLeave = proceed
+            root.pendingLeaveCancel = cancel || null
+            leaveComposeDialog.open()
+        })
+    }
+
     function navigate(target) {
         if (target === "lock") {
             AppLock.lockNow()
+            return
+        }
+        if (root.detailMode === "compose" && target !== "compose") {
+            root.leaveCompose(function () { root.navigate(target) })
             return
         }
         if (target === "compose") {
@@ -131,6 +165,10 @@ Kirigami.ApplicationWindow {
     }
 
     function selectFolder(wireName) {
+        if (root.detailMode === "compose") {
+            root.leaveCompose(function () { root.selectFolder(wireName) })
+            return
+        }
         root.destination = "inbox"
         root.currentFolder = wireName
         root.closeDetail()
@@ -138,18 +176,43 @@ Kirigami.ApplicationWindow {
     }
 
     function selectContactsSection() {
+        if (root.detailMode === "compose") {
+            root.leaveCompose(root.selectContactsSection)
+            return
+        }
         root.destination = "contacts"
         root.closeDetail()
     }
 
     function selectEmail(messageId, folder) {
+        if (root.detailMode === "compose") {
+            root.leaveCompose(function () { root.selectEmail(messageId, folder) })
+            return
+        }
         root.destination = "inbox"
         root.selectedMessageId = messageId
         root.selectedEmailFolder = folder
         root.detailMode = "email"
     }
 
+    // A notification names a message in any folder. The reader's mailbox
+    // actions act on MailApp.currentFolder and are off anywhere else (F3), so
+    // the list moves to the message's folder first.
+    function openEmailInItsFolder(messageId, folder) {
+        if (root.detailMode === "compose") {
+            root.leaveCompose(function () { root.openEmailInItsFolder(messageId, folder) })
+            return
+        }
+        if (folder !== MailApp.currentFolder)
+            root.selectFolder(folder)
+        root.selectEmail(messageId, folder)
+    }
+
     function selectContact(uid) {
+        if (root.detailMode === "compose") {
+            root.leaveCompose(function () { root.selectContact(uid) })
+            return
+        }
         root.destination = "contacts"
         root.selectedContactUid = uid
         root.detailMode = "contact"
@@ -158,6 +221,10 @@ Kirigami.ApplicationWindow {
     // Seeds composeSeed BEFORE flipping detailMode: the compose Loader reads
     // the seed only when it instantiates a fresh Compose.
     function openCompose(to, subject, body, replyTo, notice) {
+        if (root.detailMode === "compose") {
+            root.leaveCompose(function () { root.openCompose(to, subject, body, replyTo, notice) })
+            return
+        }
         if (root.destination === "settings")
             root.destination = "inbox"
         root.detailMode = "empty" // recreate the editor before applying another seed
@@ -166,7 +233,13 @@ Kirigami.ApplicationWindow {
         root.detailMode = "compose"
     }
 
+    // Keep writing releases the session it was handed.
     function openRestoredDraft(draft) {
+        if (root.detailMode === "compose") {
+            root.leaveCompose(function () { root.openRestoredDraft(draft) },
+                              function () { MailApp.releaseDraft(draft.token) })
+            return
+        }
         root.detailMode = "empty" // recreate the editor before applying another seed
         root.composeSeed = { to: "", subject: "", body: "", draft: draft }
         root.detailMode = "compose"
@@ -215,6 +288,8 @@ Kirigami.ApplicationWindow {
     }
 
     Component.onCompleted: {
+        if (root.carryAsk)
+            carryContactsDialog.open()
         MailApp.refresh()
         // Populates the folder drawer's Archive subfolders. A failure leaves
         // the six standard mailboxes showing (MailController::refreshFolders).
@@ -268,13 +343,8 @@ Kirigami.ApplicationWindow {
         // Forward). Here, not in EmailDetail: the reader may have moved on.
         // Never over a message already being written: that would lose it.
         // MailController refuses first when that message holds a draft
-        // session; a plain compose pane is checked here.
+        // session; over a plain compose pane, openRestoredDraft() asks.
         function onForwardComposeRequested(draft) {
-            if (root.detailMode === "compose") {
-                MailApp.releaseDraft(draft.token)
-                root.forwardNotOpened()
-                return
-            }
             root.openRestoredDraft(draft)
         }
         function onForwardFinished(composerBusy) {
@@ -287,7 +357,7 @@ Kirigami.ApplicationWindow {
             // has set lastError, and selecting nothing leaves that visible
             // instead of covering it with an empty pane.
             if (folder.length > 0)
-                root.selectEmail(messageId, folder)
+                root.openEmailInItsFolder(messageId, folder)
         }
 
         // The mail list's context-menu Delete dispatches and returns, so the
@@ -448,6 +518,17 @@ Kirigami.ApplicationWindow {
                 Layout.fillWidth: true
                 visible: Pairing.pendingPairInsecure
                 text: i18n("This connection is not encrypted (http).")
+                color: Theme.danger
+                font.family: Theme.fontUi
+                font.pixelSize: Theme.fontDate
+                wrapMode: Text.WordWrap
+            }
+            // DECISIONS.md: a link that re-pins after the certificate changed
+            // is never confirmed silently.
+            Text {
+                Layout.fillWidth: true
+                visible: Pairing.certificateMismatch
+                text: i18n("This server's certificate changed since you paired. Only continue if you just opened this link from your own KyPost web page.")
                 color: Theme.danger
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontDate
@@ -689,6 +770,7 @@ Kirigami.ApplicationWindow {
                 messageId: emailWindow.popMessageId
                 folder: emailWindow.popFolder
                 isPoppedOut: true
+                beforeLeavingCompose: function (proceed) { root.leaveCompose(proceed) }
                 onDraftRequested: function (draft) { root.openRestoredDraft(draft) }
                 onComposeRequested: function (to, subject, body, replyTo, notice) { root.openCompose(to, subject, body, replyTo, notice) }
                 onActionCompleted: emailWindow.close()
@@ -730,8 +812,12 @@ Kirigami.ApplicationWindow {
             property string popInitialBody: ""
             property bool popInitialBodyIsHtml: false
             property var popReplyTo: ({})
+            // Set once closing may go ahead: after a send, or once the user
+            // has answered "Discard this message?" (owner decision Q1).
+            property bool closeConfirmed: false
 
             Compose {
+                id: poppedCompose
                 anchors.fill: parent
                 restoredDraft: composeWindow.popRestoredDraft
                 initialTo: composeWindow.popInitialTo
@@ -740,7 +826,10 @@ Kirigami.ApplicationWindow {
                 initialBodyIsHtml: composeWindow.popInitialBodyIsHtml
                 replyTo: composeWindow.popReplyTo
                 isPoppedOut: true
-                onSendSucceeded: composeWindow.close()
+                onSendSucceeded: {
+                    composeWindow.closeConfirmed = true
+                    composeWindow.close()
+                }
                 // No MailApp.sendWarning sink here: this Window closes on
                 // sendSucceeded(), so any notice parented to it would be
                 // destroyed in the same turn it appeared. The main window owns
@@ -760,9 +849,42 @@ Kirigami.ApplicationWindow {
             // A popped-out window is a separate top-level Window, so the
             // main window's overlay does not cover it. Without this one, mail
             // stayed readable here while the app was locked.
+            ConfirmDialog {
+                id: popLeaveDialog
+                anchors.fill: parent
+                z: 900
+                title: i18n("Discard this message?")
+                message: i18n("It has not been sent. Save it to Drafts to finish it later.")
+                acceptText: i18n("Save draft")
+                alternateText: i18n("Discard")
+                rejectText: i18n("Keep writing")
+                onAccepted: poppedCompose.saveDraftThen(function () {
+                    composeWindow.closeConfirmed = true
+                    composeWindow.close()
+                })
+                onAlternated: {
+                    composeWindow.closeConfirmed = true
+                    composeWindow.close()
+                }
+            }
+
             LockOverlay {}
 
-            onClosing: composeWindow.destroy()
+            onClosing: function (close) {
+                if (composeWindow.closeConfirmed) {
+                    composeWindow.destroy()
+                    return
+                }
+                close.accepted = false
+                poppedCompose.checkHasContent(function (hasContent) {
+                    if (hasContent) {
+                        popLeaveDialog.open()
+                        return
+                    }
+                    composeWindow.closeConfirmed = true
+                    composeWindow.close()
+                })
+            }
         }
     }
 
@@ -1078,13 +1200,13 @@ Kirigami.ApplicationWindow {
                             title: root.detailMode === "email" ? i18n("Email")
                                 : root.detailMode === "contact" ? i18n("Contact")
                                 : i18n("Compose")
-                            onBackRequested: root.closeDetail()
+                            onBackRequested: root.leaveCompose(root.closeDetail)
 
                             IconButton {
                                 visible: root.split
                                 icon: "close"
                                 tooltip: i18n("Close")
-                                onClicked: root.closeDetail()
+                                onClicked: root.leaveCompose(root.closeDetail)
                             }
                         }
 
@@ -1116,6 +1238,7 @@ Kirigami.ApplicationWindow {
                         }
 
                         Loader {
+                            id: composeLoader
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             visible: active
@@ -1344,7 +1467,7 @@ Kirigami.ApplicationWindow {
     // Popup, so z-order alone keeps it under the lock gate.
     CertificateChangeDialog {
         id: certificateChangeDialog
-        onReconnectRequested: Pairing.reconnectToServer()
+        onNewLinkRequested: root.openPairing()
     }
 
     // Deliberately a Toast rather than a StatusBanner row. StatusBanner is
@@ -1417,7 +1540,7 @@ Kirigami.ApplicationWindow {
         anchors.fill: parent
         z: 900
         onChosen: function (messageId, folder) {
-            root.selectEmail(messageId, folder)
+            root.openEmailInItsFolder(messageId, folder)
         }
     }
 
@@ -1439,6 +1562,74 @@ Kirigami.ApplicationWindow {
         parseCustom: function (date, time) { return MailApp.snoozeCustomTime(date, time) }
         onChosen: function (messageIds, at) {
             MailApp.snoozeEmails(messageIds, at)
+        }
+    }
+
+    // Owner decision Q3: a different account was paired while this device held
+    // contacts. Nothing of them reaches the new account until this is
+    // answered; "Not now" (or the lock) leaves them waiting, and a contact
+    // sync asks again.
+    readonly property bool carryAsk: ContactsApp.contactsToCarry > 0 && Pairing.isPaired && !AppLock.locked
+    onCarryAskChanged: if (carryAsk) carryContactsDialog.open()
+    Connections {
+        target: ContactsApp
+        function onCarryChanged() {
+            if (root.carryAsk && !carryContactsDialog.isOpen)
+                carryContactsDialog.open()
+        }
+    }
+    ConfirmDialog {
+        id: carryContactsDialog
+        objectName: "carryContactsDialog"
+        anchors.fill: parent
+        z: 900
+        title: i18np("Bring your contact into %2?", "Bring your %1 contacts into %2?",
+                     ContactsApp.contactsToCarry, Pairing.pairedServerHost)
+        message: i18n("They are on this device from the account it was paired with before. Bring them adds them to this account. Remove them deletes them from this device only.")
+        acceptText: i18n("Bring them")
+        alternateText: i18n("Remove them")
+        rejectText: i18n("Not now")
+        onAccepted: ContactsApp.answerCarry(true)
+        onAlternated: ContactsApp.answerCarry(false)
+    }
+
+    ConfirmDialog {
+        id: leaveComposeDialog
+        objectName: "leaveComposeDialog"
+        anchors.fill: parent
+        z: 900
+        title: i18n("Discard this message?")
+        message: i18n("It has not been sent. Save it to Drafts to finish it later.")
+        acceptText: i18n("Save draft")
+        alternateText: i18n("Discard")
+        rejectText: i18n("Keep writing")
+        function take() {
+            const leave = { proceed: root.pendingLeave, cancel: root.pendingLeaveCancel }
+            root.pendingLeave = null
+            root.pendingLeaveCancel = null
+            return leave
+        }
+        onAccepted: {
+            const leave = take()
+            const composer = composeLoader.item
+            if (!composer || !leave.proceed)
+                return
+            composer.saveDraftThen(function () {
+                if (composeLoader.item !== composer)
+                    return
+                root.detailMode = "empty"
+                sendWarningToast.show(i18n("Draft saved"))
+                leave.proceed()
+            })
+        }
+        onAlternated: {
+            const leave = take()
+            root.detailMode = "empty"
+            if (leave.proceed) leave.proceed()
+        }
+        onRejected: {
+            const leave = take()
+            if (leave.cancel) leave.cancel()
         }
     }
 

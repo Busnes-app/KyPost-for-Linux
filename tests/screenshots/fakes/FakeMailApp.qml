@@ -51,7 +51,7 @@ QtObject {
     signal attachmentDownloaded()
     signal attachmentsListed(string mailbox, string messageId, var attachments)
     signal decryptedChanged()
-    signal draftSaveCompleted()
+    signal draftSaveCompleted(var token, bool ok)
     signal folderMutationCompleted(bool ok)
     signal foldersChanged()
     signal forwardComposeRequested(var draft)
@@ -115,7 +115,8 @@ QtObject {
     function deleteFolder() {}
     function sendMail() { return true }
     function sendClientEncrypted() { return true }
-    function saveDraft() {}
+    property int draftSaves: 0
+    function saveDraft() { return ++draftSaves }
     function reopenDraft() {}
     function reopenDecryptedDraft() {}
     function releaseDraft() {}

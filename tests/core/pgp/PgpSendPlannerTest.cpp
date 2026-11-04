@@ -144,6 +144,15 @@ void PgpSendPlannerTest::everyBccRecipientGetsTheirOwnCiphertext()
 
     QVERIFY(readAs(plan.deliveries.at(1), m_bob.path()).contains("The real body."));
     QVERIFY(readAs(plan.deliveries.at(2), m_carol.path()).contains("The real body."));
+
+    // The sender's own Sent copy records who was blind-copied; no recipient's
+    // delivery does.
+    PgpDelivery copy;
+    copy.message = plan.sentCopy;
+    const QByteArray mine = readAs(copy, m_sender.path());
+    QVERIFY2(mine.contains("Bcc: bob@example.com, carol@example.com"), mine.constData());
+    for (const PgpDelivery& delivery : plan.deliveries)
+        QVERIFY(!plan.sentCopy.isEmpty() && !delivery.message.contains("Bcc:"));
 }
 
 // The reason the wire format is a LIST rather than one message. A single

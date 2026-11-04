@@ -351,7 +351,7 @@ bool Database::holdsAccountData() const
     return query.value(0).toBool();
 }
 
-bool Database::wipeAllTables()
+bool Database::wipeAllTables(const QStringList& keep)
 {
     if (!m_db.isOpen())
         return false;
@@ -363,8 +363,11 @@ bool Database::wipeAllTables()
     }
 
     QStringList tables;
-    while (tablesQuery.next())
-        tables.append(tablesQuery.value(0).toString());
+    while (tablesQuery.next()) {
+        const QString table = tablesQuery.value(0).toString();
+        if (!keep.contains(table))
+            tables.append(table);
+    }
 
     // secure_delete makes SQLite overwrite deleted content with zeroes
     // rather than just unlinking it into the freelist. It is ON by default

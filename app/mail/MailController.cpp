@@ -59,7 +59,11 @@ namespace {
 
 QString safeAttachmentName(QString name)
 {
-    name.removeIf([](QChar c) { return c.unicode() < 0x20 || c.unicode() == 0x7f; });
+    name.removeIf([](QChar c) {
+        // Format characters too: U+202E turned "Invoice_\u202Efdp.html" into
+        // a name that reads "Invoice_lmth.pdf" and opens as HTML.
+        return c.unicode() < 0x20 || c.unicode() == 0x7f || c.category() == QChar::Other_Format;
+    });
     name.replace(QLatin1Char('\\'), QLatin1Char('/'));
     name = QFileInfo(name).fileName();
     return name.isEmpty() || name == QStringLiteral(".") || name == QStringLiteral("..")
@@ -350,6 +354,17 @@ void MailController::refreshInternal(bool forceFullResync)
         return;
     }
 
+    // A folder holding rows below the relay's window from an earlier session
+    // gets, on its first refresh in this one, a full window that replaces
+    // them: deltas never mention those rows again, so nothing else refreshes
+    // them. Only then, never mid-session, so rows the user is paging through
+    // do not vanish under them.
+    if (!m_refreshedThisSession.contains(m_currentFolder)) {
+        m_refreshedThisSession.insert(m_currentFolder);
+        if (m_mailRepository.holdsMoreThanAWindow(m_currentFolder))
+            forceFullResync = true;
+    }
+
     // Phase 1 on this thread: PairingStore caches and is mutated by the
     // credential gate, CursorStore is a QSettings file. Only the request that
     // uses what they produce may leave.
@@ -376,6 +391,9 @@ void MailController::finishRefresh(const MailRefreshPlan& plan, const InboxFetch
     // whose QSqlDatabase connection was opened here and may not be touched
     // anywhere else.
     const MailFetchOutcome outcome = m_mailRepository.applyRefresh(plan, result);
+    // A replacing resync that did not land is tried again on the next refresh.
+    if (plan.replaceOlder && outcome.outcome != MailRepositoryOutcome::Success)
+        m_refreshedThisSession.remove(plan.folder);
     if (outcome.outcome == MailRepositoryOutcome::CacheWriteFailed) {
         // Worded here, not in core/ (AGENTS.md 6c). Named separately from the
         // generic failure because the relay answered fine -- the local cache
@@ -523,7 +541,12 @@ void MailController::finishAction(const QString& action, const QStringList& mess
 {
     popBusy();
 
-    if (result.error.has_value() || !result.ok) {
+    // The relay answers ok:false whenever ANY id failed, with the rest
+    // already done and the failures listed. Only a reply that did nothing is
+    // a failed action; treating a partial one as failed left the processed
+    // messages listed here, and a retry failed on every one of them.
+    const bool nothingDone = !result.ok && (result.failed.isEmpty() || result.failed.size() >= messageIds.size());
+    if (result.error.has_value() || nothingDone) {
         setLastError(result.detail.isEmpty() ? i18n("Action failed") : result.detail);
         emit actionCompleted(action, messageIds, false);
         return;
@@ -1183,25 +1206,55 @@ quint64 MailController::sendMail(const QString& to, const QString& cc, const QSt
     if (sendAt.isValid())
         m_pendingSend = {};
 
+    // What this plain send asks of the account is checked first, as a draft
+    // save does: Compose took this path because the custody answer was
+    // missing or stale, and for an account that encrypts on this device that
+    // used to mean the message went out unencrypted, without a word.
+    struct Outcome {
+        SendMailResult result;
+        bool encryptsHere = false;
+    };
     pushBusy();
     m_executor.run(
         this,
         [serverBaseUrl, auth, to, cc, bcc, subject, body, sendMode, attachments, sign, encrypt, replyToMessageId,
          replyToMailbox, sendAt](HttpClient& http) {
-            RelayMailSource source(http);
-            if (sendAt.isValid()) {
-                if (const QString refusal = schedulingRefusal(source, serverBaseUrl, auth); !refusal.isEmpty()) {
-                    SendMailResult refused;
-                    refused.error = NetworkError::Server;
-                    refused.detail = refusal;
-                    return refused;
-                }
+            Outcome out;
+            const PgpBootstrapResult custody = PgpBootstrapClient(http).fetch(serverBaseUrl, auth);
+            if (!custody.ok) {
+                out.result.error = NetworkError::Server;
+                out.result.detail = i18n("Could not check how this account protects mail. Nothing was sent. Try again.");
+                return out;
             }
-            return source.sendMail(serverBaseUrl, auth, to, cc, bcc, subject, body, sendMode, attachments, sign,
-                                    encrypt, /*allowPickupFallback=*/false, replyToMessageId, replyToMailbox,
-                                    sendAt);
+            if (custody.protection == QStringLiteral("client") && openPgpEngineAvailable()) {
+                out.encryptsHere = true;
+                out.result.error = NetworkError::Server;
+                out.result.detail = i18n("This account's mail is encrypted on this computer. Nothing was sent; press Send again to send it encrypted.");
+                return out;
+            }
+            out.result = [&] {
+                RelayMailSource source(http);
+                if (sendAt.isValid()) {
+                    if (const QString refusal = schedulingRefusal(source, serverBaseUrl, auth); !refusal.isEmpty()) {
+                        SendMailResult refused;
+                        refused.error = NetworkError::Server;
+                        refused.detail = refusal;
+                        return refused;
+                    }
+                }
+                return source.sendMail(serverBaseUrl, auth, to, cc, bcc, subject, body, sendMode, attachments, sign,
+                                        encrypt, /*allowPickupFallback=*/false, replyToMessageId, replyToMailbox,
+                                        sendAt);
+            }();
+            return out;
         },
-        [this, sendToken](const SendMailResult& result) { finishSend(sendToken, result); });
+        [this, sendToken](const Outcome& outcome) {
+            if (outcome.encryptsHere) {
+                m_pendingSend = {};
+                refreshPgpComposeState(/*force=*/true); // Compose then takes the encrypted path
+            }
+            finishSend(sendToken, outcome.result);
+        });
     return sendToken;
 }
 
@@ -1375,8 +1428,16 @@ void MailController::refreshPgpComposeState(bool force)
     // Component.onCompleted, i.e. a nested event loop while the object tree
     // was still being built -- and that reason is gone; the cache is kept
     // for the remaining one.
-    if (m_pgpComposeStateFetched && !force)
+    if (m_pgpComposeStateFetched && !force && m_pairingStore.stillCurrent(m_accountAddressesOwner))
         return;
+    // Another account's answer, or none: no controls until this one's lands.
+    if (m_pgpComposeStateFetched && !m_pairingStore.stillCurrent(m_accountAddressesOwner)) {
+        m_pgpComposeStateFetched = false;
+        m_pgpCanEncrypt = false;
+        m_pgpCanSign = false;
+        m_pgpHandoffToWebmail = false;
+        emit pgpComposeStateChanged();
+    }
     fetchPgpBootstrap();
 }
 
@@ -1564,6 +1625,9 @@ void MailController::listAttachments(const QString& mailbox, const QString& mess
         return;
     }
 
+    // The names, sizes and types belong to the account that asked (AGENTS.md
+    // 6g): a reader left open across a re-pair would show them under the next.
+    const PairingIdentity listedFor = m_pairingStore.currentIdentity();
     pushBusy();
     m_executor.run(
         this,
@@ -1571,8 +1635,12 @@ void MailController::listAttachments(const QString& mailbox, const QString& mess
             RelayMailSource source(http);
             return source.listAttachments(serverBaseUrl, auth, mailbox, messageId);
         },
-        [this, mailbox, messageId](const ListAttachmentsResult& result) {
+        [this, mailbox, messageId, listedFor](const ListAttachmentsResult& result) {
             popBusy();
+            if (!m_pairingStore.stillCurrent(listedFor)) {
+                emit attachmentsListed(mailbox, messageId, {});
+                return;
+            }
             if (result.error.has_value()) {
                 setLastError(result.detail.isEmpty() ? i18n("Could not list attachments") : result.detail);
                 emit attachmentsListed(mailbox, messageId, {});
@@ -1683,6 +1751,12 @@ void MailController::downloadAttachment(const QString& mailbox, const QString& m
                 emit attachmentDownloaded(messageId, index, false);
                 return;
             }
+            // Nor in front of the PIN screen: the app locked while this was
+            // downloading, and the ephemeral branch would open it over the lock.
+            if (m_appLocked && !result.data.isEmpty()) {
+                emit attachmentDownloaded(messageId, index, false);
+                return;
+            }
             // Everything below -- the filename hardening, the exclusive
             // create, the ephemeral open -- stays on THIS thread. Only the
             // fetch moved. QStandardPaths, the 5-minute delete QTimer and
@@ -1725,7 +1799,11 @@ bool MailController::storeDownloadedAttachment(const QString& suggestedName,
     // handler choice back to the sender. The same split silently no-ops the
     // 5-minute delete timer, the exit cleanup and the write rollback, so the
     // file outlived the session in the one mode that promises it cannot.
-    name.removeIf([](QChar c) { return c.unicode() < 0x20 || c.unicode() == 0x7f; });
+    name.removeIf([](QChar c) {
+        // Format characters too: U+202E turned "Invoice_\u202Efdp.html" into
+        // a name that reads "Invoice_lmth.pdf" and opens as HTML.
+        return c.unicode() < 0x20 || c.unicode() == 0x7f || c.category() == QChar::Other_Format;
+    });
     name = QFileInfo(name).fileName();
     if (name.isEmpty() || name == QStringLiteral(".") || name == QStringLiteral(".."))
         name = QStringLiteral("attachment");
@@ -1794,6 +1872,8 @@ static const QHash<QString, QString>& viewableAttachmentTypes()
 bool MailController::openAttachmentEphemerally(const QString& name, const QString& declaredMimeType,
                                                 const QByteArray& data)
 {
+    if (m_appLocked)
+        return false;
     // Type gate, before a single byte is written. See
     // viewableAttachmentTypes() for why the server-declared type decides and
     // the filename does not.
@@ -2082,7 +2162,8 @@ namespace {
 MailController::ClientEncryptedOutcome runClientEncryptedSend(
     HttpClient& http, const RelayEndpoint& endpoint, const QString& to, const QString& cc,
     const QString& bcc, const QString& subject, const QString& body, const QString& date,
-    const QVector<MailAttachmentUpload>& attachments, const QDateTime& sendAt)
+    const QVector<MailAttachmentUpload>& attachments, const QDateTime& sendAt,
+    std::optional<qint64> materialGeneration)
 {
     using Failure = MailController::ClientEncryptedOutcome::Failure;
     MailController::ClientEncryptedOutcome outcome;
@@ -2252,9 +2333,11 @@ MailController::ClientEncryptedOutcome runClientEncryptedSend(
     const PgpSendClient sender(http);
     const PgpSendResult sent = sender.send(endpoint.serverBaseUrl, endpoint.auth,
                                             identity.primaryAddress, plan, toList, ccList, bccList,
-                                            QStringLiteral("plain"), sendAt, draftCopy);
+                                            QStringLiteral("plain"), sendAt, draftCopy, materialGeneration);
     if (!sent.ok) {
-        outcome.failure = sent.tooLarge ? Failure::TooLarge : Failure::SendFailed;
+        outcome.failure = sent.tooLarge ? Failure::TooLarge
+            : sent.keyMaterialChanged   ? Failure::KeyMaterialChanged
+                                        : Failure::SendFailed;
         outcome.detail = sent.detail;
         return outcome;
     }
@@ -2264,6 +2347,7 @@ MailController::ClientEncryptedOutcome runClientEncryptedSend(
     // Either the planner never built a copy, or the relay did not file it. A
     // held message has filed nothing yet.
     outcome.missingSentCopy = plan.sentCopyUnavailable || (!sent.sentSaved && !sendAt.isValid());
+    outcome.warned = sent.warned;
     return outcome;
 }
 
@@ -2293,6 +2377,9 @@ quint64 MailController::sendClientEncrypted(const QString& to, const QString& cc
     const RelayEndpoint endpoint{ QUrl(pairing->serverBaseUrl),
                                    RelayAuth{ pairing->deviceId, pairing->deviceSecret } };
     const PairingIdentity identity = identityOf(*pairing);
+    // The keyring generation this device was enrolled at, for this account only.
+    const std::optional<qint64> generation =
+        m_settingsStore.pgpMaterialGeneration(pairing->subscriberId, pairing->serverBaseUrl);
     const quint64 sendToken = m_nextPendingSendToken++;
     captureDraftReplacement(sendToken, draftToken);
     // Stamped here, on the thread that knows when the user pressed Send --
@@ -2303,9 +2390,9 @@ quint64 MailController::sendClientEncrypted(const QString& to, const QString& cc
     pushBusy();
     m_executor.run(
         this,
-        [endpoint, to, cc, bcc, subject, body, date, attachments, sendAt](HttpClient& http) {
+        [endpoint, to, cc, bcc, subject, body, date, attachments, sendAt, generation](HttpClient& http) {
             return runClientEncryptedSend(http, endpoint, to, cc, bcc, subject, body, date,
-                                           attachments, sendAt);
+                                           attachments, sendAt, generation);
         },
         [this, sendToken, identity](const ClientEncryptedOutcome& outcome) {
             popBusy();
@@ -2332,6 +2419,13 @@ void MailController::finishClientEncryptedSend(quint64 token, const ClientEncryp
         m_lastSendMissingSentCopy = outcome.missingSentCopy;
         if (outcome.scheduledAt.isValid())
             announceScheduled(outcome.scheduledAt);
+        // The relay's warning is prose and is not shown (PgpSendClient). With
+        // the Sent copy filed, the only thing left to warn about is a Bcc
+        // delivery that failed; the composer closes, so say it here.
+        if (outcome.warned)
+            emit sendWarning(outcome.missingSentCopy
+                ? i18n("Sent, but some Bcc recipients may not have received it, and it may be missing from Sent. Don't send it to everyone again.")
+                : i18n("Sent, but some Bcc recipients may not have received it. Don't send it to everyone again."));
         setLastError(QString());
         emit pgpComposeStateChanged();
         emit sendCompleted(token, true);
@@ -2342,6 +2436,10 @@ void MailController::finishClientEncryptedSend(quint64 token, const ClientEncryp
     case Failure::None:
     case Failure::SendFailed:
         setLastError(i18n("The message could not be sent. Try again."));
+        break;
+    case Failure::KeyMaterialChanged:
+        setLastError(i18n("Your OpenPGP keys changed since this device was enrolled, so the server refused the "
+                          "message. Nothing was sent. Enroll this device again in Settings, then send it."));
         break;
     case Failure::NotConfigured:
         setLastError(i18n("This account has no mail configuration, so there is no address to send "

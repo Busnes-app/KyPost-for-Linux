@@ -1,4 +1,5 @@
 #include "pgp/PgpEnrollmentController.h"
+#include "stores/SettingsStore.h"
 
 #include "domain/PairingStore.h"
 #include "net/HttpClient.h"
@@ -30,9 +31,9 @@ bool importSucceeded(PgpKeyringImportStatus status)
 }
 }
 
-PgpEnrollmentController::PgpEnrollmentController(PairingStore& pairingStore, NetworkExecutor& executor,
-                                                 QObject* parent)
-    : QObject(parent), m_pairingStore(pairingStore), m_executor(executor)
+PgpEnrollmentController::PgpEnrollmentController(PairingStore& pairingStore, SettingsStore& settingsStore,
+                                                 NetworkExecutor& executor, QObject* parent)
+    : QObject(parent), m_pairingStore(pairingStore), m_settingsStore(settingsStore), m_executor(executor)
 {
     m_pollTimer.setInterval(3000);
     m_pollTimer.setSingleShot(true);
@@ -65,6 +66,8 @@ void PgpEnrollmentController::start()
     m_serverBaseUrl = QUrl(pairing->serverBaseUrl);
     m_auth = RelayAuth{pairing->deviceId, pairing->deviceSecret};
     m_identity = identityOf(*pairing);
+    m_subscriberId = pairing->subscriberId;
+    m_serverBaseText = pairing->serverBaseUrl;
     const QByteArray publicKey = m_crypto.publicKeyBase64();
     setState(Starting, i18n("Publishing this device's enrollment key…"));
     m_executor.run(
@@ -84,7 +87,9 @@ void PgpEnrollmentController::start()
                 out.failure = StartResult::PublishFailed;
             return out;
         },
-        [this](const StartResult& result) {
+        [this, attempt = m_attempt](const StartResult& result) {
+            if (attempt != m_attempt)
+                return;
             if (!m_pairingStore.stillCurrent(m_identity)) {
                 cancel();
                 return;
@@ -132,7 +137,9 @@ void PgpEnrollmentController::poll()
         [url = m_serverBaseUrl, auth = m_auth](HttpClient& http) {
             return PgpDeviceEnrollmentClient(http).fetchEnvelope(url, auth);
         },
-        [this](const DeviceEnrollmentCallResult& result) {
+        [this, attempt = m_attempt](const DeviceEnrollmentCallResult& result) {
+            if (attempt != m_attempt)
+                return;
             if (m_state != Waiting || !m_pairingStore.stillCurrent(m_identity)) {
                 cancel();
                 return;
@@ -188,12 +195,18 @@ void PgpEnrollmentController::poll()
                     }
                     return importResult;
                 },
-                [this](const ImportResult& importResult) {
+                [this, attempt = m_attempt, ring, generation = expected.materialGeneration](const ImportResult& importResult) {
+                    if (attempt != m_attempt)
+                        return;
                     if (!m_pairingStore.stillCurrent(m_identity)) {
                         cancel();
                         return;
                     }
                     if (importSucceeded(importResult.imported)) {
+                        // A converted account's relay refuses a client-encrypted
+                        // send that does not assert this (requireCurrentGeneration).
+                        if (ring && !m_settingsStore.setPgpMaterialGeneration(m_subscriberId, m_serverBaseText, generation))
+                            qWarning("PgpEnrollmentController: could not record the enrolled key generation");
                         setState(Enrolled, importResult.enrollmentStateReported
                             ? i18n("This device can now decrypt and sign with your OpenPGP key.")
                             : i18n("The key was imported, but KyPost could not update the device status on the server."));
@@ -240,6 +253,7 @@ void PgpEnrollmentController::finishWithFailure(const QString& status)
 
 void PgpEnrollmentController::cancel()
 {
+    ++m_attempt;
     m_importCancelled->store(true);
     m_importCancelled = std::make_shared<std::atomic_bool>(false);
     m_pollTimer.stop();

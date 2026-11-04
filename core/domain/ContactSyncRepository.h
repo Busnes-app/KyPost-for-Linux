@@ -155,6 +155,18 @@ public:
     // row but lost the tombstone comes back on the next pull.
     [[nodiscard]] bool queueDelete(const QString& uid, qint64 rev);
 
+    // Account change (owner decision Q3, AGENTS.md 6g). True while contacts
+    // kept from the previous account wait for "Bring your N contacts into
+    // <account>?"; nothing syncs until it is answered.
+    bool carryPending() const;
+    // Yes: `contacts` (this device's, as the caller prepared them) become
+    // creates for the account now paired, replacing the queue. Bounded like
+    // an import; anything but Queued changes nothing.
+    [[nodiscard]] ContactImportOutcome carryInto(const QVector<Contact>& contacts);
+    // No, or unpair's "Also remove this device's contacts": every cached
+    // contact and queued change goes, with the contact cursor.
+    [[nodiscard]] bool removeLocal();
+
     ContactSyncOutcome sync();
 
     // ---- three-phase form, for callers that must not block ---------------
@@ -211,7 +223,7 @@ public:
 
 private:
     // The two writes of a queued create, inside the caller's transaction.
-    bool insertCreate(Contact& contact, const QString& wireJson);
+    bool insertCreate(Contact& contact);
 
     ContactSyncClient& m_client;
     ContactDao& m_contactDao;

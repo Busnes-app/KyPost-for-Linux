@@ -81,6 +81,8 @@ Item {
             message += "\n\n" + i18np("%1 card has no name, email or organization and will be skipped.",
                                        "%1 cards have no name, email or organization and will be skipped.",
                                        preview.skipped)
+        if (preview.keyRefusals && preview.keyRefusals.length > 0)
+            message += "\n\n" + i18n("These keys won't be imported; the contacts will:") + "\n" + preview.keyRefusals.join("\n")
         importDialog.message = message
         importDialog.open()
     }

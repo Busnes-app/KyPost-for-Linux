@@ -36,6 +36,11 @@ Contact contactFromJson(const QJsonObject& obj);
 // entirely, so both vectors are simply empty in that case — this client
 // only surfaces tooOld; the reset-and-wipe behavior it implies is Phase 4
 // (ContactSyncRepository), not implemented here.
+// KyPost-Server handleContactsSync refuses a whole push over one contact's
+// key with "invalid PGP key for contact <uid>: <reason>" (uid empty for a
+// create). push() puts that text in detail.
+inline constexpr char kContactKeyRefusalPrefix[] = "invalid PGP key for contact ";
+
 struct ContactSyncResult
 {
     std::optional<NetworkError> error;
@@ -86,9 +91,9 @@ public:
     // since = 0 requests a full initial sync.
     ContactSyncResult pull(const QUrl& serverBaseUrl, const RelayAuth& auth, qint64 since) const;
 
-    // An empty Contact::uid within changes marks a create (server assigns
-    // the real uid) -- falls out naturally since uid is a plain QString, no
-    // special sentinel needed.
+    // A create carries the uid this device gave it; the relay creates the
+    // contact under it. An empty uid (a create queued by an older build) has
+    // the relay assign one.
     ContactSyncResult push(const QUrl& serverBaseUrl, const RelayAuth& auth, qint64 baseCursor,
                             const QVector<Contact>& changes) const;
 

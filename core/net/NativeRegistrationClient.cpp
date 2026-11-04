@@ -91,6 +91,7 @@ NativeRegistrationResult NativeRegistrationClient::registerDevice(
     NativeRegistrationResult out;
     out.peerSpkiSha256 = result.peerSpkiSha256;
     out.certificatePinVerified = result.certificatePinVerified;
+    out.statusCode = result.statusCode;
 
     if (result.error.has_value()) {
         switch (*result.error) {

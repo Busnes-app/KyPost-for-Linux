@@ -185,6 +185,11 @@ QHash<QString, int> MailRepository::unreadCounts() const
     return m_emailDao.unreadCounts();
 }
 
+bool MailRepository::holdsMoreThanAWindow(const QString& folder) const
+{
+    return m_emailDao.messageIdsInFolder(folder).size() > kInboxPageSize;
+}
+
 std::optional<MailRefreshPlan> MailRepository::planRefresh(const QString& folder, bool forceFullResync) const
 {
     const std::optional<DevicePairing> pairing = m_pairingStore.load();
@@ -196,6 +201,7 @@ std::optional<MailRefreshPlan> MailRepository::planRefresh(const QString& folder
                                     RelayAuth{ pairing->deviceId, pairing->deviceSecret } };
     plan.folder = folder;
     plan.subscriberId = pairing->subscriberId;
+    plan.replaceOlder = forceFullResync;
 
     // `since` is always sent -- that is what selects the relay's cursor
     // protocol and makes it return a cursor at all. See refreshFolder()'s
@@ -275,7 +281,7 @@ MailFetchOutcome MailRepository::applyRefresh(const MailRefreshPlan& plan, const
         // still joins on. A window shorter than a page is the whole folder.
         const std::optional<MessageRef> bottom =
             emails.size() < kInboxPageSize ? std::nullopt : oldestOf(QStringList(replyIds.begin(), replyIds.end()));
-        const bool keepOlder = reaches(held, bottom);
+        const bool keepOlder = !plan.replaceOlder && reaches(held, bottom);
         QStringList gone;
         for (const QString& id : held) {
             if (!replyIds.contains(id) && !(keepOlder && below(id, *bottom)))

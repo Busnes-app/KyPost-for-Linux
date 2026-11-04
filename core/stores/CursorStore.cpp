@@ -73,6 +73,34 @@ bool CursorStore::wipeAll()
     return flush();
 }
 
+bool CursorStore::contactCarryPending() const
+{
+    return m_settings.value(QStringLiteral("contacts/carryPending"), false).toBool();
+}
+
+bool CursorStore::setContactCarryPending(bool pending)
+{
+    if (pending)
+        m_settings.setValue(QStringLiteral("contacts/carryPending"), true);
+    else
+        m_settings.remove(QStringLiteral("contacts/carryPending"));
+    return flush();
+}
+
+bool CursorStore::advancedPastTheDiskCache() const
+{
+    return m_settings.value(QStringLiteral("cursors/inMemorySession"), false).toBool();
+}
+
+bool CursorStore::setAdvancedPastTheDiskCache(bool advanced)
+{
+    if (advanced)
+        m_settings.setValue(QStringLiteral("cursors/inMemorySession"), true);
+    else
+        m_settings.remove(QStringLiteral("cursors/inMemorySession"));
+    return flush();
+}
+
 bool CursorStore::reset()
 {
     m_settings.remove(kMailCursorGroup); // the whole per-(subscriber, folder) tree

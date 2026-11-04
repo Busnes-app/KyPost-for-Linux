@@ -15,6 +15,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QUuid>
 #include <QDir>
 #include <QNetworkAccessManager>
 #include <QSqlQuery>
@@ -31,7 +32,7 @@ private slots:
     void fullSyncAssignsUidWithoutDuplicating();
     void serverDeleteRemovesLocalContactViaPull();
     void localDeleteOfSyncedContactSendsTombstone();
-    void unsyncedLocalDeleteLeavesNoTombstone();
+    void anUnsyncedLocalDeleteLeavesOnlyATombstone();
     void serverEditUpdatesExistingContact();
     void serverIsSelfFlagSurvivesSync();
     void serverFullSyncAppliesExtendedFields();
@@ -145,8 +146,10 @@ void ContactSyncRepositoryTest::fullSyncAssignsUidWithoutDuplicating()
     const QJsonObject sent = fake.receivedJsonBody();
     QCOMPARE(sent.value(QStringLiteral("baseCursor")).toInt(), 0);
     const QJsonObject sentChange = sent.value(QStringLiteral("changes")).toArray().at(0).toObject();
-    QVERIFY(sentChange.contains(QStringLiteral("uid")));
-    QCOMPARE(sentChange.value(QStringLiteral("uid")).toString(), QString());
+    // Sent under its own uid, so a retry upserts this contact rather than
+    // making another. A relay that files it under a uid of its own (this
+    // fake) is still matched back to the local row.
+    QCOMPARE(sentChange.value(QStringLiteral("uid")).toString(), tempUid);
 
     const QVector<Contact> all = contactDao.findAll();
     QCOMPARE(all.size(), 1);
@@ -251,7 +254,7 @@ void ContactSyncRepositoryTest::localDeleteOfSyncedContactSendsTombstone()
     QVERIFY(pendingDao.findAll().isEmpty());
 }
 
-void ContactSyncRepositoryTest::unsyncedLocalDeleteLeavesNoTombstone()
+void ContactSyncRepositoryTest::anUnsyncedLocalDeleteLeavesOnlyATombstone()
 {
     Database db;
     QVERIFY(db.open(QStringLiteral(":memory:")));
@@ -282,7 +285,12 @@ void ContactSyncRepositoryTest::unsyncedLocalDeleteLeavesNoTombstone()
     QVERIFY(repository.queueDelete(tempUid, 0));
 
     QVERIFY(!contactDao.findById(tempUid).has_value());
-    QVERIFY(pendingDao.findAll().isEmpty());
+    // The create is gone. Its uid gets a tombstone: the create may already be
+    // on the relay (a committed push whose reply was lost), and the relay
+    // ignores a tombstone for a uid it never had.
+    const QVector<PendingContactChangeRecord> left = pendingDao.findAll();
+    QCOMPARE(left.size(), 1);
+    QCOMPARE(left.first().contactUid, tempUid);
 }
 
 void ContactSyncRepositoryTest::serverEditUpdatesExistingContact()
@@ -911,9 +919,14 @@ void ContactSyncRepositoryTest::deletingAnUnsyncedContactDropsItsLaterEditsToo()
     // ...then decides to remove it.
     QVERIFY(repository.queueDelete(tempUid, 0));
 
-    // Nothing queued survives: no create, no edit, and no tombstone for a
-    // contact the server never heard of.
-    QCOMPARE(pendingDao.findAll().size(), 0);
+    // No create and no edit survive. One tombstone does, under the uid the
+    // create carried: the relay may have committed a push of it whose reply
+    // was lost, and it ignores a tombstone for a uid it never had.
+    const QVector<PendingContactChangeRecord> left = pendingDao.findAll();
+    QCOMPARE(left.size(), 1);
+    QCOMPARE(left.first().contactUid, tempUid);
+    const QJsonObject wire = QJsonDocument::fromJson(left.first().changeJson.toUtf8()).object();
+    QVERIFY(wire.value(QStringLiteral("deleted")).toBool());
     QVERIFY(contactDao.findAll().isEmpty());
 }
 
@@ -1309,9 +1322,10 @@ void ContactSyncRepositoryTest::aVCardImportIsQueuedWholeAndOnlyIntoAnEmptyOutbo
     for (const PendingContactChangeRecord& record : queued) {
         QVERIFY(!record.contactUid.isEmpty());
         uids.insert(record.contactUid);
-        // A create on the wire: no uid of its own, so the relay assigns one.
+        // A create on the wire carries its own uid, so a retry upserts the
+        // same contact instead of the relay minting another.
         const QJsonObject wire = QJsonDocument::fromJson(record.changeJson.toUtf8()).object();
-        QVERIFY(wire.value(QStringLiteral("uid")).toString().isEmpty());
+        QCOMPARE(wire.value(QStringLiteral("uid")).toString(), record.contactUid);
         QVERIFY(!wire.value(QStringLiteral("deleted")).toBool());
     }
     QCOMPARE(uids.size(), 3);
@@ -1357,7 +1371,7 @@ void ContactSyncRepositoryTest::aVCardImportExactlyAtTheBodyBudgetIsQueued()
     QVector<Contact> two = namedContacts(2);
     auto wireSize = [](const Contact& contact) {
         Contact wire = contact;
-        wire.uid = QString();
+        wire.uid = QUuid::createUuid().toString(QUuid::WithoutBraces); // a create carries its uid
         return QJsonDocument(ContactWire::contactToJson(wire)).toJson(QJsonDocument::Compact).size() + 1;
     };
     // Grow the second one's note until the pair is exactly at the budget;

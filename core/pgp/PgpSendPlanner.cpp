@@ -125,8 +125,15 @@ PgpSendPlan buildPgpSendPlan(const OutgoingMessage& message, const QStringList& 
     if (senderFingerprint.trimmed().isEmpty()) {
         plan.sentCopyUnavailable = true;
     } else {
+        // The sender's own copy names the Bcc recipients, inside the
+        // ciphertext only (as a draft does): without it, nothing records who
+        // was blind-copied. Never in a recipient's delivery.
+        const QByteArray copyContent = bcc.isEmpty()
+            ? content
+            : protectedDraftContent(message, bcc.join(QStringLiteral(", ")),
+                                    randomMimeBoundary(message.body.toUtf8()));
         const PgpEncryptResult copy =
-            signAndEncrypt(content, signer, { senderFingerprint.trimmed() }, homeDirectory);
+            signAndEncrypt(copyContent, signer, { senderFingerprint.trimmed() }, homeDirectory);
         if (copy.status == PgpEncryptStatus::Encrypted) {
             plan.sentCopy = pgpMimeDelivery(message, copy.armoredCiphertext,
                                              randomMimeBoundary(copy.armoredCiphertext.toUtf8()));

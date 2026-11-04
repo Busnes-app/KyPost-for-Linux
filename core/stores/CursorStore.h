@@ -44,6 +44,19 @@ public:
     // Everything, notification cursor included, for the wipe paths.
     [[nodiscard]] bool wipeAll();
 
+    // Set when a different account was paired while this device held
+    // contacts: they wait, unsynced, until the user answers "Bring your N
+    // contacts into <account>?" (owner decision Q3). Here because it is
+    // contact-sync state, and every wipe clears it with the cursors.
+    bool contactCarryPending() const;
+    [[nodiscard]] bool setContactCarryPending(bool pending);
+
+    // Set while a session runs on an in-memory database: the cursors it
+    // advances describe mail the on-disk cache never received, so the next
+    // launch on disk resets them rather than ask for a delta past that mail.
+    bool advancedPastTheDiskCache() const;
+    [[nodiscard]] bool setAdvancedPastTheDiskCache(bool advanced);
+
 private:
     // Flushes the pending change and reports whether the FILE took it, not
     // whether the in-memory copy did. Every mutator above returns this, and

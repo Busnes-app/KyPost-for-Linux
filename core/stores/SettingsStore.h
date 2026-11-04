@@ -4,6 +4,7 @@
 #include <QString>
 #include <QStringList>
 #include <optional>
+#include <utility>
 
 // Thin typed wrapper around QSettings for app-wide preferences. The
 // Connection and Keywords sections from the plan have no fields yet (see
@@ -58,6 +59,22 @@ public:
     bool appLockOffered() const;
     [[nodiscard]] bool setAppLockOffered();
     void clearAppLockOffered(); // a full wipe makes this a new install again
+
+    // The account whose cached mail and contacts outlived "Remove pairing"
+    // (which keeps the cache). The pairing store is empty after that, so this
+    // is what tells the next pairing whether it is the same account:
+    // {subscriberId, serverBaseUrl}, or nullopt. Cleared with the cache.
+    std::optional<std::pair<QString, QString>> unpairedCacheOwner() const;
+    [[nodiscard]] bool setUnpairedCacheOwner(const QString& subscriberId, const QString& serverBaseUrl);
+    void clearUnpairedCacheOwner();
+
+    // The key-material generation this device was enrolled at (a v5 keyring
+    // delivery), for {subscriberId, serverBaseUrl}. A converted account's
+    // relay refuses every client-encrypted send that does not assert it
+    // (KyPost-Server requireCurrentGeneration). nullopt for another account.
+    std::optional<qint64> pgpMaterialGeneration(const QString& subscriberId, const QString& serverBaseUrl) const;
+    [[nodiscard]] bool setPgpMaterialGeneration(const QString& subscriberId, const QString& serverBaseUrl,
+                                                qint64 generation);
 
     // pushServerBaseUrl (the embedded ntfy subscriber's server, default
     // https://ntfy.sh) lived here until 2026-07-26. It went away with that

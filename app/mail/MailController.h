@@ -354,12 +354,15 @@ public:
     {
         bool ok = false;
         bool missingSentCopy = false;
+        // The relay sent it but warned: a Bcc delivery failed, or (with
+        // missingSentCopy) the Sent copy was not filed.
+        bool warned = false;
         // Already-localized? No -- core/ owns no wording. This is a key into
         // the switch in finishClientEncryptedSend().
         enum class Failure {
             None, NotConfigured, RecipientWithoutKey, NoSigningKey, Cancelled,
             KeyImportRefused, EncryptionFailed, SendFailed, EngineUnavailable,
-            ServerEncryptsInstead, TooLarge, ScheduleUnavailable
+            ServerEncryptsInstead, TooLarge, ScheduleUnavailable, KeyMaterialChanged
         } failure = Failure::None;
         QStringList namedRecipients;
         QString detail;
@@ -839,6 +842,8 @@ private:
     MailRepository& m_mailRepository;
     FolderRepository& m_folderRepository;
     SettingsStore& m_settingsStore;
+    // Folders refreshed in this session (see refreshInternal()).
+    QSet<QString> m_refreshedThisSession;
     RelayMailSource& m_relayMailSource;
     KeywordRepository& m_keywordRepository;
     PairingStore& m_pairingStore;

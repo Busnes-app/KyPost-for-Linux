@@ -11,6 +11,7 @@
 #include "domain/PairingStore.h"
 #include "mail/EmailListModel.h"
 #include "net/HttpClient.h"
+#include "pgp/OpenPgpDecryptor.h"
 #include "net/NetworkExecutor.h"
 #include "net/PgpBootstrapClient.h"
 #include "net/PgpRecipientChecker.h"
@@ -44,6 +45,8 @@ private slots:
     void archiveEmailsNotPairedShortCircuitsWithNoNetworkCall();
     void sendMailOverAttachmentCapRejectsBeforeAnyNetworkCall();
     void sendMailUsesHtmlSendMode();
+    void aPlainSendNeverGoesOutWhenCustodyIsUnknownOrClient_data();
+    void aPlainSendNeverGoesOutWhenCustodyIsUnknownOrClient();
     void downloadAttachmentSanitizesPathTraversalInSuggestedName();
     void downloadAttachmentSanitizesPathTraversalInServerFilename();
     void downloadAttachmentStripsEmbeddedNulFromTheFilename();
@@ -88,6 +91,8 @@ private slots:
     void aLockedAppSendsNoMailboxAction();
     void aRefreshThatOutlivesItsAccountWritesNothingAndReportsNoError();
     void anAttachmentThatOutlivesItsAccountIsNeverWrittenOrOpened();
+    void anAttachmentListThatOutlivesItsAccountShowsNothing();
+    void anAttachmentThatLandsUnderTheLockIsNeverWrittenOrOpened();
     void aPgpComposeAnswerThatOutlivesItsAccountIsNotCached();
     void aRecipientPreflightThatOutlivesItsAccountShowsNothing();
 
@@ -96,6 +101,7 @@ private slots:
     void aNotificationForCachedMailAnswersWithoutARequest();
     void aNotificationForMailThatCannotBeFoundSaysSoRatherThanOpeningNothing();
     void markReadIsOptimisticAndCoalescesRepeats();
+    void aBatchThatPartlyFailedRemovesWhatWasDone();
     void aRefusedMarkReadRollsBackSilently();
     void aRefusedMarkUnreadRollsBackAndSaysSo();
     void aReadStateReplyForAReplacedAccountRollsNothingBack();
@@ -178,6 +184,31 @@ bool MailControllerTest::downloadAndWait(MailController& controller, NetworkExec
         return false;
     return spy.at(0).at(2).toBool();
 }
+
+
+namespace {
+// A plain send first asks the relay how this account protects mail.
+void serveServerCustody(FakeRelayServer& fake)
+{
+    fake.setResponseForPath("/api/pgp/bootstrap",
+                            httpResponse(200, "OK", R"({"ok":true,"hasIdentity":true,"protection":"server"})"));
+}
+
+// The requests a test is about, without that custody check.
+QList<QByteArray> withoutCustodyChecks(const QList<QByteArray>& requests)
+{
+    QList<QByteArray> out;
+    for (const QByteArray& request : requests)
+        if (!request.startsWith("GET /api/pgp/bootstrap"))
+            out.append(request);
+    return out;
+}
+
+QJsonObject jsonBodyOfRequest(const QByteArray& request)
+{
+    return QJsonDocument::fromJson(request.mid(request.indexOf("\r\n\r\n") + 4)).object();
+}
+} // namespace
 
 void MailControllerTest::selectKeywordFiltersCachedEmailsWithoutAnyNetworkCall()
 {
@@ -421,6 +452,7 @@ void MailControllerTest::sendMailUsesHtmlSendMode()
     EmailDao emailDao(db.handle());
 
     FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true,"sentSaved":true,"warning":""})"));
+    serveServerCustody(fake); // a plain send first asks how the account protects mail
 
     QTemporaryDir secureDir;
     QVERIFY(secureDir.isValid());
@@ -461,9 +493,64 @@ void MailControllerTest::sendMailUsesHtmlSendMode()
     QCOMPARE(sendSpy.at(0).at(0).toULongLong(), token);
     QCOMPARE(sendSpy.at(0).at(1).toBool(), true);
 
-    const QJsonObject sent = fake.receivedJsonBody();
+    const QJsonObject sent = jsonBodyOfRequest(withoutCustodyChecks(fake.receivedRequests()).value(0));
     QCOMPARE(sent.value(QStringLiteral("mode")).toString(), QStringLiteral("html"));
     QCOMPARE(sent.value(QStringLiteral("body")).toString(), QStringLiteral("<b>Body</b>"));
+}
+
+// Compose takes the plain path whenever its custody answer is missing (a
+// failed bootstrap) or stale (another account's). For an account that
+// encrypts on this device that sent the message unencrypted, without a word.
+void MailControllerTest::aPlainSendNeverGoesOutWhenCustodyIsUnknownOrClient_data()
+{
+    QTest::addColumn<QByteArray>("bootstrap");
+    QTest::newRow("custody unknown") << httpResponse(503, "Service Unavailable", "busy");
+    QTest::newRow("client custody")
+        << httpResponse(200, "OK", R"({"ok":true,"hasIdentity":true,"protection":"client","fingerprint":"AB"})");
+}
+
+void MailControllerTest::aPlainSendNeverGoesOutWhenCustodyIsUnknownOrClient()
+{
+    QFETCH(QByteArray, bootstrap);
+    if (!OpenPgpDecryptor::engineAvailable() && QByteArray(QTest::currentDataTag()) == "client custody")
+        QSKIP("no gpg: a client-custody account hands off to webmail instead");
+    Database db;
+    QVERIFY(db.open(QStringLiteral(":memory:")));
+    EmailDao emailDao(db.handle());
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true,"sentSaved":true,"warning":""})"));
+    fake.setResponseForPath("/api/pgp/bootstrap", bootstrap);
+    QTemporaryDir secureDir;
+    QVERIFY(secureDir.isValid());
+    SecureStoreFile secureStore(secureDir.path());
+    PairingStore pairingStore(secureStore);
+    savePairing(pairingStore, fake.port());
+    QTemporaryDir cursorDir;
+    QVERIFY(cursorDir.isValid());
+    CursorStore cursorStore(cursorDir.filePath(QStringLiteral("cursor.ini")));
+    SettingsStore settingsStore(cursorDir.filePath(QStringLiteral("settings.ini")));
+    KeywordRepository keywordRepository(settingsStore);
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+    PgpBootstrapClient bootstrapClient(http);
+    PgpRecipientChecker recipientChecker(http);
+    MailRepository mailRepository(source, emailDao, pairingStore, cursorStore);
+    FolderDao folderDao(db.handle());
+    FolderClient folderClient(http);
+    FolderRepository folderRepository(folderClient, folderDao, pairingStore);
+    NetworkExecutor executor(3000);
+    MailController controller(mailRepository, source, keywordRepository, pairingStore, folderRepository,
+                               settingsStore, bootstrapClient, recipientChecker, executor);
+    ExecutorShutdownGuard shutdownGuard{ executor };
+
+    QSignalSpy sendSpy(&controller, &MailController::sendCompleted);
+    QVERIFY(controller.sendMail(QStringLiteral("to@example.com"), QString(), QString(), QStringLiteral("Subject"),
+                                QStringLiteral("Body"), {}, /*sign=*/false, /*encrypt=*/false) != 0u);
+    QVERIFY(sendSpy.wait(10000));
+    QCOMPARE(sendSpy.at(0).at(1).toBool(), false);
+    QVERIFY(!controller.lastError().isEmpty());
+    for (const QByteArray& request : fake.receivedRequests())
+        QVERIFY2(!request.startsWith("POST /api/mail/send"), "the message went out unencrypted");
 }
 
 void MailControllerTest::downloadAttachmentSanitizesPathTraversalInSuggestedName()
@@ -806,6 +893,7 @@ void MailControllerTest::sendMailEmitsPickupFallbackRequiredWithTheServersAddres
         409, "Conflict",
         R"({"error":"some recipients have no usable PGP key",)"
         R"("keylessRecipients":["bob@example.com"],"pickupFallbackAvailable":true})"));
+    serveServerCustody(fake); // a plain send first asks how the account protects mail
 
     QTemporaryDir secureDir;
     QVERIFY(secureDir.isValid());
@@ -863,6 +951,7 @@ void MailControllerTest::confirmPickupFallbackSendResendsTheIdenticalBodyWithThe
     FakeRelayServer refusal(httpResponse(
         409, "Conflict",
         R"({"error":"no usable key","keylessRecipients":["bob@example.com"],"pickupFallbackAvailable":true})"));
+    serveServerCustody(refusal); // a plain send first asks how the account protects mail
 
     QTemporaryDir secureDir;
     QVERIFY(secureDir.isValid());
@@ -942,7 +1031,7 @@ void MailControllerTest::confirmPickupFallbackSendResendsTheIdenticalBodyWithThe
     QVERIFY(confirmSpy.wait(10000));
     QCOMPARE(confirmSpy.at(0).at(1).toBool(), true);
 
-    const QList<QByteArray>& requests = refusal.receivedRequests();
+    const QList<QByteArray> requests = withoutCustodyChecks(refusal.receivedRequests());
     QCOMPARE(requests.size(), 2); // the refused send and the confirmed one, nothing in between
     const auto jsonBodyOf = [](const QByteArray& request) {
         return QJsonDocument::fromJson(request.mid(request.indexOf("\r\n\r\n") + 4)).object();
@@ -993,6 +1082,7 @@ void MailControllerTest::aPickupConfirmAfterAnAccountChangeSendsNothing()
     FakeRelayServer refusal(httpResponse(
         409, "Conflict",
         R"({"error":"no usable key","keylessRecipients":["bob@example.com"],"pickupFallbackAvailable":true})"));
+    serveServerCustody(refusal); // a plain send first asks how the account protects mail
 
     QTemporaryDir secureDir;
     QVERIFY(secureDir.isValid());
@@ -1097,6 +1187,7 @@ void MailControllerTest::sendMailSurfacesAWarningOnAnOtherwiseSuccessfulSend()
     FakeRelayServer fake(httpResponse(
         200, "OK",
         R"json({"ok":true,"sentSaved":false,"warning":"failed to deliver a pickup link to 1 of 3 recipient(s)"})json"));
+    serveServerCustody(fake); // a plain send first asks how the account protects mail
 
     QTemporaryDir secureDir;
     QVERIFY(secureDir.isValid());
@@ -1153,6 +1244,7 @@ void MailControllerTest::sendMailClientSideNeededHandsOffAndOffersNoToggles()
     FakeRelayServer fake(httpResponse(
         409, "Conflict",
         R"({"error":"this account's PGP key is end-to-end protected","clientSideNeeded":true})"));
+    serveServerCustody(fake); // a plain send first asks how the account protects mail
 
     QTemporaryDir secureDir;
     QVERIFY(secureDir.isValid());
@@ -2173,6 +2265,100 @@ void MailControllerTest::anAttachmentThatOutlivesItsAccountIsNeverWrittenOrOpene
     QVERIFY(!fake.receivedRequest().isEmpty());
 }
 
+// The app locked while a download was out. Saving or opening it then would put
+// the attachment in front of the PIN screen.
+void MailControllerTest::anAttachmentThatLandsUnderTheLockIsNeverWrittenOrOpened()
+{
+    QStandardPaths::setTestModeEnabled(true);
+    Database db;
+    QVERIFY(db.open(QStringLiteral(":memory:")));
+    EmailDao emailDao(db.handle());
+    FakeRelayServer fake(httpResponse(200, "OK", "locked-attachment-bytes", "application/octet-stream"));
+    QTemporaryDir secureDir;
+    QVERIFY(secureDir.isValid());
+    SecureStoreFile secureStore(secureDir.path());
+    PairingStore pairingStore(secureStore);
+    savePairing(pairingStore, fake.port());
+    QTemporaryDir cursorDir;
+    QVERIFY(cursorDir.isValid());
+    CursorStore cursorStore(cursorDir.filePath(QStringLiteral("cursor.ini")));
+    SettingsStore settingsStore(cursorDir.filePath(QStringLiteral("settings.ini")));
+    KeywordRepository keywordRepository(settingsStore);
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+    PgpBootstrapClient bootstrapClient(http);
+    PgpRecipientChecker recipientChecker(http);
+    MailRepository mailRepository(source, emailDao, pairingStore, cursorStore);
+    FolderDao folderDao(db.handle());
+    FolderClient folderClient(http);
+    FolderRepository folderRepository(folderClient, folderDao, pairingStore);
+    NetworkExecutor executor(3000);
+    MailController controller(mailRepository, source, keywordRepository, pairingStore, folderRepository,
+                               settingsStore, bootstrapClient, recipientChecker, executor);
+    ExecutorShutdownGuard shutdownGuard{ executor };
+
+    const QString downloadDir = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    QDir().mkpath(downloadDir);
+    const QString target = QDir(downloadDir).filePath(QStringLiteral("locked.pdf"));
+    QFile::remove(target);
+
+    QSignalSpy spy(&controller, &MailController::attachmentDownloaded);
+    controller.downloadAttachment(QStringLiteral("Inbox"), QStringLiteral("42"), 0, QStringLiteral("locked.pdf"));
+    controller.setAppLocked(true);
+    QVERIFY(spy.wait(10000) || spy.count() > 0);
+    QCOMPARE(spy.at(0).at(2).toBool(), false);
+    QVERIFY2(!QFile::exists(target), "an attachment was written while the app was locked");
+    QVERIFY(!fake.receivedRequest().isEmpty());
+}
+
+// The previous account's attachment names, sizes and types must not appear in a
+// reader left open across a re-pair.
+void MailControllerTest::anAttachmentListThatOutlivesItsAccountShowsNothing()
+{
+    Database db;
+    QVERIFY(db.open(QStringLiteral(":memory:")));
+    EmailDao emailDao(db.handle());
+    FakeRelayServer fake(httpResponse(200, "OK",
+        R"({"attachments":[{"index":1,"name":"payslip.pdf","mimeType":"application/pdf","size":10}]})"));
+    QTemporaryDir secureDir;
+    QVERIFY(secureDir.isValid());
+    SecureStoreFile secureStore(secureDir.path());
+    PairingStore pairingStore(secureStore);
+    savePairing(pairingStore, fake.port());
+    QTemporaryDir cursorDir;
+    QVERIFY(cursorDir.isValid());
+    CursorStore cursorStore(cursorDir.filePath(QStringLiteral("cursor.ini")));
+    SettingsStore settingsStore(cursorDir.filePath(QStringLiteral("settings.ini")));
+    KeywordRepository keywordRepository(settingsStore);
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+    PgpBootstrapClient bootstrapClient(http);
+    PgpRecipientChecker recipientChecker(http);
+    MailRepository mailRepository(source, emailDao, pairingStore, cursorStore);
+    FolderDao folderDao(db.handle());
+    FolderClient folderClient(http);
+    FolderRepository folderRepository(folderClient, folderDao, pairingStore);
+    NetworkExecutor executor(3000);
+    MailController controller(mailRepository, source, keywordRepository, pairingStore, folderRepository,
+                               settingsStore, bootstrapClient, recipientChecker, executor);
+    ExecutorShutdownGuard shutdownGuard{ executor };
+
+    QSignalSpy spy(&controller, &MailController::attachmentsListed);
+    controller.listAttachments(QStringLiteral("INBOX"), QStringLiteral("42"));
+    DevicePairing replacement;
+    replacement.subscriberId = QStringLiteral("sub-2");
+    replacement.deviceId = QStringLiteral("dev-2");
+    replacement.deviceSecret = QStringLiteral("secret-2");
+    replacement.serverBaseUrl = QStringLiteral("http://127.0.0.1:%1").arg(fake.port());
+    QVERIFY(pairingStore.save(replacement));
+
+    QVERIFY(spy.wait(10000) || spy.count() > 0);
+    QCOMPARE(spy.at(0).at(2).toList().size(), 0);
+    QVERIFY(!fake.receivedRequest().isEmpty()); // the request did go out
+}
+
 // The bootstrap answer describes the PREVIOUS account's key custody, and it
 // decides whether compose offers to sign and encrypt at all. Caching it
 // against the new account would either hide those controls from someone
@@ -2509,6 +2695,28 @@ QString cachedStatus(EmailDao& dao, const char* id)
 }
 
 } // namespace
+
+// The relay answers ok:false when ANY id of a batch failed, having done the
+// rest. That is a partial success: what was archived leaves the list.
+void MailControllerTest::aBatchThatPartlyFailedRemovesWhatWasDone()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", kTwoMessageInbox));
+    RefreshFixture f(fake.port());
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    auto* model = qobject_cast<EmailListModel*>(f.controller.emailModel());
+    QCOMPARE(model->rowCount(), 2);
+
+    fake.setResponse(httpResponse(200, "OK",
+        R"({"ok":false,"action":"archive","processed":1,"failed":[{"messageId":"m1","error":"imap said no"}],"targetMailbox":"Archive"})"));
+    QSignalSpy done(&f.controller, &MailController::actionCompleted);
+    f.controller.archiveEmails({ QStringLiteral("m1"), QStringLiteral("m2") });
+    QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
+    QCOMPARE(done.at(0).at(2).toBool(), true);
+    QCOMPARE(model->rowCount(), 1);
+    QCOMPARE(model->emailAt(0).messageId, QStringLiteral("m1"));
+    QVERIFY(f.controller.lastError().contains(QStringLiteral("imap said no")));
+}
 
 void MailControllerTest::markReadIsOptimisticAndCoalescesRepeats()
 {
@@ -3577,6 +3785,7 @@ void MailControllerTest::aSearchOnlyDraftWithNoReadableBodyIsNotReopened()
 void MailControllerTest::aScheduledSendAsksTheRelayFirstThenCarriesSendAt()
 {
     FakeRelayServer fake(httpResponse(200, "OK", "{}"));
+    serveServerCustody(fake); // a plain send first asks how the account protects mail
     fake.setResponseForPath("/api/scheduled", httpResponse(200, "OK", R"({"scheduled":[]})"));
     fake.setResponseForPath("/api/mail/send",
                             httpResponse(202, "Accepted", R"({"scheduled":true,"id":"a","sendAt":"2030-01-01T08:00:00Z"})"));
@@ -3591,9 +3800,10 @@ void MailControllerTest::aScheduledSendAsksTheRelayFirstThenCarriesSendAt()
     f.executor.shutdown();
 
     QVERIFY2(sent.at(0).at(1).toBool(), qPrintable(f.controller.lastError()));
-    QCOMPARE(fake.receivedRequests().size(), 2);
-    QVERIFY(fake.receivedRequests().at(0).startsWith("GET /api/scheduled "));
-    const QByteArray send = fake.receivedRequests().at(1);
+    const QList<QByteArray> asked = withoutCustodyChecks(fake.receivedRequests());
+    QCOMPARE(asked.size(), 2);
+    QVERIFY(asked.at(0).startsWith("GET /api/scheduled "));
+    const QByteArray send = asked.at(1);
     QVERIFY(send.startsWith("POST /api/mail/send "));
     const QJsonObject body = QJsonDocument::fromJson(send.mid(send.indexOf("\r\n\r\n") + 4)).object();
     QCOMPARE(body.value(QStringLiteral("sendAt")).toString(), sendAtWireValue(at));
@@ -3642,6 +3852,7 @@ void MailControllerTest::aRelayThatCannotScheduleSendsNothing()
 void MailControllerTest::aScheduledSendHasNoImmediateLinkResend()
 {
     FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true,"sentSaved":true,"warning":""})"));
+    serveServerCustody(fake); // a plain send first asks how the account protects mail
     fake.setResponseForPath("/api/scheduled", httpResponse(200, "OK", R"({"scheduled":[]})"));
     fake.setResponseForPath("/api/mail/send",
                             httpResponse(409, "Conflict", R"({"error":"no key","keylessRecipients":["jane@example.com"]})"));
@@ -3695,6 +3906,7 @@ void MailControllerTest::aReplyKeepsItsReferenceThroughThePickupResendUntilRefus
 {
     FakeRelayServer fake(httpResponse(
         409, "Conflict", R"({"error":"no usable key","keylessRecipients":["bob@example.com"],"pickupFallbackAvailable":true})"));
+    serveServerCustody(fake); // a plain send first asks how the account protects mail
     RefreshFixture f(fake.port());
 
     QSignalSpy pickupSpy(&f.controller, &MailController::pickupFallbackRequired);
@@ -3715,8 +3927,8 @@ void MailControllerTest::aReplyKeepsItsReferenceThroughThePickupResendUntilRefus
     QCOMPARE(completedSpy.at(0).at(1).toBool(), false);
     QVERIFY(f.controller.lastError().contains(QStringLiteral("not found")));
 
-    QCOMPARE(fake.receivedRequests().size(), 2);
-    for (const QByteArray& request : fake.receivedRequests()) {
+    QCOMPARE(withoutCustodyChecks(fake.receivedRequests()).size(), 2);
+    for (const QByteArray& request : withoutCustodyChecks(fake.receivedRequests())) {
         const QJsonObject body = QJsonDocument::fromJson(request.mid(request.indexOf("\r\n\r\n") + 4)).object();
         QCOMPARE(body.value(QStringLiteral("replyToMessageId")).toString(), QStringLiteral("42"));
         QCOMPARE(body.value(QStringLiteral("replyToMailbox")).toString(), QStringLiteral("Archive"));

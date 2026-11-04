@@ -56,4 +56,8 @@ bool databaseFileIsEncrypted(const QString& path);
 // database is opened with it or not at all: silently reopening an encrypted
 // profile in the clear would be the same class of failure as `PRAGMA key`
 // against ordinary SQLite (see Database::open).
+// Where openProfileDatabase() moves an encrypted database whose key the key
+// store no longer has. Every wipe removes it (SecurityWipe).
+inline constexpr QLatin1String kUnreadableDatabaseSuffix{".unreadable"};
+
 ProfileDatabaseMode openProfileDatabase(Database& database, DatabaseKeyStore& keyStore, const QString& path);

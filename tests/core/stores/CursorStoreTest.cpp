@@ -11,6 +11,7 @@ class CursorStoreTest : public QObject
 private slots:
     void oldMailCursorsCannotSkipSignedFlagBackfill();
     void defaultsAreEmpty();
+    void sessionMarkersPersistAndGoWithAWipe();
     void mailCursorRoundTrips();
     void mailCursorIsScopedPerSubscriberAndFolder();
     void mailCursorKeysCannotCollideThroughSeparatorsInFolderNames();
@@ -54,6 +55,29 @@ void CursorStoreTest::defaultsAreEmpty()
 
     QVERIFY(store.mailCursor(QStringLiteral("sub-1"), QStringLiteral("INBOX")).isEmpty());
     QVERIFY(store.contactBaseCursor().isEmpty());
+}
+
+// The contact carry hold (owner decision Q3) and the in-memory-session mark
+// outlive the process, and every wipe takes them with the cursors.
+void CursorStoreTest::sessionMarkersPersistAndGoWithAWipe()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = tempFilePath(dir, QStringLiteral("cursors.ini"));
+    {
+        CursorStore store(path);
+        QVERIFY(!store.contactCarryPending());
+        QVERIFY(!store.advancedPastTheDiskCache());
+        QVERIFY(store.setContactCarryPending(true));
+        QVERIFY(store.setAdvancedPastTheDiskCache(true));
+        QVERIFY(store.reset()); // a cursor reset is not a decision about contacts
+    }
+    CursorStore store(path);
+    QVERIFY(store.contactCarryPending());
+    QVERIFY(store.advancedPastTheDiskCache());
+    QVERIFY(store.wipeAll());
+    QVERIFY(!store.contactCarryPending());
+    QVERIFY(!store.advancedPastTheDiskCache());
 }
 
 void CursorStoreTest::mailCursorRoundTrips()

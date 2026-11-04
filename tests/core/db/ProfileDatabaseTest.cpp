@@ -6,6 +6,7 @@
 
 #include <QFile>
 #include <QSqlQuery>
+#include <QFileInfo>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -146,11 +147,24 @@ void ProfileDatabaseTest::anEncryptedProfileIsNeverReopenedInTheClear()
     // does not come up at all. Silently reopening an encrypted profile
     // unencrypted would be the same failure as PRAGMA key against ordinary
     // SQLite: everything looks fine and nothing is protected.
+    //
+    // F13: it used to fail to open, after storing a freshly minted key that
+    // made every later launch fail too (fatal in main). The file is moved
+    // aside, unread, and a new encrypted profile starts; the next launch opens it.
     QVERIFY(keyStore.clear());
-    Database db;
-    const ProfileDatabaseMode mode = openProfileDatabase(db, keyStore, path);
-    QVERIFY2(mode == ProfileDatabaseMode::FailedToOpen,
-             "an encrypted profile was reopened without its key");
+    {
+        Database db;
+        QCOMPARE(openProfileDatabase(db, keyStore, path), ProfileDatabaseMode::EncryptedOnDisk);
+        QSqlQuery read(db.handle());
+        QVERIFY(read.exec(QStringLiteral("SELECT count(*) FROM emails")));
+        QVERIFY(read.next());
+        QCOMPARE(read.value(0).toInt(), 0); // never the old rows, and never in the clear
+    }
+    QVERIFY2(databaseFileIsEncrypted(path), "the replacement profile is not encrypted");
+    QVERIFY2(QFileInfo::exists(path + kUnreadableDatabaseSuffix), "the unreadable database was not kept aside");
+    QVERIFY(databaseFileIsEncrypted(path + kUnreadableDatabaseSuffix));
+    Database again;
+    QCOMPARE(openProfileDatabase(again, keyStore, path), ProfileDatabaseMode::EncryptedOnDisk);
 }
 
 void ProfileDatabaseTest::aNewProfileWithNowhereToKeepAKeyGoesToMemory()
