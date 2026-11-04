@@ -607,7 +607,7 @@ core/pgp/EncryptedMessageReader.cpp	    if (signature.belowStrengthFloor)	    if
 # not follow a pull endpoint off the paired origin.
 app/pairing/PairingController.cpp	    m_registrationHadPreviousAccount = unpaired.has_value() || (m_cacheHoldsData && m_cacheHoldsData());	    m_registrationHadPreviousAccount = false;	PairingControllerTest:unpairingThenPairingAnotherAccountStillPurges
 core/net/HttpClient.cpp	    if (issuer.subjectDisplayName() != leaf.issuerDisplayName() || !signedBy(leaf, issuer))	    if (issuer.subjectDisplayName() != leaf.issuerDisplayName())	CertificatePinAnchorTest:aSameNamedIssuerThatDidNotSignTheLeafPinsNothing
-app/mail/MailController.cpp	    if (currentSubscriber.isEmpty() || currentSubscriber != m_pendingSend.owner.subscriberId) {	    if (false) {	MailControllerTest:aPickupConfirmAfterAnAccountChangeSendsNothing
+app/mail/MailController.cpp	    if (currentSubscriber.isEmpty() || currentSubscriber != m_pendingSend.owner.subscriberId || serverBaseUrl != m_pendingSend.ownerServer) {	    if (false) {	MailControllerTest:aPickupConfirmAfterAnAccountChangeSendsNothing
 app/pgp/PgpQrController.cpp	        m_myQrIdentity = requestedFor;	        m_myQrIdentity = m_repository.currentIdentity();	PgpQrControllerTest:aQrCodeThatLandsAfterAnAccountChangeIsNotOffered
 core/domain/DeviceRegistrationService.cpp	    if (!sameAccount) {	    if (false) {	DeviceRegistrationServiceTest:aReregistrationThatOutlivesItsPairingSavesNothing
 core/domain/PushRepository.cpp	    if (!stored.isEmpty() && sameUrlOrigin(QUrl(stored), QUrl(serverBaseUrl)))	    if (!stored.isEmpty())	PushRepositoryTest:aStoredPullEndpointOnAnotherOriginIsIgnored

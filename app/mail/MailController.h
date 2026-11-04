@@ -825,9 +825,10 @@ private:
         quint64 token = 0;
         QString replyToMessageId;
         QString replyToMailbox;
-        // The account that was refused. A confirm after a re-pair would send
-        // this account's message from the next one.
+        // The account that was refused: subscriber and relay. A confirm after
+        // a re-pair would send this account's message from the next one.
         PairingIdentity owner;
+        QUrl ownerServer;
     };
     PendingSend m_pendingSend;
     // Monotonic, per-session. quint64 crosses into QML as a JS number, which

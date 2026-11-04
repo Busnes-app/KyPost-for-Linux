@@ -423,6 +423,24 @@ ContactSyncOutcome ContactSyncRepository::applySync(const ContactSyncPlan& plan,
             if (!m_pendingDao.deleteById(record.id))
                 return false;
         }
+
+        // A contact created by this push and edited while it was out: its
+        // edit is still queued under the temporary uid (as a rewritten
+        // create), and pushed like that it becomes a second contact. It now
+        // belongs to the server uid, so it moves there as an update, and the
+        // cached row keeps the user's version.
+        for (const ContactReconciliationAssignment& assignment : assignments) {
+            for (const PendingContactChangeRecord& record : m_pendingDao.findAll()) {
+                if (record.contactUid != assignment.localUid)
+                    continue;
+                Contact change = deserializeContact(record.changeJson);
+                change.uid = assignment.serverUid;
+                if (!m_pendingDao.deleteById(record.id)
+                    || m_pendingDao.enqueue(assignment.serverUid, serializeContact(change), record.createdAt) <= 0
+                    || (!change.deleted && !m_contactDao.insertOrReplace(change)))
+                    return false;
+            }
+        }
         return true;
     });
 

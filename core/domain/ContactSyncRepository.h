@@ -93,7 +93,8 @@ struct ContactDedupeOutcome
 // to the local cache immediately and enqueue the corresponding wire change
 // for the next sync() call; sync() itself either pushes the queue (if
 // non-empty) or pulls (if empty), then merges the response back into the
-// cache -- see sync()'s .cpp comments for the partial-delta merge rule.
+// cache -- the relay sends each changed contact whole, and it replaces the
+// cached row (see applySync()).
 class ContactSyncRepository
 {
 public:
@@ -137,9 +138,10 @@ public:
     // size is checked too.
     [[nodiscard]] ContactImportOutcome queueImport(const QVector<Contact>& contacts);
 
-    // contact.uid must already be a real server uid. Updates the cache
-    // immediately and enqueues the wire copy as-is (uid+rev present,
-    // deleted=false) for the next sync(). False means neither write landed.
+    // Updates the cache immediately and enqueues the wire copy as-is
+    // (uid+rev present, deleted=false) for the next sync(). For a contact
+    // whose create has not been pushed (a temporary uid), it rewrites that
+    // queued create instead. False means neither write landed.
     [[nodiscard]] bool queueUpdate(const Contact& contact);
 
     // Removes the row from the local cache immediately. Enqueues a

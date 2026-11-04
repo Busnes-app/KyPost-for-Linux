@@ -58,6 +58,7 @@ private slots:
     void sendMailEmitsPickupFallbackRequiredWithTheServersAddressList();
     void confirmPickupFallbackSendResendsTheIdenticalBodyWithTheOptIn();
     void confirmPickupFallbackSendWithoutAPendingSendDoesNothing();
+    void aPickupConfirmAfterAnAccountChangeSendsNothing_data();
     void aPickupConfirmAfterAnAccountChangeSendsNothing();
     void aReplyKeepsItsReferenceThroughThePickupResendUntilRefused();
     void replyAllLeavesOutOnlyThisAccountsOwnAddresses();
@@ -926,14 +927,12 @@ void MailControllerTest::confirmPickupFallbackSendResendsTheIdenticalBodyWithThe
         replacement.write("SOMETHING-ELSE-ENTIRELY");
     }
 
-    // Second server: FakeRelayServer serves exactly one connection.
-    FakeRelayServer accepted(httpResponse(200, "OK", R"({"ok":true,"sentSaved":true,"warning":""})"));
-    savePairing(pairingStore, accepted.port());
+    // Same relay, same account: a confirm after a move to another relay is
+    // refused (aPickupConfirmAfterAnAccountChangeSendsNothing).
+    refusal.setResponse(httpResponse(200, "OK", R"({"ok":true,"sentSaved":true,"warning":""})"));
 
     // A confirmation naming a DIFFERENT pending send must not send: this is
     // what stops a dialog opened in another composer from resolving this one.
-    // Checked before the real confirm on purpose -- `accepted` serves a single
-    // connection, so if this reached the network the confirm below would fail.
     QCOMPARE(controller.confirmPickupFallbackSend(token + 1), 0u);
     // Nor may cancelling ANOTHER composer's dialog drop this pending send.
     controller.discardPendingSend(token + 1);
@@ -943,8 +942,13 @@ void MailControllerTest::confirmPickupFallbackSendResendsTheIdenticalBodyWithThe
     QVERIFY(confirmSpy.wait(10000));
     QCOMPARE(confirmSpy.at(0).at(1).toBool(), true);
 
-    const QJsonObject first = refusal.receivedJsonBody();
-    const QJsonObject second = accepted.receivedJsonBody();
+    const QList<QByteArray>& requests = refusal.receivedRequests();
+    QCOMPARE(requests.size(), 2); // the refused send and the confirmed one, nothing in between
+    const auto jsonBodyOf = [](const QByteArray& request) {
+        return QJsonDocument::fromJson(request.mid(request.indexOf("\r\n\r\n") + 4)).object();
+    };
+    const QJsonObject first = jsonBodyOf(requests.at(0));
+    const QJsonObject second = jsonBodyOf(requests.at(1));
     QCOMPARE(second.value(QStringLiteral("allowPickupFallback")).toBool(), true);
     QCOMPARE(first.value(QStringLiteral("allowPickupFallback")).toBool(), false);
     // Everything else is byte-identical: same subject, body, recipients, flags.
@@ -969,10 +973,19 @@ void MailControllerTest::confirmPickupFallbackSendResendsTheIdenticalBodyWithThe
     QCOMPARE(controller.confirmPickupFallbackSend(token), 0u);
 }
 
+void MailControllerTest::aPickupConfirmAfterAnAccountChangeSendsNothing_data()
+{
+    QTest::addColumn<QString>("subscriberId");
+    QTest::newRow("another subscriber") << QStringLiteral("sub-2");
+    // Subscriber ids are unique per relay only.
+    QTest::newRow("same subscriber id on another relay") << QStringLiteral("sub-1");
+}
+
 // The refused payload belongs to the account that was refused. Confirmed
 // after another account paired, it went out from that account instead.
 void MailControllerTest::aPickupConfirmAfterAnAccountChangeSendsNothing()
 {
+    QFETCH(QString, subscriberId);
     Database db;
     QVERIFY(db.open(QStringLiteral(":memory:")));
     EmailDao emailDao(db.handle());
@@ -1018,7 +1031,7 @@ void MailControllerTest::aPickupConfirmAfterAnAccountChangeSendsNothing()
 
     FakeRelayServer other(httpResponse(200, "OK", R"({"ok":true,"sentSaved":true,"warning":""})"));
     DevicePairing replacement;
-    replacement.subscriberId = QStringLiteral("sub-2");
+    replacement.subscriberId = subscriberId;
     replacement.deviceSecret = QStringLiteral("secret-2");
     replacement.serverBaseUrl = QStringLiteral("http://127.0.0.1:%1").arg(other.port());
     replacement.deviceId = QStringLiteral("dev-2");

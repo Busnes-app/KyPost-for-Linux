@@ -1173,12 +1173,12 @@ quint64 MailController::sendMail(const QString& to, const QString& cc, const QSt
     const quint64 sendToken = m_nextPendingSendToken++;
     captureDraftReplacement(sendToken, draftToken);
 
-    // Field order matters -- PendingSend is aggregate-initialized. Fourteen
+    // Field order matters -- PendingSend is aggregate-initialized. Fifteen
     // fields: valid, to, cc, bcc, subject, body, mode, attachments, sign,
-    // encrypt, token, replyToMessageId, replyToMailbox, owner.
+    // encrypt, token, replyToMessageId, replyToMailbox, owner, ownerServer.
     m_pendingSend = PendingSend{ true, to, cc, bcc, subject, body, sendMode, attachments,
                                  sign, encrypt, sendToken, replyToMessageId, replyToMailbox,
-                                 m_pairingStore.currentIdentity() };
+                                 m_pairingStore.currentIdentity(), serverBaseUrl };
     // The pickup re-send carries no sendAt, so a scheduled send never offers it.
     if (sendAt.isValid())
         m_pendingSend = {};
@@ -1301,18 +1301,18 @@ quint64 MailController::confirmPickupFallbackSend(quint64 token)
 {
     if (!m_pendingSend.valid || m_pendingSend.token != token)
         return 0;
-    // The account, not the registration: a Reconnect of the same account
-    // mints a new device id, and its refused message is still its own.
-    const QString currentSubscriber = m_pairingStore.currentIdentity().subscriberId;
-    if (currentSubscriber.isEmpty() || currentSubscriber != m_pendingSend.owner.subscriberId) {
-        discardPendingSend(token);
-        return 0;
-    }
-
     QUrl serverBaseUrl;
     RelayAuth auth;
     if (!requirePairing(serverBaseUrl, auth))
         return 0;
+    // The account, not the registration: a Reconnect of the same account
+    // mints a new device id, and its refused message is still its own. The
+    // relay is part of the account; subscriber ids are only unique per relay.
+    const QString currentSubscriber = m_pairingStore.currentIdentity().subscriberId;
+    if (currentSubscriber.isEmpty() || currentSubscriber != m_pendingSend.owner.subscriberId || serverBaseUrl != m_pendingSend.ownerServer) {
+        discardPendingSend(token);
+        return 0;
+    }
 
     const PendingSend pending = m_pendingSend;
     // Cleared before the call, not after: the opt-in is per-message, and a

@@ -37,6 +37,7 @@ private slots:
     void serverFullSyncAppliesExtendedFields();
     void serverEditClearsEveryFieldTheRecordOmits();
     void anEditMadeWhileTheSyncWasOutIsNotOverwritten();
+    void anEditMadeWhileItsCreateWasOutBecomesAnUpdate();
     void tooOldResetsCursorAndCache();
     void findByUidReturnsContactWhenPresent();
     void findByUidReturnsNulloptWhenAbsent();
@@ -572,6 +573,59 @@ void ContactSyncRepositoryTest::anEditMadeWhileTheSyncWasOutIsNotOverwritten()
     QVERIFY(cached.has_value());
     QCOMPARE(cached->phones.size(), 1);
     QCOMPARE(pendingDao.findAll().size(), 1); // still queued for the next sync
+}
+
+// Edited while its own create was being pushed, a new contact's change is
+// queued under the temporary uid. Left there, the next sync pushed it as a
+// second create and the server held two contacts.
+void ContactSyncRepositoryTest::anEditMadeWhileItsCreateWasOutBecomesAnUpdate()
+{
+    const QByteArray body = R"({"cursor":3,"tooOld":false,"changed":[)"
+                             R"({"uid":"srv-9","rev":1,"fn":"Temp Person"})"
+                             R"(],"deleted":[]})";
+    FakeRelayServer fake(httpResponse(200, "OK", body));
+
+    Database db;
+    QVERIFY(db.open(QStringLiteral(":memory:")));
+    ContactDao contactDao(db.handle());
+    PendingContactChangeDao pendingDao(db.handle());
+    QTemporaryDir cursorDir;
+    QVERIFY(cursorDir.isValid());
+    CursorStore cursorStore(cursorDir.filePath(QStringLiteral("cursors.ini")));
+    QTemporaryDir secureDir;
+    QVERIFY(secureDir.isValid());
+    SecureStoreFile secureStore(secureDir.path());
+    PairingStore pairingStore(secureStore);
+    savePairing(pairingStore, fake.port());
+
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    ContactSyncClient client(http);
+    ContactSyncRepository repository(client, contactDao, pendingDao, cursorStore, pairingStore, db.handle());
+
+    Contact created;
+    created.fn = QStringLiteral("Temp Person");
+    const QString tempUid = repository.queueCreate(created);
+    QVERIFY(!tempUid.isEmpty());
+
+    const std::optional<ContactSyncRepository::ContactSyncPlan> plan = repository.planSync();
+    QVERIFY(plan.has_value());
+    const ContactSyncResult result = ContactSyncRepository::syncWith(http, *plan);
+
+    Contact edited = created;
+    edited.uid = tempUid;
+    edited.org = QStringLiteral("Acme");
+    QVERIFY(repository.queueUpdate(edited));
+
+    QCOMPARE(repository.applySync(*plan, result).status, ContactSyncStatus::Success);
+
+    const QVector<PendingContactChangeRecord> queued = pendingDao.findAll();
+    QCOMPARE(queued.size(), 1);
+    QCOMPARE(queued.at(0).contactUid, QStringLiteral("srv-9"));
+    const Contact wire = ContactWire::contactFromJson(QJsonDocument::fromJson(queued.at(0).changeJson.toUtf8()).object());
+    QCOMPARE(wire.uid, QStringLiteral("srv-9")); // an update of the contact the create made, not another create
+    QVERIFY(!contactDao.findById(tempUid).has_value());
+    QCOMPARE(contactDao.findById(QStringLiteral("srv-9"))->org, std::optional<QString>(QStringLiteral("Acme")));
 }
 
 void ContactSyncRepositoryTest::tooOldResetsCursorAndCache()
