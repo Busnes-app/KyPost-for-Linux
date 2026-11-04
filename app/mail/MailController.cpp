@@ -2366,11 +2366,13 @@ MailController::ClientEncryptedOutcome runClientEncryptedSend(
     // held message has filed nothing yet.
     outcome.missingSentCopy = plan.sentCopyUnavailable || (!sent.sentSaved && !sendAt.isValid());
     // Without Bcc the warning can only be about Sent, which missingSentCopy
-    // says. With the copy filed, a warning is about delivery; without it, the
-    // relay's warning names blind copies when one failed too
-    // (KyPost-Server partialDeliveryWarning).
+    // says. With Bcc, only the relay's delivery wording counts: "blind
+    // copies" over SMTP (partialDeliveryWarning), "follow-on deliveries" on a
+    // native mailbox (native_outbound.go). A Sent-filing or completion warning
+    // says nothing about the Bcc.
     outcome.bccMayHaveFailed = sent.warned && !bccList.isEmpty()
-        && (sent.sentSaved || sent.warningDetail.contains(QLatin1String("blind cop"), Qt::CaseInsensitive));
+        && (sent.warningDetail.contains(QLatin1String("blind cop"), Qt::CaseInsensitive)
+            || sent.warningDetail.contains(QLatin1String("follow-on deliver"), Qt::CaseInsensitive));
     return outcome;
 }
 

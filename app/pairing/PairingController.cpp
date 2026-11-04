@@ -329,9 +329,12 @@ void PairingController::checkPendingRepin()
     m_executor.run(
         this,
         [stored, origin](HttpClient& http) {
-            // Any answer, a 404 included, over a handshake that satisfied the
-            // pin proves the key; nothing is sent but the GET itself.
-            return http.getPinnedTo({ stored, origin }, origin, {}).certificatePinVerified;
+            // Any HTTP answer, a 404 included, over a handshake that satisfied
+            // the pin proves the key; nothing is sent but the GET itself. No
+            // answer proves nothing: with no chain the pin check passes, so a
+            // reset or an offline device read as "verified".
+            const HttpClient::HttpResult result = http.getPinnedTo({ stored, origin }, origin, {});
+            return result.certificatePinVerified && result.statusCode > 0;
         },
         [this, generation](bool verified) {
             if (generation != m_repinGeneration)
@@ -366,7 +369,9 @@ void PairingController::setAppLocked(bool locked)
         applyApprovalStatus(m_approvalGeneration, held);
         return;
     }
-    scheduleApprovalPoll(0);
+    // Asked once now even past the deadline: the server keeps an approval
+    // readable for a while, and the user may have approved while locked.
+    pollApproval();
 }
 
 QString PairingController::deliveryMode() const
@@ -492,10 +497,11 @@ bool PairingController::confirmPendingPair()
 
     PairingParams pending = *m_pendingPair;
     // No warning was shown because the server presents the pinned key: keep
-    // that key enforced on the registration, so a pinless link cannot re-pin
-    // to whatever answers next (finishPair refuses an unverified pin).
+    // that key enforced on the registration, in place of any pin the link
+    // names, so nothing that answers next can be pinned without the warning
+    // (finishPair refuses an unverified pin).
     if (const QByteArray stored = storedPinForPendingAccount();
-        !stored.isEmpty() && m_repinCheck == RepinCheck::Same && pending.spkiPin.isEmpty())
+        !stored.isEmpty() && m_repinCheck == RepinCheck::Same)
         pending.spkiPin = stored;
     m_pendingPair.reset();
     ++m_repinGeneration;

@@ -2064,19 +2064,41 @@ void PairingControllerTest::aLinkToTheServerStillPresentingThePinnedKeyDoesNotWa
     QTRY_VERIFY_WITH_TIMEOUT(!f.controller->pendingPairRepins(), 5000);
     for (const QByteArray& request : relay.receivedRequests())
         QVERIFY(!request.contains("X-Kypost-Device-Secret"));
+    f.controller->cancelPendingPair();
 
-    // Confirmed with no warning: the registration is pinned to the stored key,
-    // so a server that now presents another issuer is refused, not re-pinned
-    // -- though it would register this device if asked.
+    // Confirmed with no warning, the registration is armed with the stored
+    // key, not the link's pin and not nothing, so whatever answers it must
+    // still present the stored issuer. (This fixture's pin sink reaches only
+    // the GUI-thread client, so the registration itself then fails closed as
+    // unverified; production fans the pin out to the executor.)
     relay.setResponseForPath("/native/register", httpResponse(200, "OK", kRegisterOk));
+    const QString otherPin = QString::fromLatin1(QByteArray(32, 'b').toBase64());
+    QVERIFY(f.controller->pairFromDeepLink(
+        QUrl(httpsLinkFor(relay.serverPort()) + QStringLiteral("&pin=sha256/") + otherPin)));
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller->pendingPairRepins(), 5000);
+    f.controller->confirmPendingPair();
+    QCOMPARE(f.pinSink->pinState().spkiSha256, pinA);
+    QTRY_VERIFY_WITH_TIMEOUT(f.controller->pairingState() != QStringLiteral("working"), 5000);
+
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(httpsLinkFor(relay.serverPort()))));
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller->pendingPairRepins(), 5000);
     relay.serveChainB();
     f.controller->confirmPendingPair();
+    QCOMPARE(f.pinSink->pinState().spkiSha256, pinA);
     QTRY_VERIFY_WITH_TIMEOUT(f.controller->pairingState() != QStringLiteral("working"), 5000);
     QVERIFY(f.controller->pairingState() != QStringLiteral("paired"));
     QCOMPARE(f.pairingStore->load()->certificateSpkiSha256, QString::fromLatin1(pinA.toBase64()));
 
     // A fresh link while the other issuer is served warns, and stays warning.
     QVERIFY(f.controller->pairFromDeepLink(QUrl(httpsLinkFor(relay.serverPort()))));
+    QTest::qWait(1000);
+    QVERIFY(f.controller->pendingPairRepins());
+    f.controller->cancelPendingPair();
+
+    // So does one whose server cannot be reached: no answer proves nothing.
+    const quint16 port = relay.serverPort();
+    relay.close();
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(httpsLinkFor(port))));
     QTest::qWait(1000);
     QVERIFY(f.controller->pendingPairRepins());
 }

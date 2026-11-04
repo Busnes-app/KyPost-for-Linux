@@ -1635,6 +1635,7 @@ int main(int argc, char* argv[])
     // route (404), where it still ends in the "pair again" banner. A sealed
     // secret (the app is locked) also takes it, for its deferral.
     const auto reregisterAndReport = [&pairingStore, &networkExecutor, &pairingController,
+                                       &deferredReregistrationEndpointPending,
                                        reregisterWithPairingToken](const QString& endpoint) {
         const std::optional<DevicePairing> pairing = pairingStore.load();
         const std::optional<std::pair<QByteArray, QByteArray>> keys = pairingStore.pushPublicKeys();
@@ -1642,6 +1643,9 @@ int main(int argc, char* argv[])
             reregisterWithPairingToken(endpoint);
             return;
         }
+        // This endpoint is the newest: a deferral left by a locked attempt
+        // must not replay an older one over it on the next unlock.
+        deferredReregistrationEndpointPending = false;
         const QUrl server(pairing->serverBaseUrl);
         const RelayAuth auth{ pairing->deviceId, pairing->deviceSecret };
         const WebPushSubscription subscription{ keys->first, keys->second };

@@ -991,13 +991,13 @@ Item {
             }
             if (after) {
                 // Edited while the save was out: leaving would lose that. A
-                // typed address counts, and every field is compared after the
-                // body read, so nothing changed during it is missed either.
+                // typed address counts, and every field is read after the
+                // body, so nothing changed during that read is missed either.
                 const saved = root.savedSnapshot
-                toField.commitInputAsToken()
-                ccField.commitInputAsToken()
-                bccField.commitInputAsToken()
                 bodyEditor.requestSendableHtml(function (result) {
+                    toField.commitInputAsToken()
+                    ccField.commitInputAsToken()
+                    bccField.commitInputAsToken()
                     if (saved.to === toField.joinedText && saved.cc === ccField.joinedText
                             && saved.bcc === bccField.joinedText && saved.subject === subjectField.text
                             && saved.paths === root.attachmentPaths.join("\n") && result.html === saved.html) {

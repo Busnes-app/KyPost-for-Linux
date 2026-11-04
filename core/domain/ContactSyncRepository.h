@@ -124,10 +124,11 @@ public:
     // Convenience single-uid form of pendingUids(); see its doc comment.
     bool isPending(const QString& uid) const;
 
-    // Assigns a temp local uid (QUuid::createUuid().toString(QUuid::
+    // Assigns a local uid (QUuid::createUuid().toString(QUuid::
     // WithoutBraces)), caches it under that uid immediately, and enqueues a
-    // create (wire copy has uid=="", per ContactSyncClient's documented
-    // "empty uid marks a create" contract) for the next sync().
+    // create carrying that uid, which the relay creates the contact under
+    // (see ContactSyncClient::push), for the next sync(). Refused when the
+    // change would not fit one push (fitsOnePush).
     //
     // Both writes, or neither: an empty return means nothing was saved. The
     // caller must say so rather than showing the contact as saved -- see the
@@ -135,10 +136,9 @@ public:
     [[nodiscard]] QString queueCreate(Contact contact);
 
     // vCard import (Android #186): every contact as an ordinary create, all
-    // in one transaction, and only into an empty outbox. The push is not
-    // batched, so a larger one could pass the relay's 500-change or 1 MiB
-    // body cap and fail on every sync from then on, which is why the queued
-    // size is checked too.
+    // in one transaction, and only into an empty outbox, held to one push's
+    // worth (the relay's 500 changes and 1 MiB body). Pushes are batched to
+    // those caps (planSync), so this bounds one import, not the outbox.
     [[nodiscard]] ContactImportOutcome queueImport(const QVector<Contact>& contacts);
 
     // contact.uid must already be a real server uid. Updates the cache

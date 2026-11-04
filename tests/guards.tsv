@@ -620,4 +620,4 @@ app/contacts/ContactsController.cpp	    if (m_repository.carryPending()) {	    i
 app/pairing/PairingController.cpp	    m_registrationHadPreviousAccount = true;	    m_registrationHadPreviousAccount = paired.has_value();	PairingControllerTest:unpairingThenPairingAnotherAccountStillPurges
 # Council pass 3: a same-account link confirmed without the re-pin warning stays
 # pinned to the stored key (F29).
-app/pairing/PairingController.cpp	        !stored.isEmpty() && m_repinCheck == RepinCheck::Same && pending.spkiPin.isEmpty())	        false)	PairingControllerTest:aLinkToTheServerStillPresentingThePinnedKeyDoesNotWarn
+app/pairing/PairingController.cpp	        !stored.isEmpty() && m_repinCheck == RepinCheck::Same)	        false)	PairingControllerTest:aLinkToTheServerStillPresentingThePinnedKeyDoesNotWarn

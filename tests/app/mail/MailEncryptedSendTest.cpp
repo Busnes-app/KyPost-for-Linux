@@ -446,12 +446,17 @@ void MailEncryptedSendTest::aFailedBccDeliveryIsNotReportedAsAPlainSuccess_data(
     QTest::addColumn<QString>("bcc");
     QTest::addColumn<QByteArray>("reply");
     QTest::addColumn<int>("bccWarnings");
-    const QByteArray bccFailed = R"({"ok":true,"sentSaved":true,"warning":"1 bcc delivery(s) failed"})";
+    const QByteArray bccFailed = R"({"ok":true,"sentSaved":true,"warning":"delivery could not be confirmed for 1 of 1 blind copies; some may already have arrived; check provider evidence before retrying to avoid duplicates"})";
     QTest::newRow("with a Bcc") << QString() << QStringLiteral("you@example.com") << bccFailed << 1;
     QTest::newRow("without a Bcc") << QStringLiteral("you@example.com") << QString() << bccFailed << 0;
     // Only Sent filing failed: the Bcc went, so it is not questioned.
     QTest::newRow("Sent copy only") << QString() << QStringLiteral("you@example.com")
         << QByteArray(R"({"ok":true,"sentSaved":false,"warning":"email sent but could not be saved to Sent folder"})") << 0;
+    // A native mailbox words both differently (native_outbound.go).
+    QTest::newRow("native: Bcc pending, Sent pending") << QString() << QStringLiteral("you@example.com")
+        << QByteArray(R"({"ok":true,"sentSaved":false,"warning":"some follow-on deliveries are pending or unconfirmed; inspect the outbox before resubmitting email accepted but Sent filing remains pending; sending it again will not repair Sent"})") << 1;
+    QTest::newRow("native: completion only") << QString() << QStringLiteral("you@example.com")
+        << QByteArray(R"({"ok":true,"sentSaved":true,"warning":"relay accepted the primary message but completion failed; do not resubmit it"})") << 0;
     QTest::newRow("Sent copy and a Bcc") << QString() << QStringLiteral("you@example.com")
         << QByteArray(R"({"ok":true,"sentSaved":false,"warning":"email sent but could not be saved to Sent folder delivery could not be confirmed for 1 of 1 blind copies; some may already have arrived"})") << 1;
 }
