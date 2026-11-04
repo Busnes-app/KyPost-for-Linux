@@ -631,6 +631,12 @@ void ContactsControllerTest::aKeyTheRelayWouldRefuseIsNeverQueued()
     QVERIFY(controller.lastError().contains(QStringLiteral("Ada")));
     QCOMPARE(pendingDao.count().value_or(-1), 0);
 
+    // Whitespace only is no key, on the wire too: the relay would refuse it.
+    const QString blankUid = controller.createContact({ { QStringLiteral("fn"), QStringLiteral("Bea") },
+                                                        { QStringLiteral("pgpKey"), QStringLiteral("  \n ") } });
+    QVERIFY(!blankUid.isEmpty());
+    QVERIFY(!contactDao.findById(blankUid)->pgpKey.has_value());
+
     // A key the relay already holds (a synced contact) is not re-judged by an
     // unrelated edit.
     Contact held;

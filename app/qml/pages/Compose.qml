@@ -344,17 +344,21 @@ Item {
 
     // callback(true) when closing would lose something the user has here: a
     // recipient, subject, body text or attachment. A typed address is
-    // committed first, as trySend() does.
+    // committed first, as trySend() does, and the fields are read again
+    // after the body, so nothing typed during that read is missed.
     function checkHasContent(callback) {
-        toField.commitInputAsToken()
-        ccField.commitInputAsToken()
-        bccField.commitInputAsToken()
-        if (toField.joinedText !== "" || ccField.joinedText !== "" || bccField.joinedText !== ""
-                || subjectField.text.trim() !== "" || root.attachmentPaths.length > 0) {
+        const fieldsHaveContent = function () {
+            toField.commitInputAsToken()
+            ccField.commitInputAsToken()
+            bccField.commitInputAsToken()
+            return toField.joinedText !== "" || ccField.joinedText !== "" || bccField.joinedText !== ""
+                || subjectField.text.trim() !== "" || root.attachmentPaths.length > 0
+        }
+        if (fieldsHaveContent()) {
             callback(true)
             return
         }
-        bodyEditor.requestSendableHtml(function (result) { callback(!result.isEmpty) })
+        bodyEditor.requestSendableHtml(function (result) { callback(!result.isEmpty || fieldsHaveContent()) })
     }
 
     // Commits any still-uncommitted address text the same way trySend()

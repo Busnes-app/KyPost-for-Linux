@@ -646,7 +646,10 @@ void ContactsController::applyFieldsToContact(Contact& contact, const QVariantMa
 
     contact.groupIds = stringListFromVariantList(fields.value(QStringLiteral("groupIds")).toList());
     contact.photoRef = toOptional(fields.value(QStringLiteral("photoRef")).toString());
-    contact.pgpKey = toOptional(fields.value(QStringLiteral("pgpKey")).toString());
+    // Blank includes whitespace only: the check skips such a key, so it must
+    // not reach the wire either, where the relay would refuse the whole batch.
+    const QString pgpKey = fields.value(QStringLiteral("pgpKey")).toString();
+    contact.pgpKey = pgpKey.trimmed().isEmpty() ? std::nullopt : std::make_optional(pgpKey);
     contact.ims = entriesFromVariantList<ContactImEntry>(fields.value(QStringLiteral("ims")).toList(), imEntryFromMap);
     contact.websites = entriesFromVariantList<ContactUrlEntry>(
         fields.value(QStringLiteral("websites")).toList(), urlEntryFromMap);
