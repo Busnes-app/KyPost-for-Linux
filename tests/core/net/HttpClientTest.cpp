@@ -101,6 +101,8 @@ private slots:
     void delSendsQueryParamsWithNoBody();
     void transportFailureWhenNothingListens();
     void transportFailureWhenServerHangs();
+    void aTruncatedSuccessIsATransportFailure_data();
+    void aTruncatedSuccessIsATransportFailure();
     void getFollowsRedirectWhenValidatorApprovesTarget();
     void getDoesNotFollowRedirectWhenValidatorRejectsTarget();
     void crossOriginRedirectIsRefusedByDefault();
@@ -259,6 +261,47 @@ void HttpClientTest::transportFailureWhenServerHangs()
     QCOMPARE(*result.error, NetworkError::Transport);
     QCOMPARE(result.statusCode, 0);
     QVERIFY(!result.detail.isEmpty());
+
+    delete accepted;
+}
+
+void HttpClientTest::aTruncatedSuccessIsATransportFailure_data()
+{
+    QTest::addColumn<bool>("closeMidBody");
+    QTest::newRow("connection dropped") << true;
+    QTest::newRow("transfer stalled") << false;
+}
+
+// A 200 whose body never finished is not a 200. The status branch used to win
+// over QNetworkReply's own error, so the first 10 bytes of a 1000-byte
+// attachment came back as a success and were saved as the whole file.
+void HttpClientTest::aTruncatedSuccessIsATransportFailure()
+{
+    QFETCH(bool, closeMidBody);
+    QTcpServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+    QTcpSocket* accepted = nullptr;
+    QObject::connect(&server, &QTcpServer::newConnection, &server, [&server, &accepted, closeMidBody]() {
+        accepted = server.nextPendingConnection();
+        QObject::connect(accepted, &QTcpSocket::readyRead, accepted, [accepted, closeMidBody]() {
+            accepted->readAll();
+            accepted->write("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n"
+                            "Content-Length: 1000\r\n\r\n0123456789");
+            accepted->flush();
+            if (closeMidBody)
+                accepted->disconnectFromHost();
+        });
+    });
+
+    QNetworkAccessManager manager;
+    HttpClient client(manager, 300);
+
+    const QUrl url(QStringLiteral("http://127.0.0.1:%1/api/attachment").arg(server.serverPort()));
+    const HttpClient::HttpResult result = client.get(url, {});
+
+    QVERIFY(result.error.has_value());
+    QCOMPARE(*result.error, NetworkError::Transport);
+    QVERIFY(result.body.isEmpty());
 
     delete accepted;
 }

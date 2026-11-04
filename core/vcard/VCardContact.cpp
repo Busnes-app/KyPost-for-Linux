@@ -521,9 +521,7 @@ Contact contactFromVCard(const QString& vcard)
     Contact contact;
     // rev: relay-only concept, never appears in vCard text -- left at
     // Contact{}'s default (0).
-    // createdAt: never round-tripped through vCard -- left nullopt so the
-    // caller-side merge (ContactSyncRepository.cpp's mergeContact pattern)
-    // can fall back to any cached value, per the decision table.
+    // createdAt: never round-tripped through vCard -- left nullopt.
     // uid: Contact.uid stays default-constructed (empty); a parsed UID
     // property is intentionally dropped below, never conflated with it.
     // deleted: no vCard representation -- left at Contact{}'s default

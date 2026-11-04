@@ -173,6 +173,9 @@ void MailEncryptedSendTest::theRecipientCanOpenWhatTheRelayRelayed()
     const PgpDecryptResult opened = OpenPgpDecryptor().decrypt(armor, m_recipient.path());
     QCOMPARE(opened.status, PgpDecryptStatus::Decrypted);
     QVERIFY2(opened.plaintext.contains(kSecret), "the recipient cannot read the message sent to them");
+    // Compose sends its editor HTML; a text/plain label showed recipients the markup.
+    QVERIFY2(opened.plaintext.contains("Content-Type: text/html; charset=utf-8"),
+             "the composer's HTML body is not labelled as HTML");
 }
 
 // No downgrade, and no anonymous failure: the user is told who could not be

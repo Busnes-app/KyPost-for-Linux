@@ -58,6 +58,8 @@ private slots:
     void sendMailEmitsPickupFallbackRequiredWithTheServersAddressList();
     void confirmPickupFallbackSendResendsTheIdenticalBodyWithTheOptIn();
     void confirmPickupFallbackSendWithoutAPendingSendDoesNothing();
+    void aPickupConfirmAfterAnAccountChangeSendsNothing_data();
+    void aPickupConfirmAfterAnAccountChangeSendsNothing();
     void aReplyKeepsItsReferenceThroughThePickupResendUntilRefused();
     void replyAllLeavesOutOnlyThisAccountsOwnAddresses();
     void repliesLeaveOutAccountAddressesFromANewerRelay();
@@ -925,23 +927,28 @@ void MailControllerTest::confirmPickupFallbackSendResendsTheIdenticalBodyWithThe
         replacement.write("SOMETHING-ELSE-ENTIRELY");
     }
 
-    // Second server: FakeRelayServer serves exactly one connection.
-    FakeRelayServer accepted(httpResponse(200, "OK", R"({"ok":true,"sentSaved":true,"warning":""})"));
-    savePairing(pairingStore, accepted.port());
+    // Same relay, same account: a confirm after a move to another relay is
+    // refused (aPickupConfirmAfterAnAccountChangeSendsNothing).
+    refusal.setResponse(httpResponse(200, "OK", R"({"ok":true,"sentSaved":true,"warning":""})"));
 
     // A confirmation naming a DIFFERENT pending send must not send: this is
     // what stops a dialog opened in another composer from resolving this one.
-    // Checked before the real confirm on purpose -- `accepted` serves a single
-    // connection, so if this reached the network the confirm below would fail.
     QCOMPARE(controller.confirmPickupFallbackSend(token + 1), 0u);
+    // Nor may cancelling ANOTHER composer's dialog drop this pending send.
+    controller.discardPendingSend(token + 1);
 
     QSignalSpy confirmSpy(&controller, &MailController::sendCompleted);
     QCOMPARE(controller.confirmPickupFallbackSend(token), token);
     QVERIFY(confirmSpy.wait(10000));
     QCOMPARE(confirmSpy.at(0).at(1).toBool(), true);
 
-    const QJsonObject first = refusal.receivedJsonBody();
-    const QJsonObject second = accepted.receivedJsonBody();
+    const QList<QByteArray>& requests = refusal.receivedRequests();
+    QCOMPARE(requests.size(), 2); // the refused send and the confirmed one, nothing in between
+    const auto jsonBodyOf = [](const QByteArray& request) {
+        return QJsonDocument::fromJson(request.mid(request.indexOf("\r\n\r\n") + 4)).object();
+    };
+    const QJsonObject first = jsonBodyOf(requests.at(0));
+    const QJsonObject second = jsonBodyOf(requests.at(1));
     QCOMPARE(second.value(QStringLiteral("allowPickupFallback")).toBool(), true);
     QCOMPARE(first.value(QStringLiteral("allowPickupFallback")).toBool(), false);
     // Everything else is byte-identical: same subject, body, recipients, flags.
@@ -964,6 +971,75 @@ void MailControllerTest::confirmPickupFallbackSendResendsTheIdenticalBodyWithThe
 
     // The opt-in is per-message: a second confirm must not re-send anything.
     QCOMPARE(controller.confirmPickupFallbackSend(token), 0u);
+}
+
+void MailControllerTest::aPickupConfirmAfterAnAccountChangeSendsNothing_data()
+{
+    QTest::addColumn<QString>("subscriberId");
+    QTest::newRow("another subscriber") << QStringLiteral("sub-2");
+    // Subscriber ids are unique per relay only.
+    QTest::newRow("same subscriber id on another relay") << QStringLiteral("sub-1");
+}
+
+// The refused payload belongs to the account that was refused. Confirmed
+// after another account paired, it went out from that account instead.
+void MailControllerTest::aPickupConfirmAfterAnAccountChangeSendsNothing()
+{
+    QFETCH(QString, subscriberId);
+    Database db;
+    QVERIFY(db.open(QStringLiteral(":memory:")));
+    EmailDao emailDao(db.handle());
+
+    FakeRelayServer refusal(httpResponse(
+        409, "Conflict",
+        R"({"error":"no usable key","keylessRecipients":["bob@example.com"],"pickupFallbackAvailable":true})"));
+
+    QTemporaryDir secureDir;
+    QVERIFY(secureDir.isValid());
+    SecureStoreFile secureStore(secureDir.path());
+    PairingStore pairingStore(secureStore);
+    savePairing(pairingStore, refusal.port());
+
+    QTemporaryDir cursorDir;
+    QVERIFY(cursorDir.isValid());
+    CursorStore cursorStore(cursorDir.filePath(QStringLiteral("cursor.ini")));
+    QTemporaryDir settingsDir;
+    QVERIFY(settingsDir.isValid());
+    SettingsStore settingsStore(settingsDir.filePath(QStringLiteral("settings.ini")));
+    KeywordRepository keywordRepository(settingsStore);
+
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+    PgpBootstrapClient bootstrapClient(http);
+    PgpRecipientChecker recipientChecker(http);
+    MailRepository mailRepository(source, emailDao, pairingStore, cursorStore);
+    FolderDao folderDao(db.handle());
+    FolderClient folderClient(http);
+    FolderRepository folderRepository(folderClient, folderDao, pairingStore);
+    NetworkExecutor executor(3000);
+    MailController controller(mailRepository, source, keywordRepository, pairingStore, folderRepository,
+                               settingsStore, bootstrapClient, recipientChecker, executor);
+    ExecutorShutdownGuard shutdownGuard{ executor };
+
+    QSignalSpy fallbackSpy(&controller, &MailController::pickupFallbackRequired);
+    QVERIFY(controller.sendMail(QStringLiteral("bob@example.com"), QString(), QString(), QStringLiteral("Hi"),
+                                 QStringLiteral("Body"), {}, /*sign=*/false, /*encrypt=*/true)
+            != 0u);
+    QVERIFY(fallbackSpy.wait(10000));
+    const quint64 token = fallbackSpy.at(0).at(0).value<quint64>();
+
+    FakeRelayServer other(httpResponse(200, "OK", R"({"ok":true,"sentSaved":true,"warning":""})"));
+    DevicePairing replacement;
+    replacement.subscriberId = subscriberId;
+    replacement.deviceSecret = QStringLiteral("secret-2");
+    replacement.serverBaseUrl = QStringLiteral("http://127.0.0.1:%1").arg(other.port());
+    replacement.deviceId = QStringLiteral("dev-2");
+    QVERIFY(pairingStore.save(replacement));
+
+    QCOMPARE(controller.confirmPickupFallbackSend(token), 0u);
+    QTest::qWait(200);
+    QVERIFY2(other.receivedRequests().isEmpty(), "the previous account's message went out from the new one");
 }
 
 void MailControllerTest::confirmPickupFallbackSendWithoutAPendingSendDoesNothing()

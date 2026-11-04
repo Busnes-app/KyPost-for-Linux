@@ -28,6 +28,50 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- Hostile review fixes (council pass 1):
+  - "Open in new window" on a message you are writing now keeps Cc, Bcc,
+    attachments and the Encrypt and Sign choices. Before, they were dropped,
+    so a message you had set to Encrypt could go out unencrypted from the new
+    window.
+  - A message popped out into its own window no longer offers Archive, Junk or
+    Delete after the main window has switched to another folder. Those actions
+    hit a message with the same number in that other folder.
+  - Encrypted mail sent from this device (keys held on this device) is now
+    marked as HTML, so recipients see formatted text rather than raw markup.
+  - Contacts edited or cleared on another device or on the web now update
+    here, including a removed PGP key. Before, a field cleared elsewhere was
+    never cleared on Linux.
+  - When the server says the contact sync point is too old, KyPost fetches the
+    whole address book again at once, rather than leaving the list empty until
+    the next manual sync.
+  - A download cut off part-way is now reported as failed, instead of being
+    saved as if it were complete.
+  - The certificate pin now checks that the pinned issuer actually signed the
+    server's certificate. Before, a proxy trusted by this machine could satisfy
+    the pin by sending the real issuer's certificate next to its own.
+  - With Hostile Location Protection on, or with no key storage, each launch
+    now shows the whole mailbox again, not only mail that arrived since the
+    last launch.
+  - A key-exchange QR code fetched for one account is no longer shown after
+    another account is paired.
+  - "Send anyway" in a message's no-key dialog sends nothing once another
+    account has been paired, and cancelling one composer's dialog no longer
+    cancels another composer's pending send.
+  - The stored pull endpoint is used only when it is on the paired server.
+
+### Upgrade impact
+
+- A contact field removed elsewhere before this version stays on this device
+  until that contact changes again.
+
+## Source notes at 6994f6b0
+
+These are the prior source summary, preserved from
+[`6994f6b0`](https://github.com/Busnes-app/KyPost-for-Linux/commit/6994f6b0).
+Their presence does not establish that this source was distributed.
+
+### Changes
+
 - New [assurance case](docs/ASSURANCE-CASE.md) and
   [release verification](docs/VERIFYING-RELEASES.md) pages. The security policy's
   pairing section now says the client enforces a pairing link's `pin=`, and

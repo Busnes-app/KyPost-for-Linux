@@ -302,6 +302,9 @@ void ContactsController::applySyncOutcome(const ContactSyncOutcome& outcome)
         // than the block it replaced, not better.
         refreshGroupsCache();
         load();
+        // The relay never answers since=0 with tooOld, so this runs once.
+        if (outcome.fullPullNeeded)
+            sync();
         break;
     case ContactSyncStatus::NotPaired:
         setStatusMessage(QString());

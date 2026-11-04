@@ -14,6 +14,7 @@ class DatabaseTest : public QObject
 
 private slots:
     void opensInMemoryAndAppliesSchema();
+    void holdsAccountDataSeesAnyCachedRow();
     void openIsIdempotentOnRealFile();
     void refusesAnOutOfRangeSchemaVersion_data();
     void refusesAnOutOfRangeSchemaVersion();
@@ -23,6 +24,25 @@ private slots:
     void migrationIsAtomicSoAFailureLeavesNoHalfAppliedSchema();
     void migration006RekeysAnExistingProfileWithoutLosingCachedMail();
 };
+
+// Decides whether stale sync cursors are discarded at startup and whether a
+// cache of unknown ownership is purged before a pairing.
+void DatabaseTest::holdsAccountDataSeesAnyCachedRow()
+{
+    Database db;
+    QVERIFY(db.open(QStringLiteral(":memory:")));
+    QVERIFY(!db.holdsAccountData());
+
+    QSqlQuery insert(db.handle());
+    QVERIFY(insert.exec(QStringLiteral("INSERT INTO contacts (uid) VALUES ('c1')")));
+    QVERIFY(db.holdsAccountData());
+
+    QVERIFY(db.wipeAllTables());
+    QVERIFY(!db.holdsAccountData());
+
+    Database closed;
+    QVERIFY2(closed.holdsAccountData(), "a database it cannot read must not look empty");
+}
 
 void DatabaseTest::opensInMemoryAndAppliesSchema()
 {

@@ -13,7 +13,25 @@
 #include <QSslKey>
 #include <QUrlQuery>
 
+#include <openssl/x509.h>
+
 namespace {
+
+// Whether `issuer`'s key verifies `cert`'s signature. Names are chosen by
+// whoever minted the certificate, so only the signature says who issued it.
+bool signedBy(const QSslCertificate& cert, const QSslCertificate& issuer)
+{
+    const QByteArray certDer = cert.toDer();
+    const QByteArray issuerDer = issuer.toDer();
+    const auto* certBytes = reinterpret_cast<const unsigned char*>(certDer.constData());
+    const auto* issuerBytes = reinterpret_cast<const unsigned char*>(issuerDer.constData());
+    X509* certX509 = d2i_X509(nullptr, &certBytes, static_cast<long>(certDer.size()));
+    X509* issuerX509 = d2i_X509(nullptr, &issuerBytes, static_cast<long>(issuerDer.size()));
+    const bool verified = certX509 && issuerX509 && X509_verify(certX509, X509_get0_pubkey(issuerX509)) == 1;
+    X509_free(certX509);
+    X509_free(issuerX509);
+    return verified;
+}
 
 // The relay is fronted by a CDN that challenges/blocks requests carrying
 // Qt's stock "Mozilla/5.0" QNetworkAccessManager User-Agent, so a real
@@ -135,7 +153,13 @@ QByteArray HttpClient::pinnedSpkiFromChain(const QList<QSslCertificate>& chain)
     // reordered or cross-signed could otherwise anchor us to the ROOT, which
     // every public site under that root would satisfy -- a silent widening
     // of trust rather than a visible failure. Fail closed instead.
-    if (issuer.subjectDisplayName() != leaf.issuerDisplayName())
+    //
+    // The name alone is not enough. peerCertificateChain() is the chain as
+    // the server SENT it, not the path OpenSSL verified, so a proxy with a
+    // locally trusted CA could send [its leaf, the real issuer, its own
+    // same-named intermediate]: OpenSSL validates through the third, and
+    // index 1 still matched the pin by name. The issuer must have signed the leaf.
+    if (issuer.subjectDisplayName() != leaf.issuerDisplayName() || !signedBy(leaf, issuer))
         return {};
 
     return spkiSha256(issuer);
@@ -549,6 +573,14 @@ HttpClient::HttpResult HttpClient::waitForReply(QNetworkReply* reply, const Redi
         // to happen, not what did, and "we refused to follow that" is the
         // fact the caller needs.
         result.error = NetworkError::RedirectRefused;
+    } else if (result.statusCode >= 200 && result.statusCode < 300 && reply->error() != QNetworkReply::NoError) {
+        // A 2xx whose body never finished: the connection dropped or the
+        // transfer timeout fired mid-download. The status says the server
+        // started to answer, not that the bytes arrived, and a truncated
+        // attachment used to be saved as if it were whole.
+        result.error = NetworkError::Transport;
+        result.detail = reply->errorString();
+        result.body.clear();
     } else if (result.statusCode != 0) {
         // Got an HTTP response — map by status code even if QNetworkReply
         // also flagged an error of its own (e.g. 404 sets ContentNotFoundError).

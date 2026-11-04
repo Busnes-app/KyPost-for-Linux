@@ -125,26 +125,30 @@ void PgpQrController::refreshMyQrCode()
 
     const QUrl serverBaseUrl = pairing->first;
     const RelayAuth auth = pairing->second;
+    // The account the request is FOR, read now: the reply can land after a
+    // different account has paired, and stamping it with that one made the
+    // read-time ownership check pass for the previous account's code.
+    const PairingIdentity requestedFor = m_repository.currentIdentity();
     m_executor.run(
         this,
         [serverBaseUrl, auth](HttpClient& http) {
             return PgpQrRepository::fetchTokenWith(http, serverBaseUrl, auth);
         },
-        [this](const PgpQrTokenOutcome& outcome) {
+        [this, requestedFor](const PgpQrTokenOutcome& outcome) {
             m_inNetworkCall = false;
             setBusy(false);
-            applyTokenOutcome(outcome);
+            applyTokenOutcome(outcome, requestedFor);
         });
 }
 
-void PgpQrController::applyTokenOutcome(const PgpQrTokenOutcome& outcome)
+void PgpQrController::applyTokenOutcome(const PgpQrTokenOutcome& outcome, const PairingIdentity& requestedFor)
 {
     switch (outcome.status) {
     case PgpQrTokenStatus::Success:
         setLastError(QString());
         // Stamped with the account it was issued for, so a later read can
         // tell whether that account is still this device's.
-        m_myQrIdentity = m_repository.currentIdentity();
+        m_myQrIdentity = requestedFor;
         m_myQrUrl = outcome.url;
         m_myQrExpiresAt = outcome.expiresAt;
         m_myFingerprint = outcome.fingerprint;

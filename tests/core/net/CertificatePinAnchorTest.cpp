@@ -138,6 +138,30 @@ const char* kIntermediateB =
     "4U5lCLAODaWNpnoJbbfy13Do+xTbHvJiLyC64QVCkbUK\n"
     "-----END CERTIFICATE-----\n";
 
+// Named "Test Int A" like the real intermediate, but with another key, under
+// a root also named "Test Root R9": what a proxy holding a locally trusted CA
+// can mint. It did not sign any leaf here.
+const char* kSameNameImpostorA =
+    "-----BEGIN CERTIFICATE-----\n"
+    "MIIDHTCCAgWgAwIBAgIUIBRDdT2+ui4ZrpxqMYvX4CJIh5swDQYJKoZIhvcNAQEL\n"
+    "BQAwFzEVMBMGA1UEAwwMVGVzdCBSb290IFI5MB4XDTI2MTEwMzIyMzAzNFoXDTM2\n"
+    "MTAzMTIyMzAzNFowFTETMBEGA1UEAwwKVGVzdCBJbnQgQTCCASIwDQYJKoZIhvcN\n"
+    "AQEBBQADggEPADCCAQoCggEBANsNNxkPOtJiRZ1p1qr+dN5h1mObAhp0wLT2Rczl\n"
+    "dVL7335v3cE1IYMrd0y0rW1PblQeKZ29JZopxr7bl+n2hXmZFDdyuvDM10aGPCbs\n"
+    "SsyO6LIJCXxK9CdaYUaalVeM92BRyhzSQ9/6OeDID1qjVYX4eX5yon5yYgWlRbfH\n"
+    "uUFaSq81vK/O6geCV6VbbFad2WCiikY6GCQbhSRV7MekE+GYszjqd4/aqbGtX+MF\n"
+    "4eZu0/iqGs7QYCO/PTBR/mtKZYJkge5iHlT630wxaDu52AKVLGk9WiPRNaHCyYtA\n"
+    "IitcOYDDtU8wG1JWHSNjJQ3x9VQdnQsC49+GdEu9CSfKAX0CAwEAAaNjMGEwDwYD\n"
+    "VR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFGVXCYTT1TWj\n"
+    "/rN3K8jANx77Bq5tMB8GA1UdIwQYMBaAFLu6yATRw9NGwKQ8JyabrR26PUhNMA0G\n"
+    "CSqGSIb3DQEBCwUAA4IBAQBbc88rRWxA+zJ1pD8CBlhLdbOKUJpuudmPDheuCM2j\n"
+    "rs9Dro5mdMnnbyjX1f1pV+57KKuu5ZgUR0JFfxvGmYDvrDtn3NZk8h4Sa6GOymhS\n"
+    "oipXqx9s7DXsjXydK0zFqj+s7oUcB5oC82oZbGN3JmbeurLqBPPGrLIaCq0AgtZ6\n"
+    "TKCiErhWZhgGMIlA/7a5CszeQYni2YMnG7rOyIxocIJ7FqZtEJ2a1jek1ppDXiU5\n"
+    "ZoGnIynOKAlkkVeUvDyWYKQAJxk8NgjJalUnTeCQrbAM7w2xvoVLaxvnK6mhwMXK\n"
+    "AftceG10b9AYoU3mwPf5CoSIxUbA4PuEYJGPee/JKQFq\n"
+    "-----END CERTIFICATE-----\n";
+
 const char* kRoot =
     "-----BEGIN CERTIFICATE-----\n"
     "MIIDDzCCAfegAwIBAgIUQyrNO1xLsz4zZ2t6PM59CvWeqdIwDQYJKoZIhvcNAQEL\n"
@@ -186,6 +210,7 @@ private slots:
     void aDifferentIssuerYieldsADifferentPin();
     void aChainWithNoIssuerPinsNothing();
     void aChainWhoseSecondCertDidNotSignTheLeafPinsNothing();
+    void aSameNamedIssuerThatDidNotSignTheLeafPinsNothing();
     void anEmptyChainPinsNothing();
     void anUnreadableCertificatePinsNothing();
 };
@@ -252,6 +277,19 @@ void CertificatePinAnchorTest::aChainWhoseSecondCertDidNotSignTheLeafPinsNothing
     QVERIFY(HttpClient::pinnedSpkiFromChain(chainOf({ kLeaf1, kIntermediateB, kRoot })).isEmpty());
     // ...and so is one that puts the root where the issuer belongs.
     QVERIFY(HttpClient::pinnedSpkiFromChain(chainOf({ kLeaf1, kRoot })).isEmpty());
+}
+
+// peerCertificateChain() is the chain as SENT. A proxy whose own CA is
+// trusted locally can send [its leaf, the real issuer, its intermediate]
+// and OpenSSL validates through the third; matching index 1 by NAME then
+// accepted the real issuer's key as the pin. Only the signature counts.
+void CertificatePinAnchorTest::aSameNamedIssuerThatDidNotSignTheLeafPinsNothing()
+{
+    QCOMPARE(chainOf({ kSameNameImpostorA }).first().subjectDisplayName(),
+             chainOf({ kIntermediateA }).first().subjectDisplayName());
+    QVERIFY(HttpClient::pinnedSpkiFromChain(chainOf({ kLeaf1, kSameNameImpostorA, kRoot })).isEmpty());
+    // The honest chain is still anchored.
+    QCOMPARE(HttpClient::pinnedSpkiFromChain(chainOf({ kLeaf1, kIntermediateA, kRoot })), spkiOf(kIntermediateA));
 }
 
 void CertificatePinAnchorTest::anEmptyChainPinsNothing()

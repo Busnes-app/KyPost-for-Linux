@@ -766,6 +766,16 @@ int main(int argc, char* argv[])
     // 4. CursorStore -- reuses settingsDir (already computed for
     // SettingsStore above), not a second directory-resolution block.
     CursorStore cursorStore(settingsDir + QStringLiteral("/cursors.ini"));
+    // A cursor says "I already hold everything before this". With nothing
+    // cached it is a lie, and the relay answers it with a delta against mail
+    // this process never had: every in-memory session (Hostile Location
+    // Protection, no key storage, an unprotected data directory), and every
+    // fresh database (the protection turned off, key storage back after a
+    // session without it) showed only what had arrived since. reset(), not wipeAll(): the notification cursor is
+    // what keeps the relay's queued notifications from being shown again, and
+    // it describes no cached rows.
+    if (!database.holdsAccountData() && !cursorStore.reset())
+        qCritical("main: the cache is empty but the stale sync cursors could not be erased");
 
     // 5. PairingStore -- the one shared "are we paired" contract every
     // repository below reads instead of re-deriving SecureStore key names.

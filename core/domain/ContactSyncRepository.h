@@ -61,6 +61,11 @@ struct ContactSyncOutcome
     // CacheWriteFailed from the cursor write, which happens after the commit:
     // see applySync().
     QVector<ContactReconciliationAssignment> uidReassignments;
+
+    // The relay said the cursor was too old: the address book was emptied
+    // and the cursor cleared, so the caller must pull it again now. Left
+    // alone, the user saw "Synced" over an empty contact list.
+    bool fullPullNeeded = false;
 };
 
 // Outcome of ContactSyncRepository::queueImport. Nothing is queued unless Queued.
@@ -88,7 +93,8 @@ struct ContactDedupeOutcome
 // to the local cache immediately and enqueue the corresponding wire change
 // for the next sync() call; sync() itself either pushes the queue (if
 // non-empty) or pulls (if empty), then merges the response back into the
-// cache -- see sync()'s .cpp comments for the partial-delta merge rule.
+// cache -- the relay sends each changed contact whole, and it replaces the
+// cached row (see applySync()).
 class ContactSyncRepository
 {
 public:

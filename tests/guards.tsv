@@ -598,3 +598,13 @@ core/pgp/OpenPgpDecryptor.cpp	            result.belowStrengthFloor = !signer.st
 core/pgp/EncryptedMessageReader.cpp	    if (signature.belowStrengthFloor)	    if (false)	EncryptedMessageReaderTest:detachedSignatureVerdicts
 # Not listed: the ECC 224-bit floor and the unknown-algorithm refusal. GnuPG
 # offers no ECC curve below 255 bits and no unclassified algorithm to test with.
+
+# --- council pass 1 (2026-11-03) -----------------------------------------
+#
+# The issuer pin must have signed the leaf; a pickup confirm and a QR code
+# must not cross an account change; the device secret must not follow a pull
+# endpoint off the paired origin.
+core/net/HttpClient.cpp	    if (issuer.subjectDisplayName() != leaf.issuerDisplayName() || !signedBy(leaf, issuer))	    if (issuer.subjectDisplayName() != leaf.issuerDisplayName())	CertificatePinAnchorTest:aSameNamedIssuerThatDidNotSignTheLeafPinsNothing
+app/mail/MailController.cpp	    if (currentSubscriber.isEmpty() || currentSubscriber != m_pendingSend.owner.subscriberId || serverBaseUrl != m_pendingSend.ownerServer) {	    if (false) {	MailControllerTest:aPickupConfirmAfterAnAccountChangeSendsNothing
+app/pgp/PgpQrController.cpp	        m_myQrIdentity = requestedFor;	        m_myQrIdentity = m_repository.currentIdentity();	PgpQrControllerTest:aQrCodeThatLandsAfterAnAccountChangeIsNotOffered
+core/domain/PushRepository.cpp	    if (!stored.isEmpty() && sameUrlOrigin(QUrl(stored), QUrl(serverBaseUrl)))	    if (!stored.isEmpty())	PushRepositoryTest:aStoredPullEndpointOnAnotherOriginIsIgnored

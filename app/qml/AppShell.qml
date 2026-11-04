@@ -640,8 +640,8 @@ Kirigami.ApplicationWindow {
             replyTo: root.composeSeed.replyTo || ({})
             initialNotice: root.composeSeed.notice || ""
             onSendSucceeded: root.closeDetail()
-            onPopOutRequested: function (to, subject, body, bodyIsHtml, replyTo) {
-                root.popOutCompose(to, subject, body, bodyIsHtml, replyTo)
+            onPopOutRequested: function (draft, replyTo) {
+                root.popOutCompose(draft, replyTo)
             }
         }
     }
@@ -825,10 +825,13 @@ Kirigami.ApplicationWindow {
         root.closeDetail()
     }
 
-    function popOutCompose(to, subject, body, bodyIsHtml, replyTo) {
+    // draft is Compose.currentDraftForPopOut()'s snapshot: To/Subject/Body
+    // seed as before, the rest (Cc, Bcc, attachments, Encrypt/Sign) rides in
+    // as a token-less restoredDraft. The body is the editor's own HTML.
+    function popOutCompose(draft, replyTo) {
         const win = composeWindowComponent.createObject(
-            null, { popInitialTo: to, popInitialSubject: subject, popInitialBody: body,
-                    popInitialBodyIsHtml: bodyIsHtml === true, popReplyTo: replyTo || ({}) })
+            null, { popRestoredDraft: draft, popInitialTo: draft.to, popInitialSubject: draft.subject,
+                    popInitialBody: draft.body, popInitialBodyIsHtml: true, popReplyTo: replyTo || ({}) })
         win.show()
         win.raise()
         win.requestActivate()

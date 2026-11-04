@@ -195,6 +195,7 @@ class ContactsControllerTest : public QObject
     Q_OBJECT
 
 private slots:
+    void aTooOldCursorIsFollowedByAFullPull();
     void updateContactReplacesEmailsPhonesAddressesWholesale();
     void isSyncedReflectsPendingState();
     void createContactRejectsBlankName();
@@ -535,6 +536,55 @@ void ContactsControllerTest::syncWithoutPairingSetsNotPairedMessage()
     // its way, and this never got that far.
     QCOMPARE(busySpy.count(), 0);
     QCOMPARE(controller.isBusy(), false);
+}
+
+// A too-old cursor empties the address book and clears the cursor. With no
+// pull after it, the list stayed empty under a "Synced" message until the
+// user happened to sync again.
+void ContactsControllerTest::aTooOldCursorIsFollowedByAFullPull()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", "[]"));
+    fake.setResponseForPath("since=5", httpResponse(200, "OK", R"({"cursor":0,"tooOld":true})"));
+    fake.setResponseForPath("since=0",
+                            httpResponse(200, "OK", R"({"cursor":9,"tooOld":false,"changed":[{"uid":"srv-1","rev":9,"fn":"Ada"}],"deleted":[]})"));
+
+    Database db;
+    QVERIFY(db.open(QStringLiteral(":memory:")));
+    ContactDao contactDao(db.handle());
+    GroupDao groupDao(db.handle());
+    PendingContactChangeDao pendingDao(db.handle());
+
+    QTemporaryDir cursorDir;
+    QVERIFY(cursorDir.isValid());
+    CursorStore cursorStore(cursorDir.filePath(QStringLiteral("cursors.ini")));
+    QVERIFY(cursorStore.setContactBaseCursor(QStringLiteral("5")));
+
+    QTemporaryDir secureDir;
+    QVERIFY(secureDir.isValid());
+    SecureStoreFile secureStore(secureDir.path());
+    PairingStore pairingStore(secureStore);
+    savePairing(pairingStore, fake.port());
+
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    ContactSyncClient client(http);
+    GroupsClient groupsClient(http);
+    GroupsRepository groupsRepository(groupsClient, groupDao, pairingStore);
+    ContactPhotoClient photoClient(http);
+    QTemporaryDir photoCacheDir;
+    QVERIFY(photoCacheDir.isValid());
+    ContactPhotoCache photoCache(photoCacheDir.path());
+    ContactPhotoRepository photoRepository(photoClient, photoCache, pairingStore);
+
+    ContactSyncRepository repository(client, contactDao, pendingDao, cursorStore, pairingStore, db.handle());
+    NetworkExecutor executor(3000);
+    ContactsController controller(repository, groupsRepository, photoRepository, executor);
+    ExecutorShutdownGuard shutdownGuard{ executor };
+
+    controller.sync();
+    QTRY_VERIFY_WITH_TIMEOUT(contactDao.findById(QStringLiteral("srv-1")).has_value(), 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.isBusy(), 10000);
+    QCOMPARE(cursorStore.contactBaseCursor(), QStringLiteral("9"));
 }
 
 void ContactsControllerTest::syncSuccessRefreshesGroupsCache()

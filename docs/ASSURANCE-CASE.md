@@ -49,7 +49,8 @@ the session can.
    origin by default, and replies are capped at 8 MiB (`core/net/HttpClient.cpp`). The pin is
    taken from the pairing link's `pin=` when there is one. Without `pin=`, the certificate that
    served registration is pinned on first use. The stored pin is the SHA-256 of the public key
-   of the certificate that issued the server's leaf (`HttpClient::pinnedSpkiFromChain`); a pin
+   of the certificate that issued the server's leaf (`HttpClient::pinnedSpkiFromChain`), which
+   must carry a valid signature over that leaf, not just the leaf's issuer name; a pin
    of the leaf's own key also matches. On a new connection the pin is checked when the TLS
    handshake completes, before the request body is written. A reused keep-alive connection
    has no handshake, so its reply is checked after the request was sent.

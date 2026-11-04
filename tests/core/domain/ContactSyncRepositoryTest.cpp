@@ -35,7 +35,8 @@ private slots:
     void serverEditUpdatesExistingContact();
     void serverIsSelfFlagSurvivesSync();
     void serverFullSyncAppliesExtendedFields();
-    void serverEditPreservesExtendedFieldsWhenOmitted();
+    void serverEditClearsEveryFieldTheRecordOmits();
+    void anEditMadeWhileTheSyncWasOutIsNotOverwritten();
     void tooOldResetsCursorAndCache();
     void findByUidReturnsContactWhenPresent();
     void findByUidReturnsNulloptWhenAbsent();
@@ -329,11 +330,10 @@ void ContactSyncRepositoryTest::serverEditUpdatesExistingContact()
     QCOMPARE(updated->rev, qint64(4));
     QCOMPARE(updated->phones.size(), 1);
     QCOMPARE(updated->phones.at(0).value, QStringLiteral("555"));
-    // The delta response carried no "emails" key at all -- the seeded email
-    // must survive the merge, proving field-by-field merge rather than a
-    // blind insertOrReplace(c) overwrite.
-    QVERIFY(updated->emails.size() == 1);
-    QCOMPARE(updated->emails.at(0).value, QStringLiteral("ada@example.com"));
+    // The relay sends a changed contact whole and omits an empty field, so a
+    // record with no "emails" key is a contact whose emails were removed.
+    // Merging kept the old address forever.
+    QVERIFY(updated->emails.isEmpty());
 }
 
 void ContactSyncRepositoryTest::serverIsSelfFlagSurvivesSync()
@@ -345,6 +345,7 @@ void ContactSyncRepositoryTest::serverIsSelfFlagSurvivesSync()
     // Contact actually persisted to ContactDao -- isSelf/mergedUIDs/
     // mergedInto aren't on that list, so they're silently dropped before
     // ever reaching SQLite, even though the wire parse itself is correct.
+    // (mergeContact() is gone now; the server record is stored whole.)
     const QByteArray body = R"({"cursor":5,"tooOld":false,"changed":[)"
                              R"({"uid":"srv-1","rev":5,"fn":"Me","isSelf":true,)"
                              R"("mergedUIDs":["loser-1"],"mergedInto":"survivor-1"})"
@@ -390,7 +391,8 @@ void ContactSyncRepositoryTest::serverFullSyncAppliesExtendedFields()
     // any of groupIDs/photoRef/pgpKey/ims/websites/relations/events/
     // phoneticGivenName/phoneticFamilyName/department/customFields/
     // pronouns either -- every one of them was silently dropped on every
-    // sync pull, for every contact, regardless of isSelf.
+    // sync pull, for every contact, regardless of isSelf. (mergeContact() is
+    // gone now; the server record is stored whole.)
     const QByteArray body = R"({"cursor":7,"tooOld":false,"changed":[)"
                              R"({"uid":"srv-1","rev":7,"fn":"Ada","groupIDs":["group-1"],)"
                              R"("photoRef":"photo-ref-1","pgpKey":"-----BEGIN PGP PUBLIC KEY BLOCK-----",)"
@@ -451,11 +453,13 @@ void ContactSyncRepositoryTest::serverFullSyncAppliesExtendedFields()
     QCOMPARE(synced->pronouns, std::optional<QString>(QStringLiteral("she/her")));
 }
 
-void ContactSyncRepositoryTest::serverEditPreservesExtendedFieldsWhenOmitted()
+void ContactSyncRepositoryTest::serverEditClearsEveryFieldTheRecordOmits()
 {
-    // Mirrors serverEditUpdatesExistingContact's emails-preservation check,
-    // extended to every extended-contact-fields field: a delta response
-    // that omits them entirely must not wipe out the locally-cached values.
+    // Mirrors serverEditUpdatesExistingContact's emails check for every
+    // extended field. The relay's ChangedSince sends the whole contact and
+    // its omitempty drops what was cleared, so an omitted field is an empty
+    // one -- a removed PGP key above all, which this device must stop
+    // encrypting to.
     const QByteArray body = R"({"cursor":9,"tooOld":false,"changed":[)"
                              R"({"uid":"srv-1","rev":4,"fn":"Ada L."})"
                              R"(],"deleted":[]})";
@@ -507,18 +511,69 @@ void ContactSyncRepositoryTest::serverEditPreservesExtendedFieldsWhenOmitted()
     const std::optional<Contact> updated = contactDao.findById(QStringLiteral("srv-1"));
     QVERIFY(updated.has_value());
     QCOMPARE(*updated->fn, QStringLiteral("Ada L."));
-    QCOMPARE(updated->groupIds, QVector<QString>({ QStringLiteral("group-1") }));
-    QCOMPARE(updated->photoRef, std::optional<QString>(QStringLiteral("photo-ref-1")));
-    QCOMPARE(updated->pgpKey, std::optional<QString>(QStringLiteral("-----BEGIN PGP PUBLIC KEY BLOCK-----")));
-    QCOMPARE(updated->ims.size(), 1);
-    QCOMPARE(updated->websites.size(), 1);
-    QCOMPARE(updated->relations.size(), 1);
-    QCOMPARE(updated->events.size(), 1);
-    QCOMPARE(updated->phoneticGivenName, std::optional<QString>(QStringLiteral("Ay-da")));
-    QCOMPARE(updated->phoneticFamilyName, std::optional<QString>(QStringLiteral("Love-lace")));
-    QCOMPARE(updated->department, std::optional<QString>(QStringLiteral("Engineering")));
-    QCOMPARE(updated->customFields.size(), 1);
-    QCOMPARE(updated->pronouns, std::optional<QString>(QStringLiteral("she/her")));
+    QVERIFY(updated->groupIds.isEmpty());
+    QVERIFY(!updated->photoRef.has_value());
+    QVERIFY(!updated->pgpKey.has_value());
+    QVERIFY(updated->ims.isEmpty());
+    QVERIFY(updated->websites.isEmpty());
+    QVERIFY(updated->relations.isEmpty());
+    QVERIFY(updated->events.isEmpty());
+    QVERIFY(!updated->phoneticGivenName.has_value());
+    QVERIFY(!updated->phoneticFamilyName.has_value());
+    QVERIFY(!updated->department.has_value());
+    QVERIFY(updated->customFields.isEmpty());
+    QVERIFY(!updated->pronouns.has_value());
+}
+
+// The reply replaces cached records whole, so it must not land on a contact
+// the user edited while the request was out: that edit is newer, and it is
+// only queued, not pushed yet.
+void ContactSyncRepositoryTest::anEditMadeWhileTheSyncWasOutIsNotOverwritten()
+{
+    const QByteArray body = R"({"cursor":9,"tooOld":false,"changed":[)"
+                             R"({"uid":"srv-1","rev":4,"fn":"Ada L."})"
+                             R"(],"deleted":[]})";
+    FakeRelayServer fake(httpResponse(200, "OK", body));
+
+    Database db;
+    QVERIFY(db.open(QStringLiteral(":memory:")));
+    ContactDao contactDao(db.handle());
+    PendingContactChangeDao pendingDao(db.handle());
+
+    Contact existing;
+    existing.uid = QStringLiteral("srv-1");
+    existing.rev = 1;
+    existing.fn = QStringLiteral("Ada");
+    QVERIFY(contactDao.insertOrReplace(existing));
+
+    QTemporaryDir cursorDir;
+    QVERIFY(cursorDir.isValid());
+    CursorStore cursorStore(cursorDir.filePath(QStringLiteral("cursors.ini")));
+    QTemporaryDir secureDir;
+    QVERIFY(secureDir.isValid());
+    SecureStoreFile secureStore(secureDir.path());
+    PairingStore pairingStore(secureStore);
+    savePairing(pairingStore, fake.port());
+
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    ContactSyncClient client(http);
+    ContactSyncRepository repository(client, contactDao, pendingDao, cursorStore, pairingStore, db.handle());
+
+    const std::optional<ContactSyncRepository::ContactSyncPlan> plan = repository.planSync();
+    QVERIFY(plan.has_value());
+    const ContactSyncResult result = ContactSyncRepository::syncWith(http, *plan);
+
+    Contact edited = existing;
+    edited.phones = { ContactPhoneEntry{ std::nullopt, QStringLiteral("555") } };
+    QVERIFY(repository.queueUpdate(edited));
+
+    QCOMPARE(repository.applySync(*plan, result).status, ContactSyncStatus::Success);
+
+    const std::optional<Contact> cached = contactDao.findById(QStringLiteral("srv-1"));
+    QVERIFY(cached.has_value());
+    QCOMPARE(cached->phones.size(), 1);
+    QCOMPARE(pendingDao.findAll().size(), 1); // still queued for the next sync
 }
 
 void ContactSyncRepositoryTest::tooOldResetsCursorAndCache()

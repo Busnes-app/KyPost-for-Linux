@@ -1343,7 +1343,10 @@ worse than no comment: the next reader stops looking.
   through the one dialog that exists to stop a real impersonation.
   `HttpClient::pinnedSpkiFromChain()` now pins `chain[1]`, guarded by a
   check that it really did issue `chain[0]` so a reordered chain cannot
-  silently anchor to the root. Two things this does NOT do: catch
+  silently anchor to the root. That check is the issuer's SIGNATURE on the
+  leaf (OpenSSL `X509_verify`), not the issuer name: the chain is the one the
+  server sent, so a proxy with a locally trusted CA can put the real,
+  same-named issuer at index 1 while OpenSSL validates through its own. Two things this does NOT do: catch
   mis-issuance by that same CA, and protect the Cloudflare↔origin leg —
   Cloudflare terminates TLS, so the pinned key is Cloudflare's and the
   plaintext is visible to it regardless. Devices paired before the change

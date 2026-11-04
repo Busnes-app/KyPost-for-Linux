@@ -545,7 +545,7 @@ Item {
                 IconButton {
                     icon: "archive"
                     tooltip: i18n("Archive")
-                    enabled: !MailApp.isBusy
+                    enabled: !MailApp.isBusy && root.folder === MailApp.currentFolder
                     onClicked: MailApp.archiveEmails([root.messageId])
                 }
                 IconButton {
@@ -571,13 +571,13 @@ Item {
                 IconButton {
                     icon: "spam"
                     tooltip: i18n("Junk")
-                    enabled: !MailApp.isBusy
+                    enabled: !MailApp.isBusy && root.folder === MailApp.currentFolder
                     onClicked: MailApp.markSpam([root.messageId])
                 }
                 IconButton {
                     icon: "delete"
                     tooltip: i18n("Delete")
-                    enabled: !MailApp.isBusy
+                    enabled: !MailApp.isBusy && root.folder === MailApp.currentFolder
                     onClicked: MailApp.deleteEmails([root.messageId])
                 }
                 IconButton {

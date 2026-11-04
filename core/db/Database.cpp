@@ -339,6 +339,18 @@ bool Database::open(const QString& path, const QByteArray& rawKey)
     return true;
 }
 
+bool Database::holdsAccountData() const
+{
+    QSqlQuery query(m_db);
+    if (!query.exec(QStringLiteral(
+            "SELECT EXISTS(SELECT 1 FROM emails) OR EXISTS(SELECT 1 FROM contacts)"
+            " OR EXISTS(SELECT 1 FROM pending_contact_changes) OR EXISTS(SELECT 1 FROM folders)"
+            " OR EXISTS(SELECT 1 FROM groups) OR EXISTS(SELECT 1 FROM push_notifications)"))
+        || !query.next())
+        return true;
+    return query.value(0).toBool();
+}
+
 bool Database::wipeAllTables()
 {
     if (!m_db.isOpen())
