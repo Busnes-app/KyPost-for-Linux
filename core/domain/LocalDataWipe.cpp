@@ -55,8 +55,8 @@ LocalDataWipeResult LocalDataWipe::wipeCaches(bool removeCurrentDatabase)
     // The file FIRST, then the key that decrypts it. A process death between
     // the two leaves a key and no database, which the next launch opens as a
     // fresh profile. The reverse leaves an encrypted file whose key exists
-    // nowhere: openProfileDatabase() now discards that and starts over, but
-    // only by throwing away a file this wipe was meant to have removed.
+    // nowhere, which openProfileDatabase() can only answer with FailedToOpen
+    // -- and main() makes that fatal, on every launch, permanently.
     //
     // So the gate is the FILE, not the flag: QFile::remove() genuinely fails
     // (a non-writable profile directory, an EPERM unlink), and a wipe that
@@ -104,8 +104,6 @@ LocalDataWipeResult LocalDataWipe::wipeCaches(bool removeCurrentDatabase)
     // sync ask for a delta against a cache that no longer exists, and the
     // messages before that cursor would never be re-fetched.
     result.syncCursorsCleared = m_cursorStore.wipeAll();
-    // The cache it named is gone, so there is nobody left to replace.
-    m_settingsStore.clearUnpairedCacheOwner();
 
     return result;
 }

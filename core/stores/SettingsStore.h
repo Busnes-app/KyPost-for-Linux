@@ -4,7 +4,6 @@
 #include <QString>
 #include <QStringList>
 #include <optional>
-#include <utility>
 
 // Thin typed wrapper around QSettings for app-wide preferences. The
 // Connection and Keywords sections from the plan have no fields yet (see
@@ -59,14 +58,6 @@ public:
     bool appLockOffered() const;
     [[nodiscard]] bool setAppLockOffered();
     void clearAppLockOffered(); // a full wipe makes this a new install again
-
-    // The account whose cached mail and contacts outlived "Remove pairing"
-    // (which keeps the cache). The pairing store is empty after that, so this
-    // is what tells the next pairing it replaces somebody: {subscriberId,
-    // serverBaseUrl}, or nullopt. Cleared with the cache it describes.
-    std::optional<std::pair<QString, QString>> unpairedCacheOwner() const;
-    [[nodiscard]] bool setUnpairedCacheOwner(const QString& subscriberId, const QString& serverBaseUrl);
-    void clearUnpairedCacheOwner();
 
     // pushServerBaseUrl (the embedded ntfy subscriber's server, default
     // https://ntfy.sh) lived here until 2026-07-26. It went away with that

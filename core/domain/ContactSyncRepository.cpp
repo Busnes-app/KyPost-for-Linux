@@ -18,7 +18,6 @@
 #include <QStringList>
 #include <QUrl>
 #include <QUuid>
-#include <algorithm>
 
 namespace {
 
@@ -184,25 +183,9 @@ bool ContactSyncRepository::queueUpdate(const Contact& contact)
     // wrong: the cache write can land while the queue write does not, and
     // then the local copy shows the user's edit while the server keeps the
     // old one, forever, with no pending badge to say so.
-    //
-    // A contact whose create has not been pushed yet has only a temporary
-    // uid, and the relay upserts an unknown uid as a NEW contact. Queued as
-    // an update, the edit became a second contact beside the one the create
-    // made. So an edit before the first sync rewrites the queued create.
     return inTransaction(m_db, [&] {
-        if (!m_contactDao.insertOrReplace(contact))
-            return false;
-        const QVector<PendingContactChangeRecord> queued = m_pendingDao.findAll();
-        const bool unsyncedCreate = std::any_of(queued.cbegin(), queued.cend(), [&contact](const auto& record) {
-            return record.contactUid == contact.uid && deserializeContact(record.changeJson).uid.isEmpty();
-        });
-        if (!unsyncedCreate)
-            return m_pendingDao.enqueue(contact.uid, serializeContact(contact), nowUtc()) > 0;
-        for (const PendingContactChangeRecord& record : queued) {
-            if (record.contactUid == contact.uid && !m_pendingDao.deleteById(record.id))
-                return false;
-        }
-        return m_pendingDao.enqueue(contact.uid, createJson(contact), nowUtc()) > 0;
+        return m_contactDao.insertOrReplace(contact)
+            && m_pendingDao.enqueue(contact.uid, serializeContact(contact), nowUtc()) > 0;
     });
 }
 
@@ -422,24 +405,6 @@ ContactSyncOutcome ContactSyncRepository::applySync(const ContactSyncPlan& plan,
         for (const PendingContactChangeRecord& record : pending) {
             if (!m_pendingDao.deleteById(record.id))
                 return false;
-        }
-
-        // A contact created by this push and edited while it was out: its
-        // edit is still queued under the temporary uid (as a rewritten
-        // create), and pushed like that it becomes a second contact. It now
-        // belongs to the server uid, so it moves there as an update, and the
-        // cached row keeps the user's version.
-        for (const ContactReconciliationAssignment& assignment : assignments) {
-            for (const PendingContactChangeRecord& record : m_pendingDao.findAll()) {
-                if (record.contactUid != assignment.localUid)
-                    continue;
-                Contact change = deserializeContact(record.changeJson);
-                change.uid = assignment.serverUid;
-                if (!m_pendingDao.deleteById(record.id)
-                    || m_pendingDao.enqueue(assignment.serverUid, serializeContact(change), record.createdAt) <= 0
-                    || (!change.deleted && !m_contactDao.insertOrReplace(change)))
-                    return false;
-            }
         }
         return true;
     });

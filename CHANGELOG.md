@@ -29,10 +29,6 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 ### Changes
 
 - Hostile review fixes (council pass 1):
-  - Pairing a different account after "Remove pairing" now clears the
-    previous account's cached mail and contacts, as pairing over an existing
-    account already did. Before, the next account saw the previous one's mail,
-    and its first contact sync uploaded the previous account's unsynced edits.
   - "Open in new window" on a message you are writing now keeps Cc, Bcc,
     attachments and the Encrypt and Sign choices. Before, they were dropped,
     so a message you had set to Encrypt could go out unencrypted from the new
@@ -45,8 +41,6 @@ explains the signed remote and the standalone-bundle update-origin limitation.
   - Contacts edited or cleared on another device or on the web now update
     here, including a removed PGP key. Before, a field cleared elsewhere was
     never cleared on Linux.
-  - A contact created and then edited before the next contact sync no longer
-    turns into two contacts on the server.
   - When the server says the contact sync point is too old, KyPost fetches the
     whole address book again at once, rather than leaving the list empty until
     the next manual sync.
@@ -58,12 +52,6 @@ explains the signed remote and the standalone-bundle update-origin limitation.
   - With Hostile Location Protection on, or with no key storage, each launch
     now shows the whole mailbox again, not only mail that arrived since the
     last launch.
-  - If the secret store loses the database key, KyPost now starts a fresh
-    encrypted profile and fetches mail again. Before, it stopped at every
-    launch and the database had to be deleted by hand.
-  - A push-endpoint change finishing in the background can no longer re-pair
-    an account you have just removed, or overwrite a different account you
-    have just paired.
   - A key-exchange QR code fetched for one account is no longer shown after
     another account is paired.
   - "Send anyway" in a message's no-key dialog sends nothing once another
@@ -75,9 +63,6 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 - A contact field removed elsewhere before this version stays on this device
   until that contact changes again.
-- A device that was unpaired before this version does not know whose cache it
-  kept. The next pairing on it clears that cache, including contact edits not
-  yet synced, and fetches mail again, even for the same account.
 
 ## Source notes at 6994f6b0
 

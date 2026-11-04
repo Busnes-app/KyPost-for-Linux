@@ -138,10 +138,9 @@ public:
     // size is checked too.
     [[nodiscard]] ContactImportOutcome queueImport(const QVector<Contact>& contacts);
 
-    // Updates the cache immediately and enqueues the wire copy as-is
-    // (uid+rev present, deleted=false) for the next sync(). For a contact
-    // whose create has not been pushed (a temporary uid), it rewrites that
-    // queued create instead. False means neither write landed.
+    // contact.uid must already be a real server uid. Updates the cache
+    // immediately and enqueues the wire copy as-is (uid+rev present,
+    // deleted=false) for the next sync(). False means neither write landed.
     [[nodiscard]] bool queueUpdate(const Contact& contact);
 
     // Removes the row from the local cache immediately. Enqueues a

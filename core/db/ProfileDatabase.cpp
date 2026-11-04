@@ -2,7 +2,6 @@
 
 #include "db/Database.h"
 #include "db/DatabaseEncryptionMigration.h"
-#include "db/SecurityWipe.h"
 
 #include <QFile>
 #include <QFileInfo>
@@ -91,20 +90,6 @@ ProfileDatabaseMode openProfileDatabase(Database& database, DatabaseKeyStore& ke
     case ProfileDatabaseMode::EncryptedOnDisk: {
         QByteArray material = key.key;
         if (inputs.keyStatus == DatabaseKeyStore::Status::Absent) {
-            // An encrypted file and no key for it: the keyring was reset or
-            // replaced. Nothing can ever read this file again, and opening it
-            // under a fresh key used to fail, leave that key behind as
-            // "Found", and abort every launch after. The mail is on the
-            // relay; start an empty encrypted profile instead. Removed BEFORE
-            // a key is minted, so a failed removal leaves the next launch on
-            // this same path.
-            if (inputs.databaseFileIsEncrypted) {
-                qCritical("ProfileDatabase: the database is encrypted and its key is gone from the secret "
-                           "store -- discarding the unreadable cache at %s",
-                           qUtf8Printable(path));
-                if (!SecurityWipe::removeDatabaseFiles(path))
-                    return ProfileDatabaseMode::FailedToOpen;
-            }
             material = keyStore.create();
             if (material.isEmpty()) {
                 // The store refused the write. Falling through to a plaintext

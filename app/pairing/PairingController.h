@@ -299,8 +299,7 @@ public slots:
     // outright rather than left mixed. Both are called only after a
     // replacement registration has actually SUCCEEDED -- nothing is destroyed
     // on the strength of an attempt.
-    void setAccountReplacementHandlers(std::function<bool()> purge, std::function<void()> escalate,
-                                        std::function<bool()> cacheHoldsData = {});
+    void setAccountReplacementHandlers(std::function<bool()> purge, std::function<void()> escalate);
 
     // Called by main.cpp on every AppLockManager::lockedChanged, plus once at
     // startup. While locked, pairFromDeepLink() refuses to enter the confirm
@@ -345,7 +344,6 @@ private:
     // Returns false when the caller must abandon the pairing entirely -- see
     // the .cpp for why the purge deliberately happens in that order.
     bool purgePreviousAccountIfReplaced(const PairingParams& params);
-    void capturePreviousAccount(const std::optional<DevicePairing>& paired);
 
     // Takes the already-validated params confirmPendingPair() held, fills in
     // deviceName, sets pairingState="working", dispatches the registration,
@@ -407,7 +405,6 @@ private:
     // apart. Both late-bound via setAccountReplacementHandlers().
     std::function<bool()> m_purgeCachedAccountData;
     std::function<void()> m_escalateToFullWipe;
-    std::function<bool()> m_cacheHoldsData;
     QString m_deviceToken; // set via setDeviceToken(); empty until UnifiedPushConnector reports a real endpoint
     // Set by pairFromDeepLink()/pairFromPastedLink() on a successful parse,
     // consumed by confirmPendingPair(), discarded by cancelPendingPair() or

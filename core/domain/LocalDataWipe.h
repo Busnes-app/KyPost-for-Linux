@@ -79,8 +79,8 @@ public:
     // The database file goes with them. It used to be kept, emptied, for the
     // relaunch to reopen -- but the SQLCipher key is erased here now, and an
     // encrypted file whose key no longer exists is one openProfileDatabase()
-    // can only discard. Which is why the key is erased only once the file is
-    // confirmed gone: see wipeCaches().
+    // can only treat as fatal. Which is exactly why the key is erased only
+    // once the file is confirmed gone: see wipeCaches().
     //
     // A REPLACEMENT profile is then opened on the same path, reported in
     // `databaseReopenedAs`, and this is not a nicety. Two of the three

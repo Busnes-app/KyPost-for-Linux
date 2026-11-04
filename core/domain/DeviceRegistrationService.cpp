@@ -71,8 +71,6 @@ DeviceRegistrationService::PairAttempt::operator=(PairAttempt&& other) noexcept
     m_sealingKey = other.m_sealingKey;
     m_pushKeys = std::move(other.m_pushKeys);
     m_refusedOutcome = other.m_refusedOutcome;
-    m_ownerSubscriberId = other.m_ownerSubscriberId;
-    m_ownerServerBaseUrl = other.m_ownerServerBaseUrl;
     m_restorePin = other.m_restorePin;
     // The moved-from attempt must not also restore.
     other.m_restorePin = false;
@@ -117,10 +115,6 @@ DeviceRegistrationService::PairAttempt DeviceRegistrationService::beginPair(cons
     // Captured BEFORE the request. Re-reading it afterwards is a TOCTOU: the
     // app can lock while the request is out, dropping the session key.
     attempt.m_sealingKey = m_pairingStore.sealingKeySnapshot();
-    if (const std::optional<DevicePairing> owner = m_pairingStore.load()) {
-        attempt.m_ownerSubscriberId = owner->subscriberId;
-        attempt.m_ownerServerBaseUrl = owner->serverBaseUrl;
-    }
 
     // The registration is what establishes a new trust anchor, so the old
     // pin must not be allowed to abort it -- that is what made the
@@ -146,27 +140,6 @@ DeviceRegistrationService::PairAttempt DeviceRegistrationService::beginPair(cons
         m_pinSink.setPin(params.spkiPin, QUrl(params.serverBaseUrl));
     }
     return attempt;
-}
-
-NativeRegistrationResult DeviceRegistrationService::finishReregistration(PairAttempt attempt,
-                                                                          const PairingParams& params,
-                                                                          const NativeRegistrationResult& result)
-{
-    const PairingStore::LoadResult loaded = m_pairingStore.loadChecked();
-    const std::optional<DevicePairing>& now = loaded.pairing;
-    const bool sameAccount = now && !now->subscriberId.isEmpty() && now->subscriberId == attempt.m_ownerSubscriberId
-        && now->serverBaseUrl == attempt.m_ownerServerBaseUrl;
-    if (!sameAccount) {
-        // Unpaired or replaced meanwhile: the pin now belongs to that change
-        // (cleared by unpair, or the new pairing's), so ours is not restored.
-        // A store that could not be read says neither, so the previous pin
-        // goes back rather than leave the session unpinned.
-        attempt.m_restorePin = loaded.status == PairingStore::LoadStatus::Unreadable;
-        NativeRegistrationResult stale = result;
-        stale.outcome = RegistrationOutcome::Failure;
-        return stale;
-    }
-    return finishPair(std::move(attempt), params, result);
 }
 
 NativeRegistrationResult DeviceRegistrationService::sendRegistration(HttpClient& httpClient,

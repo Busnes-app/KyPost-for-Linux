@@ -37,7 +37,6 @@ private slots:
     void serverFullSyncAppliesExtendedFields();
     void serverEditClearsEveryFieldTheRecordOmits();
     void anEditMadeWhileTheSyncWasOutIsNotOverwritten();
-    void anEditMadeWhileItsCreateWasOutBecomesAnUpdate();
     void tooOldResetsCursorAndCache();
     void findByUidReturnsContactWhenPresent();
     void findByUidReturnsNulloptWhenAbsent();
@@ -346,6 +345,7 @@ void ContactSyncRepositoryTest::serverIsSelfFlagSurvivesSync()
     // Contact actually persisted to ContactDao -- isSelf/mergedUIDs/
     // mergedInto aren't on that list, so they're silently dropped before
     // ever reaching SQLite, even though the wire parse itself is correct.
+    // (mergeContact() is gone now; the server record is stored whole.)
     const QByteArray body = R"({"cursor":5,"tooOld":false,"changed":[)"
                              R"({"uid":"srv-1","rev":5,"fn":"Me","isSelf":true,)"
                              R"("mergedUIDs":["loser-1"],"mergedInto":"survivor-1"})"
@@ -391,7 +391,8 @@ void ContactSyncRepositoryTest::serverFullSyncAppliesExtendedFields()
     // any of groupIDs/photoRef/pgpKey/ims/websites/relations/events/
     // phoneticGivenName/phoneticFamilyName/department/customFields/
     // pronouns either -- every one of them was silently dropped on every
-    // sync pull, for every contact, regardless of isSelf.
+    // sync pull, for every contact, regardless of isSelf. (mergeContact() is
+    // gone now; the server record is stored whole.)
     const QByteArray body = R"({"cursor":7,"tooOld":false,"changed":[)"
                              R"({"uid":"srv-1","rev":7,"fn":"Ada","groupIDs":["group-1"],)"
                              R"("photoRef":"photo-ref-1","pgpKey":"-----BEGIN PGP PUBLIC KEY BLOCK-----",)"
@@ -573,59 +574,6 @@ void ContactSyncRepositoryTest::anEditMadeWhileTheSyncWasOutIsNotOverwritten()
     QVERIFY(cached.has_value());
     QCOMPARE(cached->phones.size(), 1);
     QCOMPARE(pendingDao.findAll().size(), 1); // still queued for the next sync
-}
-
-// Edited while its own create was being pushed, a new contact's change is
-// queued under the temporary uid. Left there, the next sync pushed it as a
-// second create and the server held two contacts.
-void ContactSyncRepositoryTest::anEditMadeWhileItsCreateWasOutBecomesAnUpdate()
-{
-    const QByteArray body = R"({"cursor":3,"tooOld":false,"changed":[)"
-                             R"({"uid":"srv-9","rev":1,"fn":"Temp Person"})"
-                             R"(],"deleted":[]})";
-    FakeRelayServer fake(httpResponse(200, "OK", body));
-
-    Database db;
-    QVERIFY(db.open(QStringLiteral(":memory:")));
-    ContactDao contactDao(db.handle());
-    PendingContactChangeDao pendingDao(db.handle());
-    QTemporaryDir cursorDir;
-    QVERIFY(cursorDir.isValid());
-    CursorStore cursorStore(cursorDir.filePath(QStringLiteral("cursors.ini")));
-    QTemporaryDir secureDir;
-    QVERIFY(secureDir.isValid());
-    SecureStoreFile secureStore(secureDir.path());
-    PairingStore pairingStore(secureStore);
-    savePairing(pairingStore, fake.port());
-
-    QNetworkAccessManager manager;
-    HttpClient http(manager);
-    ContactSyncClient client(http);
-    ContactSyncRepository repository(client, contactDao, pendingDao, cursorStore, pairingStore, db.handle());
-
-    Contact created;
-    created.fn = QStringLiteral("Temp Person");
-    const QString tempUid = repository.queueCreate(created);
-    QVERIFY(!tempUid.isEmpty());
-
-    const std::optional<ContactSyncRepository::ContactSyncPlan> plan = repository.planSync();
-    QVERIFY(plan.has_value());
-    const ContactSyncResult result = ContactSyncRepository::syncWith(http, *plan);
-
-    Contact edited = created;
-    edited.uid = tempUid;
-    edited.org = QStringLiteral("Acme");
-    QVERIFY(repository.queueUpdate(edited));
-
-    QCOMPARE(repository.applySync(*plan, result).status, ContactSyncStatus::Success);
-
-    const QVector<PendingContactChangeRecord> queued = pendingDao.findAll();
-    QCOMPARE(queued.size(), 1);
-    QCOMPARE(queued.at(0).contactUid, QStringLiteral("srv-9"));
-    const Contact wire = ContactWire::contactFromJson(QJsonDocument::fromJson(queued.at(0).changeJson.toUtf8()).object());
-    QCOMPARE(wire.uid, QStringLiteral("srv-9")); // an update of the contact the create made, not another create
-    QVERIFY(!contactDao.findById(tempUid).has_value());
-    QCOMPARE(contactDao.findById(QStringLiteral("srv-9"))->org, std::optional<QString>(QStringLiteral("Acme")));
 }
 
 void ContactSyncRepositoryTest::tooOldResetsCursorAndCache()
@@ -958,19 +906,6 @@ void ContactSyncRepositoryTest::deletingAnUnsyncedContactDropsItsLaterEditsToo()
     edited.uid = tempUid;
     edited.org = QStringLiteral("Acme");
     QVERIFY(repository.queueUpdate(edited));
-    // The edit rewrote the unpushed create rather than queueing an update
-    // under the temporary uid, which the relay would upsert as a second contact.
-    const QVector<PendingContactChangeRecord> queued = pendingDao.findAll();
-    QCOMPARE(queued.size(), 1);
-    QCOMPARE(queued.at(0).contactUid, tempUid);
-    const Contact wire = ContactWire::contactFromJson(QJsonDocument::fromJson(queued.at(0).changeJson.toUtf8()).object());
-    QVERIFY(wire.uid.isEmpty());
-    QCOMPARE(wire.org, std::optional<QString>(QStringLiteral("Acme")));
-
-    // A queue written before that rewrite can still hold an update under the
-    // temporary uid; the delete must drop it along with the create.
-    QVERIFY(pendingDao.enqueue(tempUid, QString::fromUtf8(QJsonDocument(ContactWire::contactToJson(edited)).toJson(QJsonDocument::Compact)),
-                               QStringLiteral("2026-11-03T00:00:00Z")) > 0);
     QCOMPARE(pendingDao.findAll().size(), 2);
 
     // ...then decides to remove it.

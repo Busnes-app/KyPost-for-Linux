@@ -60,9 +60,6 @@ private slots:
     void reconnectToServerKeepsThePairingAndDoesNotDeregister();
     void pairingADifferentAccountPurgesThePreviousAccountsCachedData();
     void pairingTheSameAccountAgainPurgesNothing();
-    void unpairingThenPairingAnotherAccountStillPurges();
-    void unpairingThenPairingTheSameAccountKeepsTheCache();
-    void aCacheWithNoKnownOwnerIsPurgedBeforePairing();
     void aFailedRegistrationDestroysNothing();
     void aFailedPurgeRefusesTheNewPairingAndEscalates();
     void anUnreadableSecretStoreRefusesToPairRatherThanSkipThePurge();
@@ -1524,7 +1521,6 @@ struct ReplacementFixture
     int purgeCalls = 0;
     int escalateCalls = 0;
     bool purgeSucceeds = true;
-    bool cacheHoldsData = false;
     // Swaps SecureStoreFile for a store whose reads FAIL rather than answer
     // "absent" -- a locked wallet, no Secret Service, a D-Bus timeout.
     bool storeUnreadable = false;
@@ -1566,8 +1562,7 @@ struct ReplacementFixture
         controller = std::make_unique<PairingController>(*service, *pairingStore, *settingsStore, *pinSink,
                                                           *executor);
         controller->setAccountReplacementHandlers([this]() { ++purgeCalls; return purgeSucceeds; },
-                                                   [this]() { ++escalateCalls; },
-                                                   [this]() { return cacheHoldsData; });
+                                                   [this]() { ++escalateCalls; });
         return true;
     }
 
@@ -1940,58 +1935,6 @@ void PairingControllerTest::pairingTheSameAccountAgainPurgesNothing()
 
     QCOMPARE(f.purgeCalls, 0);
     QCOMPARE(f.escalateCalls, 0);
-}
-
-// "Remove pairing" keeps the cache but empties the pairing store, so the next
-// pairing looked like a first one and skipped the purge: unpair, hand the
-// laptop over, and the next account saw the previous one's mail and pushed
-// its queued contact edits.
-void PairingControllerTest::unpairingThenPairingAnotherAccountStillPurges()
-{
-    ReplacementFixture f(httpResponse(200, "OK", kRegisterOk));
-    QVERIFY(f.build(QStringLiteral("sub-previous")));
-
-    f.controller->removePairing();
-    QVERIFY(!f.pairingStore->load().has_value());
-
-    QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-new")))));
-    f.controller->confirmPendingPair();
-    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("paired"), 5000);
-
-    QCOMPARE(f.purgeCalls, 1);
-    QCOMPARE(f.escalateCalls, 0);
-}
-
-// ...while coming back to the same account keeps what it had.
-void PairingControllerTest::unpairingThenPairingTheSameAccountKeepsTheCache()
-{
-    ReplacementFixture f(httpResponse(200, "OK", kRegisterOk));
-    QVERIFY(f.build(QStringLiteral("sub-previous")));
-
-    f.controller->removePairing();
-    QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-previous")))));
-    f.controller->confirmPendingPair();
-    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("paired"), 5000);
-
-    QCOMPARE(f.purgeCalls, 0);
-}
-
-// An unpair from before the owner record existed left a cache with no
-// pairing and no record. Whose it is cannot be known, so it is purged; an
-// empty cache (a fresh install) is not touched.
-void PairingControllerTest::aCacheWithNoKnownOwnerIsPurgedBeforePairing()
-{
-    for (const bool holdsData : { false, true }) {
-        ReplacementFixture f(httpResponse(200, "OK", kRegisterOk));
-        f.cacheHoldsData = holdsData;
-        QVERIFY(f.build(QString()));
-
-        QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-new")))));
-        f.controller->confirmPendingPair();
-        QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("paired"), 5000);
-
-        QCOMPARE(f.purgeCalls, holdsData ? 1 : 0);
-    }
 }
 
 // ORDER IS THE DESIGN. Purging first would mean a replacement that failed --

@@ -908,11 +908,7 @@ never once run.
 - **A reply may outlive the pairing that authorised it, and every write must
   assume it did.** No table in this schema has a subscriber column: `emails`,
   `contacts`, `groups` and `push_notifications` are per-DEVICE. Pairing a
-  different account purges them (`LocalDataWipe::wipeCachedAccountData`) --
-  also after "Remove pairing", which keeps the cache and records whose it is
-  (`SettingsStore::unpairedCacheOwner`, cleared by every `LocalDataWipe`
-  path); a cache with neither a pairing nor that record (an unpair from an
-  older build) counts as another account's (`Database::holdsAccountData`) -- but
+  different account purges them (`LocalDataWipe::wipeCachedAccountData`), but
   a request already in flight completes *after* that purge and writes its rows
   back in behind it — the previous account's mail, in the new account's inbox,
   readable by whoever is now holding the machine. So an apply step compares

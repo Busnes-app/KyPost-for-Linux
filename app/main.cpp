@@ -770,8 +770,8 @@ int main(int argc, char* argv[])
     // cached it is a lie, and the relay answers it with a delta against mail
     // this process never had: every in-memory session (Hostile Location
     // Protection, no key storage, an unprotected data directory), and every
-    // fresh database (a lost key, the protection turned off) showed only what
-    // had arrived since. reset(), not wipeAll(): the notification cursor is
+    // fresh database (the protection turned off, key storage back after a
+    // session without it) showed only what had arrived since. reset(), not wipeAll(): the notification cursor is
     // what keeps the relay's queued notifications from being shown again, and
     // it describes no cached rows.
     if (!database.holdsAccountData() && !cursorStore.reset())
@@ -1347,8 +1347,7 @@ int main(int argc, char* argv[])
             if (!wiped.complete())
                 qCritical("main: the escalation wipe was itself incomplete -- this device still holds data");
             AppRelauncher::requestRelaunch();
-        },
-        [&database]() { return database.holdsAccountData(); });
+        });
 
     certificatePinSink.setMismatchHandler([&pairingController](const QByteArray& observedSpki) {
         qCritical("main: TLS certificate pin mismatch -- refusing to send credentials to this server");
@@ -1576,8 +1575,8 @@ int main(int argc, char* argv[])
              attempt = std::move(attempt)](const NativeRegistrationResult& result) mutable {
                 // Phase 3, back on this thread: persists, installs the new
                 // pin, writes the delivery settings.
-                reportReregistration(
-                    deviceRegistrationService.finishReregistration(std::move(attempt), params, result), endpoint);
+                reportReregistration(deviceRegistrationService.finishPair(std::move(attempt), params, result),
+                                      endpoint);
             });
     };
 

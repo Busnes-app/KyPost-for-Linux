@@ -142,23 +142,15 @@ void ProfileDatabaseTest::anEncryptedProfileIsNeverReopenedInTheClear()
         QCOMPARE(read.value(0).toInt(), 1);
     }
 
-    // And with the key GONE, it does not quietly come up in the clear.
-    // Silently reopening an encrypted profile unencrypted would be the same
-    // failure as PRAGMA key against ordinary SQLite: everything looks fine and
-    // nothing is protected. Nor may it fail for good: a keyring reset used to
-    // abort this launch AND every later one, because the key minted on the
-    // way to that failure was left behind. The unreadable cache is replaced
-    // by an empty encrypted profile, and the next launch opens that one.
+    // And with the key GONE, it does not quietly come up in the clear -- it
+    // does not come up at all. Silently reopening an encrypted profile
+    // unencrypted would be the same failure as PRAGMA key against ordinary
+    // SQLite: everything looks fine and nothing is protected.
     QVERIFY(keyStore.clear());
-    for (int launch = 0; launch < 2; ++launch) {
-        Database db;
-        QCOMPARE(openProfileDatabase(db, keyStore, path), ProfileDatabaseMode::EncryptedOnDisk);
-        QSqlQuery read(db.handle());
-        QVERIFY(read.exec(QStringLiteral("SELECT count(*) FROM emails")));
-        QVERIFY(read.next());
-        QCOMPARE(read.value(0).toInt(), 0);
-    }
-    QVERIFY2(databaseFileIsEncrypted(path), "the replacement profile is not encrypted");
+    Database db;
+    const ProfileDatabaseMode mode = openProfileDatabase(db, keyStore, path);
+    QVERIFY2(mode == ProfileDatabaseMode::FailedToOpen,
+             "an encrypted profile was reopened without its key");
 }
 
 void ProfileDatabaseTest::aNewProfileWithNowhereToKeepAKeyGoesToMemory()
