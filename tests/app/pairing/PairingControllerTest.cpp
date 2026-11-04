@@ -2066,7 +2066,9 @@ void PairingControllerTest::aLinkToTheServerStillPresentingThePinnedKeyDoesNotWa
         QVERIFY(!request.contains("X-Kypost-Device-Secret"));
 
     // Confirmed with no warning: the registration is pinned to the stored key,
-    // so a server that now presents another issuer is refused, not re-pinned.
+    // so a server that now presents another issuer is refused, not re-pinned
+    // -- though it would register this device if asked.
+    relay.setResponseForPath("/native/register", httpResponse(200, "OK", kRegisterOk));
     relay.serveChainB();
     f.controller->confirmPendingPair();
     QTRY_VERIFY_WITH_TIMEOUT(f.controller->pairingState() != QStringLiteral("working"), 5000);

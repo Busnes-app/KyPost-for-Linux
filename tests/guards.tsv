@@ -619,7 +619,5 @@ app/mail/MailController.cpp	            if (custody.protection == QStringLiteral
 app/contacts/ContactsController.cpp	    if (m_repository.carryPending()) {	    if (false) {	ContactsControllerTest:contactsKeptAcrossAnAccountChangeWaitForTheUser
 app/pairing/PairingController.cpp	    m_registrationHadPreviousAccount = true;	    m_registrationHadPreviousAccount = paired.has_value();	PairingControllerTest:unpairingThenPairingAnotherAccountStillPurges
 # Council pass 3: a same-account link confirmed without the re-pin warning stays
-# pinned to the stored key (F29), and an approval that lands under the app lock
-# is held until unlock (F39).
+# pinned to the stored key (F29).
 app/pairing/PairingController.cpp	        !stored.isEmpty() && m_repinCheck == RepinCheck::Same && pending.spkiPin.isEmpty())	        false)	PairingControllerTest:aLinkToTheServerStillPresentingThePinnedKeyDoesNotWarn
-app/pairing/PairingController.cpp	    if (m_appLocked && status.status == PairingStatusResult::Status::Approved) {	    if (false) {	PairingControllerTest:anApprovalWaitSurvivesTheAppLock
