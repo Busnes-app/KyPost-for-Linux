@@ -908,7 +908,18 @@ never once run.
 - **A reply may outlive the pairing that authorised it, and every write must
   assume it did.** No table in this schema has a subscriber column: `emails`,
   `contacts`, `groups` and `push_notifications` are per-DEVICE. Pairing a
-  different account purges them (`LocalDataWipe::wipeCachedAccountData`), but
+  different account purges them (`LocalDataWipe::wipeCachedAccountData`),
+  except the contacts the user chose to keep: contacts and their queued edits
+  stay, unsynced (`CursorStore::contactCarryPending`, which holds every
+  contact sync), until the user answers "Bring your N contacts into
+  <account>?"; yes re-queues them as new contacts (new uids, so nothing on
+  the relay is overwritten) without the previous server's photos, no removes
+  them; the push goes in relay-sized batches (owner decision Q3,
+  the KyPost-for-Mac contacts decision). "Different" includes pairing after
+  "Remove pairing": the unpair records whose cache it left
+  (`SettingsStore::unpairedCacheOwner`), and a cache with no known owner is
+  treated as another account's. The contact cursor goes on every account
+  change. But
   a request already in flight completes *after* that purge and writes its rows
   back in behind it — the previous account's mail, in the new account's inbox,
   readable by whoever is now holding the machine. So an apply step compares

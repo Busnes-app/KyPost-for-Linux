@@ -93,7 +93,9 @@ public:
     // is overwritten rather than left recoverable in SQLite's freelist.
     // secure_delete is already the default in some SQLite builds but not
     // all, so it is set explicitly rather than assumed.
-    bool wipeAllTables();
+    // `keep` names tables left as they are (account replacement keeping the
+    // contacts the user is asked about, owner decision Q3).
+    bool wipeAllTables(const QStringList& keep = {});
 
     // Whether any account-scoped table has a row. True when it cannot tell:
     // the callers decide whether to discard sync cursors and whether a cache

@@ -654,6 +654,70 @@ QString publicKeyFingerprint(const QByteArray& armoredPublicKey)
     return result.status == PgpImportStatus::Imported ? result.fingerprint : QString();
 }
 
+ContactKeyProblem contactKeyProblem(const QByteArray& armored, const QStringList& emails)
+{
+    const QByteArray text = armored.trimmed();
+    if (text.startsWith("-----BEGIN PGP PRIVATE KEY BLOCK-----"))
+        return ContactKeyProblem::Private;
+    if (!text.startsWith("-----BEGIN PGP PUBLIC KEY BLOCK-----"))
+        return ContactKeyProblem::Unreadable; // the relay reads armor only
+
+    ensureGpgmeInitialised();
+    if (gpgme_err_code(gpgme_engine_check_version(GPGME_PROTOCOL_OpenPGP)) != GPG_ERR_NO_ERROR)
+        return ContactKeyProblem::EngineUnavailable;
+    QTemporaryDir scratch;
+    if (!scratch.isValid()
+        || !QFile::setPermissions(scratch.path(),
+                                  QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner))
+        return ContactKeyProblem::EngineUnavailable;
+
+    QString fingerprint;
+    bool changed = false;
+    QString detail;
+    if (!importInto(scratch.path(), text, false, &fingerprint, &changed, &detail, /*allowPinentry=*/false))
+        return ContactKeyProblem::Unreadable;
+
+    ContextHandle context;
+    const QByteArray home = scratch.path().toUtf8();
+    if (gpgme_err_code(gpgme_new(&context.handle)) != GPG_ERR_NO_ERROR || context.handle == nullptr
+        || gpgme_err_code(gpgme_ctx_set_engine_info(context.handle, GPGME_PROTOCOL_OpenPGP, nullptr,
+                                                      home.constData()))
+            != GPG_ERR_NO_ERROR)
+        return ContactKeyProblem::EngineUnavailable;
+    const QByteArray fpr = fingerprint.toLatin1();
+    gpgme_key_t key = nullptr;
+    if (gpgme_err_code(gpgme_get_key(context.handle, fpr.constData(), &key, 1)) == GPG_ERR_NO_ERROR
+        && key != nullptr) {
+        gpgme_key_unref(key);
+        return ContactKeyProblem::Private;
+    }
+    key = nullptr;
+    if (gpgme_err_code(gpgme_get_key(context.handle, fpr.constData(), &key, 0)) != GPG_ERR_NO_ERROR
+        || key == nullptr)
+        return ContactKeyProblem::Unreadable;
+
+    ContactKeyProblem problem = ContactKeyProblem::AddressNotOnKey;
+    QStringList wanted;
+    for (const QString& email : emails)
+        if (!email.trimmed().isEmpty())
+            wanted << email.trimmed().toLower();
+    if (key->revoked || key->expired) {
+        problem = ContactKeyProblem::RevokedOrExpired;
+    } else if (wanted.isEmpty()) {
+        problem = ContactKeyProblem::NoAddress;
+    } else {
+        for (gpgme_user_id_t uid = key->uids; uid != nullptr; uid = uid->next) {
+            if (uid->email != nullptr
+                && wanted.contains(QString::fromUtf8(uid->email).trimmed().toLower())) {
+                problem = ContactKeyProblem::None;
+                break;
+            }
+        }
+    }
+    gpgme_key_unref(key);
+    return problem;
+}
+
 PgpImportResult importPrivateKey(const SecureBytes& armoredPrivateKey, const QString& expectedFingerprint,
                                   const QString& homeDirectory)
 {

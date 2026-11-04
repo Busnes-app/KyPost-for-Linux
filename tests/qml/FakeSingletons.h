@@ -80,6 +80,7 @@ class FakePairing : public QObject
     Q_PROPERTY(int cancelApprovalCount MEMBER m_cancelApprovalCount NOTIFY changed)
     Q_PROPERTY(QString pendingPairOrigin MEMBER m_pendingPairOrigin NOTIFY changed)
     Q_PROPERTY(bool pendingPairInsecure MEMBER m_pendingPairInsecure NOTIFY changed)
+    Q_PROPERTY(bool pendingPairRepins MEMBER m_pendingPairRepins NOTIFY changed)
     Q_PROPERTY(QString pairedServerHost MEMBER m_pairedServerHost NOTIFY changed)
     Q_PROPERTY(QString deviceId MEMBER m_deviceId NOTIFY changed)
 
@@ -122,6 +123,7 @@ private:
     int m_cancelApprovalCount = 0;
     QString m_pendingPairOrigin;
     bool m_pendingPairInsecure = false;
+    bool m_pendingPairRepins = false;
     QString m_pairedServerHost;
     QString m_deviceId;
 };

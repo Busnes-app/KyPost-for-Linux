@@ -354,6 +354,9 @@ public:
     {
         bool ok = false;
         bool missingSentCopy = false;
+        // The relay sent it but warned, and there were Bcc recipients, whose
+        // separate deliveries are what such a warning can be about.
+        bool bccMayHaveFailed = false;
         // Already-localized? No -- core/ owns no wording. This is a key into
         // the switch in finishClientEncryptedSend().
         enum class Failure {

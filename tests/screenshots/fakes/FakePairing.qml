@@ -5,6 +5,7 @@ QtObject {
     property bool isPaired: true
     property string pendingPairOrigin: "https://relay.kypost-demo.local"
     property bool pendingPairInsecure: false
+    property bool pendingPairRepins: false
     property string pairingError: ""
     property string deviceId: "linux-7f3a2c"
     property string deliveryMode: "push"

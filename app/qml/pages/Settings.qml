@@ -495,7 +495,15 @@ Item {
                     DangerButton {
                         text: i18n("Remove pairing")
                         visible: Pairing.isPaired
-                        onClicked: Pairing.removePairing()
+                        onClicked: {
+                            const unsynced = ContactsApp.unsyncedChangeCount()
+                            removePairingDialog.message = i18n("Cached mail and contacts stay on this device until another account is paired.")
+                                + (unsynced > 0 ? "\n\n" + i18np("1 contact change hasn't synced yet. Removing the contacts loses it.",
+                                                                 "%1 contact changes haven't synced yet. Removing the contacts loses them.",
+                                                                 unsynced)
+                                                : "")
+                            removePairingDialog.open()
+                        }
                     }
                 }
 
@@ -1418,6 +1426,24 @@ Item {
                        + "PIN is right, check that your system keyring is unlocked and try again.")
                 : i18n("Incorrect PIN, or the change could not be saved.")
             currentPinField.text = ""
+        }
+    }
+
+    // Owner decision Q3: unpair may also take this device's contacts, off by
+    // default. ContactsApp is asked only once the unpair has happened.
+    ConfirmDialog {
+        id: removePairingDialog
+        objectName: "removePairingDialog"
+        anchors.fill: parent
+        z: 900
+        title: i18n("Remove this device's pairing?")
+        acceptText: i18n("Remove pairing")
+        checkText: i18n("Also remove this device's contacts")
+        onAccepted: {
+            const removeContacts = removePairingDialog.checked
+            Pairing.removePairing()
+            if (removeContacts && !Pairing.isPaired)
+                ContactsApp.removeLocalContacts()
         }
     }
 

@@ -28,15 +28,18 @@ import com.kysecurity.mail 1.0
 // Qt stacks ABOVE ordinary siblings including the app-lock overlay at
 // z: 1000 -- a dialog left open when the app locks would stay visible and
 // clickable over the PIN screen (AGENTS.md 6d). This is an Item under that z,
-// so the lock covers it. PairingController::reconnectToServer() refuses while
-// locked as well; the C++ guard is the one that counts, this is the second
-// layer.
+// so the lock covers it.
+//
+// It re-pins nothing itself. A re-pin comes only from a fresh pairing link
+// for the same account and server (DECISIONS.md, certificate pinning on
+// clients); "Trust and reconnect" re-registered with the stored pairing token,
+// which the relay redeems once, so it could never succeed.
 Item {
     id: root
 
     property bool isOpen: false
 
-    signal reconnectRequested()
+    signal newLinkRequested()
 
     function open() {
         root.isOpen = true
@@ -51,11 +54,10 @@ Item {
         root.close()
     }
 
-    // Closes before emitting: reconnect kicks off a registration and the
-    // dialog has no further part in it.
+    // Closes before emitting: the pairing page takes it from here.
     function confirm() {
         root.close()
-        root.reconnectRequested()
+        root.newLinkRequested()
     }
 
     // Never outlive a lock. Belt and braces with the C++ guard: this dialog's
@@ -122,7 +124,7 @@ Item {
 
             Text {
                 Layout.fillWidth: true
-                text: i18n("KyPost pinned the certificate authority that vouched for this server when this device was paired, and a different one is vouching for it now. Routine certificate renewals do not change this; being sent to a different server, or through something intercepting the connection, does. Every request is being refused until you decide.")
+                text: i18n("KyPost pinned the certificate authority that vouched for this server when this device was paired, and a different one is vouching for it now. A certificate renewal can do this. So can being sent to a different server, or something intercepting the connection. Every request is being refused until this device is paired again.")
                 color: Theme.inkStrong
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontSender
@@ -160,9 +162,9 @@ Item {
 
             Text {
                 Layout.fillWidth: true
-                // States the consequence, not a reassurance. Reconnecting
-                // sends this device's credential to whoever holds that key.
-                text: i18n("Only continue if you know why it changed — ask whoever runs this server to confirm the fingerprint above. Reconnecting sends this device's credentials to whoever holds that key.")
+                // The only way on: a link this server's web page minted for
+                // this account, which carries the key it expects.
+                text: i18n("To continue, open a new pairing link from your own KyPost web page on this device. Your mail and contacts stay on this device.")
                 color: Theme.ink
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fontPreview
@@ -178,8 +180,8 @@ Item {
                     text: i18n("Cancel")
                     onClicked: root.cancel()
                 }
-                DangerButton {
-                    text: i18n("Trust and reconnect")
+                PrimaryButton {
+                    text: i18n("Pair with a new link")
                     onClicked: root.confirm()
                 }
             }
