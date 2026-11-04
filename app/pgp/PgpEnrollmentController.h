@@ -12,6 +12,7 @@
 #include <atomic>
 #include <memory>
 
+class SettingsStore;
 class NetworkExecutor;
 class PairingStore;
 
@@ -27,7 +28,7 @@ public:
     enum State { Idle, Starting, Waiting, TimedOut, Importing, Enrolled, Failed };
     Q_ENUM(State)
 
-    PgpEnrollmentController(PairingStore& pairingStore, NetworkExecutor& executor,
+    PgpEnrollmentController(PairingStore& pairingStore, SettingsStore& settingsStore, NetworkExecutor& executor,
                             QObject* parent = nullptr);
     int state() const { return m_state; }
     QString status() const { return m_status; }
@@ -51,6 +52,7 @@ private:
     void finishWithFailure(const QString& status);
 
     PairingStore& m_pairingStore;
+    SettingsStore& m_settingsStore;
     NetworkExecutor& m_executor;
     DeviceEnrollmentCrypto m_crypto;
     QTimer m_pollTimer;
@@ -63,6 +65,11 @@ private:
     QUrl m_serverBaseUrl;
     RelayAuth m_auth;
     PairingIdentity m_identity;
+    QString m_subscriberId;   // the pairing's own strings, for the generation record
+    QString m_serverBaseText;
+    // Bumped by cancel() (so by every start()): a callback from an earlier
+    // attempt is dropped, never treated as the current one's.
+    quint64 m_attempt = 0;
     // Read by the import worker between keys; cancel() sets it and starts a fresh one.
     std::shared_ptr<std::atomic_bool> m_importCancelled = std::make_shared<std::atomic_bool>(false);
     static constexpr qint64 kPollWindowMs = 5 * 60 * 1000;

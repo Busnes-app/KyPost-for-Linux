@@ -49,6 +49,10 @@ ProfileDatabaseMode chooseProfileDatabaseMode(const ProfileDatabaseInputs& input
 // counts as no database at all -- SQLite would happily initialise one there.
 bool databaseFileIsEncrypted(const QString& path);
 
+// Where openProfileDatabase() moves an encrypted database whose key the key
+// store no longer has. Every wipe removes it (SecurityWipe).
+inline constexpr QLatin1String kUnreadableDatabaseSuffix{".unreadable"};
+
 // Opens the profile database according to the decision above, creating and
 // storing a key when that is what the decision calls for.
 //

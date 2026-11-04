@@ -776,6 +776,17 @@ int main(int argc, char* argv[])
     // it describes no cached rows.
     if (!database.holdsAccountData() && !cursorStore.reset())
         qCritical("main: the cache is empty but the stale sync cursors could not be erased");
+    // The reverse: an in-memory session (no key storage, an unprotected data
+    // directory) leaves the on-disk database alone but advances cursors.ini
+    // past the mail it fetched. The next launch on disk would ask for a delta
+    // past mail that cache never received, so those cursors are reset then.
+    if (database.handle().databaseName() == QStringLiteral(":memory:")) {
+        if (!cursorStore.setAdvancedPastTheDiskCache(true))
+            qCritical("main: could not mark the sync cursors as this in-memory session's");
+    } else if (cursorStore.advancedPastTheDiskCache()
+               && (!cursorStore.reset() || !cursorStore.setAdvancedPastTheDiskCache(false))) {
+        qCritical("main: the sync cursors an in-memory session advanced could not be reset");
+    }
 
     // 5. PairingStore -- the one shared "are we paired" contract every
     // repository below reads instead of re-deriving SecureStore key names.
@@ -1153,7 +1164,7 @@ int main(int argc, char* argv[])
     // to the live VideoOutput's videoSink (see PgpQrScanner.h's doc comment).
     qmlRegisterType<PgpQrScanner>("com.kysecurity.mail", 1, 0, "PgpQrScanner");
 
-    PgpEnrollmentController pgpEnrollmentController(pairingStore, networkExecutor);
+    PgpEnrollmentController pgpEnrollmentController(pairingStore, settingsStore, networkExecutor);
     qmlRegisterSingletonInstance<PgpEnrollmentController>(
         "com.kysecurity.mail", 1, 0, "PgpEnrollment", &pgpEnrollmentController);
     QObject::connect(&pgpEnrollmentController, &PgpEnrollmentController::enrolled,
@@ -1322,8 +1333,12 @@ int main(int argc, char* argv[])
     // the database. The controller owns the ORDER (register, then purge,
     // never the reverse); this owns what "purge" means.
     pairingController.setAccountReplacementHandlers(
-        [&localDataWipe]() {
+        [&localDataWipe, &cursorStore, &database]() {
             const LocalDataWipeResult purged = localDataWipe.wipeCachedAccountData();
+            // The wipe took the in-memory session's cursor mark with it.
+            if (database.handle().databaseName() == QStringLiteral(":memory:")
+                && !cursorStore.setAdvancedPastTheDiskCache(true))
+                qCritical("main: could not mark the sync cursors as this in-memory session's");
             if (!purged.tablesWiped)
                 qCritical("main: account replacement -- cached mail and contacts could not be erased");
             if (!purged.photoCacheCleared)
@@ -1519,9 +1534,14 @@ int main(int argc, char* argv[])
         deferredReregistrationEndpointPending = false;
         if (result.outcome == RegistrationOutcome::Success)
             pairingController.refreshFromStore(); // new deviceId and push keys
-        if (result.outcome == RegistrationOutcome::Unauthorized) {
-            qWarning("main: re-registration was rejected (401) -- the pairing token has expired, "
-                     "push delivery is now broken until the user pairs again");
+        // 401: the stored pairing token has expired. 409: it was already
+        // redeemed -- the relay accepts each token once, within 90 s, so a
+        // distributor endpoint that arrives just after pairing gets this.
+        // Either way the relay still pushes to the old endpoint; say so.
+        if (result.outcome == RegistrationOutcome::Unauthorized
+            || (result.outcome == RegistrationOutcome::Failure && result.statusCode == 409)) {
+            qWarning("main: re-registration was rejected (%d) -- push delivery is now broken until the "
+                     "user pairs again", result.statusCode);
             pairingController.setReregistrationRejected(true);
         }
     };

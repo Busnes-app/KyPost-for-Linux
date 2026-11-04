@@ -105,6 +105,26 @@ void SettingsStore::clearAppLockOffered()
     m_settings.remove(kAppLockOfferedKey);
 }
 
+std::optional<qint64> SettingsStore::pgpMaterialGeneration(const QString& subscriberId,
+                                                         const QString& serverBaseUrl) const
+{
+    if (subscriberId.isEmpty() || m_settings.value(QStringLiteral("pgp/generationSubscriber")).toString() != subscriberId
+        || m_settings.value(QStringLiteral("pgp/generationServer")).toString() != serverBaseUrl
+        || !m_settings.contains(QStringLiteral("pgp/materialGeneration")))
+        return std::nullopt;
+    return m_settings.value(QStringLiteral("pgp/materialGeneration")).toLongLong();
+}
+
+bool SettingsStore::setPgpMaterialGeneration(const QString& subscriberId, const QString& serverBaseUrl,
+                                             qint64 generation)
+{
+    m_settings.setValue(QStringLiteral("pgp/generationSubscriber"), subscriberId);
+    m_settings.setValue(QStringLiteral("pgp/generationServer"), serverBaseUrl);
+    m_settings.setValue(QStringLiteral("pgp/materialGeneration"), generation);
+    m_settings.sync();
+    return m_settings.status() == QSettings::NoError;
+}
+
 QString SettingsStore::deliveryMode() const
 {
     return m_settings.value(kDeliveryModeKey, QString()).toString();

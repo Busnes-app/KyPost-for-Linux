@@ -45,4 +45,15 @@ TestCase {
         compare(shell.detailMode, "email")
         compare(shell.selectedMessageId, "<playshot-1@kypost-demo.local>")
     }
+
+    // The reader's mailbox actions work only in MailApp.currentFolder, so a
+    // tap on an INBOX message while Archive is showing moves the list there.
+    function test_a_notification_opens_the_mail_in_its_own_folder() {
+        shell.selectFolder("Archive")
+        compare(MailApp.currentFolder, "Archive")
+        MailApp.notificationEmailResolved("<playshot-1@kypost-demo.local>", "INBOX")
+        compare(MailApp.currentFolder, "INBOX")
+        compare(shell.detailMode, "email")
+        compare(shell.selectedEmailFolder, "INBOX")
+    }
 }

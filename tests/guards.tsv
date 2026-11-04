@@ -608,3 +608,7 @@ core/net/HttpClient.cpp	    if (issuer.subjectDisplayName() != leaf.issuerDispla
 app/mail/MailController.cpp	    if (currentSubscriber.isEmpty() || currentSubscriber != m_pendingSend.owner.subscriberId || serverBaseUrl != m_pendingSend.ownerServer) {	    if (false) {	MailControllerTest:aPickupConfirmAfterAnAccountChangeSendsNothing
 app/pgp/PgpQrController.cpp	        m_myQrIdentity = requestedFor;	        m_myQrIdentity = m_repository.currentIdentity();	PgpQrControllerTest:aQrCodeThatLandsAfterAnAccountChangeIsNotOffered
 core/domain/PushRepository.cpp	    if (!stored.isEmpty() && sameUrlOrigin(QUrl(stored), QUrl(serverBaseUrl)))	    if (!stored.isEmpty())	PushRepositoryTest:aStoredPullEndpointOnAnotherOriginIsIgnored
+# Council pass 2: an attachment listing for a replaced account, and a download
+# that lands under the lock.
+app/mail/MailController.cpp	            if (!m_pairingStore.stillCurrent(listedFor)) {	            if (false) {	MailControllerTest:anAttachmentListThatOutlivesItsAccountShowsNothing
+app/mail/MailController.cpp	            if (m_appLocked && !result.data.isEmpty()) {	            if (false) {	MailControllerTest:anAttachmentThatLandsUnderTheLockIsNeverWrittenOrOpened

@@ -11,6 +11,7 @@ class CursorStoreTest : public QObject
 private slots:
     void oldMailCursorsCannotSkipSignedFlagBackfill();
     void defaultsAreEmpty();
+    void sessionMarkersPersistAndGoWithAWipe();
     void mailCursorRoundTrips();
     void mailCursorIsScopedPerSubscriberAndFolder();
     void mailCursorKeysCannotCollideThroughSeparatorsInFolderNames();
@@ -54,6 +55,25 @@ void CursorStoreTest::defaultsAreEmpty()
 
     QVERIFY(store.mailCursor(QStringLiteral("sub-1"), QStringLiteral("INBOX")).isEmpty());
     QVERIFY(store.contactBaseCursor().isEmpty());
+}
+
+// The in-memory-session mark outlives the process, survives a cursor reset
+// (which is not about which cache the cursors describe) and goes with a wipe.
+void CursorStoreTest::sessionMarkersPersistAndGoWithAWipe()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = tempFilePath(dir, QStringLiteral("cursors.ini"));
+    {
+        CursorStore store(path);
+        QVERIFY(!store.advancedPastTheDiskCache());
+        QVERIFY(store.setAdvancedPastTheDiskCache(true));
+        QVERIFY(store.reset());
+    }
+    CursorStore store(path);
+    QVERIFY(store.advancedPastTheDiskCache());
+    QVERIFY(store.wipeAll());
+    QVERIFY(!store.advancedPastTheDiskCache());
 }
 
 void CursorStoreTest::mailCursorRoundTrips()

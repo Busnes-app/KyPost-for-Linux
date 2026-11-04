@@ -1,6 +1,7 @@
 #include "db/SecurityWipe.h"
 
 #include "db/DatabaseEncryptionMigration.h"
+#include "db/ProfileDatabase.h"
 
 #include <QDir>
 #include <QFile>
@@ -18,7 +19,8 @@ QStringList migrationCopies(const QString& dbPath)
     QStringList databases;
     for (const QLatin1String suffix : { DatabaseEncryptionMigration::kMarkerSuffix,
                                          DatabaseEncryptionMigration::kWorkingCopySuffix,
-                                         DatabaseEncryptionMigration::kSupersededSuffix })
+                                         DatabaseEncryptionMigration::kSupersededSuffix,
+                                         kUnreadableDatabaseSuffix })
         databases.append(dbPath + suffix);
     return databases;
 }

@@ -28,6 +28,59 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- Hostile review fixes (council pass 2):
+  - A new contact is sent with its own identifier, so a sync retried after a
+    lost reply, or an edit made before the first sync finished, no longer
+    creates a second copy on the server.
+  - Encrypted sending from this device works for accounts whose keys were
+    converted to the account keyring: KyPost sends the key generation the
+    device was enrolled at, as the server requires. If the keys changed, the
+    error says to enroll this device again.
+  - Your encrypted Sent copy now records the Bcc recipients.
+  - Links that open in a new window (`target="_blank"`, middle-click) now go
+    through the same link check as other links. Before, they did nothing.
+  - When the server refuses this device's stored pairing token on a push
+    re-registration, the "pair again" banner now shows for that refusal too.
+  - At each launch, a folder holding more than its newest 50 messages starts
+    again from the newest 50; page back for older ones. Before, messages
+    below the newest 50 kept the state they had when loaded, even after they
+    were read, moved or deleted elsewhere.
+  - Archiving or deleting several messages where only some fail now removes
+    the ones that worked.
+  - A message opened from a notification opens in its own folder, so its
+    Archive, Move and Delete work.
+  - "Open in new window" is off while the message is sending or saving.
+  - An attachment that finishes downloading after the app locks is neither
+    saved nor opened.
+  - After a session kept in memory, the next normal launch starts again from
+    the newest mail instead of skipping what that session fetched.
+  - Attachment names lose invisible direction-control characters that could
+    disguise the file type.
+  - If the database key is gone but the encrypted database is still there,
+    KyPost moves the database aside and starts a new one. Before, it stored
+    a new key and then failed to start, on every launch.
+  - Cancelling device enrollment and starting again no longer lets the
+    cancelled attempt discard the new one.
+
+### Upgrade impact
+
+- Contacts created on this device before this version, and not yet synced,
+  are still sent without their own identifier on their first sync.
+- A device that already fails to start this way (an earlier version stored
+  a new key over the lost one) still does. Remove the profile's `kypost.db`
+  to start again; the mail is on the server.
+- A device enrolled for encrypted sending before this version has no key
+  generation recorded. On an account whose keys were converted, it is asked
+  to enroll again before its first encrypted send.
+
+## Source notes at 7a186ae1
+
+These are the prior source summary, preserved from
+[`7a186ae1`](https://github.com/Busnes-app/KyPost-for-Linux/commit/7a186ae1).
+Their presence does not establish that this source was distributed.
+
+### Changes
+
 - Hostile review fixes (council pass 1):
   - "Open in new window" on a message you are writing now keeps Cc, Bcc,
     attachments and the Encrypt and Sign choices. Before, they were dropped,

@@ -88,6 +88,8 @@ private slots:
     void aLockedAppSendsNoMailboxAction();
     void aRefreshThatOutlivesItsAccountWritesNothingAndReportsNoError();
     void anAttachmentThatOutlivesItsAccountIsNeverWrittenOrOpened();
+    void anAttachmentListThatOutlivesItsAccountShowsNothing();
+    void anAttachmentThatLandsUnderTheLockIsNeverWrittenOrOpened();
     void aPgpComposeAnswerThatOutlivesItsAccountIsNotCached();
     void aRecipientPreflightThatOutlivesItsAccountShowsNothing();
 
@@ -96,6 +98,7 @@ private slots:
     void aNotificationForCachedMailAnswersWithoutARequest();
     void aNotificationForMailThatCannotBeFoundSaysSoRatherThanOpeningNothing();
     void markReadIsOptimisticAndCoalescesRepeats();
+    void aBatchThatPartlyFailedRemovesWhatWasDone();
     void aRefusedMarkReadRollsBackSilently();
     void aRefusedMarkUnreadRollsBackAndSaysSo();
     void aReadStateReplyForAReplacedAccountRollsNothingBack();
@@ -178,6 +181,7 @@ bool MailControllerTest::downloadAndWait(MailController& controller, NetworkExec
         return false;
     return spy.at(0).at(2).toBool();
 }
+
 
 void MailControllerTest::selectKeywordFiltersCachedEmailsWithoutAnyNetworkCall()
 {
@@ -2173,6 +2177,100 @@ void MailControllerTest::anAttachmentThatOutlivesItsAccountIsNeverWrittenOrOpene
     QVERIFY(!fake.receivedRequest().isEmpty());
 }
 
+// The app locked while a download was out. Saving or opening it then would put
+// the attachment in front of the PIN screen.
+void MailControllerTest::anAttachmentThatLandsUnderTheLockIsNeverWrittenOrOpened()
+{
+    QStandardPaths::setTestModeEnabled(true);
+    Database db;
+    QVERIFY(db.open(QStringLiteral(":memory:")));
+    EmailDao emailDao(db.handle());
+    FakeRelayServer fake(httpResponse(200, "OK", "locked-attachment-bytes", "application/octet-stream"));
+    QTemporaryDir secureDir;
+    QVERIFY(secureDir.isValid());
+    SecureStoreFile secureStore(secureDir.path());
+    PairingStore pairingStore(secureStore);
+    savePairing(pairingStore, fake.port());
+    QTemporaryDir cursorDir;
+    QVERIFY(cursorDir.isValid());
+    CursorStore cursorStore(cursorDir.filePath(QStringLiteral("cursor.ini")));
+    SettingsStore settingsStore(cursorDir.filePath(QStringLiteral("settings.ini")));
+    KeywordRepository keywordRepository(settingsStore);
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+    PgpBootstrapClient bootstrapClient(http);
+    PgpRecipientChecker recipientChecker(http);
+    MailRepository mailRepository(source, emailDao, pairingStore, cursorStore);
+    FolderDao folderDao(db.handle());
+    FolderClient folderClient(http);
+    FolderRepository folderRepository(folderClient, folderDao, pairingStore);
+    NetworkExecutor executor(3000);
+    MailController controller(mailRepository, source, keywordRepository, pairingStore, folderRepository,
+                               settingsStore, bootstrapClient, recipientChecker, executor);
+    ExecutorShutdownGuard shutdownGuard{ executor };
+
+    const QString downloadDir = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    QDir().mkpath(downloadDir);
+    const QString target = QDir(downloadDir).filePath(QStringLiteral("locked.pdf"));
+    QFile::remove(target);
+
+    QSignalSpy spy(&controller, &MailController::attachmentDownloaded);
+    controller.downloadAttachment(QStringLiteral("Inbox"), QStringLiteral("42"), 0, QStringLiteral("locked.pdf"));
+    controller.setAppLocked(true);
+    QVERIFY(spy.wait(10000) || spy.count() > 0);
+    QCOMPARE(spy.at(0).at(2).toBool(), false);
+    QVERIFY2(!QFile::exists(target), "an attachment was written while the app was locked");
+    QVERIFY(!fake.receivedRequest().isEmpty());
+}
+
+// The previous account's attachment names, sizes and types must not appear in a
+// reader left open across a re-pair.
+void MailControllerTest::anAttachmentListThatOutlivesItsAccountShowsNothing()
+{
+    Database db;
+    QVERIFY(db.open(QStringLiteral(":memory:")));
+    EmailDao emailDao(db.handle());
+    FakeRelayServer fake(httpResponse(200, "OK",
+        R"({"attachments":[{"index":1,"name":"payslip.pdf","mimeType":"application/pdf","size":10}]})"));
+    QTemporaryDir secureDir;
+    QVERIFY(secureDir.isValid());
+    SecureStoreFile secureStore(secureDir.path());
+    PairingStore pairingStore(secureStore);
+    savePairing(pairingStore, fake.port());
+    QTemporaryDir cursorDir;
+    QVERIFY(cursorDir.isValid());
+    CursorStore cursorStore(cursorDir.filePath(QStringLiteral("cursor.ini")));
+    SettingsStore settingsStore(cursorDir.filePath(QStringLiteral("settings.ini")));
+    KeywordRepository keywordRepository(settingsStore);
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    RelayMailSource source(http);
+    PgpBootstrapClient bootstrapClient(http);
+    PgpRecipientChecker recipientChecker(http);
+    MailRepository mailRepository(source, emailDao, pairingStore, cursorStore);
+    FolderDao folderDao(db.handle());
+    FolderClient folderClient(http);
+    FolderRepository folderRepository(folderClient, folderDao, pairingStore);
+    NetworkExecutor executor(3000);
+    MailController controller(mailRepository, source, keywordRepository, pairingStore, folderRepository,
+                               settingsStore, bootstrapClient, recipientChecker, executor);
+    ExecutorShutdownGuard shutdownGuard{ executor };
+
+    QSignalSpy spy(&controller, &MailController::attachmentsListed);
+    controller.listAttachments(QStringLiteral("INBOX"), QStringLiteral("42"));
+    DevicePairing replacement;
+    replacement.subscriberId = QStringLiteral("sub-2");
+    replacement.deviceId = QStringLiteral("dev-2");
+    replacement.deviceSecret = QStringLiteral("secret-2");
+    replacement.serverBaseUrl = QStringLiteral("http://127.0.0.1:%1").arg(fake.port());
+    QVERIFY(pairingStore.save(replacement));
+
+    QVERIFY(spy.wait(10000) || spy.count() > 0);
+    QCOMPARE(spy.at(0).at(2).toList().size(), 0);
+    QVERIFY(!fake.receivedRequest().isEmpty()); // the request did go out
+}
+
 // The bootstrap answer describes the PREVIOUS account's key custody, and it
 // decides whether compose offers to sign and encrypt at all. Caching it
 // against the new account would either hide those controls from someone
@@ -2509,6 +2607,42 @@ QString cachedStatus(EmailDao& dao, const char* id)
 }
 
 } // namespace
+
+// The relay answers ok:false when ANY id of a batch failed, having done the
+// rest. That is a partial success: what was archived leaves the list.
+void MailControllerTest::aBatchThatPartlyFailedRemovesWhatWasDone()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", kTwoMessageInbox));
+    RefreshFixture f(fake.port());
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    auto* model = qobject_cast<EmailListModel*>(f.controller.emailModel());
+    QCOMPARE(model->rowCount(), 2);
+
+    fake.setResponse(httpResponse(200, "OK",
+        R"({"ok":false,"action":"archive","processed":1,"failed":[{"messageId":"m1","error":"imap said no"}],"targetMailbox":"Archive"})"));
+    QSignalSpy done(&f.controller, &MailController::actionCompleted);
+    f.controller.archiveEmails({ QStringLiteral("m1"), QStringLiteral("m2") });
+    QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
+    QCOMPARE(done.at(0).at(2).toBool(), true);
+    QCOMPARE(model->rowCount(), 1);
+    QCOMPARE(model->emailAt(0).messageId, QStringLiteral("m1"));
+    QVERIFY(f.controller.lastError().contains(QStringLiteral("imap said no")));
+    // A reply that lands after another account was paired touches nothing of it.
+    fake.setResponse(httpResponse(200, "OK",
+        R"({"ok":false,"action":"archive","processed":1,"failed":[{"messageId":"m9","error":"no"}],"targetMailbox":"Archive"})"));
+    QSignalSpy again(&f.controller, &MailController::actionCompleted);
+    f.controller.archiveEmails({ QStringLiteral("m1"), QStringLiteral("m9") });
+    DevicePairing other;
+    other.subscriberId = QStringLiteral("sub-2");
+    other.deviceId = QStringLiteral("dev-2");
+    other.deviceSecret = QStringLiteral("secret-2");
+    other.serverBaseUrl = QStringLiteral("http://127.0.0.1:%1").arg(fake.port());
+    QVERIFY(f.pairingStore.save(other));
+    QTRY_COMPARE_WITH_TIMEOUT(again.count(), 1, 10000);
+    QCOMPARE(model->rowCount(), 1);
+    QCOMPARE(model->emailAt(0).messageId, QStringLiteral("m1"));
+}
 
 void MailControllerTest::markReadIsOptimisticAndCoalescesRepeats()
 {

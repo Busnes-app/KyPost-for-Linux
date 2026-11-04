@@ -76,6 +76,7 @@ private slots:
     void aSendForAReplacedAccountIsNotReportedAsSent();
     void aScheduledSendStaysEncryptedEndToEnd();
     void aRelayThatCannotScheduleGetsNoCiphertext();
+    void theEnrolledKeyGenerationIsAsserted();
 
 private:
     GnupgFixture m_sender;
@@ -429,6 +430,33 @@ void MailEncryptedSendTest::aRelayThatCannotScheduleGetsNoCiphertext()
     QVERIFY(!completed.at(0).at(1).toBool());
     QVERIFY(!harness.controller->lastError().isEmpty());
     QVERIFY2(sendRequestBodyOf(fake.receivedRequests()).isEmpty(), "ciphertext went to a relay that would send it now");
+}
+
+// A converted account's relay refuses (409 pgpStateChanged) every
+// client-encrypted send that does not assert the enrolled key generation.
+// It is sent, and a refusal says to enroll again rather than "try again".
+void MailEncryptedSendTest::theEnrolledKeyGenerationIsAsserted()
+{
+    FakeRelayServer fake(httpResponse(409, "Conflict",
+        R"({"error":"the account's key material changed; reload and send again","pgpStateChanged":true,"materialGeneration":8})"));
+    fake.setResponseForPath("/api/pgp/bootstrap", bootstrapResponse(QStringLiteral("me@example.com")));
+    fake.setResponseForPath("/api/pgp/recipients/resolve",
+                             resolveResponse(QStringLiteral("you@example.com"), m_recipientKey,
+                                              m_recipientFingerprint));
+    DecryptHarness harness;
+    QVERIFY(harness.build(fake));
+    QVERIFY(harness.settingsStore->setPgpMaterialGeneration(
+        QStringLiteral("sub-1"), QStringLiteral("http://127.0.0.1:%1").arg(fake.port()), 7));
+
+    QSignalSpy completed(harness.controller.get(), &MailController::sendCompleted);
+    harness.controller->sendClientEncrypted(QStringLiteral("you@example.com"), QString(), QString(),
+                                             QStringLiteral("Hello"), QStringLiteral("Hi"), {});
+    QTRY_VERIFY_WITH_TIMEOUT(completed.count() == 1, 30000);
+    QVERIFY(!completed.at(0).at(1).toBool());
+    const QJsonObject body = sendRequestBodyOf(fake.receivedRequests());
+    QCOMPARE(body.value(QStringLiteral("materialGeneration")).toInteger(), 7);
+    QVERIFY2(harness.controller->lastError().contains(QStringLiteral("Enroll")),
+             qPrintable(harness.controller->lastError()));
 }
 
 QTEST_GUILESS_MAIN(MailEncryptedSendTest)

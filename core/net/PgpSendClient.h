@@ -42,6 +42,11 @@ struct PgpSendResult
     // needs attention and cannot say how many -- which is an honest
     // limitation of the endpoint, not one to paper over by rendering its text.
     bool warned = false;
+
+    // 409 pgpStateChanged: the account's key material is not the generation
+    // this device asserted (or it asserted none). Nothing was sent; the device
+    // has to enroll again.
+    bool keyMaterialChanged = false;
     QString warningDetail; // logs only
 
     // Valid when the relay held it for later (202) instead of sending.
@@ -88,7 +93,8 @@ public:
     PgpSendResult send(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& from,
                         const PgpSendPlan& plan, const QStringList& to, const QStringList& cc,
                         const QStringList& bcc, const QString& mode, const QDateTime& sendAt = {},
-                        const QByteArray& draftCopy = {}) const;
+                        const QByteArray& draftCopy = {},
+                        std::optional<qint64> materialGeneration = std::nullopt) const;
 
 private:
     HttpClient& m_httpClient;

@@ -28,6 +28,7 @@ private slots:
     void anOlderPageAsksBelowTheOldestHeldRowWithoutBodies();
     void aResyncKeepsOlderRowsAndPrunesOnlyItsOwnRange();
     void aResyncThatNoLongerReachesTheHeldRowsDropsThem();
+    void aForcedResyncReplacesTheRowsBelowTheWindow();
     void aWindowShorterThanAPageIsTheWholeFolder();
     void aDeltaWithMoreThanAWindowDropsRowsItCannotReach();
     void aDeltaWithMoreThanAWindowKeepsRowsThatReachIt();
@@ -211,6 +212,23 @@ void MailPagingTest::aResyncKeepsOlderRowsAndPrunesOnlyItsOwnRange()
     QCOMPARE(f.held(), without(range(1, 102), 60));
     QVERIFY(f.emailDao.findById(kInbox, QStringLiteral("1"))->metadataOnly);
     QVERIFY(!f.emailDao.findById(kInbox, QStringLiteral("102"))->metadataOnly);
+}
+
+// The relay's deltas never mention a message below its window again, so a
+// paged-in row read, moved or deleted elsewhere stayed as it was. A forced
+// resync (MailController asks for one at the start of a session) replaces
+// them; paging brings back whatever still exists.
+void MailPagingTest::aForcedResyncReplacesTheRowsBelowTheWindow()
+{
+    Fixture f;
+    f.hold(range(1, 50), true);
+    f.hold(range(51, 100));
+    MailRefreshPlan plan = f.refreshPlan();
+    plan.replaceOlder = true;
+
+    QCOMPARE(f.repository.applyRefresh(plan, reply(range(53, 102))).outcome, MailRepositoryOutcome::Success);
+    QCOMPARE(f.held(), range(53, 102));
+    QVERIFY(f.repository.planOlder(kInbox).has_value()); // and paging starts again below it
 }
 
 void MailPagingTest::aResyncThatNoLongerReachesTheHeldRowsDropsThem()

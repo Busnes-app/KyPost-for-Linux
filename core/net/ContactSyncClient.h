@@ -86,9 +86,9 @@ public:
     // since = 0 requests a full initial sync.
     ContactSyncResult pull(const QUrl& serverBaseUrl, const RelayAuth& auth, qint64 since) const;
 
-    // An empty Contact::uid within changes marks a create (server assigns
-    // the real uid) -- falls out naturally since uid is a plain QString, no
-    // special sentinel needed.
+    // A create carries the uid this device gave it; the relay creates the
+    // contact under it. An empty uid (a create queued by an older build) has
+    // the relay assign one.
     ContactSyncResult push(const QUrl& serverBaseUrl, const RelayAuth& auth, qint64 baseCursor,
                             const QVector<Contact>& changes) const;
 

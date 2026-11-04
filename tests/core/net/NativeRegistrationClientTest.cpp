@@ -28,6 +28,7 @@ private slots:
     void successOmitsOptionalFieldsWhenNotProvided();
     void successDerivesPullEndpointWhenServerOmitsIt();
     void unauthorizedFrom401();
+    void aRedeemedTokenKeepsItsStatus();
     void backendMisconfiguredFrom503();
     void noQueryParamsOnRequestUrl();
     void unusableCredentialInA200IsRefused_data();
@@ -180,6 +181,22 @@ void NativeRegistrationClientTest::unauthorizedFrom401()
         QString(), QString(), keys());
 
     QCOMPARE(result.outcome, RegistrationOutcome::Unauthorized);
+}
+
+// The relay redeems a pairing token once; a re-registration with the stored
+// one is a 409, which main() reports like the 401 instead of dropping it.
+void NativeRegistrationClientTest::aRedeemedTokenKeepsItsStatus()
+{
+    FakeRelayServer fake(httpResponse(409, "Conflict", "pairing token already used\n"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    NativeRegistrationClient client(http);
+    const QUrl endpoint(QStringLiteral("http://127.0.0.1:%1/api/notifications/native/register").arg(fake.port()));
+    const NativeRegistrationResult result = client.registerDevice(
+        endpoint, QStringLiteral("sub-1"), QStringLiteral("pair-tok"), QStringLiteral("https://push.example/endpoint"),
+        QString(), QString(), keys());
+    QCOMPARE(result.outcome, RegistrationOutcome::Failure);
+    QCOMPARE(result.statusCode, 409);
 }
 
 void NativeRegistrationClientTest::backendMisconfiguredFrom503()

@@ -149,6 +149,15 @@ Kirigami.ApplicationWindow {
         root.detailMode = "email"
     }
 
+    // A notification names a message in any folder. The reader's mailbox
+    // actions act on MailApp.currentFolder and are off anywhere else (F3), so
+    // the list moves to the message's folder first.
+    function openEmailInItsFolder(messageId, folder) {
+        if (folder !== MailApp.currentFolder)
+            root.selectFolder(folder)
+        root.selectEmail(messageId, folder)
+    }
+
     function selectContact(uid) {
         root.destination = "contacts"
         root.selectedContactUid = uid
@@ -287,7 +296,7 @@ Kirigami.ApplicationWindow {
             // has set lastError, and selecting nothing leaves that visible
             // instead of covering it with an empty pane.
             if (folder.length > 0)
-                root.selectEmail(messageId, folder)
+                root.openEmailInItsFolder(messageId, folder)
         }
 
         // The mail list's context-menu Delete dispatches and returns, so the
@@ -1417,7 +1426,7 @@ Kirigami.ApplicationWindow {
         anchors.fill: parent
         z: 900
         onChosen: function (messageId, folder) {
-            root.selectEmail(messageId, folder)
+            root.openEmailInItsFolder(messageId, folder)
         }
     }
 

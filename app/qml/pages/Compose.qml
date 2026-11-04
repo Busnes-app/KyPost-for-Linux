@@ -198,6 +198,8 @@ Item {
     // system browser at Drafts. Only reachable for a client-custody account,
     // whose private key exists solely in the user's browser.
     function tryWebmailHandoff() {
+        if (root.poppingOut)
+            return
         toField.commitInputAsToken()
         ccField.commitInputAsToken()
         bccField.commitInputAsToken()
@@ -218,6 +220,8 @@ Item {
     // sendAtMs, when given, is the scheduled time (SendLaterDialog); absent sends now.
     // allowEmptySubject is the answer to "Send without a subject?".
     function trySend(sendAtMs, allowEmptySubject) {
+        if (root.poppingOut)
+            return
         const sendAt = sendAtMs || 0
         // Any address still sitting uncommitted in a field's input box (the
         // user typed it but never hit Enter/Tab/comma) is committed first --
@@ -272,6 +276,8 @@ Item {
     // recipient-and-message check -- a half-written draft is the normal thing
     // to save, and refusing to save it would be the opposite of useful.
     function trySaveDraft() {
+        if (root.poppingOut)
+            return
         toField.commitInputAsToken()
         ccField.commitInputAsToken()
         bccField.commitInputAsToken()
@@ -285,6 +291,10 @@ Item {
             root.draftHandoffToWebmail = false
         })
     }
+
+    // Set from the pop-out click until the window is made: a Send or Save
+    // pressed in between would start a request this composer cannot see out.
+    property bool poppingOut: false
 
     // Commits any still-uncommitted address text the same way trySend()
     // does, so a pop-out doesn't silently drop a typed-but-not-yet-tokenized
@@ -381,8 +391,20 @@ Item {
             IconButton {
                 icon: "open-in-new"
                 tooltip: i18n("Open in new window")
+                // Popping out destroys this composer, and with it the only
+                // owner of a send or save still in flight: the new window
+                // would offer Send again over a message already going out.
+                enabled: !root.sendInFlight && !root.draftInFlight && !root.awaitingPickupConfirmation
+                         && !root.poppingOut
                 onClicked: {
+                    root.poppingOut = true
                     root.currentDraftForPopOut(function(draft) {
+                        // A Send or Save pressed while the editor was being
+                        // read got its token first: this composer owns it now.
+                        if (root.sendInFlight || root.draftInFlight || root.awaitingPickupConfirmation) {
+                            root.poppingOut = false
+                            return
+                        }
                         root.popOutRequested(draft, root.replyTo)
                     })
                 }

@@ -1039,46 +1039,60 @@ Item {
                 // browser.
                 property bool awaitingInitialLoad: true
 
+                // A link click, in this view or one that asked for a new
+                // window (target="_blank", a middle-click, <base target>):
+                // WebEngine sends those to onNewWindowRequested instead, and
+                // with no handler they did nothing at all.
+                function handleLinkClick(url) {
+                    // Scheme allowlist, not a bare handoff. This URL is
+                    // written by whoever sent the message, and
+                    // Qt.openUrlExternally hands it to xdg-open, which
+                    // dispatches on scheme to whatever handler the
+                    // desktop has registered. This app registers itself
+                    // for kypost:// (packaging's .desktop MimeType), so
+                    // an <a href="kypost://native-pair?...&srv=evil">
+                    // in a message used to bounce straight back into
+                    // PairingController and raise this app's own
+                    // pairing-confirm dialog for an attacker's server --
+                    // phishing wearing the trusted UI. Every other
+                    // scheme the session happens to have a handler for
+                    // was reachable the same way.
+                    if (!root.isExternallyOpenable(url)) {
+                        root.blockedLinkScheme = Format.urlScheme(url)
+                        return
+                    }
+                    if (Format.urlScheme(url) === "mailto") {
+                        Qt.openUrlExternally(url)
+                        return
+                    }
+                    // A web link opens only from the confirm dialog. The
+                    // link text comes from an isolated-world script (the
+                    // sender's own JS stays off) and is advisory: the
+                    // dialog's host is parsed from url alone, and
+                    // that parse is what opens.
+                    const clicked = url
+                    const messageId = root.messageId
+                    runJavaScript(MailApp.linkAnchorScript(), WebEngineScript.ApplicationWorld, function (anchors) {
+                        if (root.messageId !== messageId)
+                            return
+                        const target = MailApp.linkTarget(clicked, anchors || [])
+                        if (target.host)
+                            linkConfirmDialog.show(target, phishingBanner.flagged)
+                        else
+                            root.blockedLinkScheme = Format.urlScheme(clicked)
+                    })
+                }
+
+                onNewWindowRequested: function (request) {
+                    // Never given a view of its own: no second view of sender content.
+                    if (request.userInitiated)
+                        handleLinkClick(request.requestedUrl)
+                }
+
                 onNavigationRequested: function (request) {
                     if (request.navigationType === WebEngineNavigationRequest.LinkClickedNavigation) {
                         request.reject()
-                        // Scheme allowlist, not a bare handoff. This URL is
-                        // written by whoever sent the message, and
-                        // Qt.openUrlExternally hands it to xdg-open, which
-                        // dispatches on scheme to whatever handler the
-                        // desktop has registered. This app registers itself
-                        // for kypost:// (packaging's .desktop MimeType), so
-                        // an <a href="kypost://native-pair?...&srv=evil">
-                        // in a message used to bounce straight back into
-                        // PairingController and raise this app's own
-                        // pairing-confirm dialog for an attacker's server --
-                        // phishing wearing the trusted UI. Every other
-                        // scheme the session happens to have a handler for
-                        // was reachable the same way.
-                        if (!root.isExternallyOpenable(request.url)) {
-                            root.blockedLinkScheme = Format.urlScheme(request.url)
-                            return
-                        }
-                        if (Format.urlScheme(request.url) === "mailto") {
-                            Qt.openUrlExternally(request.url)
-                            return
-                        }
-                        // A web link opens only from the confirm dialog. The
-                        // link text comes from an isolated-world script (the
-                        // sender's own JS stays off) and is advisory: the
-                        // dialog's host is parsed from request.url alone, and
-                        // that parse is what opens.
-                        const clicked = request.url
-                        const messageId = root.messageId
-                        runJavaScript(MailApp.linkAnchorScript(), WebEngineScript.ApplicationWorld, function (anchors) {
-                            if (root.messageId !== messageId)
-                                return
-                            const target = MailApp.linkTarget(clicked, anchors || [])
-                            if (target.host)
-                                linkConfirmDialog.show(target, phishingBanner.flagged)
-                            else
-                                root.blockedLinkScheme = Format.urlScheme(clicked)
-                        })
+                        handleLinkClick(request.url)
                         return
                     }
                     if (awaitingInitialLoad) {

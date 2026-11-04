@@ -44,6 +44,12 @@ public:
     // Everything, notification cursor included, for the wipe paths.
     [[nodiscard]] bool wipeAll();
 
+    // Set while a session runs on an in-memory database: the cursors it
+    // advances describe mail the on-disk cache never received, so the next
+    // launch on disk resets them rather than ask for a delta past that mail.
+    bool advancedPastTheDiskCache() const;
+    [[nodiscard]] bool setAdvancedPastTheDiskCache(bool advanced);
+
 private:
     // Flushes the pending change and reports whether the FILE took it, not
     // whether the in-memory copy did. Every mutator above returns this, and

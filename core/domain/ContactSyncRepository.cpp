@@ -120,29 +120,34 @@ bool ContactSyncRepository::isPending(const QString& uid) const
 
 namespace {
 
-// The wire copy of a create: empty uid marks one, per ContactSyncClient's contract.
-QString createJson(Contact contact)
+// The wire copy of a create carries the uid this device gave it, and the
+// relay creates the contact under that uid (contacts.Store
+// applyUpsertLocked: "UID was supplied but not found ... treat as a create
+// under that UID"). An empty uid made the relay mint a new one on every
+// push, so a create retried after a reply was lost, or edited before its
+// reply came back, became a second contact account-wide.
+QString createJson(const Contact& contact)
 {
-    contact.uid = QString();
-    contact.deleted = false;
-    return serializeContact(contact);
+    Contact wire = contact;
+    wire.deleted = false;
+    return serializeContact(wire);
 }
 
 } // namespace
 
-bool ContactSyncRepository::insertCreate(Contact& contact, const QString& wireJson)
+bool ContactSyncRepository::insertCreate(Contact& contact)
 {
     contact.uid = QUuid::createUuid().toString(QUuid::WithoutBraces);
     contact.deleted = false;
     // The cached row without the queue row is a contact the user can see,
     // edit and rely on that will never reach the server or any other device.
-    return m_contactDao.insertOrReplace(contact) && m_pendingDao.enqueue(contact.uid, wireJson, nowUtc()) > 0;
+    return m_contactDao.insertOrReplace(contact)
+        && m_pendingDao.enqueue(contact.uid, createJson(contact), nowUtc()) > 0;
 }
 
 QString ContactSyncRepository::queueCreate(Contact contact)
 {
-    const QString wireJson = createJson(contact);
-    const bool queued = inTransaction(m_db, [&] { return insertCreate(contact, wireJson); });
+    const bool queued = inTransaction(m_db, [&] { return insertCreate(contact); });
     return queued ? contact.uid : QString();
 }
 
@@ -150,11 +155,10 @@ ContactImportOutcome ContactSyncRepository::queueImport(const QVector<Contact>& 
 {
     if (contacts.size() > kMaxSyncChanges)
         return ContactImportOutcome::TooLarge;
-    QStringList wire;
     qsizetype bytes = 0;
-    for (const Contact& contact : contacts) {
-        wire << createJson(contact);
-        bytes += wire.last().toUtf8().size() + 1; // and its comma
+    for (Contact contact : contacts) {
+        contact.uid = QUuid::createUuid().toString(QUuid::WithoutBraces); // the length insertCreate() gives it
+        bytes += createJson(contact).toUtf8().size() + 1; // and its comma
     }
     if (bytes > kMaxSyncBodyBytes - kSyncEnvelopeHeadroom)
         return ContactImportOutcome::TooLarge;
@@ -169,7 +173,7 @@ ContactImportOutcome ContactSyncRepository::queueImport(const QVector<Contact>& 
     }
     for (qsizetype i = 0; i < contacts.size(); ++i) {
         Contact contact = contacts.at(i);
-        if (!insertCreate(contact, wire.at(i))) {
+        if (!insertCreate(contact)) {
             m_db.rollback();
             return ContactImportOutcome::WriteFailed;
         }
@@ -213,6 +217,10 @@ bool ContactSyncRepository::queueDelete(const QString& uid, qint64 rev)
         for (const PendingContactChangeRecord& record : m_pendingDao.findAll()) {
             if (record.contactUid != uid)
                 continue;
+            // Only a create queued by an older build has no uid. One that
+            // carries its uid may already be on the relay (a push it
+            // committed whose reply was lost), so it gets a tombstone; the
+            // relay ignores one for a uid it never had.
             if (deserializeContact(record.changeJson).uid.isEmpty())
                 hadUnsyncedCreate = true;
             if (!m_pendingDao.deleteById(record.id))
@@ -330,20 +338,38 @@ ContactSyncOutcome ContactSyncRepository::applySync(const ContactSyncPlan& plan,
                  /*fullPullNeeded=*/plan.cursor > 0 };
     }
 
+    // A create the relay filed under the uid it carried needs no matching.
+    // One queued by an older build (no uid), or one a relay filed under a uid
+    // of its own, is matched to the record it became by name and address.
+    QSet<QString> answered;
+    for (const Contact& c : result.changed)
+        answered.insert(c.uid);
+    QSet<QString> pushedUids;
+    for (const PendingContactChangeRecord& record : pending)
+        pushedUids.insert(record.contactUid);
     QVector<Contact> pendingCreates;
     for (const PendingContactChangeRecord& record : pending) {
         const Contact wire = deserializeContact(record.changeJson);
-        if (!wire.uid.isEmpty())
+        if (wire.deleted || !(wire.uid.isEmpty() || (wire.rev == 0 && !answered.contains(wire.uid))))
             continue;
+        if (!wire.uid.isEmpty()) {
+            if (answered.contains(wire.uid))
+                continue; // its edit, queued behind the create: one match per contact
+            answered.insert(wire.uid);
+        }
         Contact create;
         create.uid = record.contactUid;
         create.fn = wire.fn;
         create.emails = wire.emails;
         pendingCreates.append(create);
     }
+    QVector<Contact> unclaimed;
+    for (const Contact& c : result.changed)
+        if (!pushedUids.contains(c.uid))
+            unclaimed.append(c);
 
     const QVector<ContactReconciliationAssignment> assignments =
-        ContactSyncReconciliation::reconcile(pendingCreates, result.changed);
+        ContactSyncReconciliation::reconcile(pendingCreates, unclaimed);
 
     // The response and the queue it answers are applied as ONE database
     // transaction, for the same reason the cursor exists at all: every row

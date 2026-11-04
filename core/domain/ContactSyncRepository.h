@@ -121,10 +121,10 @@ public:
     // Convenience single-uid form of pendingUids(); see its doc comment.
     bool isPending(const QString& uid) const;
 
-    // Assigns a temp local uid (QUuid::createUuid().toString(QUuid::
+    // Assigns a local uid (QUuid::createUuid().toString(QUuid::
     // WithoutBraces)), caches it under that uid immediately, and enqueues a
-    // create (wire copy has uid=="", per ContactSyncClient's documented
-    // "empty uid marks a create" contract) for the next sync().
+    // create carrying that uid, which the relay creates the contact under
+    // (see ContactSyncClient::push), for the next sync().
     //
     // Both writes, or neither: an empty return means nothing was saved. The
     // caller must say so rather than showing the contact as saved -- see the
@@ -154,6 +154,7 @@ public:
     // was -- the whole thing rolls back, because a delete that removed the
     // row but lost the tombstone comes back on the next pull.
     [[nodiscard]] bool queueDelete(const QString& uid, qint64 rev);
+
 
     ContactSyncOutcome sync();
 
@@ -211,7 +212,7 @@ public:
 
 private:
     // The two writes of a queued create, inside the caller's transaction.
-    bool insertCreate(Contact& contact, const QString& wireJson);
+    bool insertCreate(Contact& contact);
 
     ContactSyncClient& m_client;
     ContactDao& m_contactDao;

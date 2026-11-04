@@ -105,6 +105,9 @@ struct NativeRegistrationResult
     // an empty value.
     QByteArray peerSpkiSha256;
     bool certificatePinVerified = false;
+    // The HTTP status of a refusal. 409 on a re-registration is the relay
+    // saying the stored pairing token was already redeemed (it is single-use).
+    int statusCode = 0;
 };
 
 // Registers this device for native push with the Relay backend. Verified

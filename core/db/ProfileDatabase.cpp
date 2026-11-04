@@ -5,6 +5,7 @@
 
 #include <QFile>
 #include <QFileInfo>
+#include <QStringList>
 
 namespace {
 
@@ -76,6 +77,38 @@ bool databaseFileIsEncrypted(const QString& path)
     return header != QByteArray(kSqliteMagic, kSqliteMagicLength);
 }
 
+namespace {
+
+// To `path + kUnreadableDatabaseSuffix`, sidecars with it. Never over an
+// earlier one, which may be the only copy of something. False leaves `path`
+// where it was.
+bool moveAside(const QString& path)
+{
+    const QString aside = path + kUnreadableDatabaseSuffix;
+    const QStringList sidecars{ QString(), QStringLiteral("-wal"), QStringLiteral("-shm") };
+    for (const QString& sidecar : sidecars)
+        if (QFile::exists(aside + sidecar))
+            return false;
+    // All or nothing: a -wal left behind holds committed pages of this file,
+    // and a fresh profile opened over it would not be this one.
+    QStringList moved;
+    for (const QString& sidecar : sidecars) {
+        if (!QFile::exists(path + sidecar))
+            continue;
+        if (!QFile::rename(path + sidecar, aside + sidecar)) {
+            for (const QString& back : moved)
+                QFile::rename(aside + back, path + back);
+            return false;
+        }
+        moved << sidecar;
+    }
+    qCritical("ProfileDatabase: this profile's database is encrypted under a key that is no longer "
+               "stored; it was moved to %s and a new profile was started", qUtf8Printable(aside));
+    return true;
+}
+
+} // namespace
+
 ProfileDatabaseMode openProfileDatabase(Database& database, DatabaseKeyStore& keyStore, const QString& path)
 {
     ProfileDatabaseInputs inputs;
@@ -89,6 +122,20 @@ ProfileDatabaseMode openProfileDatabase(Database& database, DatabaseKeyStore& ke
     switch (chooseProfileDatabaseMode(inputs)) {
     case ProfileDatabaseMode::EncryptedOnDisk: {
         QByteArray material = key.key;
+        if (inputs.keyStatus == DatabaseKeyStore::Status::Absent && inputs.databaseFileIsEncrypted) {
+            // Encrypted under a key the store no longer has (another keyring,
+            // a wiped wallet). A key minted for it cannot open it, and once
+            // stored it made every later launch fail to open the database,
+            // which is fatal (F13). The file is moved aside, not deleted: if
+            // the old key comes back it is still there. Failing that, nothing
+            // is minted and this session stays in memory.
+            if (!moveAside(path)) {
+                qCritical("ProfileDatabase: an encrypted database has no key and could not be moved aside; "
+                           "keeping this session in memory");
+                return database.open(QStringLiteral(":memory:")) ? ProfileDatabaseMode::InMemoryNoKeyStorage
+                                                                  : ProfileDatabaseMode::FailedToOpen;
+            }
+        }
         if (inputs.keyStatus == DatabaseKeyStore::Status::Absent) {
             material = keyStore.create();
             if (material.isEmpty()) {

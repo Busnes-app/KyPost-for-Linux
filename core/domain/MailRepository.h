@@ -59,6 +59,11 @@ struct MailRefreshPlan
     // filed under an empty subscriber id is a cursor that is never found
     // again.
     QString subscriberId;
+    // A forced full resync: held rows below the window go too. The relay's
+    // deltas never mention a message once it is below its window, so those
+    // rows kept whatever state they had when paged in -- read, moved or
+    // deleted elsewhere, they stayed listed here as they were.
+    bool replaceOlder = false;
 };
 
 // The next page of older mail: below `before`, the oldest row the folder
@@ -171,6 +176,9 @@ public:
     // Phase 1, on the calling thread. Reads the pairing and the stored
     // cursor. Returns nullopt when there is no pairing -- the caller reports
     // MailRepositoryOutcome::NotPaired, exactly as refreshFolder() does.
+    // More rows than one window: some were paged in below it.
+    bool holdsMoreThanAWindow(const QString& folder) const;
+
     std::optional<MailRefreshPlan> planRefresh(const QString& folder, bool forceFullResync) const;
 
     // Phase 2. The only part that may run on another thread: it touches
