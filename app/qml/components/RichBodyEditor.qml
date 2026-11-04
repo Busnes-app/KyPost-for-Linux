@@ -25,9 +25,6 @@ Item {
     // construction (Compose.qml's Component.onCompleted) -- there is no
     // "reload" support, callers only ever seed a fresh draft.
     property string pendingInitialHtml: ""
-    // Whether the user has ever been in the body. With an empty seed, false
-    // means it is still empty, which a caller can know without asking the page.
-    property bool touched: false
     function loadInitialHtml(html) {
         pendingInitialHtml = html
         webView.loadHtml(root.shellHtml(""))
@@ -208,7 +205,6 @@ Item {
             WebEngineView {
                 id: webView
                 anchors.fill: parent
-                onActiveFocusChanged: if (activeFocus) root.touched = true
                 backgroundColor: Theme.bg
                 settings.javascriptEnabled: true
 

@@ -15,11 +15,8 @@ namespace AppRelauncher {
 void requestRelaunch()
 {
     s_relaunchPending = true;
-    // exit(), not quit(): on Qt 6 quit() first asks every window to close,
-    // and a window may refuse (a pop-out composer asking "Discard this
-    // message?"). A wipe or a protection relaunch must not wait on that.
     if (QCoreApplication::instance())
-        QCoreApplication::exit(0);
+        QCoreApplication::quit();
 }
 
 bool relaunchPending()

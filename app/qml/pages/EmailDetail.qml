@@ -30,10 +30,6 @@ Item {
     property bool isPoppedOut: false
 
     signal draftRequested(var draft)
-    // A pop-out reader's host passes AppShell.leaveCompose: Edit draft and
-    // Forward with attachments start a draft session, which ends the one a
-    // message being written in the main window holds, so they ask first.
-    property var beforeLeavingCompose: function (proceed) { proceed() }
     // replyTo: {messageId, mailbox} for Reply/Reply All, {} for Forward.
     // notice: why the quote or attachments were left out, or "".
     signal composeRequested(string to, string subject, string body, var replyTo, string notice)
@@ -468,10 +464,10 @@ Item {
                     tooltip: i18n("Edit draft")
                     visible: root.folder === MailApp.draftsFolder && root.hasProtectedMessage && root.email.pgpState === 1
                     enabled: !MailApp.isBusy && !AppLock.locked
-                    onClicked: root.beforeLeavingCompose(function () {
+                    onClicked: {
                         const draft = MailApp.reopenDecryptedDraft(MailApp.decryptedToken)
                         if (draft.token) root.draftRequested(draft)
-                    })
+                    }
                 }
 
                 IconButton {
@@ -480,10 +476,10 @@ Item {
                     tooltip: i18n("Edit draft")
                     visible: root.folder === MailApp.draftsFolder && root.email.pgpState === 0 && (!root.email.searchOnly || !!root.email.body)
                     enabled: !MailApp.isBusy && !AppLock.locked
-                    onClicked: root.beforeLeavingCompose(function () {
+                    onClicked: {
                         const draft = MailApp.reopenDraft(root.folder, root.messageId)
                         if (draft.token) root.draftRequested(draft)
-                    })
+                    }
                 }
 
                 IconButton {
@@ -510,7 +506,7 @@ Item {
                     icon: "forward"
                     tooltip: i18n("Forward")
                     enabled: !MailApp.isBusy
-                    onClicked: root.beforeLeavingCompose(function () {
+                    onClicked: {
                         const subject = root.withPrefix(root.displaySubject, "Fwd:")
                         const body = Format.forwardQuoteHtml(i18n("---------- Forwarded message ----------"),
                             i18n("From: %1", root.email.sender), i18n("Subject: %1", root.displaySubject),
@@ -525,7 +521,7 @@ Item {
                             return
                         }
                         root.composeRequested("", subject, body, ({}), root.quoteNotice(root.attachments.length > 0))
-                    })
+                    }
                 }
         }
 

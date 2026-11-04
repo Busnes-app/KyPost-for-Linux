@@ -8,8 +8,6 @@
 #include "domain/GroupsRepository.h"
 #include "models/Contact.h"
 #include "models/Group.h"
-#include "net/ContactSyncClient.h"
-#include "pgp/OpenPgpKeyImporter.h"
 #include "vcard/VCardImport.h"
 
 #include <KLocalizedString>
@@ -21,45 +19,6 @@
 #include <utility>
 
 namespace {
-
-QStringList emailValues(const Contact& contact)
-{
-    QStringList out;
-    for (const ContactEmailEntry& e : contact.emails)
-        out << e.value;
-    return out;
-}
-
-// Owner decision Q2: a key the relay would refuse (KyPost-Server
-// validateContactKey) is refused before it is queued, because the relay
-// refuses the whole sync batch over it. Like the relay's
-// checkContactKeyWrite, an unchanged key passes, so a key that has since
-// expired never blocks an edit. Empty when the key may be queued.
-QString contactKeyRefusal(const Contact& contact, const std::optional<QString>& storedKey)
-{
-    const QString key = contact.pgpKey.value_or(QString());
-    if (key.trimmed().isEmpty() || key == storedKey.value_or(QString()))
-        return {};
-    const QString name = contact.fn.value_or(QString());
-    switch (contactKeyProblem(key.toUtf8(), emailValues(contact))) {
-    case ContactKeyProblem::None:
-        return {};
-    case ContactKeyProblem::EngineUnavailable:
-        // Unchecked would be queued, and one key the relay refuses stops every sync.
-        return i18n("The PGP key for %1 can't be checked because GnuPG isn't available on this computer, so it was not saved.", name);
-    case ContactKeyProblem::Unreadable:
-        return i18n("The PGP key for %1 isn't one OpenPGP public key in text form. Paste the whole key, from -----BEGIN PGP PUBLIC KEY BLOCK----- to the end.", name);
-    case ContactKeyProblem::Private:
-        return i18n("The PGP key for %1 is a private key. Paste the public key instead, and keep the private one secret.", name);
-    case ContactKeyProblem::RevokedOrExpired:
-        return i18n("The PGP key for %1 is revoked or expired. Ask them for a current key.", name);
-    case ContactKeyProblem::NoAddress:
-        return i18n("The PGP key for %1 needs an email address on the contact. Add the address the key is for.", name);
-    case ContactKeyProblem::AddressNotOnKey:
-        return i18n("The PGP key for %1 isn't for any of this contact's email addresses. Add the address the key is for, or use their key for one of these addresses.", name);
-    }
-    return {};
-}
 
 // Blank string -> std::nullopt, matching Contact's std::optional<QString>
 // field convention (org/notes) rather than storing an empty-but-present
@@ -266,75 +225,6 @@ void ContactsController::load()
     m_model->setContacts(contacts, m_repository.pendingUids());
 }
 
-int ContactsController::contactsToCarry() const
-{
-    return m_repository.carryPending() ? int(m_repository.contacts().size()) : 0;
-}
-
-bool ContactsController::answerCarry(bool bring)
-{
-    if (!m_repository.carryPending())
-        return false;
-    if (!bring) {
-        if (!m_repository.removeLocal()) {
-            setLastError(i18n("Could not remove the contacts from this device"));
-            load();
-            return false;
-        }
-        setLastError(QString());
-        load();
-        emit carryChanged();
-        sync();
-        return true;
-    }
-    QVector<Contact> carried = m_repository.contacts();
-    QStringList keyRefusals;
-    for (Contact& contact : carried) {
-        // The previous account's server owns these; the new one has its own.
-        contact.rev = 0;
-        contact.createdAt.reset();
-        contact.updatedAt.reset();
-        contact.photoRef.reset();
-        contact.isSelf = false; // groupIds stay: the relay drops ids the new account does not have
-        const QString refusal = contactKeyRefusal(contact, std::nullopt);
-        if (!refusal.isEmpty()) {
-            contact.pgpKey.reset();
-            keyRefusals << refusal;
-        }
-    }
-    switch (m_repository.carryInto(carried)) {
-    case ContactImportOutcome::Queued:
-        break;
-    case ContactImportOutcome::TooLarge:
-    case ContactImportOutcome::OutboxNotEmpty:
-    case ContactImportOutcome::WriteFailed:
-        setLastError(i18n("Could not save the contacts to the local database"));
-        load();
-        return false;
-    }
-    setLastError(keyRefusals.isEmpty() ? QString()
-        : i18n("Some PGP keys were left behind: %1", keyRefusals.join(QLatin1Char(' '))));
-    load();
-    emit carryChanged();
-    sync();
-    return true;
-}
-
-bool ContactsController::removeLocalContacts()
-{
-    const bool removed = m_repository.removeLocal();
-    if (!removed)
-        setLastError(i18n("Could not remove the contacts from this device"));
-    load();
-    emit carryChanged();
-    return removed;
-}
-
-int ContactsController::unsyncedChangeCount() const
-{
-    return int(m_repository.pendingUids().size());
-}
-
 bool ContactsController::isSynced(const QString& uid)
 {
     if (!m_repository.findByUid(uid).has_value())
@@ -362,19 +252,6 @@ void ContactsController::syncInternal(std::function<void()> onApplied)
     // queue in phase 1 and deletes exactly those records in phase 3, so a
     // second sync started mid-flight would push the same queue twice.
     if (m_syncInFlight) {
-        if (onApplied)
-            onApplied();
-        return;
-    }
-    // Owner decision Q3: the previous account's contacts never reach this
-    // account's server before the user says so. With none left (deleted
-    // meanwhile), there is nothing to ask about and the hold ends.
-    if (m_repository.carryPending() && m_repository.contacts().isEmpty() && m_repository.removeLocal())
-        emit carryChanged();
-    if (m_repository.carryPending()) {
-        setStatusMessage(QString());
-        setLastError(i18n("Choose whether to bring this device's contacts into this account first."));
-        emit carryChanged();
         if (onApplied)
             onApplied();
         return;
@@ -426,8 +303,7 @@ void ContactsController::applySyncOutcome(const ContactSyncOutcome& outcome)
         refreshGroupsCache();
         load();
         // The relay never answers since=0 with tooOld, so this runs once.
-        // morePending: each sync pushes at least one change, so it ends.
-        if (outcome.fullPullNeeded || outcome.morePending)
+        if (outcome.fullPullNeeded)
             sync();
         break;
     case ContactSyncStatus::NotPaired:
@@ -444,10 +320,7 @@ void ContactsController::applySyncOutcome(const ContactSyncOutcome& outcome)
         break;
     case ContactSyncStatus::Retry:
         setStatusMessage(QString());
-        if (const QString refused = keyRefusalMessage(outcome.detail); !refused.isEmpty())
-            setLastError(refused);
-        else
-            setLastError(outcome.detail.isEmpty() ? i18n("Sync failed, try again") : outcome.detail);
+        setLastError(outcome.detail.isEmpty() ? i18n("Sync failed, try again") : outcome.detail);
         break;
     case ContactSyncStatus::CacheWriteFailed:
         // Nothing wrong with the relay or the pairing: this device could not
@@ -680,10 +553,6 @@ QString ContactsController::createContact(const QVariantMap& fields)
     Contact contact;
     contact.fn = fn;
     applyFieldsToContact(contact, fields);
-    if (const QString refusal = contactKeyRefusal(contact, std::nullopt); !refusal.isEmpty()) {
-        setLastError(refusal);
-        return QString();
-    }
 
     // Empty means the local database refused one or both writes and the
     // whole thing rolled back. Saying "saved" here is how a contact ends up
@@ -743,8 +612,6 @@ QVariantMap ContactsController::previewVCardImport(const QString& fileUrl)
     QStringList names;
     for (qsizetype i = 0; i < result.contacts.size() && i < kPreviewNames; ++i)
         names << result.contacts.at(i).fn.value_or(QString()).section(QLatin1Char('\n'), 0, 0).left(80);
-    // No key comes in this way (VCardImport reads no KEY), so there is none
-    // for the owner decision Q2 check to judge here.
     m_importPreview = result.contacts;
     return {{QStringLiteral("ok"), true},
             {QStringLiteral("count"), int(result.contacts.size())},
@@ -755,11 +622,6 @@ QVariantMap ContactsController::previewVCardImport(const QString& fileUrl)
 
 bool ContactsController::confirmVCardImport()
 {
-    const bool carryUnanswered = m_repository.carryPending(); // an import syncs into the account too
-    if (carryUnanswered) {
-        setLastError(i18n("Choose whether to bring this device's contacts into this account first."));
-        return false;
-    }
     const QVector<Contact> contacts = std::exchange(m_importPreview, {});
     if (contacts.isEmpty())
         return false;
@@ -782,31 +644,6 @@ bool ContactsController::confirmVCardImport()
         return false;
     }
     return false;
-}
-
-QString ContactsController::keyRefusalMessage(const QString& detail)
-{
-    const QLatin1String prefix(kContactKeyRefusalPrefix);
-    if (!detail.startsWith(prefix))
-        return {};
-    const QString rest = detail.mid(prefix.size());
-    const qsizetype colon = rest.indexOf(QStringLiteral(": "));
-    const QString uid = rest.left(colon).trimmed();
-    const QString reason = colon >= 0 ? rest.mid(colon + 2).trimmed() : QString();
-    QString name;
-    for (const Contact& contact : m_repository.contacts()) {
-        // A create is pushed without a uid: then it is an unsynced contact with a key.
-        const bool match = uid.isEmpty()
-            ? contact.pgpKey.has_value() && !contact.pgpKey->trimmed().isEmpty() && !isSynced(contact.uid)
-            : contact.uid == uid;
-        if (match) {
-            name = contact.fn.value_or(QString());
-            break;
-        }
-    }
-    if (name.isEmpty())
-        return i18n("The server refused a contact's PGP key (%1), so contacts can't sync. Remove or replace the key on the contact you last gave one.", reason);
-    return i18n("The server refused the PGP key for %1 (%2), so contacts can't sync. Edit %1 and remove or replace the key.", name, reason);
 }
 
 void ContactsController::discardVCardImport()
@@ -833,10 +670,6 @@ bool ContactsController::updateContact(const QString& uid, const QVariantMap& fi
     Contact contact = *found;
     contact.fn = fn;
     applyFieldsToContact(contact, fields);
-    if (const QString refusal = contactKeyRefusal(contact, found->pgpKey); !refusal.isEmpty()) {
-        setLastError(refusal);
-        return false;
-    }
 
     if (!m_repository.queueUpdate(contact)) {
         setLastError(i18n("Could not save this contact to the local database"));

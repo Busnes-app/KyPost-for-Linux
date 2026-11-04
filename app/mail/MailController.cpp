@@ -1207,56 +1207,25 @@ quint64 MailController::sendMail(const QString& to, const QString& cc, const QSt
     if (sendAt.isValid())
         m_pendingSend = {};
 
-    // What this plain send asks of the account is checked first, as a draft
-    // save does: Compose took this path because the custody answer was
-    // missing or stale, and for an account that encrypts on this device that
-    // used to mean the message went out unencrypted, without a word.
-    struct Outcome {
-        SendMailResult result;
-        bool encryptsHere = false;
-    };
     pushBusy();
     m_executor.run(
         this,
         [serverBaseUrl, auth, to, cc, bcc, subject, body, sendMode, attachments, sign, encrypt, replyToMessageId,
          replyToMailbox, sendAt](HttpClient& http) {
-            Outcome out;
-            const PgpBootstrapResult custody = PgpBootstrapClient(http).fetch(serverBaseUrl, auth);
-            if (!custody.ok) {
-                out.result.error = NetworkError::Server;
-                out.result.detail = i18n("Could not check how this account protects mail. Nothing was sent. Try again.");
-                return out;
-            }
-            if (custody.protection == QStringLiteral("client") && openPgpEngineAvailable()) {
-                out.encryptsHere = true;
-                out.result.error = NetworkError::Server;
-                out.result.detail = i18n("This account's mail is encrypted on this computer. Nothing was sent; press Send again to send it encrypted.");
-                return out;
-            }
-            out.result = [&] {
-                RelayMailSource source(http);
-                if (sendAt.isValid()) {
-                    if (const QString refusal = schedulingRefusal(source, serverBaseUrl, auth); !refusal.isEmpty()) {
-                        SendMailResult refused;
-                        refused.error = NetworkError::Server;
-                        refused.detail = refusal;
-                        return refused;
-                    }
+            RelayMailSource source(http);
+            if (sendAt.isValid()) {
+                if (const QString refusal = schedulingRefusal(source, serverBaseUrl, auth); !refusal.isEmpty()) {
+                    SendMailResult refused;
+                    refused.error = NetworkError::Server;
+                    refused.detail = refusal;
+                    return refused;
                 }
-                return source.sendMail(serverBaseUrl, auth, to, cc, bcc, subject, body, sendMode, attachments, sign,
-                                        encrypt, /*allowPickupFallback=*/false, replyToMessageId, replyToMailbox,
-                                        sendAt);
-            }();
-            return out;
-        },
-        [this, sendToken](const Outcome& outcome) {
-            if (outcome.encryptsHere) {
-                if (m_pendingSend.token == sendToken) // never another composer's
-                    m_pendingSend = {};
-                refreshPgpComposeState(/*force=*/true); // Compose then takes the encrypted path
             }
-            finishSend(sendToken, outcome.result);
-        });
+            return source.sendMail(serverBaseUrl, auth, to, cc, bcc, subject, body, sendMode, attachments, sign,
+                                    encrypt, /*allowPickupFallback=*/false, replyToMessageId, replyToMailbox,
+                                    sendAt);
+        },
+        [this, sendToken](const SendMailResult& result) { finishSend(sendToken, result); });
     return sendToken;
 }
 
@@ -1430,16 +1399,8 @@ void MailController::refreshPgpComposeState(bool force)
     // Component.onCompleted, i.e. a nested event loop while the object tree
     // was still being built -- and that reason is gone; the cache is kept
     // for the remaining one.
-    if (m_pgpComposeStateFetched && !force && m_pairingStore.stillCurrent(m_accountAddressesOwner))
+    if (m_pgpComposeStateFetched && !force)
         return;
-    // Another account's answer, or none: no controls until this one's lands.
-    if (m_pgpComposeStateFetched && !m_pairingStore.stillCurrent(m_accountAddressesOwner)) {
-        m_pgpComposeStateFetched = false;
-        m_pgpCanEncrypt = false;
-        m_pgpCanSign = false;
-        m_pgpHandoffToWebmail = false;
-        emit pgpComposeStateChanged();
-    }
     fetchPgpBootstrap();
 }
 
@@ -2349,8 +2310,6 @@ MailController::ClientEncryptedOutcome runClientEncryptedSend(
     // Either the planner never built a copy, or the relay did not file it. A
     // held message has filed nothing yet.
     outcome.missingSentCopy = plan.sentCopyUnavailable || (!sent.sentSaved && !sendAt.isValid());
-    // Without Bcc the warning can only be about Sent, which missingSentCopy says.
-    outcome.bccMayHaveFailed = sent.warned && !bccList.isEmpty();
     return outcome;
 }
 
@@ -2422,13 +2381,6 @@ void MailController::finishClientEncryptedSend(quint64 token, const ClientEncryp
         m_lastSendMissingSentCopy = outcome.missingSentCopy;
         if (outcome.scheduledAt.isValid())
             announceScheduled(outcome.scheduledAt);
-        // The relay's warning is prose and is not shown (PgpSendClient). The
-        // composer closes on success, so a Bcc delivery that may have failed
-        // is said here.
-        if (outcome.bccMayHaveFailed)
-            emit sendWarning(outcome.missingSentCopy
-                ? i18n("Sent, but some Bcc recipients may not have received it, and it may be missing from Sent. Don't send it to everyone again.")
-                : i18n("Sent, but some Bcc recipients may not have received it. Don't send it to everyone again."));
         setLastError(QString());
         emit pgpComposeStateChanged();
         emit sendCompleted(token, true);

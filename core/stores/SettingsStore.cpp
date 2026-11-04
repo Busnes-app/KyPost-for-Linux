@@ -7,8 +7,6 @@ constexpr auto kTrayIconEnabledKey = "general/trayIconEnabled";
 constexpr auto kMinimizeToTrayOnCloseKey = "general/minimizeToTrayOnClose";
 constexpr auto kHostileLocationKey = "security/hostileLocationProtection";
 constexpr auto kAppLockOfferedKey = "security/appLockOffered";
-constexpr auto kUnpairedCacheSubscriberKey = "account/unpairedCacheSubscriber";
-constexpr auto kUnpairedCacheServerKey = "account/unpairedCacheServer";
 constexpr auto kDeliveryModeKey = "push/deliveryMode";
 constexpr auto kPullEndpointKey = "push/pullEndpoint";
 constexpr auto kTransportKey = "push/transport";
@@ -107,22 +105,6 @@ void SettingsStore::clearAppLockOffered()
     m_settings.remove(kAppLockOfferedKey);
 }
 
-std::optional<std::pair<QString, QString>> SettingsStore::unpairedCacheOwner() const
-{
-    const QString subscriberId = m_settings.value(kUnpairedCacheSubscriberKey).toString();
-    if (subscriberId.isEmpty())
-        return std::nullopt;
-    return std::make_pair(subscriberId, m_settings.value(kUnpairedCacheServerKey).toString());
-}
-
-bool SettingsStore::setUnpairedCacheOwner(const QString& subscriberId, const QString& serverBaseUrl)
-{
-    m_settings.setValue(kUnpairedCacheSubscriberKey, subscriberId);
-    m_settings.setValue(kUnpairedCacheServerKey, serverBaseUrl);
-    m_settings.sync();
-    return m_settings.status() == QSettings::NoError;
-}
-
 std::optional<qint64> SettingsStore::pgpMaterialGeneration(const QString& subscriberId,
                                                          const QString& serverBaseUrl) const
 {
@@ -141,12 +123,6 @@ bool SettingsStore::setPgpMaterialGeneration(const QString& subscriberId, const 
     m_settings.setValue(QStringLiteral("pgp/materialGeneration"), generation);
     m_settings.sync();
     return m_settings.status() == QSettings::NoError;
-}
-
-void SettingsStore::clearUnpairedCacheOwner()
-{
-    m_settings.remove(kUnpairedCacheSubscriberKey);
-    m_settings.remove(kUnpairedCacheServerKey);
 }
 
 QString SettingsStore::deliveryMode() const

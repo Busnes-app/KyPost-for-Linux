@@ -42,12 +42,4 @@ QtObject {
     }
     function confirmVCardImport() { ++importsConfirmed; return true }
     function discardVCardImport() { ++importsDiscarded }
-    // Owner decision Q3.
-    property int contactsToCarry: 0
-    signal carryChanged()
-    property var carryAnswers: []
-    function answerCarry(bring) { carryAnswers = carryAnswers.concat([bring]); contactsToCarry = 0; return true }
-    property int localRemovals: 0
-    function removeLocalContacts() { ++localRemovals; return true }
-    function unsyncedChangeCount() { return 0 }
 }

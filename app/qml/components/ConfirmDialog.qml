@@ -3,8 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import com.kysecurity.mail 1.0
 
-// A yes/no question: a title, an optional plain-text message, two buttons,
-// or three with `alternateText` set (Android's neutral button).
+// A yes/no question: a title, an optional plain-text message, two buttons.
 // Android's AlertDialog with a positive and a negative button.
 //
 // An overlay Item, not a Popup, like FolderDialog.qml: z-order alone keeps it
@@ -20,18 +19,11 @@ Item {
     property string message: ""
     property string acceptText: i18n("OK")
     property string rejectText: i18n("Cancel")
-    property string alternateText: ""
-    // An optional checkbox under the message (unpair's "Also remove this
-    // device's contacts"); off on every open.
-    property string checkText: ""
-    property bool checked: false
 
     signal accepted()
     signal rejected()
-    signal alternated()
 
     function open() {
-        root.checked = false
         root.isOpen = true
         panel.forceActiveFocus()
     }
@@ -42,13 +34,6 @@ Item {
             return
         root.isOpen = false
         root.accepted()
-    }
-
-    function alternate() {
-        if (!root.isOpen || AppLock.locked)
-            return
-        root.isOpen = false
-        root.alternated()
     }
 
     function reject() {
@@ -127,14 +112,6 @@ Item {
                 font.pixelSize: Theme.fontSender
                 wrapMode: Text.WordWrap
             }
-            CheckBox {
-                objectName: "confirmDialogCheck"
-                Layout.fillWidth: true
-                visible: root.checkText !== ""
-                text: root.checkText
-                checked: root.checked
-                onToggled: root.checked = checked
-            }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
@@ -143,12 +120,6 @@ Item {
                     objectName: "confirmDialogReject"
                     text: root.rejectText
                     onClicked: root.reject()
-                }
-                GhostButton {
-                    objectName: "confirmDialogAlternate"
-                    visible: root.alternateText !== ""
-                    text: root.alternateText
-                    onClicked: root.alternate()
                 }
                 PrimaryButton {
                     objectName: "confirmDialogAccept"

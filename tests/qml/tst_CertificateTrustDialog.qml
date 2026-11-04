@@ -26,16 +26,16 @@ TestCase {
 
     SignalSpy {
         id: reconnectSpy
-        signalName: "newLinkRequested"
+        signalName: "reconnectRequested"
     }
 
     function createDialog() {
         const dialog = createTemporaryObject(dialogComponent, testCase)
         verify(dialog !== null, "dialog must instantiate")
-        // Spying on the dialog's own signal is the right seam: opening the
-        // pairing page is the root's wiring (onNewLinkRequested:
-        // root.openPairing()), not this component's responsibility. It never
-        // re-pins by itself (DECISIONS.md, certificate pinning on clients).
+        // Spying on the dialog's own signal is the right seam: turning it
+        // into an actual re-registration is the root's wiring
+        // (onReconnectRequested: Pairing.reconnectToServer()), not this
+        // component's responsibility.
         reconnectSpy.target = dialog
         reconnectSpy.clear()
         return dialog
@@ -69,8 +69,10 @@ TestCase {
         compare(reconnectSpy.count, 1)
     }
 
-    // A dialog left open when the app locks must not stay actionable, and
-    // keeps account state off the screen above the PIN prompt.
+    // A dialog left open when the app locks must not stay actionable. The C++
+    // guard in reconnectToServer() refuses while locked and is the one that
+    // counts; this is the second layer, and the one that keeps account state
+    // off the screen above the PIN prompt.
     function test_lockingClosesTheDialogWithoutReconnecting() {
         const dialog = createDialog()
         dialog.open()

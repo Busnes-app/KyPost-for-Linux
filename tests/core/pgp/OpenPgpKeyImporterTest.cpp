@@ -32,9 +32,6 @@ private slots:
     void aBundleWhoseFirstKeyMatchesIsStillRefused();
     void aBundleCarryingASecondPrivateKeyIsRefused();
 
-    // Owner decision Q2: the relay's contact-key rules, checked locally.
-    void aContactKeyIsJudgedByTheRelaysRules();
-
 private:
     // The "sender" keyring: where the recipient's key comes FROM, standing in
     // for whatever the relay's discovery ladder found.
@@ -313,31 +310,6 @@ void OpenPgpKeyImporterTest::aBundleCarryingASecondPrivateKeyIsRefused()
 
     GnupgFixture::killAgent(home);
     GnupgFixture::killAgent(untouched);
-}
-
-void OpenPgpKeyImporterTest::aContactKeyIsJudgedByTheRelaysRules()
-{
-    const QByteArray key = m_donor.exportPublicKey(QStringLiteral("smuggled@example.com"));
-    QVERIFY(!key.isEmpty());
-    const QStringList mine{ QStringLiteral("other@example.com"), QStringLiteral(" Smuggled@Example.com ") };
-    QCOMPARE(contactKeyProblem(key, mine), ContactKeyProblem::None);
-    QCOMPARE(contactKeyProblem(key, { QStringLiteral("other@example.com") }), ContactKeyProblem::AddressNotOnKey);
-    QCOMPARE(contactKeyProblem(key, { QStringLiteral("  ") }), ContactKeyProblem::NoAddress);
-    QCOMPARE(contactKeyProblem("pasted text", mine), ContactKeyProblem::Unreadable);
-    QCOMPARE(contactKeyProblem(m_donor.tamperedCopyOf(key), mine), ContactKeyProblem::Unreadable);
-    QCOMPARE(contactKeyProblem(m_donor.exportPublicKeys({ QStringLiteral("smuggled@example.com"),
-                                                          QStringLiteral("test@example.com") }),
-                               mine),
-             ContactKeyProblem::Unreadable);
-    QCOMPARE(contactKeyProblem(m_donor.exportSecretKeys({ QStringLiteral("smuggled@example.com") }), mine),
-             ContactKeyProblem::Private);
-
-    GnupgFixture expired;
-    QVERIFY(expired.buildExpired(QStringLiteral("Old <old@example.com>")));
-    QCOMPARE(contactKeyProblem(expired.exportPublicKey(QStringLiteral("old@example.com")),
-                               { QStringLiteral("old@example.com") }),
-             ContactKeyProblem::RevokedOrExpired);
-    GnupgFixture::killAgent(expired.path());
 }
 
 QTEST_GUILESS_MAIN(OpenPgpKeyImporterTest)

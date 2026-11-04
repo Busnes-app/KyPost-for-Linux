@@ -1333,19 +1333,12 @@ int main(int argc, char* argv[])
     // the database. The controller owns the ORDER (register, then purge,
     // never the reverse); this owns what "purge" means.
     pairingController.setAccountReplacementHandlers(
-        [&localDataWipe, &contactDao, &pendingContactChangeDao, &contactsController, &cursorStore, &database]() {
-            // Contacts and their queued edits are the user's to bring along or
-            // not (owner decision Q3): kept, unsynced, until they answer. The
-            // mail always goes.
-            const bool keepContacts = !contactDao.findAll().isEmpty()
-                || pendingContactChangeDao.count().value_or(1) > 0;
-            const LocalDataWipeResult purged = localDataWipe.wipeCachedAccountData(keepContacts);
+        [&localDataWipe, &cursorStore, &database]() {
+            const LocalDataWipeResult purged = localDataWipe.wipeCachedAccountData();
             // The wipe took the in-memory session's cursor mark with it.
             if (database.handle().databaseName() == QStringLiteral(":memory:")
                 && !cursorStore.setAdvancedPastTheDiskCache(true))
                 qCritical("main: could not mark the sync cursors as this in-memory session's");
-            contactsController.load();
-            emit contactsController.carryChanged();
             if (!purged.tablesWiped)
                 qCritical("main: account replacement -- cached mail and contacts could not be erased");
             if (!purged.photoCacheCleared)

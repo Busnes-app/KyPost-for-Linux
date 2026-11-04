@@ -127,12 +127,7 @@ public:
     // Deliberately NOT wipeEverything(): this runs at the moment a new
     // pairing has just been proven, and destroying the credential that was
     // established a moment ago would strand the device.
-    //
-    // keepContacts (owner decision Q3): contacts and their queued edits are
-    // the user's to bring along or not, so they stay, the contact cursor goes
-    // with the others, and CursorStore::contactCarryPending() holds every
-    // contact sync until the user answers.
-    LocalDataWipeResult wipeCachedAccountData(bool keepContacts = false);
+    LocalDataWipeResult wipeCachedAccountData();
 
 private:
     // `removeCurrentDatabase` takes the database file AND the key that
@@ -144,7 +139,7 @@ private:
     // failed -- a non-writable profile directory, an EPERM -- is reported
     // through currentDatabaseRemoved, and keeping the key for the file that
     // survived is what leaves that state recoverable rather than fatal.
-    LocalDataWipeResult wipeCaches(bool removeCurrentDatabase, bool keepContacts = false);
+    LocalDataWipeResult wipeCaches(bool removeCurrentDatabase);
 
     // True when the live connection is open on m_currentDatabasePath, i.e.
     // when unlinking that file would pull the ground out from under this
