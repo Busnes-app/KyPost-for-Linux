@@ -66,6 +66,9 @@ struct ContactSyncOutcome
     // and the cursor cleared, so the caller must pull it again now. Left
     // alone, the user saw "Synced" over an empty contact list.
     bool fullPullNeeded = false;
+
+    // The push carried one batch and more changes are queued: sync again.
+    bool morePending = false;
 };
 
 // Outcome of ContactSyncRepository::queueImport. Nothing is queued unless Queued.
@@ -160,8 +163,8 @@ public:
     // <account>?"; nothing syncs until it is answered.
     bool carryPending() const;
     // Yes: `contacts` (this device's, as the caller prepared them) become
-    // creates for the account now paired, replacing the queue. Bounded like
-    // an import; anything but Queued changes nothing.
+    // creates, under new uids, for the account now paired, replacing the
+    // cache and the queue. Anything but Queued changes nothing.
     [[nodiscard]] ContactImportOutcome carryInto(const QVector<Contact>& contacts);
     // No, or unpair's "Also remove this device's contacts": every cached
     // contact and queued change goes, with the contact cursor.

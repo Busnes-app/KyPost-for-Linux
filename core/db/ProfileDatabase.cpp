@@ -78,20 +78,19 @@ bool databaseFileIsEncrypted(const QString& path)
 
 namespace {
 
-// To `path + kUnreadableDatabaseSuffix`, replacing an earlier one, sidecars
-// with it. False leaves `path` where it was.
+// To `path + kUnreadableDatabaseSuffix`, sidecars with it. Never over an
+// earlier one, which may be the only copy of something. False leaves `path`
+// where it was.
 bool moveAside(const QString& path)
 {
     const QString aside = path + kUnreadableDatabaseSuffix;
-    for (const QString& sidecar : { QString(), QStringLiteral("-wal"), QStringLiteral("-shm") })
-        QFile::remove(aside + sidecar);
-    if (!QFile::rename(path, aside))
+    if (QFile::exists(aside) || !QFile::rename(path, aside))
         return false;
     for (const QString& sidecar : { QStringLiteral("-wal"), QStringLiteral("-shm") })
         if (QFile::exists(path + sidecar))
             QFile::rename(path + sidecar, aside + sidecar);
-    qCritical("ProfileDatabase: this profile's database could not be opened with the stored key; "
-               "it was moved to %s and a new profile was started", qUtf8Printable(aside));
+    qCritical("ProfileDatabase: this profile's database is encrypted under a key that is no longer "
+               "stored; it was moved to %s and a new profile was started", qUtf8Printable(aside));
     return true;
 }
 
@@ -162,13 +161,8 @@ ProfileDatabaseMode openProfileDatabase(Database& database, DatabaseKeyStore& ke
             return ProfileDatabaseMode::PlaintextOnDisk;
         }
 
-        if (!database.open(path, material)) {
-            // A stored key that does not open this encrypted file: what the
-            // F13 bug above left behind on earlier builds. Same answer, with
-            // the key kept, so renaming the file back recovers it.
-            if (!databaseFileIsEncrypted(path) || !moveAside(path) || !database.open(path, material))
-                return ProfileDatabaseMode::FailedToOpen;
-        }
+        if (!database.open(path, material))
+            return ProfileDatabaseMode::FailedToOpen;
         return ProfileDatabaseMode::EncryptedOnDisk;
     }
 

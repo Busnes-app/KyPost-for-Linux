@@ -76,6 +76,7 @@ private slots:
     void aSendForAReplacedAccountIsNotReportedAsSent();
     void aScheduledSendStaysEncryptedEndToEnd();
     void aRelayThatCannotScheduleGetsNoCiphertext();
+    void aFailedBccDeliveryIsNotReportedAsAPlainSuccess_data();
     void aFailedBccDeliveryIsNotReportedAsAPlainSuccess();
     void theEnrolledKeyGenerationIsAsserted();
 
@@ -435,9 +436,22 @@ void MailEncryptedSendTest::aRelayThatCannotScheduleGetsNoCiphertext()
 
 // The relay sends each Bcc on its own and reports a failed one only as a
 // warning on a 200. The composer closes on success, so the warning has to
-// reach the app-level notice, or the sender believes everyone got it.
+// reach the app-level notice, or the sender believes everyone got it. A
+// message with no Bcc is never said to have lost one.
+void MailEncryptedSendTest::aFailedBccDeliveryIsNotReportedAsAPlainSuccess_data()
+{
+    QTest::addColumn<QString>("to");
+    QTest::addColumn<QString>("bcc");
+    QTest::addColumn<int>("bccWarnings");
+    QTest::newRow("with a Bcc") << QString() << QStringLiteral("you@example.com") << 1;
+    QTest::newRow("without a Bcc") << QStringLiteral("you@example.com") << QString() << 0;
+}
+
 void MailEncryptedSendTest::aFailedBccDeliveryIsNotReportedAsAPlainSuccess()
 {
+    QFETCH(QString, to);
+    QFETCH(QString, bcc);
+    QFETCH(int, bccWarnings);
     FakeRelayServer fake(httpResponse(200, "OK",
                                       R"({"ok":true,"sentSaved":true,"warning":"1 bcc delivery(s) failed"})"));
     fake.setResponseForPath("/api/pgp/bootstrap", bootstrapResponse(QStringLiteral("me@example.com")));
@@ -449,12 +463,13 @@ void MailEncryptedSendTest::aFailedBccDeliveryIsNotReportedAsAPlainSuccess()
 
     QSignalSpy completed(harness.controller.get(), &MailController::sendCompleted);
     QSignalSpy warned(harness.controller.get(), &MailController::sendWarning);
-    harness.controller->sendClientEncrypted(QStringLiteral("you@example.com"), QString(), QString(),
-                                             QStringLiteral("Hello"), QStringLiteral("Hi"), {});
+    harness.controller->sendClientEncrypted(to, QString(), bcc, QStringLiteral("Hello"), QStringLiteral("Hi"), {});
     QTRY_VERIFY_WITH_TIMEOUT(completed.count() == 1, 30000);
     QVERIFY(completed.at(0).at(1).toBool());
-    QCOMPARE(warned.count(), 1);
-    QVERIFY(warned.at(0).at(0).toString().contains(QStringLiteral("Bcc")));
+    int mentions = 0;
+    for (const QList<QVariant>& signal : warned)
+        mentions += signal.at(0).toString().contains(QStringLiteral("Bcc")) ? 1 : 0;
+    QCOMPARE(mentions, bccWarnings);
 }
 
 // A converted account's relay refuses (409 pgpStateChanged) every

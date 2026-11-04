@@ -188,21 +188,15 @@ bool ContactSyncRepository::carryPending() const
 
 ContactImportOutcome ContactSyncRepository::carryInto(const QVector<Contact>& contacts)
 {
-    if (contacts.size() > kMaxSyncChanges)
-        return ContactImportOutcome::TooLarge;
-    qsizetype bytes = 0;
-    for (const Contact& contact : contacts)
-        bytes += createJson(contact).toUtf8().size() + 1;
-    if (bytes > kMaxSyncBodyBytes - kSyncEnvelopeHeadroom)
-        return ContactImportOutcome::TooLarge;
-    // Each keeps its local uid, so links to it hold; the relay creates it
-    // under that uid in the new account.
+    // Each becomes a new contact under a new uid, so nothing already on the
+    // relay is ever overwritten -- not even when the "different" account is
+    // in fact the same one (an unpair by an older build records no owner).
+    // The sync pushes them in as many batches as the relay's caps need.
     const bool queued = inTransaction(m_db, [&] {
-        if (!m_pendingDao.deleteAll())
+        if (!m_pendingDao.deleteAll() || !m_contactDao.deleteAll())
             return false;
-        for (const Contact& contact : contacts) {
-            if (!m_contactDao.insertOrReplace(contact)
-                || m_pendingDao.enqueue(contact.uid, createJson(contact), nowUtc()) <= 0)
+        for (Contact contact : contacts) {
+            if (!insertCreate(contact))
                 return false;
         }
         return true;
@@ -292,7 +286,17 @@ std::optional<ContactSyncRepository::ContactSyncPlan> ContactSyncRepository::pla
     plan.endpoint = RelayEndpoint{ QUrl(pairing->serverBaseUrl),
                                     RelayAuth{ pairing->deviceId, pairing->deviceSecret } };
     plan.cursor = storedCursor.isEmpty() ? 0 : storedCursor.toLongLong();
-    plan.pending = m_pendingDao.findAll();
+    // At most what one push may carry (the relay's change and body caps);
+    // the rest goes on the next sync, which applySync() asks for. Never
+    // nothing while something is queued.
+    qsizetype bytes = 0;
+    for (const PendingContactChangeRecord& record : m_pendingDao.findAll()) {
+        bytes += record.changeJson.toUtf8().size() + 1;
+        if (!plan.pending.isEmpty()
+            && (plan.pending.size() >= kMaxSyncChanges || bytes > kMaxSyncBodyBytes - kSyncEnvelopeHeadroom))
+            break;
+        plan.pending.append(record);
+    }
     plan.identity = identityOf(*pairing);
     return plan;
 }
@@ -490,10 +494,12 @@ ContactSyncOutcome ContactSyncRepository::applySync(const ContactSyncPlan& plan,
     if (!m_cursorStore.setContactBaseCursor(QString::number(result.cursor)))
         return { ContactSyncStatus::CacheWriteFailed, {}, QString(), assignments };
 
-    return { ContactSyncStatus::Success,
-             ContactSyncSummary{ static_cast<int>(pending.size()), applied, result.cursor },
-             QString(),
-             assignments };
+    ContactSyncOutcome done{ ContactSyncStatus::Success,
+                             ContactSyncSummary{ static_cast<int>(pending.size()), applied, result.cursor },
+                             QString(),
+                             assignments };
+    done.morePending = m_pendingDao.count().value_or(0) > 0;
+    return done;
 }
 
 ContactDedupeResult ContactSyncRepository::dedupeWith(HttpClient& httpClient, const RelayEndpoint& endpoint)

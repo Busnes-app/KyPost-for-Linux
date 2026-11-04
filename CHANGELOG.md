@@ -45,7 +45,7 @@ explains the signed remote and the standalone-bundle update-origin limitation.
     removes the previous account's cached mail. If contacts are on this
     device, KyPost asks "Bring your N contacts into <server>?" and syncs
     none of them until you answer. Bring them adds them to the new account
-    (without the old server's photos and groups); Remove them deletes them
+    as new contacts (without the old server's photos); Remove them deletes them
     from this device. "Remove pairing" now asks first and offers "Also remove
     this device's contacts", off by default, with a warning when changes
     have not synced. Before, unpairing and pairing another account kept the
@@ -70,8 +70,10 @@ explains the signed remote and the standalone-bundle update-origin limitation.
     says "This server's certificate changed since you paired."
   - When the server refuses this device's stored pairing token on a push
     re-registration, the "pair again" banner now shows for that refusal too.
-  - Mail you paged back to in a folder is refreshed at the next launch.
-    Before, messages below the newest 50 kept the state they had when loaded.
+  - At each launch, a folder holding more than its newest 50 messages starts
+    again from the newest 50; page back for older ones. Before, messages
+    below the newest 50 kept the state they had when loaded, even after they
+    were read, moved or deleted elsewhere.
   - Archiving or deleting several messages where only some fail now removes
     the ones that worked.
   - A message opened from a notification opens in its own folder, so its
@@ -79,8 +81,8 @@ explains the signed remote and the standalone-bundle update-origin limitation.
   - "Open in new window" is off while the message is sending or saving.
   - An attachment that finishes downloading after the app locks is neither
     saved nor opened.
-  - After a session kept in memory, the next normal launch fetches the whole
-    mailbox again instead of only newer mail.
+  - After a session kept in memory, the next normal launch starts again from
+    the newest mail instead of skipping what that session fetched.
   - Attachment names lose invisible direction-control characters that could
     disguise the file type.
   - If the database key is gone but the encrypted database is still there,
@@ -93,9 +95,9 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 - Contacts created on this device before this version, and not yet synced,
   are still sent without their own identifier on their first sync.
-- After upgrading, the first refresh of a folder that holds more than 50
-  messages fetches the newest 50 again and drops the older ones until you
-  page back.
+- A device enrolled for encrypted sending before this version has no key
+  generation recorded. On an account whose keys were converted, it is asked
+  to enroll again before its first encrypted send.
 
 ## Source notes at 7a186ae1
 

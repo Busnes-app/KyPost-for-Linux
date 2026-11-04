@@ -54,6 +54,7 @@ private slots:
     void applySyncReportsFailureWhenTheCursorCannotBePersisted();
     void aTooOldWipeThatFailsNeverLeavesTheCursorAhead();
     void aVCardImportIsQueuedWholeAndOnlyIntoAnEmptyOutbox();
+    void aPushCarriesAtMostOneBatch();
     void aVCardImportThatCannotBePushedInOneSyncIsRefused();
     void aVCardImportThatCannotReadTheOutboxQueuesNothing();
     void aVCardImportExactlyAtTheBodyBudgetIsQueued();
@@ -1391,6 +1392,25 @@ void ContactSyncRepositoryTest::aVCardImportExactlyAtTheBodyBudgetIsQueued()
     QVERIFY(f.open());
     QCOMPARE(f.repository->queueImport(two), ContactImportOutcome::TooLarge);
     QVERIFY(f.pendingDao->findAll().isEmpty());
+}
+
+// One push carries at most the relay's 500 changes (and its body cap); the
+// rest wait for the next sync, which the outcome asks for. Contacts brought
+// into a new account (owner decision Q3) can be more than one push.
+void ContactSyncRepositoryTest::aPushCarriesAtMostOneBatch()
+{
+    ImportFixture f;
+    QVERIFY(f.open());
+    savePairing(*f.pairingStore, 1);
+    for (int i = 0; i < ContactSyncRepository::kMaxSyncChanges + 3; ++i) {
+        Contact c;
+        c.fn = QStringLiteral("Person %1").arg(i);
+        QVERIFY(!f.repository->queueCreate(c).isEmpty());
+    }
+    const std::optional<ContactSyncRepository::ContactSyncPlan> plan = f.repository->planSync();
+    QVERIFY(plan.has_value());
+    QCOMPARE(plan->pending.size(), ContactSyncRepository::kMaxSyncChanges);
+    QCOMPARE(plan->pending.first().id, f.pendingDao->findAll().first().id); // oldest first
 }
 
 // One transaction: a write that fails on the second contact takes the first

@@ -293,8 +293,7 @@ bool ContactsController::answerCarry(bool bring)
         contact.createdAt.reset();
         contact.updatedAt.reset();
         contact.photoRef.reset();
-        contact.groupIds.clear();
-        contact.isSelf = false;
+        contact.isSelf = false; // groupIds stay: the relay drops ids the new account does not have
         const QString refusal = contactKeyRefusal(contact, std::nullopt);
         if (!refusal.isEmpty()) {
             contact.pgpKey.reset();
@@ -305,9 +304,6 @@ bool ContactsController::answerCarry(bool bring)
     case ContactImportOutcome::Queued:
         break;
     case ContactImportOutcome::TooLarge:
-        setLastError(i18n("Too many contacts to bring into this account in one go (the limit is %1). Delete some on this device, then choose again.",
-                          ContactSyncRepository::kMaxSyncChanges));
-        return false;
     case ContactImportOutcome::OutboxNotEmpty:
     case ContactImportOutcome::WriteFailed:
         setLastError(i18n("Could not save the contacts to the local database"));
@@ -428,7 +424,8 @@ void ContactsController::applySyncOutcome(const ContactSyncOutcome& outcome)
         refreshGroupsCache();
         load();
         // The relay never answers since=0 with tooOld, so this runs once.
-        if (outcome.fullPullNeeded)
+        // morePending: each sync pushes at least one change, so it ends.
+        if (outcome.fullPullNeeded || outcome.morePending)
             sync();
         break;
     case ContactSyncStatus::NotPaired:

@@ -680,12 +680,24 @@ void ContactsControllerTest::aRelayKeyRefusalNamesTheContact()
     Contact keyed;
     keyed.fn = QStringLiteral("Grace Hopper");
     keyed.pgpKey = QStringLiteral("-----BEGIN PGP PUBLIC KEY BLOCK-----\nold\n");
-    QVERIFY(!repository.queueCreate(keyed).isEmpty());
+    const QString keyedUid = repository.queueCreate(keyed);
+    QVERIFY(!keyedUid.isEmpty());
 
     controller.sync();
     QTRY_VERIFY_WITH_TIMEOUT(!controller.lastError().isEmpty(), 10000);
     QVERIFY2(controller.lastError().contains(QStringLiteral("Grace Hopper")), qPrintable(controller.lastError()));
     QVERIFY(controller.lastError().contains(QStringLiteral("revoked or expired")));
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.isBusy(), 10000);
+
+    // A create now carries its uid, so the relay names it; the user still
+    // sees the name.
+    fake.setResponse(httpResponse(400, "Bad Request",
+                                  "invalid PGP key for contact " + keyedUid.toUtf8()
+                                      + ": contact key does not carry any of the contact's addresses as a user ID\n"));
+    controller.sync();
+    QTRY_VERIFY_WITH_TIMEOUT(controller.lastError().contains(QStringLiteral("does not carry")), 10000);
+    QVERIFY2(controller.lastError().contains(QStringLiteral("Grace Hopper")), qPrintable(controller.lastError()));
+    QVERIFY(!controller.lastError().contains(keyedUid));
     QTRY_VERIFY_WITH_TIMEOUT(!controller.isBusy(), 10000);
 }
 
@@ -746,10 +758,13 @@ void ContactsControllerTest::contactsKeptAcrossAnAccountChangeWaitForTheUser()
     for (const PendingContactChangeRecord& record : queued) {
         const QJsonObject wire = QJsonDocument::fromJson(record.changeJson.toUtf8()).object();
         QCOMPARE(wire.value(QStringLiteral("uid")).toString(), record.contactUid);
+        // A new contact, never the old account's uid: if the "other" account
+        // is the same one, nothing on the relay is overwritten.
+        QVERIFY(record.contactUid != QStringLiteral("srv-old-1"));
         QVERIFY(!wire.contains(QStringLiteral("photoRef")) || wire.value(QStringLiteral("photoRef")).toString().isEmpty());
-        QVERIFY(wire.value(QStringLiteral("groupIDs")).toArray().isEmpty());
         QCOMPARE(wire.value(QStringLiteral("rev")).toInt(), 0);
     }
+    QVERIFY(!contactDao.findById(QStringLiteral("srv-old-1")).has_value());
     QTRY_VERIFY_WITH_TIMEOUT(!controller.isBusy(), 10000);
     QVERIFY(fake.receivedRequest().contains("POST /api/contacts/sync"));
     QCOMPARE(fake.receivedJsonBody().value(QStringLiteral("baseCursor")).toInt(), 0);

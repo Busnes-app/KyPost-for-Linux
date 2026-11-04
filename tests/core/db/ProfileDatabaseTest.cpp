@@ -163,8 +163,26 @@ void ProfileDatabaseTest::anEncryptedProfileIsNeverReopenedInTheClear()
     QVERIFY2(databaseFileIsEncrypted(path), "the replacement profile is not encrypted");
     QVERIFY2(QFileInfo::exists(path + kUnreadableDatabaseSuffix), "the unreadable database was not kept aside");
     QVERIFY(databaseFileIsEncrypted(path + kUnreadableDatabaseSuffix));
-    Database again;
-    QCOMPARE(openProfileDatabase(again, keyStore, path), ProfileDatabaseMode::EncryptedOnDisk);
+    {
+        Database again;
+        QCOMPARE(openProfileDatabase(again, keyStore, path), ProfileDatabaseMode::EncryptedOnDisk);
+    }
+
+    // The key lost a second time: the copy set aside the first time may be the
+    // only one of something, so it is never overwritten. Nothing is minted,
+    // nothing moves, and this session stays in memory.
+    const QByteArray firstAside = [&] {
+        QFile f(path + kUnreadableDatabaseSuffix);
+        return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+    }();
+    QVERIFY(keyStore.clear());
+    Database third;
+    QCOMPARE(openProfileDatabase(third, keyStore, path), ProfileDatabaseMode::InMemoryNoKeyStorage);
+    QCOMPARE(keyStore.existing().status, DatabaseKeyStore::Status::Absent);
+    QVERIFY(databaseFileIsEncrypted(path));
+    QFile aside(path + kUnreadableDatabaseSuffix);
+    QVERIFY(aside.open(QIODevice::ReadOnly));
+    QCOMPARE(aside.readAll(), firstAside);
 }
 
 void ProfileDatabaseTest::aNewProfileWithNowhereToKeepAKeyGoesToMemory()

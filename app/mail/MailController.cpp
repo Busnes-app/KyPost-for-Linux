@@ -2347,7 +2347,8 @@ MailController::ClientEncryptedOutcome runClientEncryptedSend(
     // Either the planner never built a copy, or the relay did not file it. A
     // held message has filed nothing yet.
     outcome.missingSentCopy = plan.sentCopyUnavailable || (!sent.sentSaved && !sendAt.isValid());
-    outcome.warned = sent.warned;
+    // Without Bcc the warning can only be about Sent, which missingSentCopy says.
+    outcome.bccMayHaveFailed = sent.warned && !bccList.isEmpty();
     return outcome;
 }
 
@@ -2419,10 +2420,10 @@ void MailController::finishClientEncryptedSend(quint64 token, const ClientEncryp
         m_lastSendMissingSentCopy = outcome.missingSentCopy;
         if (outcome.scheduledAt.isValid())
             announceScheduled(outcome.scheduledAt);
-        // The relay's warning is prose and is not shown (PgpSendClient). With
-        // the Sent copy filed, the only thing left to warn about is a Bcc
-        // delivery that failed; the composer closes, so say it here.
-        if (outcome.warned)
+        // The relay's warning is prose and is not shown (PgpSendClient). The
+        // composer closes on success, so a Bcc delivery that may have failed
+        // is said here.
+        if (outcome.bccMayHaveFailed)
             emit sendWarning(outcome.missingSentCopy
                 ? i18n("Sent, but some Bcc recipients may not have received it, and it may be missing from Sent. Don't send it to everyone again.")
                 : i18n("Sent, but some Bcc recipients may not have received it. Don't send it to everyone again."));
@@ -2438,8 +2439,9 @@ void MailController::finishClientEncryptedSend(quint64 token, const ClientEncryp
         setLastError(i18n("The message could not be sent. Try again."));
         break;
     case Failure::KeyMaterialChanged:
-        setLastError(i18n("Your OpenPGP keys changed since this device was enrolled, so the server refused the "
-                          "message. Nothing was sent. Enroll this device again in Settings, then send it."));
+        // Also what a device enrolled before KyPost recorded the generation sees.
+        setLastError(i18n("The server needs this device to be enrolled again before it sends encrypted mail "
+                          "for this account. Nothing was sent. Enroll this device again in Settings, then send it."));
         break;
     case Failure::NotConfigured:
         setLastError(i18n("This account has no mail configuration, so there is no address to send "

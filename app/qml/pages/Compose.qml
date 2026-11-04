@@ -296,6 +296,17 @@ Item {
         root.trySaveDraft()
     }
 
+    // Synchronous and conservative, for a window close that cannot wait for
+    // the page: false only when nothing can be in this composer.
+    function mayHaveContent() {
+        toField.commitInputAsToken()
+        ccField.commitInputAsToken()
+        bccField.commitInputAsToken()
+        return toField.joinedText !== "" || ccField.joinedText !== "" || bccField.joinedText !== ""
+            || subjectField.text.trim() !== "" || root.attachmentPaths.length > 0
+            || (root.restoredDraft.body || root.initialBody || "") !== "" || bodyEditor.touched
+    }
+
     // callback(true) when closing would lose something the user has here: a
     // recipient, subject, body text or attachment. A typed address is
     // committed first, as trySend() does.

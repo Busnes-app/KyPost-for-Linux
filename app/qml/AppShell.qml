@@ -871,7 +871,9 @@ Kirigami.ApplicationWindow {
             LockOverlay {}
 
             onClosing: function (close) {
-                if (composeWindow.closeConfirmed) {
+                // Accepted at once when it cannot hold anything, so an empty
+                // window never holds up a quit.
+                if (composeWindow.closeConfirmed || !poppedCompose.mayHaveContent()) {
                     composeWindow.destroy()
                     return
                 }
