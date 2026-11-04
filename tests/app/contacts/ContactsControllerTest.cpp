@@ -595,8 +595,9 @@ void ContactsControllerTest::aTooOldCursorIsFollowedByAFullPull()
 }
 
 // Owner decision Q2. The relay refuses a whole sync batch over one contact key
-// it will not take, so such a key is refused at save, naming the contact. An
-// unchanged key passes, as on the relay, so an old key never blocks an edit.
+// it will not take, so such a key is refused at save, naming the contact. A key
+// unchanged from the relay's passes, as on the relay, so an old key never
+// blocks an edit.
 void ContactsControllerTest::aKeyTheRelayWouldRefuseIsNeverQueued()
 {
     Database db;
@@ -630,14 +631,22 @@ void ContactsControllerTest::aKeyTheRelayWouldRefuseIsNeverQueued()
     QVERIFY(controller.lastError().contains(QStringLiteral("Ada")));
     QCOMPARE(pendingDao.count().value_or(-1), 0);
 
-    // A key already on the contact is not re-judged by an unrelated edit.
+    // A key the relay already holds (a synced contact) is not re-judged by an
+    // unrelated edit.
     Contact held;
+    held.uid = QStringLiteral("srv-ada");
+    held.rev = 3;
     held.fn = QStringLiteral("Ada");
     held.pgpKey = pasted;
-    const QString uid = repository.queueCreate(held);
-    QVERIFY(!uid.isEmpty());
+    QVERIFY(contactDao.insertOrReplace(held));
+    const QString uid = held.uid;
     QVERIFY(controller.updateContact(uid, { { QStringLiteral("fn"), QStringLiteral("Ada L.") },
                                             { QStringLiteral("pgpKey"), pasted } }));
+    // Once a change is queued the local key is not the relay's: the same key
+    // on the next edit is judged against that edit (round-3 objection).
+    QVERIFY(!controller.updateContact(uid, { { QStringLiteral("fn"), QStringLiteral("Ada L.") },
+                                             { QStringLiteral("emails"), emails },
+                                             { QStringLiteral("pgpKey"), pasted } }));
     // A new one is.
     QVERIFY(!controller.updateContact(uid, { { QStringLiteral("fn"), QStringLiteral("Ada L.") },
                                              { QStringLiteral("pgpKey"), QStringLiteral("other junk") } }));

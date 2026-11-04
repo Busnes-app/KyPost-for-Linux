@@ -75,9 +75,10 @@ class PairingController : public QObject
     // legitimate self-hosted/dev case -- but it must be announced rather than
     // blending in with https.
     Q_PROPERTY(bool pendingPairInsecure READ pendingPairInsecure NOTIFY pairingStateChanged)
-    // The pending link is for the account already paired and its pin is not
-    // the one this device holds: confirming it re-pins (DECISIONS.md:
-    // re-pinning needs an explicit warning, never silent).
+    // The pending link is for the account already paired, and the server has
+    // not been shown to still present the key this device pinned: confirming
+    // it may re-pin (DECISIONS.md: re-pinning needs an explicit warning,
+    // never silent). True until a pinned check proves otherwise.
     Q_PROPERTY(bool pendingPairRepins READ pendingPairRepins NOTIFY pairingStateChanged)
     // Meaningful only while pairingState == "approval" (#516): the six-digit
     // code the server also shows on the web page, so the user can tell their
@@ -437,12 +438,24 @@ private:
         int pollIntervalSeconds = 0;
         int failures = 0;
         bool fromLink = false;
+        // An approval answered while the app was locked, applied on unlock.
+        std::optional<PairingStatusResult> heldApproval;
     };
     std::unique_ptr<AwaitingApproval> m_approval;
     QTimer m_approvalTimer;
     // Bumped whenever the wait ends, so a poll answer that arrives after a
     // cancel is dropped rather than applied to the next wait.
     quint64 m_approvalGeneration = 0;
+
+    // F29: whether the server of a same-account pending link still presents
+    // the pinned key, checked by one GET pinned to it (checkPendingRepin).
+    // Same: no warning, and confirming keeps that pin enforced, so the
+    // registration cannot re-pin silently. Anything else warns.
+    enum class RepinCheck { Checking, Same, Changed };
+    RepinCheck m_repinCheck = RepinCheck::Checking;
+    quint64 m_repinGeneration = 0;
+    QByteArray storedPinForPendingAccount() const;
+    void checkPendingRepin();
     bool m_approvalPollInFlight = false;
 
     bool m_reregistrationRejected = false;

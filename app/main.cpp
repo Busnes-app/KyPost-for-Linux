@@ -1332,18 +1332,21 @@ int main(int argc, char* argv[])
     // is constructed above and the controller is not allowed to know about
     // the database. The controller owns the ORDER (register, then purge,
     // never the reverse); this owns what "purge" means.
-    pairingController.setAccountReplacementHandlers(
-        [&localDataWipe, &contactDao, &pendingContactChangeDao, &contactsController, &cursorStore, &database]() {
+    const auto purgeCachedAccountData = [&localDataWipe, &contactDao, &pendingContactChangeDao,
+                                         &contactsController, &cursorStore, &database]() {
             // Contacts and their queued edits are the user's to bring along or
             // not (owner decision Q3): kept, unsynced, until they answer. The
             // mail always goes.
             const bool keepContacts = !contactDao.findAll().isEmpty()
                 || pendingContactChangeDao.count().value_or(1) > 0;
             const LocalDataWipeResult purged = localDataWipe.wipeCachedAccountData(keepContacts);
-            // The wipe took the in-memory session's cursor mark with it.
+            // The wipe took the in-memory session's cursor mark with it. And
+            // the on-disk cache this session left alone is the previous
+            // account's: the next launch on disk purges it (F1).
             if (database.handle().databaseName() == QStringLiteral(":memory:")
-                && !cursorStore.setAdvancedPastTheDiskCache(true))
-                qCritical("main: could not mark the sync cursors as this in-memory session's");
+                && (!cursorStore.setAdvancedPastTheDiskCache(true)
+                    || !cursorStore.setDiskCacheIsAnotherAccounts(true)))
+                qCritical("main: could not mark the on-disk cache as the previous account's");
             contactsController.load();
             emit contactsController.carryChanged();
             if (!purged.tablesWiped)
@@ -1359,7 +1362,9 @@ int main(int argc, char* argv[])
             // decide, not the aggregate.
             return purged.tablesWiped && purged.photoCacheCleared && purged.syncCursorsCleared
                 && purged.legacyDatabasesRemoved;
-        },
+        };
+    pairingController.setAccountReplacementHandlers(
+        purgeCachedAccountData,
         [&localDataWipe]() {
             // A failed purge has no safe partial outcome: two accounts' data
             // on one device with no way to tell them apart is precisely what
@@ -1370,6 +1375,22 @@ int main(int argc, char* argv[])
                 qCritical("main: the escalation wipe was itself incomplete -- this device still holds data");
             AppRelauncher::requestRelaunch();
         });
+    // Another account was paired while this device ran in memory: this
+    // on-disk cache is the previous account's, so it goes through the same
+    // purge (mail out, contacts asked about) before anything shows it.
+    if (database.handle().databaseName() != QStringLiteral(":memory:") && cursorStore.diskCacheIsAnotherAccounts()) {
+        if (purgeCachedAccountData()) {
+            if (!cursorStore.setDiskCacheIsAnotherAccounts(false))
+                qCritical("main: could not clear the previous account's cache mark");
+        } else {
+            qCritical("main: the previous account's on-disk cache could not be purged; erasing this device");
+            const LocalDataWipeResult wiped = localDataWipe.wipeEverything();
+            if (!wiped.complete())
+                qCritical("main: the escalation wipe was itself incomplete -- this device still holds data");
+            // Queued: exit() does nothing before the event loop runs.
+            QTimer::singleShot(0, qApp, [] { AppRelauncher::requestRelaunch(); });
+        }
+    }
 
     certificatePinSink.setMismatchHandler([&pairingController](const QByteArray& observedSpki) {
         qCritical("main: TLS certificate pin mismatch -- refusing to send credentials to this server");
@@ -1572,8 +1593,8 @@ int main(int argc, char* argv[])
     // is handed -- moves. `pairingController` is the receiver because it is
     // what the outcome is reported to and it outlives networkExecutor::
     // shutdown(), which main() calls immediately after app.exec() returns.
-    const auto reregisterAndReport = [&deviceRegistrationService, &networkExecutor,
-                                       &pairingController, reportReregistration](const QString& endpoint) {
+    const auto reregisterWithPairingToken = [&deviceRegistrationService, &networkExecutor,
+                                              &pairingController, reportReregistration](const QString& endpoint) {
         const std::optional<PairingParams> params = deviceRegistrationService.reregistrationParams();
         if (!params.has_value())
             return; // not paired yet -- an ordinary state, not a failure
@@ -1604,6 +1625,48 @@ int main(int argc, char* argv[])
                 // pin, writes the delivery settings.
                 reportReregistration(deviceRegistrationService.finishPair(std::move(attempt), params, result),
                                       endpoint);
+            });
+    };
+
+    // Owner answer Q4: an endpoint rotation goes to native/refresh, under the
+    // device's own credential and the pairing's pin, keeping its keys. The
+    // pairing token is single-use and expires in 90 s, so re-registering with
+    // it failed every time; that path is kept only for a relay without the
+    // route (404), where it still ends in the "pair again" banner. A sealed
+    // secret (the app is locked) also takes it, for its deferral.
+    const auto reregisterAndReport = [&pairingStore, &networkExecutor, &pairingController,
+                                       reregisterWithPairingToken](const QString& endpoint) {
+        const std::optional<DevicePairing> pairing = pairingStore.load();
+        const std::optional<std::pair<QByteArray, QByteArray>> keys = pairingStore.pushPublicKeys();
+        if (!pairing.has_value() || pairing->deviceId.isEmpty() || pairing->deviceSecret.isEmpty() || !keys) {
+            reregisterWithPairingToken(endpoint);
+            return;
+        }
+        const QUrl server(pairing->serverBaseUrl);
+        const RelayAuth auth{ pairing->deviceId, pairing->deviceSecret };
+        const WebPushSubscription subscription{ keys->first, keys->second };
+        networkExecutor.run(
+            &pairingController,
+            [server, auth, endpoint, subscription](HttpClient& http) {
+                return NativeRegistrationClient(http).refreshPushEndpoint(server, auth, endpoint, subscription);
+            },
+            [&pairingStore, &pairingController, reregisterWithPairingToken, endpoint,
+             deviceId = pairing->deviceId](const NativeRegistrationResult& result) {
+                const std::optional<DevicePairing> now = pairingStore.load();
+                if (!now.has_value() || now->deviceId != deviceId)
+                    return; // re-paired or unpaired meanwhile: not this pairing's answer
+                if (result.outcome == RegistrationOutcome::Success)
+                    return;
+                if (result.statusCode == 404) {
+                    reregisterWithPairingToken(endpoint); // a relay from before the route
+                    return;
+                }
+                if (result.outcome == RegistrationOutcome::Unauthorized) {
+                    qWarning("main: push refresh was refused (401) -- this device is no longer paired");
+                    pairingController.setReregistrationRejected(true);
+                    return;
+                }
+                qWarning("main: push refresh failed (%d); the next endpoint change tries again", result.statusCode);
             });
     };
 

@@ -134,6 +134,7 @@ private slots:
 
     // Older mail (L12).
     void anOlderPageLoadsBelowTheListUntilTheRelayHasNoMore();
+    void anUnpairedRefreshDoesNotSpendTheFirstReplacingResync();
     void aLockedOrSearchingAppLoadsNoOlderMail();
     void anOlderPageForAFolderNoLongerOpenIsKeptButNotShown();
     void anOlderRowFetchesItsBodyWhenOpenedAndKeepsIt();
@@ -512,8 +513,6 @@ void MailControllerTest::aPlainSendNeverGoesOutWhenCustodyIsUnknownOrClient_data
 void MailControllerTest::aPlainSendNeverGoesOutWhenCustodyIsUnknownOrClient()
 {
     QFETCH(QByteArray, bootstrap);
-    if (!OpenPgpDecryptor::engineAvailable() && QByteArray(QTest::currentDataTag()) == "client custody")
-        QSKIP("no gpg: a client-custody account hands off to webmail instead");
     Database db;
     QVERIFY(db.open(QStringLiteral(":memory:")));
     EmailDao emailDao(db.handle());
@@ -4067,6 +4066,28 @@ void MailControllerTest::anOlderPageLoadsBelowTheListUntilTheRelayHasNoMore()
     f.executor.shutdown();
     QCOMPARE(requestsMatching(fake, "before="), 1);
     QVERIFY(f.controller.lastError().isEmpty());
+}
+
+// Pass 3, S6: a folder holding rows below the window gets a replacing full
+// window on its first refresh of the session (F31). A refresh with nothing
+// to send -- unpaired at startup -- must not use that up.
+void MailControllerTest::anUnpairedRefreshDoesNotSpendTheFirstReplacingResync()
+{
+    FakeRelayServer fake(inboxRows({ 99 }));
+    RefreshFixture f(fake.port());
+    for (int id = 1; id <= 51; ++id)
+        holdRow(f.emailDao, QStringLiteral("INBOX"), QString::number(id), false, QStringLiteral("b"));
+    QVERIFY(f.cursorStore.setMailCursor(QStringLiteral("sub-1"), QStringLiteral("INBOX"), QStringLiteral("7")));
+    const DevicePairing pairing = *f.pairingStore.load();
+
+    QVERIFY(f.pairingStore.clear());
+    f.controller.refresh();
+    QCOMPARE(requestsMatching(fake, "since="), 0);
+
+    QVERIFY(f.pairingStore.save(pairing));
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(requestsMatching(fake, "since=") == 1 && !f.controller.isBusy(), 10000);
+    QCOMPARE(requestsMatching(fake, "since=0"), 1);
 }
 
 void MailControllerTest::aLockedOrSearchingAppLoadsNoOlderMail()

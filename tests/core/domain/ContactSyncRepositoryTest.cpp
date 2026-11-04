@@ -29,6 +29,7 @@ class ContactSyncRepositoryTest : public QObject
 
 private slots:
     void syncWithoutPairingReturnsNotPaired();
+    void aChangeTooLargeForOnePushIsNeverQueued();
     void fullSyncAssignsUidWithoutDuplicating();
     void serverDeleteRemovesLocalContactViaPull();
     void localDeleteOfSyncedContactSendsTombstone();
@@ -1453,6 +1454,42 @@ void ContactSyncRepositoryTest::aVCardImportThatFailsPartWayQueuesNothing()
         QVERIFY(drop.exec(QStringLiteral("DROP TRIGGER refuse")));
     }
     QCOMPARE(f.repository->queueImport(namedContacts(3)), ContactImportOutcome::Queued);
+}
+
+// Pass 3, S4: one change over the relay's 1 MiB body cap is pushed alone,
+// refused (413) on every sync, and holds every later change behind it, so it
+// is refused before it is queued.
+void ContactSyncRepositoryTest::aChangeTooLargeForOnePushIsNeverQueued()
+{
+    Database db;
+    QVERIFY(db.open(QStringLiteral(":memory:")));
+    ContactDao contactDao(db.handle());
+    PendingContactChangeDao pendingDao(db.handle());
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    CursorStore cursorStore(dir.filePath(QStringLiteral("cursors.ini")));
+    SecureStoreFile secureStore(dir.path());
+    PairingStore pairingStore(secureStore);
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    ContactSyncClient client(http);
+    ContactSyncRepository repository(client, contactDao, pendingDao, cursorStore, pairingStore, db.handle());
+
+    Contact huge;
+    huge.fn = QStringLiteral("Ada");
+    huge.notes = QString(ContactSyncRepository::kMaxSyncBodyBytes, QLatin1Char('x'));
+    QVERIFY(!ContactSyncRepository::fitsOnePush(huge));
+    QVERIFY(repository.queueCreate(huge).isEmpty());
+    QCOMPARE(pendingDao.count().value_or(-1), 0);
+
+    Contact small;
+    small.fn = QStringLiteral("Ada");
+    const QString uid = repository.queueCreate(small);
+    QVERIFY(!uid.isEmpty());
+    huge.uid = uid;
+    QVERIFY(!repository.queueUpdate(huge));
+    QCOMPARE(pendingDao.count().value_or(-1), 1);
+    QCOMPARE(contactDao.findById(uid)->notes, std::optional<QString>());
 }
 
 QTEST_GUILESS_MAIN(ContactSyncRepositoryTest)

@@ -101,6 +101,20 @@ bool CursorStore::setAdvancedPastTheDiskCache(bool advanced)
     return flush();
 }
 
+bool CursorStore::diskCacheIsAnotherAccounts() const
+{
+    return m_settings.value(QStringLiteral("cache/diskIsAnotherAccounts"), false).toBool();
+}
+
+bool CursorStore::setDiskCacheIsAnotherAccounts(bool another)
+{
+    if (another)
+        m_settings.setValue(QStringLiteral("cache/diskIsAnotherAccounts"), true);
+    else
+        m_settings.remove(QStringLiteral("cache/diskIsAnotherAccounts"));
+    return flush();
+}
+
 bool CursorStore::reset()
 {
     m_settings.remove(kMailCursorGroup); // the whole per-(subscriber, folder) tree

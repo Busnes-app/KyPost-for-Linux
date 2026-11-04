@@ -115,12 +115,19 @@ the session can.
 
 ## Residual risk
 
-- **Automatic re-registration is trust on first use again.** At startup, and when the push
-  endpoint or the transport tier changes (`app/main.cpp`), the client re-registers without the stored pin and pins whatever key
-  answers. A network attacker with a locally trusted CA who waits for that moment can read
-  the pairing token and have their key stored as the pin. Qt's normal chain validation still
-  applies. Why this window stays open is recorded at
+- **Automatic re-registration is trust on first use again, on older relays.** At startup,
+  and when the push endpoint or the transport tier changes (`app/main.cpp`), the client
+  first updates its push endpoint through `POST /api/notifications/native/refresh` under
+  the stored pin and its own device credential. Only a relay without that route (404), or a
+  device secret sealed by the app lock, takes the old path: re-registering without the
+  stored pin and pinning whatever key answers. A network attacker with a locally trusted CA
+  who waits for that moment can read the pairing token and have their key stored as the pin.
+  Qt's normal chain validation still applies. Why that window stays open is recorded at
   `DeviceRegistrationService::reregistrationParams` (`core/domain/DeviceRegistrationService.cpp`).
+- **A pairing link for the paired account re-pins only after a warning.** Its server is
+  first asked one GET pinned to the stored key (`PairingController::checkPendingRepin`).
+  If that passes, no warning shows and the registration stays pinned to that key; otherwise
+  the confirm prompt says the certificate changed, and a pinless link then pins on first use.
 - **Pairing without `pin=` is trust on first use,** and the pin names the issuing CA's key,
   so a certificate from the same issuer passes it ([SECURITY.md](../SECURITY.md)).
 - **The Flatpak remote follows `main`.** A release bundle carries no key, so its signature

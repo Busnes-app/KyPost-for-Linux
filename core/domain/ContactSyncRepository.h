@@ -224,6 +224,11 @@ public:
     // Room left for the envelope around the changes ({"baseCursor":...,"changes":[...]}).
     static constexpr qsizetype kSyncEnvelopeHeadroom = 4096;
 
+    // Whether one change for this contact fits in a push on its own. One
+    // that does not would be pushed alone, refused (413) on every sync, and
+    // hold every later change behind it, so queueCreate/queueUpdate refuse it.
+    static bool fitsOnePush(const Contact& contact);
+
 private:
     // The two writes of a queued create, inside the caller's transaction.
     bool insertCreate(Contact& contact);

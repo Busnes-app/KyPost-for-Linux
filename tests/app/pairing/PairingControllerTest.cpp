@@ -63,6 +63,7 @@ private slots:
     void unpairingThenPairingAnotherAccountStillPurges();
     void unpairingThenPairingTheSameAccountPurgesNothing();
     void aLinkThatRepinsThisAccountSaysSo();
+    void aLinkToTheServerStillPresentingThePinnedKeyDoesNotWarn();
     void aFailedRegistrationDestroysNothing();
     void aFailedPurgeRefusesTheNewPairingAndEscalates();
     void anUnreadableSecretStoreRefusesToPairRatherThanSkipThePurge();
@@ -82,6 +83,7 @@ private slots:
     void approvalThenApprovedCompletesPairing();
     void approvalDeniedReturnsToTheStart();
     void cancelApprovalStopsPollingAndWipesTheCredential();
+    void anApprovalWaitSurvivesTheAppLock();
     void approvalExpiresAtTheServersDeadline();
     void approvalPollToAnotherTrustedIssuerIsRefusedBeforeTheCredentialIsSent();
     void approvalOverTlsCompletesPinnedToTheRegistrationsIssuer();
@@ -1715,6 +1717,35 @@ void PairingControllerTest::approvalDeniedReturnsToTheStart()
     QCOMPARE(f.controller->pairingState(), QStringLiteral("confirm"));
 }
 
+// Pass 3, R1: approving means switching to the browser, which with the app
+// lock on locks the app at once. The wait must not die with it: polling
+// pauses while locked, an approval is never applied under the lock, and the
+// pairing completes on unlock.
+void PairingControllerTest::anApprovalWaitSurvivesTheAppLock()
+{
+    ReplacementFixture f(kStillPending);
+    f.fake.setResponseForPath("/native/register", pendingRegistration(f.fake.port()));
+    QVERIFY(f.build(QString()));
+
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-new")))));
+    f.controller->confirmPendingPair();
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("approval"), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(statusRequests(f.fake) >= 1, 5000);
+
+    f.controller->setAppLocked(true);
+    f.fake.setResponse(httpResponse(200, "OK",
+                                    R"({"ok":true,"synced":true,"status":"approved","deviceId":"dev-pending",)"
+                                    R"("deliveryMode":"pull","transport":"unifiedpush"})"));
+    QTest::qWait(2500);
+    QCOMPARE(f.controller->pairingState(), QStringLiteral("approval"));
+    QVERIFY(!f.pairingStore->load().has_value());
+    QCOMPARE(f.controller->approvalCode(), QStringLiteral("048213"));
+
+    f.controller->setAppLocked(false);
+    QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("paired"), 8000);
+    QCOMPARE(f.pairingStore->load()->deviceSecret, QStringLiteral("pending-secret"));
+}
+
 // Cancel stops the polling at once and nothing of the pending device
 // survives: the next poll would have answered "approved".
 void PairingControllerTest::cancelApprovalStopsPollingAndWipesTheCredential()
@@ -1974,8 +2005,9 @@ void PairingControllerTest::unpairingThenPairingTheSameAccountPurgesNothing()
 }
 
 // DECISIONS.md: a confirmed link that would re-pin the same account to a
-// different key is never silent. Keyed on the link's own pin, not on whether a
-// request has already failed this session.
+// different key is never silent. A link's pin is the leaf's and the stored one
+// the issuer's, and a link may carry none, so the warning stays up until the
+// server is shown to present the stored key; over plain http it never is.
 void PairingControllerTest::aLinkThatRepinsThisAccountSaysSo()
 {
     ReplacementFixture f(httpResponse(200, "OK", kRegisterOk));
@@ -1987,17 +2019,64 @@ void PairingControllerTest::aLinkThatRepinsThisAccountSaysSo()
 
     QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-same")) + QStringLiteral("&pin=sha256/") + pin)));
     QVERIFY(f.controller->pendingPairRepins());
+    QTest::qWait(300); // the check cannot pass here
+    QVERIFY(f.controller->pendingPairRepins());
     f.controller->cancelPendingPair();
 
-    // The pin it already holds: no re-pin, nothing to say.
-    QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-same")) + QStringLiteral("&pin=sha256/")
-                                               + held.certificateSpkiSha256)));
-    QVERIFY(!f.controller->pendingPairRepins());
+    // A pinless link warns the same way (round-3 objection: it re-pinned silently).
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-same")))));
+    QVERIFY(f.controller->pendingPairRepins());
     f.controller->cancelPendingPair();
 
     // Another account is a replacement, not a re-pin.
     QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-other")) + QStringLiteral("&pin=sha256/") + pin)));
     QVERIFY(!f.controller->pendingPairRepins());
+}
+
+// The other half of F29: a same-account link to a server still presenting the
+// pinned issuer shows no warning (round-3 objection: it warned on nearly every
+// link), and confirming it keeps that pin enforced, so the registration cannot
+// re-pin to a key that took over in between. Under another issuer it warns.
+void PairingControllerTest::aLinkToTheServerStillPresentingThePinnedKeyDoesNotWarn()
+{
+    if (!QSslSocket::supportsSsl())
+        QSKIP("no TLS backend available in this build");
+    const TestTls::SslDefaultsGuard sslDefaults;
+    TestTls::trustRoots({ TestTls::certOf(TestTls::kTrustedRootPem), TestTls::certOf(TestTls::kTrustedRootBPem) });
+    TestTls::TlsRelayServer relay(httpResponse(404, "Not Found", "404 page not found\n"));
+    QVERIFY(relay.isListening());
+    const QByteArray pinA = HttpClient::pinnedSpkiFromChain(
+        { TestTls::certOf(TestTls::kServedLeafPem), TestTls::certOf(TestTls::kServedIssuerPem) });
+
+    ReplacementFixture f(kStillPending);
+    QVERIFY(f.build(QString()));
+    DevicePairing held;
+    held.subscriberId = QStringLiteral("sub-new");
+    held.serverBaseUrl = QStringLiteral("https://127.0.0.1:%1").arg(relay.serverPort());
+    held.registrationUrl = held.serverBaseUrl + QStringLiteral("/api/notifications/native/register");
+    held.deviceId = QStringLiteral("dev-old");
+    held.deviceSecret = QStringLiteral("secret-old");
+    held.certificateSpkiSha256 = QString::fromLatin1(pinA.toBase64());
+    QVERIFY(f.pairingStore->save(held));
+
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(httpsLinkFor(relay.serverPort()))));
+    QVERIFY(f.controller->pendingPairRepins()); // until the check answers
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller->pendingPairRepins(), 5000);
+    for (const QByteArray& request : relay.receivedRequests())
+        QVERIFY(!request.contains("X-Kypost-Device-Secret"));
+
+    // Confirmed with no warning: the registration is pinned to the stored key,
+    // so a server that now presents another issuer is refused, not re-pinned.
+    relay.serveChainB();
+    f.controller->confirmPendingPair();
+    QTRY_VERIFY_WITH_TIMEOUT(f.controller->pairingState() != QStringLiteral("working"), 5000);
+    QVERIFY(f.controller->pairingState() != QStringLiteral("paired"));
+    QCOMPARE(f.pairingStore->load()->certificateSpkiSha256, QString::fromLatin1(pinA.toBase64()));
+
+    // A fresh link while the other issuer is served warns, and stays warning.
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(httpsLinkFor(relay.serverPort()))));
+    QTest::qWait(1000);
+    QVERIFY(f.controller->pendingPairRepins());
 }
 
 // ORDER IS THE DESIGN. Purging first would mean a replacement that failed --

@@ -269,6 +269,10 @@ struct CancelScheduledResult
     bool claimed = false; // 409: already being sent
 };
 
+// The relay refused to thread a reply (and sent nothing): the reference was
+// malformed, or the message it names could not be found or read.
+bool isReplyThreadingRefusal(int statusCode, const QByteArray& body);
+
 // Inbox fetch, inbox action, mail send, and attachment list/download calls
 // against the Relay backend's /api/inbox, /api/inbox/actions, /api/mail/
 // send, /api/mail/attachments, and /api/mail/attachment endpoints. sub/hash

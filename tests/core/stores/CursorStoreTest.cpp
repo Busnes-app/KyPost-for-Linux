@@ -68,13 +68,18 @@ void CursorStoreTest::sessionMarkersPersistAndGoWithAWipe()
         CursorStore store(path);
         QVERIFY(!store.contactCarryPending());
         QVERIFY(!store.advancedPastTheDiskCache());
+        QVERIFY(!store.diskCacheIsAnotherAccounts());
         QVERIFY(store.setContactCarryPending(true));
         QVERIFY(store.setAdvancedPastTheDiskCache(true));
+        QVERIFY(store.setDiskCacheIsAnotherAccounts(true)); // F1, an account change in memory
         QVERIFY(store.reset()); // a cursor reset is not a decision about contacts
     }
     CursorStore store(path);
     QVERIFY(store.contactCarryPending());
     QVERIFY(store.advancedPastTheDiskCache());
+    QVERIFY(store.diskCacheIsAnotherAccounts());
+    QVERIFY(store.setDiskCacheIsAnotherAccounts(false));
+    QVERIFY(!store.diskCacheIsAnotherAccounts());
     QVERIFY(store.wipeAll());
     QVERIFY(!store.contactCarryPending());
     QVERIFY(!store.advancedPastTheDiskCache());

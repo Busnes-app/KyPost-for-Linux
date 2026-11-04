@@ -14,6 +14,7 @@
 
 #include <QHostAddress>
 #include <algorithm>
+#include <utility>
 #include <QSysInfo>
 #include <QUrl>
 #include <QUrlQuery>
@@ -293,14 +294,51 @@ QString PairingController::pendingPairOrigin() const
     return displayOrigin(QUrl(m_pendingPair->serverBaseUrl));
 }
 
+// The pin this device holds for the pending link's account and server, or
+// empty when the link is for another account (a different account is a new
+// pairing, not a re-pin) or nothing is pinned.
+QByteArray PairingController::storedPinForPendingAccount() const
+{
+    if (!m_pendingPair.has_value())
+        return {};
+    const std::optional<DevicePairing> paired = m_pairingStore.load();
+    if (!paired.has_value() || paired->subscriberId != m_pendingPair->subscriberId
+        || paired->serverBaseUrl != m_pendingPair->serverBaseUrl)
+        return {};
+    return QByteArray::fromBase64(paired->certificateSpkiSha256.toLatin1());
+}
+
 bool PairingController::pendingPairRepins() const
 {
-    if (!m_pendingPair.has_value() || m_pendingPair->spkiPin.isEmpty())
-        return false;
-    const std::optional<DevicePairing> paired = m_pairingStore.load();
-    return paired.has_value() && paired->subscriberId == m_pendingPair->subscriberId
-        && paired->serverBaseUrl == m_pendingPair->serverBaseUrl && !paired->certificateSpkiSha256.isEmpty()
-        && paired->certificateSpkiSha256 != QString::fromLatin1(m_pendingPair->spkiPin.toBase64());
+    // The stored pin is the issuer's key and a link's pin is the leaf's
+    // (HttpClient::pinnedSpkiFromChain), so comparing the two said "changed"
+    // for nearly every link; a link may carry no pin at all. Only the server
+    // itself can say, hence the check.
+    return !storedPinForPendingAccount().isEmpty() && m_repinCheck != RepinCheck::Same;
+}
+
+void PairingController::checkPendingRepin()
+{
+    const quint64 generation = ++m_repinGeneration;
+    m_repinCheck = RepinCheck::Checking;
+    const QByteArray stored = storedPinForPendingAccount();
+    const QUrl origin(m_pendingPair.has_value() ? m_pendingPair->serverBaseUrl : QString());
+    // Plain http has no chain, which a pin check passes: nothing proven.
+    if (stored.isEmpty() || origin.scheme() != QLatin1String("https"))
+        return;
+    m_executor.run(
+        this,
+        [stored, origin](HttpClient& http) {
+            // Any answer, a 404 included, over a handshake that satisfied the
+            // pin proves the key; nothing is sent but the GET itself.
+            return http.getPinnedTo({ stored, origin }, origin, {}).certificatePinVerified;
+        },
+        [this, generation](bool verified) {
+            if (generation != m_repinGeneration)
+                return; // another link since
+            m_repinCheck = verified ? RepinCheck::Same : RepinCheck::Changed;
+            emit pairingStateChanged();
+        });
 }
 
 bool PairingController::pendingPairInsecure() const
@@ -313,6 +351,22 @@ bool PairingController::pendingPairInsecure() const
 void PairingController::setAppLocked(bool locked)
 {
     m_appLocked = locked;
+    // The approval wait outlives the lock: approving means switching to the
+    // web page, and with the app lock on that locks the app at once (R1, pass
+    // 3). Polling pauses while locked and resumes on unlock; an approval that
+    // came in meanwhile is applied then, never under the lock.
+    if (!m_approval)
+        return;
+    if (locked) {
+        m_approvalTimer.stop();
+        return;
+    }
+    if (m_approval->heldApproval) {
+        const PairingStatusResult held = *std::exchange(m_approval->heldApproval, std::nullopt);
+        applyApprovalStatus(m_approvalGeneration, held);
+        return;
+    }
+    scheduleApprovalPoll(0);
 }
 
 QString PairingController::deliveryMode() const
@@ -397,6 +451,7 @@ bool PairingController::pairFromDeepLink(const QUrl& url)
     params.pairingToken = parsed->pairingToken;
     params.spkiPin = parsed->spkiPin;
     m_pendingPair = params;
+    checkPendingRepin();
     // forceNotify=true: VibeSec fix -- m_pendingPair just changed even when
     // the state label ("confirm") didn't, e.g. a second link arriving while
     // the confirm dialog from a first link is still open. pendingPairOrigin
@@ -435,8 +490,15 @@ bool PairingController::confirmPendingPair()
         return false;
     }
 
-    const PairingParams pending = *m_pendingPair;
+    PairingParams pending = *m_pendingPair;
+    // No warning was shown because the server presents the pinned key: keep
+    // that key enforced on the registration, so a pinless link cannot re-pin
+    // to whatever answers next (finishPair refuses an unverified pin).
+    if (const QByteArray stored = storedPinForPendingAccount();
+        !stored.isEmpty() && m_repinCheck == RepinCheck::Same && pending.spkiPin.isEmpty())
+        pending.spkiPin = stored;
     m_pendingPair.reset();
+    ++m_repinGeneration;
     pairFromParsedParams(pending);
     // True means "started", not "paired". The answer arrives on
     // pairingState; no QML call site reads this return value (checked), and
@@ -544,6 +606,15 @@ void PairingController::applyApprovalStatus(quint64 generation, const PairingSta
     // Cancelled, or another wait began, while this poll was out.
     if (!m_approval || generation != m_approvalGeneration)
         return;
+    // Locked: no next poll until unlock (setAppLocked resumes), and an
+    // approval waits for it too. A final refusal still ends the wait.
+    if (m_appLocked && (status.status == PairingStatusResult::Status::Pending
+                        || status.status == PairingStatusResult::Status::Retry))
+        return;
+    if (m_appLocked && status.status == PairingStatusResult::Status::Approved) {
+        m_approval->heldApproval = status;
+        return;
+    }
 
     switch (status.status) {
     case PairingStatusResult::Status::Pending:

@@ -33,8 +33,9 @@ QStringList emailValues(const Contact& contact)
 // Owner decision Q2: a key the relay would refuse (KyPost-Server
 // validateContactKey) is refused before it is queued, because the relay
 // refuses the whole sync batch over it. Like the relay's
-// checkContactKeyWrite, an unchanged key passes, so a key that has since
-// expired never blocks an edit. Empty when the key may be queued.
+// checkContactKeyWrite, a key unchanged from the one the relay holds passes,
+// so a key that has since expired never blocks an edit. Empty when the key
+// may be queued.
 QString contactKeyRefusal(const Contact& contact, const std::optional<QString>& storedKey)
 {
     const QString key = contact.pgpKey.value_or(QString());
@@ -684,6 +685,10 @@ QString ContactsController::createContact(const QVariantMap& fields)
         setLastError(refusal);
         return QString();
     }
+    if (!ContactSyncRepository::fitsOnePush(contact)) {
+        setLastError(i18n("%1 is too large to sync. Shorten the notes or other long fields.", fn));
+        return QString();
+    }
 
     // Empty means the local database refused one or both writes and the
     // whole thing rolled back. Saying "saved" here is how a contact ends up
@@ -833,8 +838,16 @@ bool ContactsController::updateContact(const QString& uid, const QVariantMap& fi
     Contact contact = *found;
     contact.fn = fn;
     applyFieldsToContact(contact, fields);
-    if (const QString refusal = contactKeyRefusal(contact, found->pgpKey); !refusal.isEmpty()) {
+    // Unchanged passes only when the relay already holds that key: with a
+    // change still queued, the local key is not the relay's, and the relay
+    // checks it against this edit's addresses like a new one.
+    const std::optional<QString> relayKey = m_repository.isPending(uid) ? std::nullopt : found->pgpKey;
+    if (const QString refusal = contactKeyRefusal(contact, relayKey); !refusal.isEmpty()) {
         setLastError(refusal);
+        return false;
+    }
+    if (!ContactSyncRepository::fitsOnePush(contact)) {
+        setLastError(i18n("%1 is too large to sync. Shorten the notes or other long fields.", fn));
         return false;
     }
 

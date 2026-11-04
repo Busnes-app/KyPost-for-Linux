@@ -57,6 +57,13 @@ public:
     bool advancedPastTheDiskCache() const;
     [[nodiscard]] bool setAdvancedPastTheDiskCache(bool advanced);
 
+    // Set when another account was paired during an in-memory session: the
+    // purge emptied that session's database, not the on-disk one, which still
+    // holds the previous account's cache. The next launch on disk purges it
+    // the same way before anything reads it (F1).
+    bool diskCacheIsAnotherAccounts() const;
+    [[nodiscard]] bool setDiskCacheIsAnotherAccounts(bool another);
+
 private:
     // Flushes the pending change and reports whether the FILE took it, not
     // whether the in-memory copy did. Every mutator above returns this, and

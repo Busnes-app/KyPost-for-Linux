@@ -362,7 +362,8 @@ public:
         enum class Failure {
             None, NotConfigured, RecipientWithoutKey, NoSigningKey, Cancelled,
             KeyImportRefused, EncryptionFailed, SendFailed, EngineUnavailable,
-            ServerEncryptsInstead, TooLarge, ScheduleUnavailable, KeyMaterialChanged
+            ServerEncryptsInstead, TooLarge, ScheduleUnavailable, KeyMaterialChanged,
+            ReplyThreadingRefused
         } failure = Failure::None;
         QStringList namedRecipients;
         QString detail;
@@ -393,7 +394,8 @@ public slots:
     Q_INVOKABLE quint64 sendClientEncrypted(const QString& to, const QString& cc, const QString& bcc,
                                              const QString& subject, const QString& body,
                                              const QStringList& attachmentFilePaths, const QString& draftToken = QString(),
-                                             qint64 sendAtMs = 0);
+                                             qint64 sendAtMs = 0, const QString& replyToMessageId = QString(),
+                                             const QString& replyToMailbox = QString());
 
     // The notification tap-through entry point.
     //

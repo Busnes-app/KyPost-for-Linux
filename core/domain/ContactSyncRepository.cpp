@@ -135,10 +135,17 @@ QString createJson(const Contact& contact)
 
 } // namespace
 
+bool ContactSyncRepository::fitsOnePush(const Contact& contact)
+{
+    return serializeContact(contact).toUtf8().size() <= kMaxSyncBodyBytes - kSyncEnvelopeHeadroom;
+}
+
 bool ContactSyncRepository::insertCreate(Contact& contact)
 {
     contact.uid = QUuid::createUuid().toString(QUuid::WithoutBraces);
     contact.deleted = false;
+    if (!fitsOnePush(contact))
+        return false;
     // The cached row without the queue row is a contact the user can see,
     // edit and rely on that will never reach the server or any other device.
     return m_contactDao.insertOrReplace(contact)
@@ -220,6 +227,8 @@ bool ContactSyncRepository::queueUpdate(const Contact& contact)
     // wrong: the cache write can land while the queue write does not, and
     // then the local copy shows the user's edit while the server keeps the
     // old one, forever, with no pending badge to say so.
+    if (!fitsOnePush(contact))
+        return false;
     return inTransaction(m_db, [&] {
         return m_contactDao.insertOrReplace(contact)
             && m_pendingDao.enqueue(contact.uid, serializeContact(contact), nowUtc()) > 0;

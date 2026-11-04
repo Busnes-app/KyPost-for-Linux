@@ -383,7 +383,10 @@ Added 2026-07-25 (parity work with `kypost-android`):
   the `PairAttempt` that sent them, so an existing pairing is untouched until
   the 200 from `pairing-status`, which goes through `finishPair()` like any
   success. The wait polls only while its page shows; any close of that page
-  cancels it. Every end of the wait (cancel, 410, expiry, refused poll) goes
+  cancels it, except the lock's: approving means going to the browser, which
+  locks the app, so `setAppLocked` pauses polling, holds an approval that
+  lands meanwhile, and on unlock applies it or resumes, and AppShell reopens
+  the page. Every end of the wait (cancel, 410, expiry, refused poll) goes
   through `endApproval()`, which bumps a generation so a late poll answer is
   dropped. The wait restores the previous pin at once
   (`PairAttempt::restorePreviousPin()`); each poll is pinned on its own
@@ -918,8 +921,11 @@ never once run.
   the KyPost-for-Mac contacts decision). "Different" includes pairing after
   "Remove pairing": the unpair records whose cache it left
   (`SettingsStore::unpairedCacheOwner`), and a cache with no known owner is
-  treated as another account's. The contact cursor goes on every account
-  change. But
+  treated as another account's. An account change during an in-memory
+  session leaves the on-disk cache alone, so it sets
+  `CursorStore::diskCacheIsAnotherAccounts` and the next launch on disk runs
+  the same purge before anything reads it. The contact cursor goes on every
+  account change. But
   a request already in flight completes *after* that purge and writes its rows
   back in behind it — the previous account's mail, in the new account's inbox,
   readable by whoever is now holding the machine. So an apply step compares
@@ -1338,6 +1344,13 @@ worse than no comment: the next reader stops looking.
   a persistent banner (`components/StatusBanner.qml`). Before that, both
   sites discarded the result and the only symptom was push silently
   stopping behind a green "Paired" badge.
+  **Superseded 2026-11-04 (owner answer Q4):** the token is single-use and
+  expires in 90 s, so re-registering with it never worked. An endpoint
+  rotation now goes to `POST /api/notifications/native/refresh`
+  (`NativeRegistrationClient::refreshPushEndpoint`) under the device's own
+  credential and the pairing's pin, keeping its push keys; only a 404 (a
+  relay without the route) falls back to re-registering, and a 401 raises
+  the banner.
 - **The live test relay sits behind Cloudflare** (its bare apex domain → 530) and
   needs a real, non-default User-Agent set on QNAM for every request from
   day one — a bare/default UA gets blocked. Any non-default product token

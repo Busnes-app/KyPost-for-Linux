@@ -112,6 +112,11 @@ public:
     // A store that cannot be read answers false.
     bool hasPushKeys() const;
 
+    // The stored keys' public point and auth secret, as registration sent
+    // them, for a push-endpoint refresh that keeps them (native/refresh).
+    // nullopt without readable keys.
+    std::optional<std::pair<QByteArray, QByteArray>> pushPublicKeys() const;
+
     struct OpenedPush
     {
         QByteArray payload;

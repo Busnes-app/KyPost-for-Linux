@@ -1518,8 +1518,12 @@ Kirigami.ApplicationWindow {
     Connections {
         target: AppLock
         function onLockedChanged() {
-            if (!AppLock.locked)
+            if (!AppLock.locked) {
+                // A new-device approval waited through the lock: show it again.
+                if (Pairing.pairingState === "approval")
+                    root.openPairing();
                 return;
+            }
             scheduledSheet.close();
             pgpMyQrCodeSheet.close();
             pgpScanContactKeySheet.close();
@@ -1628,15 +1632,22 @@ Kirigami.ApplicationWindow {
         onAccepted: {
             const leave = take()
             const composer = composeLoader.item
-            if (!composer || !leave.proceed)
+            // Whatever does not leave runs cancel, so a forwarded draft
+            // waiting on this answer is released rather than held for good.
+            const stay = function () { if (leave.cancel) leave.cancel() }
+            if (!composer || !leave.proceed) {
+                stay()
                 return
+            }
             composer.saveDraftThen(function () {
-                if (composeLoader.item !== composer)
+                if (composeLoader.item !== composer) {
+                    stay()
                     return
+                }
                 root.detailMode = "empty"
                 sendWarningToast.show(i18n("Draft saved"))
                 leave.proceed()
-            })
+            }, stay)
         }
         onAlternated: {
             const leave = take()

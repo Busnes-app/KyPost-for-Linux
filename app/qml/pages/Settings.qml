@@ -1468,9 +1468,11 @@ Item {
         background: Rectangle { color: Theme.bg }
 
         // Polling for approval runs only while its screen shows (#516): any
-        // close -- Escape, the lock closing popups -- cancels the wait and
-        // wipes the pending credential.
-        onClosed: if (Pairing.pairingState === "approval") Pairing.cancelApproval()
+        // close -- Escape, Close -- cancels the wait and wipes the pending
+        // credential. Not the lock: approving means going to the browser,
+        // which locks the app, so the wait pauses and the page comes back on
+        // unlock (AppShell).
+        onClosed: if (Pairing.pairingState === "approval" && !AppLock.locked) Pairing.cancelApproval()
 
         contentItem: PagesDir.Pairing {
             anchors.fill: parent
