@@ -912,8 +912,9 @@ never once run.
   except the contacts the user chose to keep: contacts and their queued edits
   stay, unsynced (`CursorStore::contactCarryPending`, which holds every
   contact sync), until the user answers "Bring your N contacts into
-  <account>?"; yes re-queues them as creates for the new account without the
-  previous server's photos and groups, no removes them (owner decision Q3,
+  <account>?"; yes re-queues them as new contacts (new uids, so nothing on
+  the relay is overwritten) without the previous server's photos, no removes
+  them; the push goes in relay-sized batches (owner decision Q3,
   the KyPost-for-Mac contacts decision). "Different" includes pairing after
   "Remove pairing": the unpair records whose cache it left
   (`SettingsStore::unpairedCacheOwner`), and a cache with no known owner is

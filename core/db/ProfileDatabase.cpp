@@ -5,6 +5,7 @@
 
 #include <QFile>
 #include <QFileInfo>
+#include <QStringList>
 
 namespace {
 
@@ -84,11 +85,23 @@ namespace {
 bool moveAside(const QString& path)
 {
     const QString aside = path + kUnreadableDatabaseSuffix;
-    if (QFile::exists(aside) || !QFile::rename(path, aside))
-        return false;
-    for (const QString& sidecar : { QStringLiteral("-wal"), QStringLiteral("-shm") })
-        if (QFile::exists(path + sidecar))
-            QFile::rename(path + sidecar, aside + sidecar);
+    const QStringList sidecars{ QString(), QStringLiteral("-wal"), QStringLiteral("-shm") };
+    for (const QString& sidecar : sidecars)
+        if (QFile::exists(aside + sidecar))
+            return false;
+    // All or nothing: a -wal left behind holds committed pages of this file,
+    // and a fresh profile opened over it would not be this one.
+    QStringList moved;
+    for (const QString& sidecar : sidecars) {
+        if (!QFile::exists(path + sidecar))
+            continue;
+        if (!QFile::rename(path + sidecar, aside + sidecar)) {
+            for (const QString& back : moved)
+                QFile::rename(aside + back, path + back);
+            return false;
+        }
+        moved << sidecar;
+    }
     qCritical("ProfileDatabase: this profile's database is encrypted under a key that is no longer "
                "stored; it was moved to %s and a new profile was started", qUtf8Printable(aside));
     return true;

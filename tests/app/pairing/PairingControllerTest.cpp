@@ -62,6 +62,7 @@ private slots:
     void pairingTheSameAccountAgainPurgesNothing();
     void unpairingThenPairingAnotherAccountStillPurges();
     void unpairingThenPairingTheSameAccountPurgesNothing();
+    void aLinkThatRepinsThisAccountSaysSo();
     void aFailedRegistrationDestroysNothing();
     void aFailedPurgeRefusesTheNewPairingAndEscalates();
     void anUnreadableSecretStoreRefusesToPairRatherThanSkipThePurge();
@@ -1970,6 +1971,33 @@ void PairingControllerTest::unpairingThenPairingTheSameAccountPurgesNothing()
     QTRY_COMPARE_WITH_TIMEOUT(f.controller->pairingState(), QStringLiteral("paired"), 5000);
     QCOMPARE(f.purgeCalls, 0);
     QVERIFY(!f.settingsStore->unpairedCacheOwner().has_value());
+}
+
+// DECISIONS.md: a confirmed link that would re-pin the same account to a
+// different key is never silent. Keyed on the link's own pin, not on whether a
+// request has already failed this session.
+void PairingControllerTest::aLinkThatRepinsThisAccountSaysSo()
+{
+    ReplacementFixture f(httpResponse(200, "OK", kRegisterOk));
+    QVERIFY(f.build(QStringLiteral("sub-same")));
+    DevicePairing held = *f.pairingStore->load();
+    held.certificateSpkiSha256 = QString::fromLatin1(QByteArray(32, 'a').toBase64());
+    QVERIFY(f.pairingStore->save(held));
+    const QString pin = QString::fromLatin1(QByteArray(32, 'b').toBase64());
+
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-same")) + QStringLiteral("&pin=sha256/") + pin)));
+    QVERIFY(f.controller->pendingPairRepins());
+    f.controller->cancelPendingPair();
+
+    // The pin it already holds: no re-pin, nothing to say.
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-same")) + QStringLiteral("&pin=sha256/")
+                                               + held.certificateSpkiSha256)));
+    QVERIFY(!f.controller->pendingPairRepins());
+    f.controller->cancelPendingPair();
+
+    // Another account is a replacement, not a re-pin.
+    QVERIFY(f.controller->pairFromDeepLink(QUrl(f.linkFor(QStringLiteral("sub-other")) + QStringLiteral("&pin=sha256/") + pin)));
+    QVERIFY(!f.controller->pendingPairRepins());
 }
 
 // ORDER IS THE DESIGN. Purging first would mean a replacement that failed --

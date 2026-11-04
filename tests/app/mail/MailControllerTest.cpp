@@ -2716,6 +2716,20 @@ void MailControllerTest::aBatchThatPartlyFailedRemovesWhatWasDone()
     QCOMPARE(model->rowCount(), 1);
     QCOMPARE(model->emailAt(0).messageId, QStringLiteral("m1"));
     QVERIFY(f.controller.lastError().contains(QStringLiteral("imap said no")));
+    // A reply that lands after another account was paired touches nothing of it.
+    fake.setResponse(httpResponse(200, "OK",
+        R"({"ok":false,"action":"archive","processed":1,"failed":[{"messageId":"m9","error":"no"}],"targetMailbox":"Archive"})"));
+    QSignalSpy again(&f.controller, &MailController::actionCompleted);
+    f.controller.archiveEmails({ QStringLiteral("m1"), QStringLiteral("m9") });
+    DevicePairing other;
+    other.subscriberId = QStringLiteral("sub-2");
+    other.deviceId = QStringLiteral("dev-2");
+    other.deviceSecret = QStringLiteral("secret-2");
+    other.serverBaseUrl = QStringLiteral("http://127.0.0.1:%1").arg(fake.port());
+    QVERIFY(f.pairingStore.save(other));
+    QTRY_COMPARE_WITH_TIMEOUT(again.count(), 1, 10000);
+    QCOMPARE(model->rowCount(), 1);
+    QCOMPARE(model->emailAt(0).messageId, QStringLiteral("m1"));
 }
 
 void MailControllerTest::markReadIsOptimisticAndCoalescesRepeats()

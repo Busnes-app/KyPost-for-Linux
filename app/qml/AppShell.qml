@@ -47,6 +47,14 @@ Kirigami.ApplicationWindow {
             // Hiding to tray is the desktop equivalent of Android's onStop.
             // lockAfterGrace(), not lockNow(): the grace period defaults to 0.
             AppLock.lockAfterGrace()
+            return
+        }
+        // Closing the window quits: a message in the compose pane is asked
+        // about first, as on every other way out (owner decision Q1). The
+        // close is tried again once the composer is gone.
+        if (root.detailMode === "compose" && composeLoader.item && composeLoader.item.mayHaveContent()) {
+            close.accepted = false
+            root.leaveCompose(function () { root.close() })
         }
     }
 
@@ -277,7 +285,12 @@ Kirigami.ApplicationWindow {
         root.navigate("settings")
         settingsPane.showPane(pane)
     }
+    // Once out of any composer: the pairing popup would cover its prompt.
     function openPairing() {
+        if (root.detailMode === "compose") {
+            root.leaveCompose(root.openPairing)
+            return
+        }
         root.navigate("settings")
         settingsPane.openPairing()
     }
@@ -523,11 +536,12 @@ Kirigami.ApplicationWindow {
                 font.pixelSize: Theme.fontDate
                 wrapMode: Text.WordWrap
             }
-            // DECISIONS.md: a link that re-pins after the certificate changed
-            // is never confirmed silently.
+            // DECISIONS.md: a link that re-pins this account is never
+            // confirmed silently.
             Text {
                 Layout.fillWidth: true
-                visible: Pairing.certificateMismatch
+                objectName: "repinWarning"
+                visible: Pairing.pendingPairRepins || Pairing.certificateMismatch
                 text: i18n("This server's certificate changed since you paired. Only continue if you just opened this link from your own KyPost web page.")
                 color: Theme.danger
                 font.family: Theme.fontUi

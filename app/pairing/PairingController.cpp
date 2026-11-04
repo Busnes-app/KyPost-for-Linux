@@ -293,6 +293,16 @@ QString PairingController::pendingPairOrigin() const
     return displayOrigin(QUrl(m_pendingPair->serverBaseUrl));
 }
 
+bool PairingController::pendingPairRepins() const
+{
+    if (!m_pendingPair.has_value() || m_pendingPair->spkiPin.isEmpty())
+        return false;
+    const std::optional<DevicePairing> paired = m_pairingStore.load();
+    return paired.has_value() && paired->subscriberId == m_pendingPair->subscriberId
+        && paired->serverBaseUrl == m_pendingPair->serverBaseUrl && !paired->certificateSpkiSha256.isEmpty()
+        && paired->certificateSpkiSha256 != QString::fromLatin1(m_pendingPair->spkiPin.toBase64());
+}
+
 bool PairingController::pendingPairInsecure() const
 {
     if (!m_pendingPair.has_value())

@@ -1399,9 +1399,10 @@ void ContactSyncRepositoryTest::aVCardImportExactlyAtTheBodyBudgetIsQueued()
 // into a new account (owner decision Q3) can be more than one push.
 void ContactSyncRepositoryTest::aPushCarriesAtMostOneBatch()
 {
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"cursor":7,"tooOld":false,"changed":[],"deleted":[]})"));
     ImportFixture f;
     QVERIFY(f.open());
-    savePairing(*f.pairingStore, 1);
+    savePairing(*f.pairingStore, fake.port());
     for (int i = 0; i < ContactSyncRepository::kMaxSyncChanges + 3; ++i) {
         Contact c;
         c.fn = QStringLiteral("Person %1").arg(i);
@@ -1411,6 +1412,25 @@ void ContactSyncRepositoryTest::aPushCarriesAtMostOneBatch()
     QVERIFY(plan.has_value());
     QCOMPARE(plan->pending.size(), ContactSyncRepository::kMaxSyncChanges);
     QCOMPARE(plan->pending.first().id, f.pendingDao->findAll().first().id); // oldest first
+
+    // The sync pushes that batch and asks for another; the next one ends it.
+    ContactSyncOutcome first = f.repository->sync();
+    QCOMPARE(first.status, ContactSyncStatus::Success);
+    QVERIFY(first.morePending);
+    QCOMPARE(f.pendingDao->findAll().size(), 3);
+    ContactSyncOutcome second = f.repository->sync();
+    QCOMPARE(second.status, ContactSyncStatus::Success);
+    QVERIFY(!second.morePending);
+    QVERIFY(f.pendingDao->findAll().isEmpty());
+
+    // The body cap too: two changes that together pass it go one at a time.
+    for (int i = 0; i < 2; ++i) {
+        Contact big;
+        big.fn = QStringLiteral("Big %1").arg(i);
+        big.notes = QString(int(ContactSyncRepository::kMaxSyncBodyBytes / 2), QLatin1Char('x'));
+        QVERIFY(!f.repository->queueCreate(big).isEmpty());
+    }
+    QCOMPARE(f.repository->planSync()->pending.size(), 1);
 }
 
 // One transaction: a write that fails on the second contact takes the first

@@ -198,6 +198,8 @@ Item {
     // system browser at Drafts. Only reachable for a client-custody account,
     // whose private key exists solely in the user's browser.
     function tryWebmailHandoff() {
+        if (root.poppingOut)
+            return
         toField.commitInputAsToken()
         ccField.commitInputAsToken()
         bccField.commitInputAsToken()
@@ -218,6 +220,8 @@ Item {
     // sendAtMs, when given, is the scheduled time (SendLaterDialog); absent sends now.
     // allowEmptySubject is the answer to "Send without a subject?".
     function trySend(sendAtMs, allowEmptySubject) {
+        if (root.poppingOut)
+            return
         const sendAt = sendAtMs || 0
         // Any address still sitting uncommitted in a field's input box (the
         // user typed it but never hit Enter/Tab/comma) is committed first --
@@ -272,6 +276,8 @@ Item {
     // recipient-and-message check -- a half-written draft is the normal thing
     // to save, and refusing to save it would be the opposite of useful.
     function trySaveDraft() {
+        if (root.poppingOut)
+            return
         toField.commitInputAsToken()
         ccField.commitInputAsToken()
         bccField.commitInputAsToken()
@@ -280,6 +286,8 @@ Item {
             root.validationError = ""
             // Acknowledged by onDraftSaveCompleted below, once the draft has
             // actually reached the server.
+            root.savedSnapshot = { to: toField.joinedText, cc: ccField.joinedText, bcc: bccField.joinedText,
+                                   subject: subjectField.text, html: result.html, paths: root.attachmentPaths.join("\n") }
             root.myDraftToken = MailApp.saveDraft(toField.joinedText, ccField.joinedText, bccField.joinedText,
                                                    subjectField.text, result.html, root.attachmentPaths, root.restoredDraft.token || "")
             root.draftHandoffToWebmail = false
@@ -291,6 +299,13 @@ Item {
     // Runs once a draft save this instance started has landed; a failed save
     // drops it (lastError says why) and the composer stays open.
     property var afterDraftSaved: null
+    // What the last draft save sent, so leaving after it can tell whether
+    // anything was written since (Save draft in "Discard this message?").
+    property var savedSnapshot: ({})
+
+    // Set from the pop-out click until the window is made: a Send or Save
+    // pressed in between would start a request this composer cannot see out.
+    property bool poppingOut: false
     function saveDraftThen(callback) {
         root.afterDraftSaved = callback
         root.trySaveDraft()
@@ -421,8 +436,16 @@ Item {
                 // owner of a send or save still in flight: the new window
                 // would offer Send again over a message already going out.
                 enabled: !root.sendInFlight && !root.draftInFlight && !root.awaitingPickupConfirmation
+                         && !root.poppingOut
                 onClicked: {
+                    root.poppingOut = true
                     root.currentDraftForPopOut(function(draft) {
+                        // A Send or Save pressed while the editor was being
+                        // read got its token first: this composer owns it now.
+                        if (root.sendInFlight || root.draftInFlight || root.awaitingPickupConfirmation) {
+                            root.poppingOut = false
+                            return
+                        }
                         root.popOutRequested(draft, root.replyTo)
                     })
                 }
@@ -944,7 +967,17 @@ Item {
             if (!ok)
                 return // MailApp.lastError carries the reason
             if (after) {
-                after()
+                // Edited while the save was out: leaving would lose that.
+                const saved = root.savedSnapshot
+                const sameFields = saved.to === toField.joinedText && saved.cc === ccField.joinedText
+                    && saved.bcc === bccField.joinedText && saved.subject === subjectField.text
+                    && saved.paths === root.attachmentPaths.join("\n")
+                bodyEditor.requestSendableHtml(function (result) {
+                    if (sameFields && result.html === saved.html)
+                        after()
+                    else
+                        toast.show(i18n("Draft saved. You changed the message since, so it is still open."))
+                })
                 return
             }
             // Acknowledge in place: this component already owns a Toast for

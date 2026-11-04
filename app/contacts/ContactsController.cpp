@@ -43,8 +43,10 @@ QString contactKeyRefusal(const Contact& contact, const std::optional<QString>& 
     const QString name = contact.fn.value_or(QString());
     switch (contactKeyProblem(key.toUtf8(), emailValues(contact))) {
     case ContactKeyProblem::None:
-    case ContactKeyProblem::EngineUnavailable: // nothing to ask; the relay still checks
         return {};
+    case ContactKeyProblem::EngineUnavailable:
+        // Unchecked would be queued, and one key the relay refuses stops every sync.
+        return i18n("The PGP key for %1 can't be checked because GnuPG isn't available on this computer, so it was not saved.", name);
     case ContactKeyProblem::Unreadable:
         return i18n("The PGP key for %1 isn't one OpenPGP public key in text form. Paste the whole key, from -----BEGIN PGP PUBLIC KEY BLOCK----- to the end.", name);
     case ContactKeyProblem::Private:
@@ -741,19 +743,10 @@ QVariantMap ContactsController::previewVCardImport(const QString& fileUrl)
     QStringList names;
     for (qsizetype i = 0; i < result.contacts.size() && i < kPreviewNames; ++i)
         names << result.contacts.at(i).fn.value_or(QString()).section(QLatin1Char('\n'), 0, 0).left(80);
+    // No key comes in this way (VCardImport reads no KEY), so there is none
+    // for the owner decision Q2 check to judge here.
     m_importPreview = result.contacts;
-    // A key the relay would refuse is left out (owner decision Q2): it would
-    // stop every later contact sync. The contact itself still comes in.
-    QStringList keyRefusals;
-    for (Contact& contact : m_importPreview) {
-        const QString refusal = contactKeyRefusal(contact, std::nullopt);
-        if (refusal.isEmpty())
-            continue;
-        contact.pgpKey.reset();
-        keyRefusals << refusal;
-    }
     return {{QStringLiteral("ok"), true},
-            {QStringLiteral("keyRefusals"), keyRefusals},
             {QStringLiteral("count"), int(result.contacts.size())},
             {QStringLiteral("names"), names},
             {QStringLiteral("more"), int(std::max<qsizetype>(0, result.contacts.size() - kPreviewNames))},

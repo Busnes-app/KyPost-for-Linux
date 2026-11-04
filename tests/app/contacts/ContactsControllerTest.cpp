@@ -763,6 +763,9 @@ void ContactsControllerTest::contactsKeptAcrossAnAccountChangeWaitForTheUser()
         QVERIFY(record.contactUid != QStringLiteral("srv-old-1"));
         QVERIFY(!wire.contains(QStringLiteral("photoRef")) || wire.value(QStringLiteral("photoRef")).toString().isEmpty());
         QCOMPARE(wire.value(QStringLiteral("rev")).toInt(), 0);
+        // Group ids stay: the relay drops any the new account does not have.
+        if (wire.value(QStringLiteral("fn")).toString() == QStringLiteral("Ada"))
+            QCOMPARE(wire.value(QStringLiteral("groupIDs")).toArray().first().toString(), QStringLiteral("grp-old"));
     }
     QVERIFY(!contactDao.findById(QStringLiteral("srv-old-1")).has_value());
     QTRY_VERIFY_WITH_TIMEOUT(!controller.isBusy(), 10000);

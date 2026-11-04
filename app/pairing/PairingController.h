@@ -75,6 +75,10 @@ class PairingController : public QObject
     // legitimate self-hosted/dev case -- but it must be announced rather than
     // blending in with https.
     Q_PROPERTY(bool pendingPairInsecure READ pendingPairInsecure NOTIFY pairingStateChanged)
+    // The pending link is for the account already paired and its pin is not
+    // the one this device holds: confirming it re-pins (DECISIONS.md:
+    // re-pinning needs an explicit warning, never silent).
+    Q_PROPERTY(bool pendingPairRepins READ pendingPairRepins NOTIFY pairingStateChanged)
     // Meaningful only while pairingState == "approval" (#516): the six-digit
     // code the server also shows on the web page, so the user can tell their
     // own device from another app that redeemed the same link, and the origin
@@ -182,6 +186,7 @@ public:
     QString pairingError() const;
     QString pendingPairOrigin() const;
     bool pendingPairInsecure() const;
+    bool pendingPairRepins() const;
     QString approvalCode() const;
     QString approvalServer() const;
     QString deliveryMode() const;

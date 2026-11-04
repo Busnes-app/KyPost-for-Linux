@@ -566,7 +566,8 @@ void MailController::finishAction(const QString& action, const QStringList& mess
 
     // Out of the cache too, so the unread counts drop now. Only for the
     // account that acted: ids are per-mailbox UIDs and repeat across accounts.
-    if (m_pairingStore.stillCurrent(owner)) {
+    const bool sameAccount = m_pairingStore.stillCurrent(owner);
+    if (sameAccount) {
         QStringList processed;
         for (const QString& id : messageIds) {
             if (!failedIds.contains(id))
@@ -578,7 +579,7 @@ void MailController::finishAction(const QString& action, const QStringList& mess
 
     // Only from the mailbox acted on. Ids repeat across mailboxes, so after a
     // folder switch -- to a move's target, say -- they name other copies.
-    if (m_currentFolder == mailbox) {
+    if (sameAccount && m_currentFolder == mailbox) {
         m_currentFolderEmails.erase(std::remove_if(m_currentFolderEmails.begin(), m_currentFolderEmails.end(),
                                                     [&](const Email& email) {
                                                         return messageIds.contains(email.messageId)
@@ -588,7 +589,7 @@ void MailController::finishAction(const QString& action, const QStringList& mess
         emit keywordTabsChanged();
         applyFilter();
     }
-    if (m_searchFolder == mailbox) {
+    if (sameAccount && m_searchFolder == mailbox) {
         m_searchResults.removeIf([&](const Email& email) {
             return messageIds.contains(email.messageId) && !failedIds.contains(email.messageId);
         });
@@ -1250,7 +1251,8 @@ quint64 MailController::sendMail(const QString& to, const QString& cc, const QSt
         },
         [this, sendToken](const Outcome& outcome) {
             if (outcome.encryptsHere) {
-                m_pendingSend = {};
+                if (m_pendingSend.token == sendToken) // never another composer's
+                    m_pendingSend = {};
                 refreshPgpComposeState(/*force=*/true); // Compose then takes the encrypted path
             }
             finishSend(sendToken, outcome.result);

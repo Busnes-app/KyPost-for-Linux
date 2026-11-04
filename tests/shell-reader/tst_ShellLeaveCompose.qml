@@ -88,7 +88,7 @@ TestCase {
         dialog.accept()
         tryVerify(() => MailApp.draftSaves === before + 2)
         MailApp.draftSaveCompleted(MailApp.draftSaves, true)
-        compare(shell.detailMode, "empty")
+        tryCompare(shell, "detailMode", "empty")
         compare(shell.destination, "contacts")
     }
 
