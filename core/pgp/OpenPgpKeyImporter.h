@@ -90,6 +90,23 @@ PgpImportResult importPublicKey(const QByteArray& armoredPublicKey, const QStrin
 // throwaway keyring. Empty unless it is exactly one key gpg can read.
 QString publicKeyFingerprint(const QByteArray& armoredPublicKey);
 
+// Why KyPost-Server would refuse `armored` as the PGP key of a contact with
+// `emails` (its validateContactKey), checked in a throwaway keyring: one
+// armored public key, neither revoked nor expired, carrying one of the
+// addresses as a user ID. The relay refuses a whole sync batch over one such
+// key, so this runs before the change is queued (owner decision Q2).
+enum class ContactKeyProblem
+{
+    None,
+    Unreadable,        // not exactly one armored OpenPGP public key
+    Private,           // a private key
+    RevokedOrExpired,
+    NoAddress,         // the contact has no address to bind the key to
+    AddressNotOnKey,   // no user ID carries one of the contact's addresses
+    EngineUnavailable, // no gpg to ask; the relay still checks
+};
+ContactKeyProblem contactKeyProblem(const QByteArray& armored, const QStringList& emails);
+
 PgpImportResult importPrivateKey(const SecureBytes& armoredPrivateKey, const QString& expectedFingerprint,
                                   const QString& homeDirectory = QString());
 

@@ -19,7 +19,8 @@ PgpSendResult PgpSendClient::send(const QUrl& serverBaseUrl, const RelayAuth& au
                                    const QString& from, const PgpSendPlan& plan,
                                    const QStringList& to, const QStringList& cc,
                                    const QStringList& bcc, const QString& mode, const QDateTime& sendAt,
-                                   const QByteArray& draftCopy, std::optional<qint64> materialGeneration) const
+                                   const QByteArray& draftCopy, std::optional<qint64> materialGeneration,
+                                   const QString& replyToMessageId, const QString& replyToMailbox) const
 {
     PgpSendResult out;
 
@@ -39,7 +40,8 @@ PgpSendResult PgpSendClient::send(const QUrl& serverBaseUrl, const RelayAuth& au
         return out;
     }
 
-    const QJsonObject body = pgpSendRequestBody(from, plan, to, cc, bcc, mode, sendAt, draftCopy, materialGeneration);
+    const QJsonObject body = pgpSendRequestBody(from, plan, to, cc, bcc, mode, sendAt, draftCopy, materialGeneration,
+                                                replyToMessageId, replyToMailbox);
 
     // Measured on the real serialized request, not estimated from the
     // message: the multiplier is the delivery count, and the armor and base64
@@ -63,6 +65,8 @@ PgpSendResult PgpSendClient::send(const QUrl& serverBaseUrl, const RelayAuth& au
         // The relay refusing the size is the same answer as this client
         // refusing it, and the user's move is the same either way.
         out.tooLarge = result.statusCode == 413;
+        out.replyThreadingRefused = !replyToMessageId.isEmpty()
+            && isReplyThreadingRefusal(result.statusCode, result.body);
         if (result.statusCode == 409) {
             const std::optional<QJsonObject> refusal = decodeJsonObject(result.body, nullptr);
             out.keyMaterialChanged = refusal.has_value()

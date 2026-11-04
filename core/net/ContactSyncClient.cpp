@@ -252,6 +252,11 @@ ContactSyncResult ContactSyncClient::push(const QUrl& serverBaseUrl, const Relay
         out.detail = !result.detail.isEmpty()
             ? result.detail
             : QStringLiteral("Contact sync push failed with status %1").arg(result.statusCode);
+        // The relay names the one contact whose key refused the whole batch;
+        // ContactsController turns it into a sentence naming that contact.
+        const QString text = QString::fromUtf8(result.body.left(1024)).trimmed();
+        if (result.statusCode == 400 && text.startsWith(QLatin1String(kContactKeyRefusalPrefix)))
+            out.detail = text;
         return out;
     }
 

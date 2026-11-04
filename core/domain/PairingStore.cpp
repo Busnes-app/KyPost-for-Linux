@@ -324,6 +324,14 @@ bool PairingStore::hasPushKeys() const
     return loadPushKeys(nullptr) == PushKeysStatus::Found;
 }
 
+std::optional<std::pair<QByteArray, QByteArray>> PairingStore::pushPublicKeys() const
+{
+    WebPushCrypto::Keys keys;
+    if (loadPushKeys(&keys) != PushKeysStatus::Found)
+        return std::nullopt;
+    return std::make_pair(keys.publicKey, keys.authSecret.bytes());
+}
+
 std::optional<PairingStore::OpenedPush> PairingStore::openPushMessage(const QByteArray& message) const
 {
     WebPushCrypto::Keys keys;

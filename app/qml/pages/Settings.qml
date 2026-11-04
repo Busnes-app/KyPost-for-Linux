@@ -495,7 +495,15 @@ Item {
                     DangerButton {
                         text: i18n("Remove pairing")
                         visible: Pairing.isPaired
-                        onClicked: Pairing.removePairing()
+                        onClicked: {
+                            const unsynced = ContactsApp.unsyncedChangeCount()
+                            removePairingDialog.message = i18n("Cached mail and contacts stay on this device until another account is paired.")
+                                + (unsynced > 0 ? "\n\n" + i18np("1 contact change hasn't synced yet. Removing the contacts loses it.",
+                                                                 "%1 contact changes haven't synced yet. Removing the contacts loses them.",
+                                                                 unsynced)
+                                                : "")
+                            removePairingDialog.open()
+                        }
                     }
                 }
 
@@ -1421,6 +1429,24 @@ Item {
         }
     }
 
+    // Owner decision Q3: unpair may also take this device's contacts, off by
+    // default. ContactsApp is asked only once the unpair has happened.
+    ConfirmDialog {
+        id: removePairingDialog
+        objectName: "removePairingDialog"
+        anchors.fill: parent
+        z: 900
+        title: i18n("Remove this device's pairing?")
+        acceptText: i18n("Remove pairing")
+        checkText: i18n("Also remove this device's contacts")
+        onAccepted: {
+            const removeContacts = removePairingDialog.checked
+            Pairing.removePairing()
+            if (removeContacts && !Pairing.isPaired)
+                ContactsApp.removeLocalContacts()
+        }
+    }
+
     // ---- "Pair this device…" overlay -------------------------------------
     // Settings.qml manages its own nested popup rather than asking the host
     // to navigate anywhere -- keeps this file host-agnostic (same reasoning
@@ -1442,9 +1468,11 @@ Item {
         background: Rectangle { color: Theme.bg }
 
         // Polling for approval runs only while its screen shows (#516): any
-        // close -- Escape, the lock closing popups -- cancels the wait and
-        // wipes the pending credential.
-        onClosed: if (Pairing.pairingState === "approval") Pairing.cancelApproval()
+        // close -- Escape, Close -- cancels the wait and wipes the pending
+        // credential. Not the lock: approving means going to the browser,
+        // which locks the app, so the wait pauses and the page comes back on
+        // unlock (AppShell).
+        onClosed: if (Pairing.pairingState === "approval" && !AppLock.locked) Pairing.cancelApproval()
 
         contentItem: PagesDir.Pairing {
             anchors.fill: parent

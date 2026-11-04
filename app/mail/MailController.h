@@ -354,12 +354,16 @@ public:
     {
         bool ok = false;
         bool missingSentCopy = false;
+        // The relay sent it but warned, and there were Bcc recipients, whose
+        // separate deliveries are what such a warning can be about.
+        bool bccMayHaveFailed = false;
         // Already-localized? No -- core/ owns no wording. This is a key into
         // the switch in finishClientEncryptedSend().
         enum class Failure {
             None, NotConfigured, RecipientWithoutKey, NoSigningKey, Cancelled,
             KeyImportRefused, EncryptionFailed, SendFailed, EngineUnavailable,
-            ServerEncryptsInstead, TooLarge, ScheduleUnavailable, KeyMaterialChanged
+            ServerEncryptsInstead, TooLarge, ScheduleUnavailable, KeyMaterialChanged,
+            ReplyThreadingRefused
         } failure = Failure::None;
         QStringList namedRecipients;
         QString detail;
@@ -390,7 +394,8 @@ public slots:
     Q_INVOKABLE quint64 sendClientEncrypted(const QString& to, const QString& cc, const QString& bcc,
                                              const QString& subject, const QString& body,
                                              const QStringList& attachmentFilePaths, const QString& draftToken = QString(),
-                                             qint64 sendAtMs = 0);
+                                             qint64 sendAtMs = 0, const QString& replyToMessageId = QString(),
+                                             const QString& replyToMailbox = QString());
 
     // The notification tap-through entry point.
     //

@@ -47,6 +47,9 @@ struct PgpSendResult
     // this device asserted (or it asserted none). Nothing was sent; the device
     // has to enroll again.
     bool keyMaterialChanged = false;
+    // A reply the relay could not link to the message it answers: nothing
+    // was sent (the same refusals as /api/mail/send, isReplyThreadingRefusal).
+    bool replyThreadingRefused = false;
     QString warningDetail; // logs only
 
     // Valid when the relay held it for later (202) instead of sending.
@@ -94,7 +97,8 @@ public:
                         const PgpSendPlan& plan, const QStringList& to, const QStringList& cc,
                         const QStringList& bcc, const QString& mode, const QDateTime& sendAt = {},
                         const QByteArray& draftCopy = {},
-                        std::optional<qint64> materialGeneration = std::nullopt) const;
+                        std::optional<qint64> materialGeneration = std::nullopt,
+                        const QString& replyToMessageId = {}, const QString& replyToMailbox = {}) const;
 
 private:
     HttpClient& m_httpClient;

@@ -29,6 +29,7 @@ class ContactSyncRepositoryTest : public QObject
 
 private slots:
     void syncWithoutPairingReturnsNotPaired();
+    void aChangeTooLargeForOnePushIsNeverQueued();
     void fullSyncAssignsUidWithoutDuplicating();
     void serverDeleteRemovesLocalContactViaPull();
     void localDeleteOfSyncedContactSendsTombstone();
@@ -54,6 +55,7 @@ private slots:
     void applySyncReportsFailureWhenTheCursorCannotBePersisted();
     void aTooOldWipeThatFailsNeverLeavesTheCursorAhead();
     void aVCardImportIsQueuedWholeAndOnlyIntoAnEmptyOutbox();
+    void aPushCarriesAtMostOneBatch();
     void aVCardImportThatCannotBePushedInOneSyncIsRefused();
     void aVCardImportThatCannotReadTheOutboxQueuesNothing();
     void aVCardImportExactlyAtTheBodyBudgetIsQueued();
@@ -1393,6 +1395,45 @@ void ContactSyncRepositoryTest::aVCardImportExactlyAtTheBodyBudgetIsQueued()
     QVERIFY(f.pendingDao->findAll().isEmpty());
 }
 
+// One push carries at most the relay's 500 changes (and its body cap); the
+// rest wait for the next sync, which the outcome asks for. Contacts brought
+// into a new account (owner decision Q3) can be more than one push.
+void ContactSyncRepositoryTest::aPushCarriesAtMostOneBatch()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"cursor":7,"tooOld":false,"changed":[],"deleted":[]})"));
+    ImportFixture f;
+    QVERIFY(f.open());
+    savePairing(*f.pairingStore, fake.port());
+    for (int i = 0; i < ContactSyncRepository::kMaxSyncChanges + 3; ++i) {
+        Contact c;
+        c.fn = QStringLiteral("Person %1").arg(i);
+        QVERIFY(!f.repository->queueCreate(c).isEmpty());
+    }
+    const std::optional<ContactSyncRepository::ContactSyncPlan> plan = f.repository->planSync();
+    QVERIFY(plan.has_value());
+    QCOMPARE(plan->pending.size(), ContactSyncRepository::kMaxSyncChanges);
+    QCOMPARE(plan->pending.first().id, f.pendingDao->findAll().first().id); // oldest first
+
+    // The sync pushes that batch and asks for another; the next one ends it.
+    ContactSyncOutcome first = f.repository->sync();
+    QCOMPARE(first.status, ContactSyncStatus::Success);
+    QVERIFY(first.morePending);
+    QCOMPARE(f.pendingDao->findAll().size(), 3);
+    ContactSyncOutcome second = f.repository->sync();
+    QCOMPARE(second.status, ContactSyncStatus::Success);
+    QVERIFY(!second.morePending);
+    QVERIFY(f.pendingDao->findAll().isEmpty());
+
+    // The body cap too: two changes that together pass it go one at a time.
+    for (int i = 0; i < 2; ++i) {
+        Contact big;
+        big.fn = QStringLiteral("Big %1").arg(i);
+        big.notes = QString(int(ContactSyncRepository::kMaxSyncBodyBytes / 2), QLatin1Char('x'));
+        QVERIFY(!f.repository->queueCreate(big).isEmpty());
+    }
+    QCOMPARE(f.repository->planSync()->pending.size(), 1);
+}
+
 // One transaction: a write that fails on the second contact takes the first
 // with it, from the cache and from the outbox.
 void ContactSyncRepositoryTest::aVCardImportThatFailsPartWayQueuesNothing()
@@ -1413,6 +1454,42 @@ void ContactSyncRepositoryTest::aVCardImportThatFailsPartWayQueuesNothing()
         QVERIFY(drop.exec(QStringLiteral("DROP TRIGGER refuse")));
     }
     QCOMPARE(f.repository->queueImport(namedContacts(3)), ContactImportOutcome::Queued);
+}
+
+// Pass 3, S4: one change over the relay's 1 MiB body cap is pushed alone,
+// refused (413) on every sync, and holds every later change behind it, so it
+// is refused before it is queued.
+void ContactSyncRepositoryTest::aChangeTooLargeForOnePushIsNeverQueued()
+{
+    Database db;
+    QVERIFY(db.open(QStringLiteral(":memory:")));
+    ContactDao contactDao(db.handle());
+    PendingContactChangeDao pendingDao(db.handle());
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    CursorStore cursorStore(dir.filePath(QStringLiteral("cursors.ini")));
+    SecureStoreFile secureStore(dir.path());
+    PairingStore pairingStore(secureStore);
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    ContactSyncClient client(http);
+    ContactSyncRepository repository(client, contactDao, pendingDao, cursorStore, pairingStore, db.handle());
+
+    Contact huge;
+    huge.fn = QStringLiteral("Ada");
+    huge.notes = QString(ContactSyncRepository::kMaxSyncBodyBytes, QLatin1Char('x'));
+    QVERIFY(!ContactSyncRepository::fitsOnePush(huge));
+    QVERIFY(repository.queueCreate(huge).isEmpty());
+    QCOMPARE(pendingDao.count().value_or(-1), 0);
+
+    Contact small;
+    small.fn = QStringLiteral("Ada");
+    const QString uid = repository.queueCreate(small);
+    QVERIFY(!uid.isEmpty());
+    huge.uid = uid;
+    QVERIFY(!repository.queueUpdate(huge));
+    QCOMPARE(pendingDao.count().value_or(-1), 1);
+    QCOMPARE(contactDao.findById(uid)->notes, std::optional<QString>());
 }
 
 QTEST_GUILESS_MAIN(ContactSyncRepositoryTest)

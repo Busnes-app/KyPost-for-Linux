@@ -198,13 +198,15 @@ Item {
     // system browser at Drafts. Only reachable for a client-custody account,
     // whose private key exists solely in the user's browser.
     function tryWebmailHandoff() {
-        if (root.poppingOut)
+        if (root.poppingOut || root.readingBody)
             return
         toField.commitInputAsToken()
         ccField.commitInputAsToken()
         bccField.commitInputAsToken()
 
+        root.readingBody = true
         bodyEditor.requestSendableHtml(function(result) {
+            root.readingBody = false
             root.validationError = ""
             // Deliberately stays on the compose page on failure: the message
             // is still here, and navigating away would lose it. Shares
@@ -220,7 +222,7 @@ Item {
     // sendAtMs, when given, is the scheduled time (SendLaterDialog); absent sends now.
     // allowEmptySubject is the answer to "Send without a subject?".
     function trySend(sendAtMs, allowEmptySubject) {
-        if (root.poppingOut)
+        if (root.poppingOut || root.readingBody)
             return
         const sendAt = sendAtMs || 0
         // Any address still sitting uncommitted in a field's input box (the
@@ -230,7 +232,9 @@ Item {
         ccField.commitInputAsToken()
         bccField.commitInputAsToken()
 
+        root.readingBody = true
         bodyEditor.requestSendableHtml(function(result) {
+            root.readingBody = false
             // Cc/Bcc stay optional. A blank subject is legal -- the relay
             // accepts one -- so it is asked about, not refused.
             const readiness = Format.sendReadiness(toField.joinedText, subjectField.text,
@@ -255,7 +259,7 @@ Item {
                 root.mySendToken = MailApp.sendClientEncrypted(toField.joinedText, ccField.joinedText,
                                                                bccField.joinedText, subjectField.text,
                                                                result.html, root.attachmentPaths, root.restoredDraft.token || "",
-                                                               sendAt)
+                                                               sendAt, root.replyTo.messageId || "", root.replyTo.mailbox || "")
                 return
             }
 
@@ -276,25 +280,86 @@ Item {
     // recipient-and-message check -- a half-written draft is the normal thing
     // to save, and refusing to save it would be the opposite of useful.
     function trySaveDraft() {
-        if (root.poppingOut)
+        if (root.poppingOut || root.readingBody)
             return
         toField.commitInputAsToken()
         ccField.commitInputAsToken()
         bccField.commitInputAsToken()
 
+        root.readingBody = true
         bodyEditor.requestSendableHtml(function(result) {
+            root.readingBody = false
             root.validationError = ""
             // Acknowledged by onDraftSaveCompleted below, once the draft has
             // actually reached the server.
+            root.savedSnapshot = { to: toField.joinedText, cc: ccField.joinedText, bcc: bccField.joinedText,
+                                   subject: subjectField.text, html: result.html, paths: root.attachmentPaths.join("\n") }
             root.myDraftToken = MailApp.saveDraft(toField.joinedText, ccField.joinedText, bccField.joinedText,
                                                    subjectField.text, result.html, root.attachmentPaths, root.restoredDraft.token || "")
             root.draftHandoffToWebmail = false
+            if (!root.myDraftToken)
+                root.failDraftLeave() // refused before any request; lastError says why
         })
     }
+
+    // { done, failed }: done runs once a draft save this instance started has
+    // landed and nothing changed since; anything else runs failed (lastError
+    // or a toast says why) and the composer stays open.
+    property var afterDraftSaved: null
+    // What the last draft save sent, so leaving after it can tell whether
+    // anything was written since (Save draft in "Discard this message?").
+    property var savedSnapshot: ({})
 
     // Set from the pop-out click until the window is made: a Send or Save
     // pressed in between would start a request this composer cannot see out.
     property bool poppingOut: false
+    // Set while the editor's body is being read for a Send, Save or hand-off:
+    // a second press in that gap (a double-click) started a second send.
+    property bool readingBody: false
+    function saveDraftThen(done, failed) {
+        if (root.poppingOut || root.readingBody || root.sendInFlight || root.draftInFlight) {
+            if (failed) failed() // something of this composer's is already out
+            return
+        }
+        root.afterDraftSaved = { done: done, failed: failed || null }
+        root.trySaveDraft()
+    }
+    function failDraftLeave() {
+        const after = root.afterDraftSaved
+        root.afterDraftSaved = null
+        if (after && after.failed)
+            after.failed()
+    }
+
+    // Synchronous and conservative, for a window close that cannot wait for
+    // the page: false only when nothing can be in this composer.
+    function mayHaveContent() {
+        toField.commitInputAsToken()
+        ccField.commitInputAsToken()
+        bccField.commitInputAsToken()
+        return toField.joinedText !== "" || ccField.joinedText !== "" || bccField.joinedText !== ""
+            || subjectField.text.trim() !== "" || root.attachmentPaths.length > 0
+            || (root.restoredDraft.body || root.initialBody || "") !== "" || bodyEditor.touched
+    }
+
+    // callback(true) when closing would lose something the user has here: a
+    // recipient, subject, body text or attachment. A typed address is
+    // committed first, as trySend() does, and the fields are read again
+    // after the body, so nothing typed during that read is missed.
+    function checkHasContent(callback) {
+        const fieldsHaveContent = function () {
+            toField.commitInputAsToken()
+            ccField.commitInputAsToken()
+            bccField.commitInputAsToken()
+            return toField.joinedText !== "" || ccField.joinedText !== "" || bccField.joinedText !== ""
+                || subjectField.text.trim() !== "" || root.attachmentPaths.length > 0
+        }
+        if (fieldsHaveContent()) {
+            callback(true)
+            return
+        }
+        bodyEditor.requestSendableHtml(function (result) { callback(!result.isEmpty || fieldsHaveContent()) })
+    }
 
     // Commits any still-uncommitted address text the same way trySend()
     // does, so a pop-out doesn't silently drop a typed-but-not-yet-tokenized
@@ -921,8 +986,34 @@ Item {
             if (token !== root.myDraftToken)
                 return
             root.myDraftToken = 0
-            if (!ok)
+            const after = root.afterDraftSaved
+            root.afterDraftSaved = null
+            if (!ok) {
+                if (after && after.failed)
+                    after.failed()
                 return // MailApp.lastError carries the reason
+            }
+            if (after) {
+                // Edited while the save was out: leaving would lose that. A
+                // typed address counts, and every field is read after the
+                // body, so nothing changed during that read is missed either.
+                const saved = root.savedSnapshot
+                bodyEditor.requestSendableHtml(function (result) {
+                    toField.commitInputAsToken()
+                    ccField.commitInputAsToken()
+                    bccField.commitInputAsToken()
+                    if (saved.to === toField.joinedText && saved.cc === ccField.joinedText
+                            && saved.bcc === bccField.joinedText && saved.subject === subjectField.text
+                            && saved.paths === root.attachmentPaths.join("\n") && result.html === saved.html) {
+                        after.done()
+                        return
+                    }
+                    toast.show(i18n("Draft saved. You changed the message since, so it is still open."))
+                    if (after.failed)
+                        after.failed()
+                })
+                return
+            }
             // Acknowledge in place: this component already owns a Toast for
             // its other inline feedback, and the composer stays open so there
             // is no navigation change to signal a save happened.

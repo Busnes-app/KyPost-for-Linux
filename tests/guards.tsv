@@ -608,7 +608,16 @@ core/net/HttpClient.cpp	    if (issuer.subjectDisplayName() != leaf.issuerDispla
 app/mail/MailController.cpp	    if (currentSubscriber.isEmpty() || currentSubscriber != m_pendingSend.owner.subscriberId || serverBaseUrl != m_pendingSend.ownerServer) {	    if (false) {	MailControllerTest:aPickupConfirmAfterAnAccountChangeSendsNothing
 app/pgp/PgpQrController.cpp	        m_myQrIdentity = requestedFor;	        m_myQrIdentity = m_repository.currentIdentity();	PgpQrControllerTest:aQrCodeThatLandsAfterAnAccountChangeIsNotOffered
 core/domain/PushRepository.cpp	    if (!stored.isEmpty() && sameUrlOrigin(QUrl(stored), QUrl(serverBaseUrl)))	    if (!stored.isEmpty())	PushRepositoryTest:aStoredPullEndpointOnAnotherOriginIsIgnored
-# Council pass 2: an attachment listing for a replaced account, and a download
-# that lands under the lock.
+# Council pass 2: an attachment listing for a replaced account, a download that
+# lands under the lock, a plain send for an account whose custody is unknown or
+# encrypts on this device, contacts reaching a new account before the user
+# answers (Q3), and the purge after unpair-then-pair-another-account (F1).
 app/mail/MailController.cpp	            if (!m_pairingStore.stillCurrent(listedFor)) {	            if (false) {	MailControllerTest:anAttachmentListThatOutlivesItsAccountShowsNothing
 app/mail/MailController.cpp	            if (m_appLocked && !result.data.isEmpty()) {	            if (false) {	MailControllerTest:anAttachmentThatLandsUnderTheLockIsNeverWrittenOrOpened
+app/mail/MailController.cpp	            if (!custody.ok) {	            if (false) {	MailControllerTest:aPlainSendNeverGoesOutWhenCustodyIsUnknownOrClient
+app/mail/MailController.cpp	            if (custody.protection == QStringLiteral("client")) {	            if (false) {	MailControllerTest:aPlainSendNeverGoesOutWhenCustodyIsUnknownOrClient
+app/contacts/ContactsController.cpp	    if (m_repository.carryPending()) {	    if (false) {	ContactsControllerTest:contactsKeptAcrossAnAccountChangeWaitForTheUser
+app/pairing/PairingController.cpp	    m_registrationHadPreviousAccount = true;	    m_registrationHadPreviousAccount = paired.has_value();	PairingControllerTest:unpairingThenPairingAnotherAccountStillPurges
+# Council pass 3: a same-account link confirmed without the re-pin warning stays
+# pinned to the stored key (F29).
+app/pairing/PairingController.cpp	        !stored.isEmpty() && m_repinCheck == RepinCheck::Same)	        false)	PairingControllerTest:aLinkToTheServerStillPresentingThePinnedKeyDoesNotWarn

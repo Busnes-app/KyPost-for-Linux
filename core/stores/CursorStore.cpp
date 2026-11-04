@@ -73,6 +73,20 @@ bool CursorStore::wipeAll()
     return flush();
 }
 
+bool CursorStore::contactCarryPending() const
+{
+    return m_settings.value(QStringLiteral("contacts/carryPending"), false).toBool();
+}
+
+bool CursorStore::setContactCarryPending(bool pending)
+{
+    if (pending)
+        m_settings.setValue(QStringLiteral("contacts/carryPending"), true);
+    else
+        m_settings.remove(QStringLiteral("contacts/carryPending"));
+    return flush();
+}
+
 bool CursorStore::advancedPastTheDiskCache() const
 {
     return m_settings.value(QStringLiteral("cursors/inMemorySession"), false).toBool();
@@ -84,6 +98,20 @@ bool CursorStore::setAdvancedPastTheDiskCache(bool advanced)
         m_settings.setValue(QStringLiteral("cursors/inMemorySession"), true);
     else
         m_settings.remove(QStringLiteral("cursors/inMemorySession"));
+    return flush();
+}
+
+bool CursorStore::diskCacheIsAnotherAccounts() const
+{
+    return m_settings.value(QStringLiteral("cache/diskIsAnotherAccounts"), false).toBool();
+}
+
+bool CursorStore::setDiskCacheIsAnotherAccounts(bool another)
+{
+    if (another)
+        m_settings.setValue(QStringLiteral("cache/diskIsAnotherAccounts"), true);
+    else
+        m_settings.remove(QStringLiteral("cache/diskIsAnotherAccounts"));
     return flush();
 }
 

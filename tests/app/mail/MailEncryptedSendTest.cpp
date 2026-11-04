@@ -76,7 +76,11 @@ private slots:
     void aSendForAReplacedAccountIsNotReportedAsSent();
     void aScheduledSendStaysEncryptedEndToEnd();
     void aRelayThatCannotScheduleGetsNoCiphertext();
+    void aFailedBccDeliveryIsNotReportedAsAPlainSuccess_data();
+    void aFailedBccDeliveryIsNotReportedAsAPlainSuccess();
     void theEnrolledKeyGenerationIsAsserted();
+    void anEncryptedReplyIsThreaded();
+    void anEncryptedReplyTheRelayCannotThreadAsksFirst();
 
 private:
     GnupgFixture m_sender;
@@ -432,6 +436,56 @@ void MailEncryptedSendTest::aRelayThatCannotScheduleGetsNoCiphertext()
     QVERIFY2(sendRequestBodyOf(fake.receivedRequests()).isEmpty(), "ciphertext went to a relay that would send it now");
 }
 
+// The relay sends each Bcc on its own and reports a failed one only as a
+// warning on a 200. The composer closes on success, so the warning has to
+// reach the app-level notice, or the sender believes everyone got it. A
+// message with no Bcc is never said to have lost one.
+void MailEncryptedSendTest::aFailedBccDeliveryIsNotReportedAsAPlainSuccess_data()
+{
+    QTest::addColumn<QString>("to");
+    QTest::addColumn<QString>("bcc");
+    QTest::addColumn<QByteArray>("reply");
+    QTest::addColumn<int>("bccWarnings");
+    const QByteArray bccFailed = R"({"ok":true,"sentSaved":true,"warning":"delivery could not be confirmed for 1 of 1 blind copies; some may already have arrived; check provider evidence before retrying to avoid duplicates"})";
+    QTest::newRow("with a Bcc") << QString() << QStringLiteral("you@example.com") << bccFailed << 1;
+    QTest::newRow("without a Bcc") << QStringLiteral("you@example.com") << QString() << bccFailed << 0;
+    // Only Sent filing failed: the Bcc went, so it is not questioned.
+    QTest::newRow("Sent copy only") << QString() << QStringLiteral("you@example.com")
+        << QByteArray(R"({"ok":true,"sentSaved":false,"warning":"email sent but could not be saved to Sent folder"})") << 0;
+    // A native mailbox words both differently (native_outbound.go).
+    QTest::newRow("native: Bcc pending, Sent pending") << QString() << QStringLiteral("you@example.com")
+        << QByteArray(R"({"ok":true,"sentSaved":false,"warning":"some follow-on deliveries are pending or unconfirmed; inspect the outbox before resubmitting email accepted but Sent filing remains pending; sending it again will not repair Sent"})") << 1;
+    QTest::newRow("native: completion only") << QString() << QStringLiteral("you@example.com")
+        << QByteArray(R"({"ok":true,"sentSaved":true,"warning":"relay accepted the primary message but completion failed; do not resubmit it"})") << 0;
+    QTest::newRow("Sent copy and a Bcc") << QString() << QStringLiteral("you@example.com")
+        << QByteArray(R"({"ok":true,"sentSaved":false,"warning":"email sent but could not be saved to Sent folder delivery could not be confirmed for 1 of 1 blind copies; some may already have arrived"})") << 1;
+}
+
+void MailEncryptedSendTest::aFailedBccDeliveryIsNotReportedAsAPlainSuccess()
+{
+    QFETCH(QString, to);
+    QFETCH(QString, bcc);
+    QFETCH(QByteArray, reply);
+    QFETCH(int, bccWarnings);
+    FakeRelayServer fake(httpResponse(200, "OK", reply));
+    fake.setResponseForPath("/api/pgp/bootstrap", bootstrapResponse(QStringLiteral("me@example.com")));
+    fake.setResponseForPath("/api/pgp/recipients/resolve",
+                             resolveResponse(QStringLiteral("you@example.com"), m_recipientKey,
+                                              m_recipientFingerprint));
+    DecryptHarness harness;
+    QVERIFY(harness.build(fake));
+
+    QSignalSpy completed(harness.controller.get(), &MailController::sendCompleted);
+    QSignalSpy warned(harness.controller.get(), &MailController::sendWarning);
+    harness.controller->sendClientEncrypted(to, QString(), bcc, QStringLiteral("Hello"), QStringLiteral("Hi"), {});
+    QTRY_VERIFY_WITH_TIMEOUT(completed.count() == 1, 30000);
+    QVERIFY(completed.at(0).at(1).toBool());
+    int mentions = 0;
+    for (const QList<QVariant>& signal : warned)
+        mentions += signal.at(0).toString().contains(QStringLiteral("Bcc")) ? 1 : 0;
+    QCOMPARE(mentions, bccWarnings);
+}
+
 // A converted account's relay refuses (409 pgpStateChanged) every
 // client-encrypted send that does not assert the enrolled key generation.
 // It is sent, and a refusal says to enroll again rather than "try again".
@@ -457,6 +511,53 @@ void MailEncryptedSendTest::theEnrolledKeyGenerationIsAsserted()
     QCOMPARE(body.value(QStringLiteral("materialGeneration")).toInteger(), 7);
     QVERIFY2(harness.controller->lastError().contains(QStringLiteral("Enroll")),
              qPrintable(harness.controller->lastError()));
+}
+
+// Reply on a client-custody account: the relay threads it (send-pgp's
+// replyToMessageId, KyPost-Server ca5f0b52), as it does a plain reply.
+void MailEncryptedSendTest::anEncryptedReplyIsThreaded()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true,"sentSaved":true,"warning":""})"));
+    fake.setResponseForPath("/api/pgp/bootstrap", bootstrapResponse(QStringLiteral("me@example.com")));
+    fake.setResponseForPath("/api/pgp/recipients/resolve",
+                             resolveResponse(QStringLiteral("you@example.com"), m_recipientKey,
+                                              m_recipientFingerprint));
+    DecryptHarness harness;
+    QVERIFY(harness.build(fake));
+
+    QSignalSpy completed(harness.controller.get(), &MailController::sendCompleted);
+    harness.controller->sendClientEncrypted(QStringLiteral("you@example.com"), QString(), QString(),
+                                            QStringLiteral("Re: Hello"), QStringLiteral("Hi"), {}, QString(), 0,
+                                            QStringLiteral("n1:7:42"), QStringLiteral("INBOX"));
+    QTRY_VERIFY_WITH_TIMEOUT(completed.count() == 1, 30000);
+    QVERIFY(completed.at(0).at(1).toBool());
+    const QJsonObject body = sendRequestBodyOf(fake.receivedRequests());
+    QCOMPARE(body.value(QStringLiteral("replyToMessageId")).toString(), QStringLiteral("n1:7:42"));
+    QCOMPARE(body.value(QStringLiteral("replyToMailbox")).toString(), QStringLiteral("INBOX"));
+}
+
+// The relay could not find the original: nothing was sent, and the composer is
+// told so it can ask "Send without threading?" (DECISIONS.md).
+void MailEncryptedSendTest::anEncryptedReplyTheRelayCannotThreadAsksFirst()
+{
+    FakeRelayServer fake(httpResponse(404, "Not Found",
+                                      "the message being replied to was not found; nothing was sent\n"));
+    fake.setResponseForPath("/api/pgp/bootstrap", bootstrapResponse(QStringLiteral("me@example.com")));
+    fake.setResponseForPath("/api/pgp/recipients/resolve",
+                             resolveResponse(QStringLiteral("you@example.com"), m_recipientKey,
+                                              m_recipientFingerprint));
+    DecryptHarness harness;
+    QVERIFY(harness.build(fake));
+
+    QSignalSpy completed(harness.controller.get(), &MailController::sendCompleted);
+    QSignalSpy refused(harness.controller.get(), &MailController::replyThreadingRefused);
+    const quint64 token = harness.controller->sendClientEncrypted(
+        QStringLiteral("you@example.com"), QString(), QString(), QStringLiteral("Re: Hello"), QStringLiteral("Hi"),
+        {}, QString(), 0, QStringLiteral("n1:7:42"), QStringLiteral("INBOX"));
+    QTRY_VERIFY_WITH_TIMEOUT(completed.count() == 1, 30000);
+    QVERIFY(!completed.at(0).at(1).toBool());
+    QCOMPARE(refused.count(), 1);
+    QCOMPARE(refused.at(0).at(0).toULongLong(), token);
 }
 
 QTEST_GUILESS_MAIN(MailEncryptedSendTest)

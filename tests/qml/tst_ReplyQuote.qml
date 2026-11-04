@@ -84,12 +84,15 @@ TestCase {
     // A finished forward never replaces a message the user is writing.
     function test_aForwardNeverReplacesAnOpenComposer() {
         const shell = source("qrc:/qml/AppShell.qml")
-        const start = shell.indexOf("function onForwardComposeRequested(draft) {")
+        verify(shell.indexOf("function onForwardComposeRequested(draft) {\n            root.openRestoredDraft(draft)") !== -1)
+        // Over a message being written it asks first (owner decision Q1);
+        // "Keep writing" releases the forward's session.
+        const start = shell.indexOf("function openRestoredDraft(draft) {")
         verify(start !== -1)
-        const handler = shell.slice(start, shell.indexOf("root.openRestoredDraft(draft)", start))
+        const handler = shell.slice(start, shell.indexOf("root.composeSeed =", start))
         verify(handler.indexOf('if (root.detailMode === "compose") {') !== -1, handler)
+        verify(handler.indexOf("root.leaveCompose(") !== -1, handler)
         verify(handler.indexOf("MailApp.releaseDraft(draft.token)") !== -1, handler)
-        verify(handler.indexOf("return") !== -1, handler)
         // A draft session is refused in C++ before it is touched; the shell only says so.
         verify(shell.indexOf("function onForwardFinished(composerBusy) {\n            if (composerBusy)\n                root.forwardNotOpened()") !== -1)
         const detail = source("qrc:/qml/pages/EmailDetail.qml")

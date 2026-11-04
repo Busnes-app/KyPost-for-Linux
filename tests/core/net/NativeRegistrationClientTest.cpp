@@ -30,6 +30,8 @@ private slots:
     void unauthorizedFrom401();
     void aRedeemedTokenKeepsItsStatus();
     void backendMisconfiguredFrom503();
+    void aPushRefreshUsesTheDeviceCredentialAndNoPairingToken();
+    void aPushRefreshKeepsTheStatusOfARelayWithoutTheRoute();
     void noQueryParamsOnRequestUrl();
     void unusableCredentialInA200IsRefused_data();
     void unusableCredentialInA200IsRefused();
@@ -367,6 +369,46 @@ void NativeRegistrationClientTest::pairingStatusSendsThePendingCredentialAsHeade
     QVERIFY(request.startsWith("GET /api/notifications/native/pairing-status HTTP/1.1"));
     QVERIFY(request.contains("X-Kypost-Device-Id: dev-pending"));
     QVERIFY(request.contains("X-Kypost-Device-Secret: pending-secret"));
+}
+
+// Owner answer Q4: an endpoint rotation goes to native/refresh with the
+// device's own credential. The pairing token is single-use, so it never rides.
+void NativeRegistrationClientTest::aPushRefreshUsesTheDeviceCredentialAndNoPairingToken()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true,"deviceId":"dev-1","transport":"unifiedpush"})"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    NativeRegistrationClient client(http);
+
+    const NativeRegistrationResult result = client.refreshPushEndpoint(
+        QUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port())), RelayAuth{ QStringLiteral("dev-1"), QStringLiteral("s3cret") },
+        QStringLiteral("https://push.example/new"), keys());
+    QCOMPARE(result.outcome, RegistrationOutcome::Success);
+    const QByteArray request = fake.receivedRequests().value(0);
+    QVERIFY(request.startsWith("POST /api/notifications/native/refresh"));
+    QVERIFY(request.contains("X-Kypost-Device-Id: dev-1"));
+    QVERIFY(request.contains("X-Kypost-Device-Secret: s3cret"));
+    const QJsonObject sent = fake.receivedJsonBody();
+    QCOMPARE(sent.value(QStringLiteral("deviceToken")).toString(), QStringLiteral("https://push.example/new"));
+    QCOMPARE(sent.value(QStringLiteral("transport")).toString(), QStringLiteral("unifiedpush"));
+    QVERIFY(!sent.value(QStringLiteral("p256dh")).toString().isEmpty());
+    QVERIFY(!sent.value(QStringLiteral("auth")).toString().isEmpty());
+    QVERIFY(!sent.contains(QStringLiteral("pairingToken")));
+}
+
+// 404 is a relay from before the route: the caller falls back to re-registering.
+void NativeRegistrationClientTest::aPushRefreshKeepsTheStatusOfARelayWithoutTheRoute()
+{
+    FakeRelayServer fake(httpResponse(404, "Not Found", "404 page not found\n"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    NativeRegistrationClient client(http);
+
+    const NativeRegistrationResult result = client.refreshPushEndpoint(
+        QUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port())), RelayAuth{ QStringLiteral("dev-1"), QStringLiteral("s3cret") },
+        QStringLiteral("https://push.example/new"), keys());
+    QCOMPARE(result.outcome, RegistrationOutcome::Failure);
+    QCOMPARE(result.statusCode, 404);
 }
 
 QTEST_GUILESS_MAIN(NativeRegistrationClientTest)

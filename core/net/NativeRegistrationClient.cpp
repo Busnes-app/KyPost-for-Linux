@@ -52,6 +52,41 @@ NativeRegistrationClient::NativeRegistrationClient(HttpClient& httpClient)
 {
 }
 
+NativeRegistrationResult NativeRegistrationClient::refreshPushEndpoint(const QUrl& serverBaseUrl,
+                                                                      const RelayAuth& auth,
+                                                                      const QString& deviceToken,
+                                                                      const WebPushSubscription& pushKeys) const
+{
+    NativeRegistrationResult out;
+    if (pushKeys.p256dh.size() != 65 || pushKeys.auth.size() != 16 || deviceToken.isEmpty()) {
+        out.detail = QStringLiteral("No push endpoint or encryption keys to refresh.");
+        return out;
+    }
+    const auto b64url = [](const QByteArray& raw) {
+        return QString::fromLatin1(raw.toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals));
+    };
+    // The same field names as register (nativeRegisterRequest on the relay).
+    QJsonObject body;
+    body[QStringLiteral("deviceToken")] = deviceToken;
+    body[QStringLiteral("transport")] = QStringLiteral("unifiedpush");
+    body[QStringLiteral("p256dh")] = b64url(pushKeys.p256dh);
+    body[QStringLiteral("auth")] = b64url(pushKeys.auth);
+
+    const HttpClient::HttpResult result = m_httpClient.post(
+        joinUrlPath(serverBaseUrl, QStringLiteral("api/notifications/native/refresh")), {}, body,
+        auth.headerItems());
+    out.statusCode = result.statusCode;
+    if (result.error.has_value()) {
+        out.outcome = *result.error == NetworkError::Unauthorized ? RegistrationOutcome::Unauthorized
+                                                                  : RegistrationOutcome::Failure;
+        out.detail = !result.detail.isEmpty() ? result.detail
+                                              : QStringLiteral("Push refresh failed with status %1").arg(result.statusCode);
+        return out;
+    }
+    out.outcome = RegistrationOutcome::Success;
+    return out;
+}
+
 NativeRegistrationResult NativeRegistrationClient::registerDevice(
     const QUrl& registrationEndpoint, const QString& subscriberId, const QString& pairingToken,
     const QString& deviceToken, const QString& deviceId, const QString& deviceName,

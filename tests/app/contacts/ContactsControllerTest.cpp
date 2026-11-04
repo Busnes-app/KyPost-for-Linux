@@ -21,8 +21,12 @@
 
 #include "../../core/net/FakeRelayServer.h"
 #include "../ExecutorShutdownGuard.h"
+#include "../../core/pgp/GnupgFixture.h"
 
 #include <QElapsedTimer>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QHash>
 #include <QHostAddress>
 #include <QNetworkAccessManager>
@@ -196,6 +200,9 @@ class ContactsControllerTest : public QObject
 
 private slots:
     void aTooOldCursorIsFollowedByAFullPull();
+    void aKeyTheRelayWouldRefuseIsNeverQueued();
+    void aRelayKeyRefusalNamesTheContact();
+    void contactsKeptAcrossAnAccountChangeWaitForTheUser();
     void updateContactReplacesEmailsPhonesAddressesWholesale();
     void isSyncedReflectsPendingState();
     void createContactRejectsBlankName();
@@ -587,6 +594,207 @@ void ContactsControllerTest::aTooOldCursorIsFollowedByAFullPull()
     QCOMPARE(cursorStore.contactBaseCursor(), QStringLiteral("9"));
 }
 
+// Owner decision Q2. The relay refuses a whole sync batch over one contact key
+// it will not take, so such a key is refused at save, naming the contact. A key
+// unchanged from the relay's passes, as on the relay, so an old key never
+// blocks an edit.
+void ContactsControllerTest::aKeyTheRelayWouldRefuseIsNeverQueued()
+{
+    Database db;
+    QVERIFY(db.open(QStringLiteral(":memory:")));
+    ContactDao contactDao(db.handle());
+    GroupDao groupDao(db.handle());
+    PendingContactChangeDao pendingDao(db.handle());
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    CursorStore cursorStore(dir.filePath(QStringLiteral("cursors.ini")));
+    SecureStoreFile secureStore(dir.path());
+    PairingStore pairingStore(secureStore);
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    ContactSyncClient client(http);
+    GroupsClient groupsClient(http);
+    GroupsRepository groupsRepository(groupsClient, groupDao, pairingStore);
+    ContactPhotoClient photoClient(http);
+    ContactPhotoCache photoCache(dir.filePath(QStringLiteral("photos")));
+    ContactPhotoRepository photoRepository(photoClient, photoCache, pairingStore);
+    ContactSyncRepository repository(client, contactDao, pendingDao, cursorStore, pairingStore, db.handle());
+    NetworkExecutor executor(3000);
+    ContactsController controller(repository, groupsRepository, photoRepository, executor);
+    ExecutorShutdownGuard shutdownGuard{ executor };
+
+    const QVariantList emails{ QVariantMap{ { QStringLiteral("value"), QStringLiteral("ada@example.com") } } };
+    const QString pasted = QStringLiteral("not a key at all");
+    QVERIFY(controller.createContact({ { QStringLiteral("fn"), QStringLiteral("Ada") },
+                                       { QStringLiteral("emails"), emails },
+                                       { QStringLiteral("pgpKey"), pasted } }).isEmpty());
+    QVERIFY(controller.lastError().contains(QStringLiteral("Ada")));
+    QCOMPARE(pendingDao.count().value_or(-1), 0);
+
+    // Whitespace only is no key, on the wire too: the relay would refuse it.
+    const QString blankUid = controller.createContact({ { QStringLiteral("fn"), QStringLiteral("Bea") },
+                                                        { QStringLiteral("pgpKey"), QStringLiteral("  \n ") } });
+    QVERIFY(!blankUid.isEmpty());
+    QVERIFY(!contactDao.findById(blankUid)->pgpKey.has_value());
+
+    // A key the relay already holds (a synced contact) is not re-judged by an
+    // unrelated edit.
+    Contact held;
+    held.uid = QStringLiteral("srv-ada");
+    held.rev = 3;
+    held.fn = QStringLiteral("Ada");
+    held.pgpKey = pasted;
+    QVERIFY(contactDao.insertOrReplace(held));
+    const QString uid = held.uid;
+    QVERIFY(controller.updateContact(uid, { { QStringLiteral("fn"), QStringLiteral("Ada L.") },
+                                            { QStringLiteral("pgpKey"), pasted } }));
+    // Once a change is queued the local key is not the relay's: the same key
+    // on the next edit is judged against that edit (round-3 objection).
+    QVERIFY(!controller.updateContact(uid, { { QStringLiteral("fn"), QStringLiteral("Ada L.") },
+                                             { QStringLiteral("emails"), emails },
+                                             { QStringLiteral("pgpKey"), pasted } }));
+    // A new one is.
+    QVERIFY(!controller.updateContact(uid, { { QStringLiteral("fn"), QStringLiteral("Ada L.") },
+                                             { QStringLiteral("pgpKey"), QStringLiteral("other junk") } }));
+    QVERIFY(controller.lastError().contains(QStringLiteral("Ada L.")));
+}
+
+// A key queued before the save check (or with no gpg to ask) can still be
+// refused by the relay; the user is told whose, by name, not by uid.
+void ContactsControllerTest::aRelayKeyRefusalNamesTheContact()
+{
+    FakeRelayServer fake(httpResponse(400, "Bad Request",
+                                      "invalid PGP key for contact : contact key is revoked or expired\n"));
+    Database db;
+    QVERIFY(db.open(QStringLiteral(":memory:")));
+    ContactDao contactDao(db.handle());
+    GroupDao groupDao(db.handle());
+    PendingContactChangeDao pendingDao(db.handle());
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    CursorStore cursorStore(dir.filePath(QStringLiteral("cursors.ini")));
+    SecureStoreFile secureStore(dir.path());
+    PairingStore pairingStore(secureStore);
+    savePairing(pairingStore, fake.port());
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    ContactSyncClient client(http);
+    GroupsClient groupsClient(http);
+    GroupsRepository groupsRepository(groupsClient, groupDao, pairingStore);
+    ContactPhotoClient photoClient(http);
+    ContactPhotoCache photoCache(dir.filePath(QStringLiteral("photos")));
+    ContactPhotoRepository photoRepository(photoClient, photoCache, pairingStore);
+    ContactSyncRepository repository(client, contactDao, pendingDao, cursorStore, pairingStore, db.handle());
+    NetworkExecutor executor(3000);
+    ContactsController controller(repository, groupsRepository, photoRepository, executor);
+    ExecutorShutdownGuard shutdownGuard{ executor };
+
+    Contact plain;
+    plain.fn = QStringLiteral("Bob");
+    QVERIFY(!repository.queueCreate(plain).isEmpty());
+    Contact keyed;
+    keyed.fn = QStringLiteral("Grace Hopper");
+    keyed.pgpKey = QStringLiteral("-----BEGIN PGP PUBLIC KEY BLOCK-----\nold\n");
+    const QString keyedUid = repository.queueCreate(keyed);
+    QVERIFY(!keyedUid.isEmpty());
+
+    controller.sync();
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.lastError().isEmpty(), 10000);
+    QVERIFY2(controller.lastError().contains(QStringLiteral("Grace Hopper")), qPrintable(controller.lastError()));
+    QVERIFY(controller.lastError().contains(QStringLiteral("revoked or expired")));
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.isBusy(), 10000);
+
+    // A create now carries its uid, so the relay names it; the user still
+    // sees the name.
+    fake.setResponse(httpResponse(400, "Bad Request",
+                                  "invalid PGP key for contact " + keyedUid.toUtf8()
+                                      + ": contact key does not carry any of the contact's addresses as a user ID\n"));
+    controller.sync();
+    QTRY_VERIFY_WITH_TIMEOUT(controller.lastError().contains(QStringLiteral("does not carry")), 10000);
+    QVERIFY2(controller.lastError().contains(QStringLiteral("Grace Hopper")), qPrintable(controller.lastError()));
+    QVERIFY(!controller.lastError().contains(keyedUid));
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.isBusy(), 10000);
+}
+
+// Owner decision Q3. A different account was paired while this device held
+// contacts: nothing of them syncs until the user answers. Yes re-queues them
+// as creates for the new account, without the previous server's photo and
+// groups; No removes them.
+void ContactsControllerTest::contactsKeptAcrossAnAccountChangeWaitForTheUser()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"cursor":3,"tooOld":false,"changed":[],"deleted":[]})"));
+    Database db;
+    QVERIFY(db.open(QStringLiteral(":memory:")));
+    ContactDao contactDao(db.handle());
+    GroupDao groupDao(db.handle());
+    PendingContactChangeDao pendingDao(db.handle());
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    CursorStore cursorStore(dir.filePath(QStringLiteral("cursors.ini")));
+    SecureStoreFile secureStore(dir.path());
+    PairingStore pairingStore(secureStore);
+    savePairing(pairingStore, fake.port());
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    ContactSyncClient client(http);
+    GroupsClient groupsClient(http);
+    GroupsRepository groupsRepository(groupsClient, groupDao, pairingStore);
+    ContactPhotoClient photoClient(http);
+    ContactPhotoCache photoCache(dir.filePath(QStringLiteral("photos")));
+    ContactPhotoRepository photoRepository(photoClient, photoCache, pairingStore);
+    ContactSyncRepository repository(client, contactDao, pendingDao, cursorStore, pairingStore, db.handle());
+    NetworkExecutor executor(3000);
+    ContactsController controller(repository, groupsRepository, photoRepository, executor);
+    ExecutorShutdownGuard shutdownGuard{ executor };
+
+    Contact synced;
+    synced.uid = QStringLiteral("srv-old-1");
+    synced.rev = 7;
+    synced.fn = QStringLiteral("Ada");
+    synced.photoRef = QStringLiteral("photos/old.jpg");
+    synced.groupIds = { QStringLiteral("grp-old") };
+    QVERIFY(contactDao.insertOrReplace(synced));
+    Contact edited;
+    edited.fn = QStringLiteral("Grace");
+    QVERIFY(!repository.queueCreate(edited).isEmpty());
+    QVERIFY(cursorStore.setContactBaseCursor(QStringLiteral("41")));
+    QVERIFY(cursorStore.setContactCarryPending(true));
+    QCOMPARE(controller.contactsToCarry(), 2);
+
+    controller.sync();
+    QVERIFY(!controller.lastError().isEmpty());
+    QTest::qWait(300);
+    QVERIFY2(fake.receivedRequest().isEmpty(), "contacts reached the new account before the user answered");
+
+    QVERIFY(controller.answerCarry(true));
+    QCOMPARE(controller.contactsToCarry(), 0);
+    const QVector<PendingContactChangeRecord> queued = pendingDao.findAll();
+    QCOMPARE(queued.size(), 2);
+    for (const PendingContactChangeRecord& record : queued) {
+        const QJsonObject wire = QJsonDocument::fromJson(record.changeJson.toUtf8()).object();
+        QCOMPARE(wire.value(QStringLiteral("uid")).toString(), record.contactUid);
+        // A new contact, never the old account's uid: if the "other" account
+        // is the same one, nothing on the relay is overwritten.
+        QVERIFY(record.contactUid != QStringLiteral("srv-old-1"));
+        QVERIFY(!wire.contains(QStringLiteral("photoRef")) || wire.value(QStringLiteral("photoRef")).toString().isEmpty());
+        QCOMPARE(wire.value(QStringLiteral("rev")).toInt(), 0);
+        // Group ids stay: the relay drops any the new account does not have.
+        if (wire.value(QStringLiteral("fn")).toString() == QStringLiteral("Ada"))
+            QCOMPARE(wire.value(QStringLiteral("groupIDs")).toArray().first().toString(), QStringLiteral("grp-old"));
+    }
+    QVERIFY(!contactDao.findById(QStringLiteral("srv-old-1")).has_value());
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.isBusy(), 10000);
+    QVERIFY(fake.receivedRequest().contains("POST /api/contacts/sync"));
+    QCOMPARE(fake.receivedJsonBody().value(QStringLiteral("baseCursor")).toInt(), 0);
+
+    // No: they go from this device.
+    QVERIFY(cursorStore.setContactCarryPending(true));
+    QVERIFY(controller.answerCarry(false));
+    QVERIFY(contactDao.findAll().isEmpty());
+    QVERIFY(!cursorStore.contactCarryPending());
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.isBusy(), 10000);
+}
+
 void ContactsControllerTest::syncSuccessRefreshesGroupsCache()
 {
     // Review follow-up (Task 2 finding): the line this whole GroupsRepository
@@ -799,7 +1007,16 @@ void ContactsControllerTest::createAndUpdateContactRoundTripExtendedFields()
     fields[QStringLiteral("fn")] = QStringLiteral("Ada Lovelace");
     fields[QStringLiteral("groupIds")] = QVariantList{ QStringLiteral("group-1"), QStringLiteral("group-2") };
     fields[QStringLiteral("photoRef")] = QStringLiteral("photo-ref-1");
-    fields[QStringLiteral("pgpKey")] = QStringLiteral("-----BEGIN PGP PUBLIC KEY BLOCK-----");
+    // A real key for the contact's address: one the relay would refuse is
+    // refused at save (owner decision Q2).
+    GnupgFixture keyring;
+    if (!keyring.build(QStringLiteral("Ada Lovelace <ada@example.com>")))
+        QSKIP("no usable gpg -- the contact key round trip is NOT covered");
+    const QString adaKey = QString::fromUtf8(keyring.exportPublicKey(QStringLiteral("ada@example.com")));
+    QVERIFY(!adaKey.isEmpty());
+    fields[QStringLiteral("emails")] =
+        QVariantList{ QVariantMap{ { QStringLiteral("value"), QStringLiteral("ada@example.com") } } };
+    fields[QStringLiteral("pgpKey")] = adaKey;
     fields[QStringLiteral("ims")] = QVariantList{ imEntry };
     fields[QStringLiteral("websites")] = QVariantList{ websiteEntry };
     fields[QStringLiteral("relations")] = QVariantList{ relationEntry };
@@ -818,7 +1035,7 @@ void ContactsControllerTest::createAndUpdateContactRoundTripExtendedFields()
     QCOMPARE(created.value(QStringLiteral("groupIds")).toStringList(),
               QStringList({ QStringLiteral("group-1"), QStringLiteral("group-2") }));
     QCOMPARE(created.value(QStringLiteral("photoRef")).toString(), QStringLiteral("photo-ref-1"));
-    QCOMPARE(created.value(QStringLiteral("pgpKey")).toString(), QStringLiteral("-----BEGIN PGP PUBLIC KEY BLOCK-----"));
+    QCOMPARE(created.value(QStringLiteral("pgpKey")).toString(), adaKey);
     QCOMPARE(created.value(QStringLiteral("phoneticGivenName")).toString(), QStringLiteral("Ay-da"));
     QCOMPARE(created.value(QStringLiteral("phoneticFamilyName")).toString(), QStringLiteral("Love-lace"));
     QCOMPARE(created.value(QStringLiteral("department")).toString(), QStringLiteral("Engineering"));

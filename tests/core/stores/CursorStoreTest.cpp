@@ -57,8 +57,8 @@ void CursorStoreTest::defaultsAreEmpty()
     QVERIFY(store.contactBaseCursor().isEmpty());
 }
 
-// The in-memory-session mark outlives the process, survives a cursor reset
-// (which is not about which cache the cursors describe) and goes with a wipe.
+// The contact carry hold (owner decision Q3) and the in-memory-session mark
+// outlive the process, and every wipe takes them with the cursors.
 void CursorStoreTest::sessionMarkersPersistAndGoWithAWipe()
 {
     QTemporaryDir dir;
@@ -66,13 +66,22 @@ void CursorStoreTest::sessionMarkersPersistAndGoWithAWipe()
     const QString path = tempFilePath(dir, QStringLiteral("cursors.ini"));
     {
         CursorStore store(path);
+        QVERIFY(!store.contactCarryPending());
         QVERIFY(!store.advancedPastTheDiskCache());
+        QVERIFY(!store.diskCacheIsAnotherAccounts());
+        QVERIFY(store.setContactCarryPending(true));
         QVERIFY(store.setAdvancedPastTheDiskCache(true));
-        QVERIFY(store.reset());
+        QVERIFY(store.setDiskCacheIsAnotherAccounts(true)); // F1, an account change in memory
+        QVERIFY(store.reset()); // a cursor reset is not a decision about contacts
     }
     CursorStore store(path);
+    QVERIFY(store.contactCarryPending());
     QVERIFY(store.advancedPastTheDiskCache());
+    QVERIFY(store.diskCacheIsAnotherAccounts());
+    QVERIFY(store.setDiskCacheIsAnotherAccounts(false));
+    QVERIFY(!store.diskCacheIsAnotherAccounts());
     QVERIFY(store.wipeAll());
+    QVERIFY(!store.contactCarryPending());
     QVERIFY(!store.advancedPastTheDiskCache());
 }
 

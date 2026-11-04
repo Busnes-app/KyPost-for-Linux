@@ -151,6 +151,15 @@ public:
                                              const QString& deviceId, const QString& deviceName,
                                              const WebPushSubscription& pushKeys) const;
 
+    // `POST {serverBaseUrl}/api/notifications/native/refresh` (KyPost-Server
+    // handleNotificationNativeRefresh, owner answer Q4): replaces this
+    // device's push endpoint and keys, authenticated by its own credential,
+    // with no pairing token. Success, Unauthorized (401: the device is gone),
+    // or Failure with statusCode -- 404 is a relay without the route.
+    NativeRegistrationResult refreshPushEndpoint(const QUrl& serverBaseUrl, const RelayAuth& auth,
+                                                 const QString& deviceToken,
+                                                 const WebPushSubscription& pushKeys) const;
+
     // `pin` is the SPKI SHA-256 the poll must match: the pairing link's pin,
     // else the key that served the registration. It is enforced on this
     // request alone, not installed on the client, so a paired account's own

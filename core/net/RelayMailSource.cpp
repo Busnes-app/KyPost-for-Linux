@@ -374,6 +374,19 @@ SendMailResult RelayMailSource::sendCalendarReply(const QUrl& serverBaseUrl, con
     return postSend(serverBaseUrl, auth, requestBody, false, false);
 }
 
+bool isReplyThreadingRefusal(int statusCode, const QByteArray& body)
+{
+    // http.Error bodies: plain text plus a newline. KyPost-Server
+    // replyThreadingFor, shared by /api/mail/send and /api/mail/send-pgp.
+    static const QList<QPair<int, QByteArray>> threadingRefusals{
+        { 400, "invalid replyToMessageId; refresh the mailbox" },
+        { 400, "invalid replyToMailbox" },
+        { 404, "the message being replied to was not found; nothing was sent" },
+        { 502, "could not read the message being replied to; nothing was sent" },
+    };
+    return threadingRefusals.contains({ statusCode, body.trimmed() });
+}
+
 SendMailResult RelayMailSource::postSend(const QUrl& serverBaseUrl, const RelayAuth& auth,
                                          const QJsonObject& requestBody, bool threaded, bool scheduled) const
 {
@@ -385,14 +398,7 @@ SendMailResult RelayMailSource::postSend(const QUrl& serverBaseUrl, const RelayA
     if (result.error.has_value()) {
         out.error = result.error;
 
-        // http.Error bodies: plain text plus a newline.
-        static const QList<QPair<int, QByteArray>> threadingRefusals{
-            { 400, "invalid replyToMessageId; refresh the mailbox" },
-            { 400, "invalid replyToMailbox" },
-            { 404, "the message being replied to was not found; nothing was sent" },
-            { 502, "could not read the message being replied to; nothing was sent" },
-        };
-        if (threaded && threadingRefusals.contains({ result.statusCode, result.body.trimmed() })) {
+        if (threaded && isReplyThreadingRefusal(result.statusCode, result.body)) {
             out.replyThreadingRefused = true;
             out.detail = QString::fromUtf8(result.body.trimmed());
             return out;

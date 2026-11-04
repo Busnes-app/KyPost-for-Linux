@@ -20,7 +20,8 @@ QJsonArray toJsonArray(const QStringList& values)
 QJsonObject pgpSendRequestBody(const QString& from, const PgpSendPlan& plan, const QStringList& to,
                                 const QStringList& cc, const QStringList& bcc, const QString& mode,
                                 const QDateTime& sendAt, const QByteArray& draftCopy,
-                                std::optional<qint64> materialGeneration)
+                                std::optional<qint64> materialGeneration, const QString& replyToMessageId,
+                                const QString& replyToMailbox)
 {
     QJsonArray deliveries;
     for (const PgpDelivery& delivery : plan.deliveries) {
@@ -44,6 +45,13 @@ QJsonObject pgpSendRequestBody(const QString& from, const PgpSendPlan& plan, con
     body[QStringLiteral("mode")] = mode;
     if (materialGeneration.has_value())
         body[QStringLiteral("materialGeneration")] = *materialGeneration;
+    // A reply is threaded by the relay, as on /api/mail/send: it adds the
+    // outer In-Reply-To and References to every delivery and the Sent copy.
+    if (!replyToMessageId.isEmpty()) {
+        body[QStringLiteral("replyToMessageId")] = replyToMessageId;
+        if (!replyToMailbox.isEmpty())
+            body[QStringLiteral("replyToMailbox")] = replyToMailbox;
+    }
 
     // sentCopyEncrypted asserts the copy is ciphertext. The relay stores a copy
     // only when it is, so claiming it for anything else would be asking the

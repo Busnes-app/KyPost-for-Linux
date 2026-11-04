@@ -20,4 +20,5 @@
 QJsonObject pgpSendRequestBody(const QString& from, const PgpSendPlan& plan, const QStringList& to,
                                 const QStringList& cc, const QStringList& bcc, const QString& mode,
                                 const QDateTime& sendAt = {}, const QByteArray& draftCopy = {},
-                                std::optional<qint64> materialGeneration = std::nullopt);
+                                std::optional<qint64> materialGeneration = std::nullopt,
+                                const QString& replyToMessageId = {}, const QString& replyToMailbox = {});

@@ -66,6 +66,9 @@ struct ContactSyncOutcome
     // and the cursor cleared, so the caller must pull it again now. Left
     // alone, the user saw "Synced" over an empty contact list.
     bool fullPullNeeded = false;
+
+    // The push carried one batch and more changes are queued: sync again.
+    bool morePending = false;
 };
 
 // Outcome of ContactSyncRepository::queueImport. Nothing is queued unless Queued.
@@ -124,7 +127,8 @@ public:
     // Assigns a local uid (QUuid::createUuid().toString(QUuid::
     // WithoutBraces)), caches it under that uid immediately, and enqueues a
     // create carrying that uid, which the relay creates the contact under
-    // (see ContactSyncClient::push), for the next sync().
+    // (see ContactSyncClient::push), for the next sync(). Refused when the
+    // change would not fit one push (fitsOnePush).
     //
     // Both writes, or neither: an empty return means nothing was saved. The
     // caller must say so rather than showing the contact as saved -- see the
@@ -132,10 +136,9 @@ public:
     [[nodiscard]] QString queueCreate(Contact contact);
 
     // vCard import (Android #186): every contact as an ordinary create, all
-    // in one transaction, and only into an empty outbox. The push is not
-    // batched, so a larger one could pass the relay's 500-change or 1 MiB
-    // body cap and fail on every sync from then on, which is why the queued
-    // size is checked too.
+    // in one transaction, and only into an empty outbox, held to one push's
+    // worth (the relay's 500 changes and 1 MiB body). Pushes are batched to
+    // those caps (planSync), so this bounds one import, not the outbox.
     [[nodiscard]] ContactImportOutcome queueImport(const QVector<Contact>& contacts);
 
     // contact.uid must already be a real server uid. Updates the cache
@@ -155,6 +158,17 @@ public:
     // row but lost the tombstone comes back on the next pull.
     [[nodiscard]] bool queueDelete(const QString& uid, qint64 rev);
 
+    // Account change (owner decision Q3, AGENTS.md 6g). True while contacts
+    // kept from the previous account wait for "Bring your N contacts into
+    // <account>?"; nothing syncs until it is answered.
+    bool carryPending() const;
+    // Yes: `contacts` (this device's, as the caller prepared them) become
+    // creates, under new uids, for the account now paired, replacing the
+    // cache and the queue. Anything but Queued changes nothing.
+    [[nodiscard]] ContactImportOutcome carryInto(const QVector<Contact>& contacts);
+    // No, or unpair's "Also remove this device's contacts": every cached
+    // contact and queued change goes, with the contact cursor.
+    [[nodiscard]] bool removeLocal();
 
     ContactSyncOutcome sync();
 
@@ -209,6 +223,11 @@ public:
     static constexpr qsizetype kMaxSyncBodyBytes = 1 << 20;
     // Room left for the envelope around the changes ({"baseCursor":...,"changes":[...]}).
     static constexpr qsizetype kSyncEnvelopeHeadroom = 4096;
+
+    // Whether one change for this contact fits in a push on its own. One
+    // that does not would be pushed alone, refused (413) on every sync, and
+    // hold every later change behind it, so queueCreate/queueUpdate refuse it.
+    static bool fitsOnePush(const Contact& contact);
 
 private:
     // The two writes of a queued create, inside the caller's transaction.
