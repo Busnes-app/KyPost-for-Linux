@@ -339,7 +339,7 @@ std::optional<PairingStore::OpenedPush> PairingStore::openPushMessage(const QByt
     case PushKeysStatus::Found:
         if (std::optional<QByteArray> plain = WebPushCrypto::decrypt(keys, message))
             return OpenedPush{ std::move(*plain), true };
-        return std::nullopt;
+        return std::nullopt; // Stored push keys forbid plaintext fallback.
     case PushKeysStatus::Absent:
         return OpenedPush{ message, false };
     case PushKeysStatus::Unreadable:

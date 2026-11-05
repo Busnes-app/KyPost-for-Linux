@@ -236,8 +236,8 @@ core/stores/ContactPhotoCache.cpp	        if (candidate == keepPath)	        if 
 core/pgp/MimeBodyReader.cpp	        if (equals < 0 || equals > segmentEnd) {	        if (false) {	MimeBodyReaderTest:aValuelessParameterBeforeTheBoundaryDoesNotLoseIt
 core/db/SecurityWipe.cpp	    for (const QString& copy : migrationCopies(dbPath))	    for (const QString& copy : QStringList{})	SecurityWipeTest:removesEveryCopyTheEncryptionMigrationCanLeave
 core/db/DatabaseEncryptionMigration.cpp	    return QLatin1Char('\'') + value.replace(QLatin1Char('\''), QLatin1String("''")) + QLatin1Char('\'');	    return QLatin1Char('\'') + value + QLatin1Char('\'');	DatabaseEncryptionMigrationTest:aProfilePathWithAnApostropheIsStillConverted
-core/net/HttpClient.cpp	    if (enforcePin && !pinMismatch) {	    if (false) {	HttpClientTest:aRequestOnAPooledConnectionIsStillPinChecked
-core/net/HttpClient.cpp	        if (!enforcePin)	        if (true)	HttpClientTest:aMismatchOnAFreshHandshakeIsRefusedBeforeTheRequestIsSent
+core/net/HttpClient.cpp	    if (enforcePin && !pinMismatch && !weakTls) {	    if (false) {	HttpClientTest:aRequestOnAPooledConnectionIsStillPinChecked
+core/net/HttpClient.cpp	        if (!enforcePin || weakTls)	        if (true)	HttpClientTest:aMismatchOnAFreshHandshakeIsRefusedBeforeTheRequestIsSent
 
 # --- a Text renders relay data as text, not as markup --------------------
 #
@@ -329,7 +329,7 @@ core/security/AppLockStore.cpp	    if (actual.isEmpty()) {	    if (false) {	AppL
 app/security/AppLockManager.cpp	    if (!couldNotEvaluate)	    if (true)	AppLockManagerTest:aVerifierThatCannotBeComputedNeverReachesTheWipe
 
 # Cancelling a protected read must invalidate even an as-yet-empty memory slot.
-app/mail/MailController.cpp	            if (generation != m_decryptGeneration || m_appLocked) {	            if (false) {	MailDecryptionTest:forgettingInvalidatesAnInFlightRead
+app/mail/MailController.cpp	            if (generation != m_decryptGeneration || m_appLocked	            if (false	MailDecryptionTest:forgettingInvalidatesAnInFlightRead
 app/qml/utils/format.js	        && !!folder && String(folder) === String(heldFolder)	        && true	QmlTests:DecryptedBody::test_sameUidInAnotherFolderCannotReadProtectedContent
 
 # --- protected attachments and self-encrypted drafts -----------------------
@@ -392,7 +392,7 @@ core/pgp/OpenPgpEncryptor.cpp	        || !usableKey(signer, signerFingerprint, t
 core/pgp/OpenPgpEncryptor.cpp	            || !usableKey(key, fingerprint, false)) {	            || key == nullptr) {	OpenPgpEncryptorTest:keyPatternsAreNotFingerprints
 
 # --- RFC 8291 push payloads: once keys exist, only ciphertext for them is read --
-core/domain/PairingStore.cpp	        return std::nullopt;	        return OpenedPush{ message, false };	PairingStoreTest:pushMessagesNeedTheStoredKeysOnceThereAreAny
+core/domain/PairingStore.cpp	        return std::nullopt; // Stored push keys forbid plaintext fallback.	        return OpenedPush{ message, false };	PairingStoreTest:pushMessagesNeedTheStoredKeysOnceThereAreAny
 core/domain/PairingStore.cpp	        return PushKeysStatus::Unreadable;	        return PushKeysStatus::Absent;	PairingStoreTest:unreadableOrCorruptPushKeysDropEverything
 core/domain/DeviceRegistrationService.cpp	    if (!m_pairingStore.savePushKeys(attempt.m_pushKeys) || !m_pairingStore.save(pairing, attempt.m_sealingKey)) {	    if (!m_pairingStore.save(pairing, attempt.m_sealingKey)) {	DeviceRegistrationServiceTest:successfulPairPersistsPairingAndSettings
 core/net/NativeRegistrationClient.cpp	    if (pushKeys.p256dh.size() != 65 || pushKeys.auth.size() != 16) {	    if (false) {	NativeRegistrationClientTest:missingPushKeysAreRefusedWithoutARequest
@@ -509,7 +509,7 @@ core/net/RelayMailSource.cpp	    if (!isScheduledId(id)) {	    if (false) {	Rela
 app/mail/ScheduledController.cpp	    m_appLocked = locked;		ScheduledControllerTest:lockingDropsTheListAndRefusesRefreshAndCancel
 app/mail/ScheduledController.cpp	    if (locked)	    if (false)	ScheduledControllerTest:lockingDropsTheListAndRefusesRefreshAndCancel
 app/qml/AppShell.qml	            scheduledSheet.close();		QmlTests:ScheduledList::test_scheduled_sheet_closes_on_lock
-app/mail/MailController.cpp	    if (m_pairingStore.stillCurrent(owner)) {	    if (true) {	MailControllerTest:aMoveReplyForAReplacedAccountLeavesTheCacheAlone
+app/mail/MailController.cpp	    const bool sameAccount = m_pairingStore.stillCurrent(owner);	    const bool sameAccount = true;	MailControllerTest:aMoveReplyForAReplacedAccountLeavesTheCacheAlone
 
 # --- inbox paging (L12): an older page or a resync never crosses accounts,
 # never shows another folder's rows, and never keeps mail the window says is
@@ -522,7 +522,7 @@ app/mail/MailController.cpp	    if (m_appLocked || searchActive() || m_olderInFl
 app/mail/MailController.cpp	    if (email->body->isEmpty() && (email->metadataOnly || !m_mailRepository.cachedEmail(folder, messageId).has_value()))	    if (email->body->isEmpty() && !m_mailRepository.cachedEmail(folder, messageId).has_value())	MailControllerTest:anOlderDraftWithNoReadableBodyIsNotReopened
 core/domain/MailRepository.cpp	            if (!replyIds.contains(id) && !(keepOlder && below(id, *bottom)))	            if (false)	MailPagingTest:aResyncKeepsOlderRowsAndPrunesOnlyItsOwnRange
 core/domain/MailRepository.cpp	            emails.size() < kInboxPageSize ? std::nullopt : oldestOf(QStringList(replyIds.begin(), replyIds.end()));	            oldestOf(QStringList(replyIds.begin(), replyIds.end()));	MailPagingTest:aWindowShorterThanAPageIsTheWholeFolder
-core/domain/MailRepository.cpp	        const bool keepOlder = reaches(held, bottom);	        const bool keepOlder = bottom.has_value();	MailPagingTest:aResyncThatNoLongerReachesTheHeldRowsDropsThem
+core/domain/MailRepository.cpp	        const bool keepOlder = !plan.replaceOlder && reaches(held, bottom);	        const bool keepOlder = !plan.replaceOlder && bottom.has_value();	MailPagingTest:aResyncThatNoLongerReachesTheHeldRowsDropsThem
 core/domain/MailRepository.cpp	        if (result.hasMore.value_or(false) && !reaches(held, messageRef(result.nextBefore))) {	        if (false) {	MailPagingTest:aDeltaWithMoreThanAWindowDropsRowsItCannotReach
 core/domain/MailRepository.cpp	    if (oldestHeld(m_emailDao.messageIdsInFolder(plan.folder)) != plan.before)	    if (false)	MailPagingTest:anOlderPageThatNoLongerJoinsOnIsDropped
 core/domain/MailRepository.cpp	        if (!below(email.messageId, anchor))	        if (false)	MailPagingTest:anOlderPageStoresOnlyRowsBelowItsAnchor
@@ -543,7 +543,7 @@ app/qml/pages/Settings.qml	        securityPrompt.close()		ShellTests:ShellLock:
 # contacts?" and "Lock KyPost?". It is an Item under the lock gate, but a
 # question left open would still take Return through the gate, and an accept
 # reaching it while locked would send or queue from under the PIN screen.
-app/qml/components/ConfirmDialog.qml	        if (!root.isOpen || AppLock.locked)	        if (!root.isOpen)	QmlTests:SendWithoutSubject::test_lockingRefusesAndNothingIsAcceptedWhileLocked
+app/qml/components/ConfirmDialog.qml	        if (!root.isOpen || AppLock.locked) // Accept only while unlocked.	        if (!root.isOpen)	QmlTests:SendWithoutSubject::test_lockingRefusesAndNothingIsAcceptedWhileLocked
 app/qml/components/ConfirmDialog.qml	            if (AppLock.locked)	            if (false)	QmlTests:SendWithoutSubject::test_lockingRefusesAndNothingIsAcceptedWhileLocked
 
 # --- calendar invites and RSVP (L17): an RSVP is mail sent in the clear, so it
