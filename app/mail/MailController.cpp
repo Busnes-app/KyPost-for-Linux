@@ -2103,7 +2103,8 @@ QVariantMap MailController::findByMessageId(const QString& messageId, const QStr
     } else if (!email->body.has_value()) {
         map[QStringLiteral("bodyPending")] = true;
         map[QStringLiteral("bodyNotice")] = i18n("Loading message…");
-    } else if (email->body->isEmpty()) {
+    } else if (email->body->isEmpty() && messagePgpState(*email) != PgpMessageState::ClientProtected
+               && messagePgpState(*email) != PgpMessageState::SignedOnly) {
         // Without the list's PGP flags an empty body cannot be told apart:
         // say so and offer webmail rather than show a blank message.
         map[QStringLiteral("bodyNotice")] =
@@ -2111,6 +2112,20 @@ QVariantMap MailController::findByMessageId(const QString& messageId, const QStr
         map[QStringLiteral("webmailUrl")] = webmailReadUrl(webmailBaseUrl(), folder, messageId).toString();
     }
     return map;
+}
+
+PgpMessageState MailController::messagePgpState(const Email& email) const
+{
+    if (email.metadataOnly || !m_mailRepository.cachedEmail(email.folder, email.messageId)) {
+        const auto lookup = m_messagePgp.constFind(email.folder + QLatin1Char('\n') + email.messageId);
+        if (lookup != m_messagePgp.cend() && m_pairingStore.stillCurrent(lookup->identity)) {
+            if (lookup->status == PgpPayloadStatus::Fetched)
+                return PgpMessageState::ClientProtected;
+            if (lookup->status == PgpPayloadStatus::SignedOnly)
+                return PgpMessageState::SignedOnly;
+        }
+    }
+    return pgpMessageStateOf(email);
 }
 
 QVariantMap MailController::emailMap(const Email& email) const
@@ -2139,7 +2154,14 @@ QVariantMap MailController::emailMap(const Email& email) const
     // Everything EmailDetail.qml needs to render the PGP banner without
     // re-deriving the rule. `pgpState` is the raw enum value so QML can
     // switch on it; the two strings are the localized copy for that state.
-    const PgpMessageState pgpState = pgpMessageStateOf(email);
+    const PgpMessageState pgpState = messagePgpState(email);
+    const bool metadata = email.metadataOnly || !m_mailRepository.cachedEmail(email.folder, email.messageId);
+    const auto lookup = m_messagePgp.constFind(email.folder + QLatin1Char('\n') + email.messageId);
+    const bool currentLookup = metadata && lookup != m_messagePgp.cend()
+        && m_pairingStore.stillCurrent(lookup->identity);
+    map[QStringLiteral("pgpLookupPending")] = currentLookup && !lookup->status;
+    if (metadata && pgpState == PgpMessageState::ClientProtected)
+        map[QStringLiteral("body")] = QString();
     map[QStringLiteral("pgpState")] = static_cast<int>(pgpState);
     map[QStringLiteral("pgpBannerTitle")] = pgpBannerTitle(pgpState);
     map[QStringLiteral("pgpBannerBody")] = pgpBannerBody(pgpState, email.pgpDecryptError);
@@ -2157,6 +2179,35 @@ QVariantMap MailController::emailMap(const Email& email) const
         && openPgpEngineAvailable();
     map[QStringLiteral("pgpReadAction")] = pgpState == PgpMessageState::SignedOnly
         ? i18n("Verify signature") : i18n("Decrypt with your key");
+    if (metadata && pgpState == PgpMessageState::None) {
+        map[QStringLiteral("pgpBannerTitle")] = i18n("OpenPGP check");
+        map[QStringLiteral("webmailUrl")] = webmailReadUrl(webmailBaseUrl(), email.folder, email.messageId).toString();
+        if (!currentLookup || !lookup->status) {
+            map[QStringLiteral("pgpBannerBody")] = i18n("Checking whether this message can be decrypted or verified here…");
+        } else {
+            QString notice;
+            switch (*lookup->status) {
+            case PgpPayloadStatus::NoCiphertext:
+                if (email.body && !email.body->isEmpty()) {
+                    map[QStringLiteral("pgpBannerTitle")] = QString();
+                    break; // readable ordinary mail needs no protection claim
+                }
+                // A 404 also covers missing messages and older relays without
+                // the route. It is not proof that this is unprotected mail.
+                notice = i18n("No local OpenPGP payload was available. If you expected protected mail, check it in webmail or update your relay.");
+                break;
+            case PgpPayloadStatus::ServerCustody: notice = pgpReadFailureMessage(PgpReadStatus::ServerCustody); break;
+            case PgpPayloadStatus::TooLarge: notice = pgpReadFailureMessage(PgpReadStatus::TooLarge); break;
+            case PgpPayloadStatus::Malformed: notice = pgpReadFailureMessage(PgpReadStatus::Malformed); break;
+            case PgpPayloadStatus::Failed: notice = pgpReadFailureMessage(PgpReadStatus::FetchFailed); break;
+            case PgpPayloadStatus::Fetched:
+            case PgpPayloadStatus::SignedOnly: break;
+            }
+            map[QStringLiteral("pgpBannerBody")] = notice;
+            map[QStringLiteral("pgpLookupRetryable")] = *lookup->status == PgpPayloadStatus::Failed
+                || *lookup->status == PgpPayloadStatus::NoCiphertext || *lookup->status == PgpPayloadStatus::ServerCustody;
+        }
+    }
     return map;
 }
 
@@ -2650,8 +2701,8 @@ QVariantMap MailController::reopenDecryptedDraft(const QString& token)
     if (!decryptedStillOurs() || token.isEmpty() || token != m_decryptedToken
         || m_decryptedFolder != folderPath(StandardFolder::Drafts))
         return {};
-    const auto email = m_mailRepository.cachedEmail(m_decryptedFolder, m_decryptedMessageId);
-    if (!email || !email->pgpEncrypted)
+    const auto email = lookupEmail(m_decryptedFolder, m_decryptedMessageId);
+    if (!email || messagePgpState(*email) != PgpMessageState::ClientProtected)
         return {};
     m_draftToken = QUuid::createUuid().toString(QUuid::WithoutBraces);
     m_draftIdentity = m_decryptedIdentity;
@@ -2683,6 +2734,7 @@ void MailController::setAppLocked(bool locked)
     const bool wasLocked = m_appLocked;
     m_appLocked = locked;
     if (locked) {
+        m_messagePgp.clear();
         ++m_forwardGeneration; // a forward dispatched before the lock never opens
         releaseDraft(m_draftToken);
         forgetDecrypted();
@@ -2733,6 +2785,50 @@ void MailController::forgetDecrypted()
     emit decryptedChanged();
 }
 
+void MailController::loadMessagePgp(const QString& folder, const QString& messageId, bool retry)
+{
+    if (m_appLocked || folder.isEmpty() || messageId.isEmpty())
+        return;
+    const auto email = lookupEmail(folder, messageId);
+    if (!email || (!email->metadataOnly && m_mailRepository.cachedEmail(folder, messageId)))
+        return;
+    const auto pairing = m_pairingStore.load();
+    if (!pairing)
+        return;
+    const PairingIdentity identity = identityOf(*pairing);
+    const QString key = folder + QLatin1Char('\n') + messageId;
+    auto held = m_messagePgp.find(key);
+    if (held != m_messagePgp.end() && held->identity == identity) {
+        const bool pending = !held->status;
+        if ((pending && held->readerGeneration == m_decryptGeneration) || (!pending && !retry))
+            return;
+    }
+    const quint64 request = ++m_messagePgpRequest;
+    const quint64 generation = m_decryptGeneration;
+    const quint64 searchGeneration = m_searchGeneration;
+    const bool olderRow = email->metadataOnly;
+    const RelayEndpoint endpoint{QUrl(pairing->serverBaseUrl), RelayAuth{pairing->deviceId, pairing->deviceSecret}};
+    m_messagePgp.insert(key, {identity, request, generation, std::nullopt});
+    emit messagePgpChanged(folder, messageId); // pending is visible before returning
+    m_executor.run(this,
+        [endpoint, folder, messageId](HttpClient& http) {
+            // No GnuPG, signer-key import, or raw payload crosses back to QML.
+            return PgpPayloadClient(http).fetch(endpoint.serverBaseUrl, endpoint.auth, folder, messageId).status;
+        },
+        [this, key, folder, messageId, identity, request, generation, searchGeneration, olderRow](PgpPayloadStatus status) {
+            auto entry = m_messagePgp.find(key);
+            if (entry == m_messagePgp.end() || entry->request != request)
+                return;
+            if (!m_pairingStore.stillCurrent(identity) || m_appLocked || generation != m_decryptGeneration
+                || (!olderRow && searchGeneration != m_searchGeneration)) {
+                m_messagePgp.erase(entry);
+                return; // stale replies publish neither classification nor an error
+            }
+            entry->status = status;
+            emit messagePgpChanged(folder, messageId);
+        });
+}
+
 void MailController::decryptMessage(const QString& messageId, const QString& folder)
 {
     if (m_appLocked || messageId.isEmpty() || m_decryptInFlight)
@@ -2744,14 +2840,17 @@ void MailController::decryptMessage(const QString& messageId, const QString& fol
         return;
     }
 
-    // Resolve the selection against the cache before dispatch. A caller
-    // without a folder must supply an unambiguous UID; a folder never grants
-    // access to a row that is absent from this account's cache.
+    // A folder may name this account's transient search hit. Without one,
+    // retain unique-cache-only UID resolution.
     const std::optional<Email> email = folder.isEmpty()
         ? m_mailRepository.findCachedEmail(messageId)
-        : m_mailRepository.cachedEmail(folder, messageId);
+        : lookupEmail(folder, messageId);
     if (!email.has_value())
         return;
+    const PgpMessageState selected = messagePgpState(*email);
+    if (selected != PgpMessageState::ClientProtected && selected != PgpMessageState::SignedOnly)
+        return;
+    const bool signedOnly = selected == PgpMessageState::SignedOnly;
 
     // Anything already held belongs to a different attempt. Dropped before
     // the new one starts, so a failure cannot leave the previous message's
@@ -2768,7 +2867,7 @@ void MailController::decryptMessage(const QString& messageId, const QString& fol
 
     m_executor.run(
         this,
-        [endpoint, mailbox = email->folder, messageId, signedOnly = pgpMessageStateOf(*email) == PgpMessageState::SignedOnly](HttpClient& http) {
+        [endpoint, mailbox = email->folder, messageId, signedOnly](HttpClient& http) {
             // Constructed here, on the executor thread, for the same reason
             // FolderRepository::listWith constructs its client there: the
             // HttpClient belongs to that thread and these are stateless
@@ -2946,6 +3045,7 @@ void MailController::applySearchQuery(const QString& query)
         return;
     m_searchQuery = query;
     ++m_searchGeneration;
+    m_messagePgp.clear();
     if (searchActive()) {
         m_searchDebounce->start();
     } else {
@@ -3101,7 +3201,7 @@ QVariantMap MailController::reopenDraft(const QString& folder, const QString& me
     const std::optional<Email> email = lookupEmail(folder, messageId);
     // Encrypted drafts go through reopenDecryptedDraft(); never reopen them as plaintext.
     if (!email.has_value() || !email->body.has_value() || email->pgpEncrypted
-        || pgpMessageStateOf(*email) != PgpMessageState::None)
+        || messagePgpState(*email) != PgpMessageState::None)
         return {};
     // A search hit or an older-page row has no PGP flags: an empty body may be
     // an encrypted draft, which a replacing save would then delete unread.
@@ -3142,7 +3242,7 @@ bool MailController::forwardWithAttachments(const QString& mailbox, const QStrin
     // Decrypted content never rides along on a send that may go out in the
     // clear: neither a client-protected message nor one this view decrypted.
     const std::optional<Email> email = lookupEmail(mailbox, messageId);
-    if (!email.has_value() || pgpMessageStateOf(*email) == PgpMessageState::ClientProtected
+    if (!email.has_value() || messagePgpState(*email) == PgpMessageState::ClientProtected
         || (m_decryptedMessageId == messageId && m_decryptedFolder == mailbox))
         return false;
     QUrl serverBaseUrl;

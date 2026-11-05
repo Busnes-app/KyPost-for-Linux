@@ -621,3 +621,11 @@ app/pairing/PairingController.cpp	    m_registrationHadPreviousAccount = true;	 
 # Council pass 3: a same-account link confirmed without the re-pin warning stays
 # pinned to the stored key (F29).
 app/pairing/PairingController.cpp	        !stored.isEmpty() && m_repinCheck == RepinCheck::Same)	        false)	PairingControllerTest:aLinkToTheServerStillPresentingThePinnedKeyDoesNotWarn
+
+# Metadata-only PGP lookup: dispatch lock, account/lifetime completion and
+# request replacement are separately checked over real executor/relay replies.
+app/mail/MailController.cpp	    if (m_appLocked || folder.isEmpty() || messageId.isEmpty())	    if (folder.isEmpty() || messageId.isEmpty())	MailDecryptionTest:staleMetadataLookupsNeverPublish
+app/mail/MailController.cpp	            if (!m_pairingStore.stillCurrent(identity) || m_appLocked || generation != m_decryptGeneration	            if (m_appLocked || generation != m_decryptGeneration	MailDecryptionTest:staleMetadataLookupsNeverPublish
+app/mail/MailController.cpp	            if (!m_pairingStore.stillCurrent(identity) || m_appLocked || generation != m_decryptGeneration	            if (!m_pairingStore.stillCurrent(identity) || m_appLocked	MailDecryptionTest:staleMetadataLookupsNeverPublish
+app/mail/MailController.cpp	            if (entry == m_messagePgp.end() || entry->request != request)	            if (entry == m_messagePgp.end())	MailDecryptionTest:metadataLookupRestartSurvivesOldReply
+app/mail/MailController.cpp	    if (selected != PgpMessageState::ClientProtected && selected != PgpMessageState::SignedOnly)	    if (false)	MailDecryptionTest:metadataLookupFailuresKeepReadableFallback

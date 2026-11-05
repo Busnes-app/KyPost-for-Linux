@@ -1,4 +1,5 @@
 import QtQuick
+import com.kysecurity.mail 1.0
 import "Fixture.js" as F
 import KyPostScreens
 
@@ -63,6 +64,7 @@ QtObject {
     signal readStateChanged()
     signal replyThreadingRefused()
     signal searchBodyLoaded(string folder, string messageId)
+    signal messagePgpChanged(string folder, string messageId)
     signal searchChanged()
     signal sendCompleted()
     signal sendWarning(string warning)
@@ -97,7 +99,21 @@ QtObject {
     }
     function clearSearch() { setSearchQuery("") }
     function loadSearchBody() {}
-    function findByMessageId(id) { return F.find(id) }
+    property var metadataRow: null
+    property int pgpLookups: 0
+    property string lastDecryptId: ""
+    property string lastDecryptFolder: ""
+    function findByMessageId(id) {
+        return metadataRow && metadataRow.messageId === id ? Object.assign({}, metadataRow) : F.find(id)
+    }
+    function loadMessagePgp(folder, id, retry) {
+        if (AppLock.locked || !metadataRow || metadataRow.messageId !== id || metadataRow.folder !== folder)
+            return
+        ++pgpLookups
+        metadataRow = Object.assign({}, metadataRow, {pgpLookupPending: true, pgpLookupRetryable: false,
+            pgpBannerTitle: "OpenPGP check", pgpBannerBody: "Checking whether this message can be decrypted or verified here…"})
+        messagePgpChanged(folder, id)
+    }
     property string openedFromNotification: ""
     function openFromNotification(id) { openedFromNotification = id }
     function markRead() {}
@@ -131,7 +147,7 @@ QtObject {
     function downloadAttachment() {}
     function saveDecryptedAttachment() {}
     function openDecryptedAttachmentTemporarily() {}
-    function decryptMessage() {}
+    function decryptMessage(id, folder) { lastDecryptId = id; lastDecryptFolder = folder }
     function forgetDecrypted() {}
     function refreshPgpComposeState() {}
     function pgpHandoffToWebmail() {}

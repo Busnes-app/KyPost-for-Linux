@@ -136,9 +136,8 @@ Item {
             if (AppLock.locked)
                 return
             Qt.callLater(root.markOpenedRead)
-            // MailController fetches no search body while locked.
-            if (root.email.bodyPending)
-                MailApp.loadSearchBody(root.folder, root.messageId)
+            // Lock invalidates pending local checks as well as protected reads.
+            root.reload()
         }
     }
 
@@ -197,6 +196,18 @@ Item {
         function onReadStateChanged(folder, messageId, unread) {
             if (folder === root.folder && messageId === root.messageId)
                 root.unread = unread
+        }
+
+        function onSearchChanged() {
+            if (root.email.searchOnly)
+                root.reload()
+        }
+
+        function onMessagePgpChanged(folder, messageId) {
+            if (folder !== root.folder || messageId !== root.messageId)
+                return
+            root.email = MailApp.findByMessageId(root.messageId, root.folder)
+            webViewLoader.applyContent()
         }
 
         function onSearchBodyLoaded(folder, messageId) {
@@ -283,6 +294,9 @@ Item {
         root.unread = root.email.status === "unread"
         // Reply and Reply All leave these out; fetched once per pairing.
         MailApp.loadAccountAddresses()
+        // Metadata rows need classification even when their body was cached.
+        if (root.email.searchOnly)
+            MailApp.loadMessagePgp(root.folder, root.messageId)
         // A search hit this device has not synced: its body arrives later
         // through onSearchBodyLoaded.
         if (root.email.bodyPending)
@@ -786,7 +800,7 @@ Item {
             // Stays up after a successful decryption too: the signature line
             // lives here, and it is the one thing about a decrypted message
             // the reader cannot work out for themselves.
-            visible: (pgpBanner.state !== 0 && root.email.pgpBannerTitle)
+            visible: !!root.email.pgpBannerTitle
                      || (root.hasDecryptedBody && !!MailApp.decryptedSignature)
             implicitHeight: visible ? pgpBannerLayout.implicitHeight + 24 : 0
             radius: Theme.shapePanel
@@ -844,6 +858,13 @@ Item {
                     font.pixelSize: Theme.fontSender
                     font.bold: MailApp.decryptedSignatureIsWarning
                     wrapMode: Text.WordWrap
+                }
+
+                PrimaryButton {
+                    objectName: "pgpLookupRetryButton"
+                    visible: !!root.email.pgpLookupRetryable && !root.email.pgpLookupPending
+                    text: i18n("Check OpenPGP again")
+                    onClicked: MailApp.loadMessagePgp(root.folder, root.messageId, true)
                 }
 
                 PrimaryButton {
@@ -985,7 +1006,7 @@ Item {
                 // the paired relay server. Two settings changed from
                 // WebEngineView's defaults to close the two classic
                 // mail-client HTML risks: running the sender's JavaScript,
-                // and auto-fetching remote <img> sources (a standard
+                // and auto-fetching remote HTML image sources (a standard
                 // tracking-pixel/read-receipt leak -- it would fire on every
                 // open even though the HTML itself is rendered via
                 // loadHtml(), since <img src="https://..."> is still a real

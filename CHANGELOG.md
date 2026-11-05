@@ -28,6 +28,26 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- Older mail and uncached search hits can now be decrypted or have their
+  signatures checked locally. Opening them checks the existing relay payload
+  endpoint without prompting for a key or importing signer keys; use Decrypt
+  or Verify signature to run the existing local reader.
+- Readable fallback text remains available when the check fails. A missing
+  payload or older relay never counts as proof of plain mail. Late checks after
+  navigation, lock, query or pairing changes are discarded; protected content
+  and signature results remain transient.
+
+### Upgrade impact
+
+- No database, keyring or configuration migration. Local reading needs working
+  GnuPG and the existing relay PGP-payload endpoint. Older relays keep the
+  readable fallback/webmail route. Classification and explicit reading each
+  download the bounded payload; nothing new is stored on disk.
+
+## Source notes at 3df35b61
+
+### Changes
+
 - Hostile review fixes (council pass 3):
   - Leaving a message you are writing now asks "Discard this message?" with
     Save draft, Discard and Keep writing: clicking another message, a folder,
