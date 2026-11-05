@@ -2159,6 +2159,7 @@ QVariantMap MailController::emailMap(const Email& email) const
     const auto lookup = m_messagePgp.constFind(email.folder + QLatin1Char('\n') + email.messageId);
     const bool currentLookup = metadata && lookup != m_messagePgp.cend()
         && m_pairingStore.stillCurrent(lookup->identity);
+    map[QStringLiteral("pgpLookupNeeded")] = metadata && !currentLookup;
     map[QStringLiteral("pgpLookupPending")] = currentLookup && !lookup->status;
     if (metadata && pgpState == PgpMessageState::ClientProtected)
         map[QStringLiteral("body")] = QString();
@@ -2760,6 +2761,7 @@ void MailController::forgetDecrypted()
     // Invalidate work still waiting for pinentry or a relay reply, even when
     // there is no result in memory yet. Clearing strings alone cannot do that.
     ++m_decryptGeneration;
+    m_readSearchGeneration.reset();
     // Reads the MEMBERS, not the getters: the getters answer empty once the
     // account has been replaced, which is exactly when there is most to clear.
     if (m_decryptedMessageId.isEmpty() && m_decryptedHtml.isEmpty() && m_decryptedPlain.isEmpty()
@@ -2817,14 +2819,15 @@ void MailController::loadMessagePgp(const QString& folder, const QString& messag
         },
         [this, key, folder, messageId, identity, request, generation, searchGeneration, olderRow](PgpPayloadStatus status) {
             auto entry = m_messagePgp.find(key);
-            if (entry == m_messagePgp.end() || entry->request != request)
-                return;
-            if (!m_pairingStore.stillCurrent(identity) || m_appLocked || generation != m_decryptGeneration
-                || (!olderRow && searchGeneration != m_searchGeneration)) {
-                m_messagePgp.erase(entry);
-                return; // stale replies publish neither classification nor an error
+            if (entry != m_messagePgp.end() && entry->request == request) {
+                if (!m_pairingStore.stillCurrent(identity) || m_appLocked || generation != m_decryptGeneration
+                    || (!olderRow && searchGeneration != m_searchGeneration))
+                    m_messagePgp.erase(entry);
+                else
+                    entry->status = status;
             }
-            entry->status = status;
+            // Even an invalidated lookup releases the visible reader's busy
+            // state. Only a reader still showing this row asks again.
             emit messagePgpChanged(folder, messageId);
         });
 }
@@ -2851,6 +2854,8 @@ void MailController::decryptMessage(const QString& messageId, const QString& fol
     if (selected != PgpMessageState::ClientProtected && selected != PgpMessageState::SignedOnly)
         return;
     const bool signedOnly = selected == PgpMessageState::SignedOnly;
+    const bool searchOwned = !m_mailRepository.cachedEmail(email->folder, messageId);
+    const quint64 searchGeneration = m_searchGeneration;
 
     // Anything already held belongs to a different attempt. Dropped before
     // the new one starts, so a failure cannot leave the previous message's
@@ -2862,6 +2867,8 @@ void MailController::decryptMessage(const QString& messageId, const QString& fol
     const PairingIdentity identity = identityOf(*pairing);
 
     const quint64 generation = m_decryptGeneration;
+    if (searchOwned)
+        m_readSearchGeneration = searchGeneration;
     m_decryptInFlight = true;
     emit decryptedChanged();
 
@@ -2886,9 +2893,10 @@ void MailController::decryptMessage(const QString& messageId, const QString& fol
             result.plaintext.clear();
             return std::make_pair(std::move(result), std::move(body));
         },
-        [this, identity, folder = email->folder, messageId, generation](const std::pair<PgpReadResult, MimeBody>& result) {
+        [this, identity, folder = email->folder, messageId, generation, searchOwned, searchGeneration](const std::pair<PgpReadResult, MimeBody>& result) {
             m_decryptInFlight = false;
-            if (generation != m_decryptGeneration || m_appLocked) {
+            if (generation != m_decryptGeneration || m_appLocked
+                || (searchOwned && searchGeneration != m_searchGeneration)) {
                 emit decryptedChanged();
                 return;
             }
@@ -3045,18 +3053,20 @@ void MailController::applySearchQuery(const QString& query)
         return;
     m_searchQuery = query;
     ++m_searchGeneration;
-    m_messagePgp.clear();
+    resetSearchResults(); // old hits no longer belong to the query being typed
     if (searchActive()) {
         m_searchDebounce->start();
     } else {
         m_searchDebounce->stop();
-        resetSearchResults();
     }
     emit searchChanged();
 }
 
 void MailController::resetSearchResults()
 {
+    if (m_readSearchGeneration)
+        forgetDecrypted(); // deliberate composer handoffs keep their separate lifetime
+    m_messagePgp.clear();
     m_searchResults.clear();
     m_searchFolder.clear();
     m_searchIdentity = {};

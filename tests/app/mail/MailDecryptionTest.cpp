@@ -111,9 +111,12 @@ private slots:
     void initTestCase();
     void cleanupTestCase();
 
+    void protectedSearchContentEndsWithItsSearch_data();
+    void protectedSearchContentEndsWithItsSearch();
     void metadataLookupFailuresKeepReadableFallback_data();
     void metadataLookupFailuresKeepReadableFallback();
     void metadataLookupRestartSurvivesOldReply();
+    void anInvalidatedMetadataLookupReleasesTheReadersPendingState();
     void staleMetadataLookupsNeverPublish_data();
     void staleMetadataLookupsNeverPublish();
     void metadataMessagesCanBeClassifiedAndRead_data();
@@ -169,6 +172,106 @@ void MailDecryptionTest::cleanupTestCase()
     GnupgFixture::killAgent(m_fixture.path());
 }
 
+void MailDecryptionTest::protectedSearchContentEndsWithItsSearch_data()
+{
+    QTest::addColumn<bool>("signedOnly");
+    QTest::addColumn<bool>("pending");
+    QTest::addColumn<QString>("transition");
+    QTest::addColumn<bool>("cached");
+    for (bool signedMail : {false, true}) {
+        for (bool inFlight : {false, true}) {
+            for (const char* transition : {"replace", "clear", "folder"}) {
+                const QByteArray name = QByteArray(signedMail ? "signed" : "encrypted")
+                    + (inFlight ? "-pending-" : "-held-") + transition;
+                QTest::newRow(name.constData()) << signedMail << inFlight << QString::fromLatin1(transition) << false;
+                QTest::newRow((name + "-cached-control").constData()) << signedMail << inFlight << QString::fromLatin1(transition) << true;
+            }
+        }
+    }
+}
+
+void MailDecryptionTest::protectedSearchContentEndsWithItsSearch()
+{
+    QFETCH(bool, signedOnly);
+    QFETCH(bool, pending);
+    QFETCH(QString, transition);
+    QFETCH(bool, cached);
+    OutgoingMessage message;
+    message.mode = QStringLiteral("plain");
+    message.subject = QStringLiteral("Private search subject");
+    message.body = QString::fromUtf8(kCanary);
+    message.attachments = {{QStringLiteral("private.bin"), QStringLiteral("application/octet-stream"), QByteArray("private search file")}};
+    const QByteArray content = protectedContent(message, randomMimeBoundary());
+    QJsonObject payload;
+    if (signedOnly) {
+        const auto signature = m_fixture.detachedSignature(content, QStringLiteral("test@example.com"));
+        QVERIFY(!signature.isEmpty());
+        payload = {{"signedPartBase64", QString::fromLatin1(content.toBase64())},
+            {"signaturePayload", QString::fromUtf8(signature)}};
+    } else {
+        const auto armored = m_fixture.encryptToTestKey(content);
+        QVERIFY(!armored.isEmpty());
+        payload = {{"encryptedPayload", QString::fromUtf8(armored)}};
+    }
+    const QByteArray response = httpResponse(200, "OK", QJsonDocument(payload).toJson());
+    FakeRelayServer fake(response);
+    fake.setResponseForPath("/api/mail/search", httpResponse(200, "OK",
+        R"({"results":[{"messageId":"5","subject":"Outer","status":"read"}]})"));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    const QString folder = QStringLiteral("INBOX"), id = QStringLiteral("5");
+    if (cached) {
+        Email row;
+        row.folder = folder;
+        row.messageId = id;
+        row.pgpEncrypted = !signedOnly;
+        row.pgpSigned = signedOnly;
+        QVERIFY(h.emailDao->insertOrReplace(row));
+    }
+    h.controller->setSearchQuery(QStringLiteral("first"));
+    QTRY_VERIFY(!h.controller->searchBusy());
+    h.controller->loadMessagePgp(folder, id);
+    QTRY_VERIFY(h.controller->findByMessageId(id, folder).value("canDecryptHere").toBool());
+    if (pending)
+        fake.holdNextForPath("/api/mail/pgp-payload");
+    h.controller->decryptMessage(id, folder);
+    if (pending) {
+        QTRY_VERIFY(fake.hasHeldResponse());
+    } else {
+        QTRY_VERIFY(!h.controller->decryptBusy());
+        QVERIFY(h.controller->decryptedPlain().contains(QString::fromUtf8(kCanary)));
+        QCOMPARE(h.controller->decryptedAttachments().size(), 1);
+        QVERIFY(!h.controller->decryptedToken().isEmpty());
+    }
+    if (transition == QStringLiteral("folder"))
+        h.controller->selectFolder(QStringLiteral("Archive"));
+    else
+        h.controller->setSearchQuery(transition == QStringLiteral("replace") ? QStringLiteral("second") : QString());
+    if (transition != QStringLiteral("folder"))
+        QVERIFY(h.controller->findByMessageId(id, folder).isEmpty() || cached);
+    if (pending) {
+        QVERIFY(fake.releaseHeldResponse(response));
+        QTRY_VERIFY(!h.controller->decryptBusy());
+    }
+    if (cached && transition != QStringLiteral("folder")) {
+        QVERIFY(h.controller->decryptedPlain().contains(QString::fromUtf8(kCanary)));
+        QCOMPARE(h.controller->decryptedAttachments().size(), 1);
+        QVERIFY(!h.controller->decryptedToken().isEmpty());
+        h.controller->forgetDecrypted(); // cached selection is independent of search
+    }
+    QVERIFY(h.controller->decryptedMessageId().isEmpty());
+    QVERIFY(h.controller->decryptedPlain().isEmpty());
+    QVERIFY(h.controller->decryptedHtml().isEmpty());
+    QVERIFY(h.controller->decryptedSubject().isEmpty());
+    QVERIFY(h.controller->decryptedAttachments().isEmpty());
+    QVERIFY(h.controller->decryptedToken().isEmpty());
+    QVERIFY(h.controller->decryptedImageBase().isEmpty());
+    QVERIFY(h.controller->m_decryptedPlain.isEmpty());
+    QVERIFY(h.controller->m_decryptedAttachments.isEmpty());
+    QVERIFY(!everythingInTheDatabase(h.db.handle()).contains(QString::fromUtf8(kCanary)));
+    QCOMPARE(h.emailDao->findById(folder, id).has_value(), cached);
+}
+
 void MailDecryptionTest::metadataLookupFailuresKeepReadableFallback_data()
 {
     QTest::addColumn<QByteArray>("response");
@@ -219,6 +322,29 @@ void MailDecryptionTest::metadataLookupFailuresKeepReadableFallback()
     QCOMPARE(fake.receivedRequests().size(), 2);
 }
 
+void MailDecryptionTest::anInvalidatedMetadataLookupReleasesTheReadersPendingState()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"encryptedPayload":"ciphertext"})"));
+    DecryptHarness h;
+    QVERIFY(h.build(fake));
+    Email email;
+    email.folder = QStringLiteral("INBOX");
+    email.messageId = QStringLiteral("5");
+    email.metadataOnly = true;
+    QVERIFY(h.emailDao->insertOrReplace(email));
+    // Like EmailDetail, a second visible reader holds a map copy until its
+    // matching notification arrives. Navigation in another reader must not
+    // leave this one showing a pending check forever.
+    bool pendingShown = false;
+    connect(h.controller.get(), &MailController::messagePgpChanged, h.controller.get(), [&] {
+        pendingShown = h.controller->findByMessageId(email.messageId, email.folder).value("pgpLookupPending").toBool();
+    });
+    h.controller->loadMessagePgp(email.folder, email.messageId);
+    QVERIFY(pendingShown);
+    h.controller->forgetDecrypted();
+    QTRY_VERIFY_WITH_TIMEOUT(!pendingShown, 5000);
+}
+
 void MailDecryptionTest::metadataLookupRestartSurvivesOldReply()
 {
     FakeRelayServer fake(httpResponse(200, "OK", R"({"encryptedPayload":"ciphertext"})"));
@@ -229,12 +355,15 @@ void MailDecryptionTest::metadataLookupRestartSurvivesOldReply()
     email.messageId = QStringLiteral("5");
     email.metadataOnly = true;
     QVERIFY(h.emailDao->insertOrReplace(email));
+    QSignalSpy changed(h.controller.get(), &MailController::messagePgpChanged);
+    fake.holdNextForPath("/api/mail/pgp-payload");
     h.controller->loadMessagePgp(email.folder, email.messageId);
+    QTRY_VERIFY(fake.hasHeldResponse());
     h.controller->forgetDecrypted();
     h.controller->loadMessagePgp(email.folder, email.messageId);
-    bool settled = false;
-    h.executor->run(h.controller.get(), [](HttpClient&) { return true; }, [&](bool) { settled = true; });
-    QTRY_VERIFY(settled);
+    QTRY_COMPARE(changed.size(), 3); // both pending, newer request complete
+    QVERIFY(fake.releaseHeldResponse(httpResponse(200, "OK", R"({"encryptedPayload":"older"})")));
+    QTRY_COMPARE(changed.size(), 4); // older request complete; cannot erase the new result
     const auto row = h.controller->findByMessageId(email.messageId, email.folder);
     QVERIFY(!row.value("pgpLookupPending").toBool());
     QVERIFY(row.value("canDecryptHere").toBool());
@@ -278,11 +407,8 @@ void MailDecryptionTest::staleMetadataLookupsNeverPublish()
     } else {
         h.controller->setSearchQuery(QStringLiteral("second"));
     }
-    // An executor barrier drains the real request without sleeps or a live relay.
-    bool settled = false;
-    h.executor->run(h.controller.get(), [](HttpClient&) { return true; }, [&](bool) { settled = true; });
-    QTRY_VERIFY(settled);
-    QCOMPARE(changed.size(), 1); // no successful classification/error published late
+    QTRY_COMPARE(changed.size(), 2); // pending and actual completion, never a stale status
+    QVERIFY(!h.controller->m_messagePgp.contains(folder + QLatin1Char('\n') + id)); // inspect retained state too
     const auto row = h.controller->findByMessageId(id, folder);
     QVERIFY(!row.value("canDecryptHere").toBool());
     QVERIFY(!row.value("pgpLookupPending").toBool());
@@ -400,6 +526,16 @@ void MailDecryptionTest::metadataMessagesCanBeClassifiedAndRead()
         QVERIFY(!restored.value("token").toString().isEmpty());
         QVERIFY(restored.value("encrypted").toBool());
         QCOMPARE(restored.value("paths").toStringList().size(), 1);
+        if (searchOnly) {
+            h.controller->clearSearch();
+            QVERIFY(h.controller->m_decryptedPlain.isEmpty());
+            QCOMPARE(h.controller->m_draftToken, restored.value("token").toString());
+            QCOMPARE(h.controller->m_draftAttachments.size(), 1);
+            h.controller->setSearchQuery(QStringLiteral("outer"));
+            QTRY_VERIFY(!h.controller->searchBusy());
+            h.controller->loadMessagePgp(folder, id);
+            QTRY_VERIFY(h.controller->findByMessageId(id, folder).value("canDecryptHere").toBool());
+        }
         h.controller->releaseDraft(restored.value("token").toString());
     }
     // The explicit read still rejects a changed payload kind after lookup.

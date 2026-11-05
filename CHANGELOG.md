@@ -35,7 +35,9 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 - Readable fallback text remains available when the check fails. A missing
   payload or older relay never counts as proof of plain mail. Late checks after
   navigation, lock, query or pairing changes are discarded; protected content
-  and signature results remain transient.
+  and signature results remain transient. Clearing/replacing a search revokes
+  its uncached protected reader content, while a deliberate draft handoff keeps
+  its own lifetime. Pop-out readers can restart a canceled classification.
 
 ### Upgrade impact
 

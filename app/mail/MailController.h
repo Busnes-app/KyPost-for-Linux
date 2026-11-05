@@ -962,6 +962,7 @@ private:
     quint64 m_forwardGeneration = 0; // advanced by every lock
     QString m_decryptedFolder;
     quint64 m_decryptGeneration = 0;
+    std::optional<quint64> m_readSearchGeneration; // pending/held uncached search read
     struct MessagePgpLookup {
         PairingIdentity identity;
         quint64 request;

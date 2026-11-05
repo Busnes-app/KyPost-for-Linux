@@ -1,6 +1,7 @@
 import QtQuick
 import QtTest
 import com.kysecurity.mail 1.0
+import KyPostScreens
 
 TestCase {
     name: "MetadataPgp"
@@ -66,6 +67,39 @@ TestCase {
         tryVerify(() => MailApp.pgpLookups > before)
         verify(reader.email.pgpLookupPending)
         compare(MailApp.lastDecryptId, "")
+    }
+    function test_invalidated_lookup_restarts_only_the_matching_visible_reader() {
+        const before = MailApp.pgpLookups
+        MailApp.metadataRow = Object.assign({}, MailApp.metadataRow, {pgpLookupNeeded: true, pgpLookupPending: false})
+        MailApp.messagePgpChanged("Archive", "metadata-pgp")
+        compare(MailApp.pgpLookups, before)
+        MailApp.messagePgpChanged("INBOX", "metadata-pgp")
+        verify(MailApp.pgpLookups > before)
+        verify(reader.email.pgpLookupPending)
+        compare(MailApp.lastDecryptId, "")
+    }
+    function test_pending_lookup_recovers_after_the_actual_popout_transition() {
+        const component = Qt.createComponent("qrc:/qml/AppShell.qml")
+        compare(component.status, Component.Ready, component.errorString())
+        const shell = component.createObject(null, {width: 1200, height: 900})
+        verify(shell)
+        shell.show()
+        shell.selectEmail("metadata-pgp", "INBOX")
+        shell.popOutEmail("metadata-pgp", "INBOX")
+        const popup = ScreenRun.emailWindow("metadata-pgp")
+        verify(popup)
+        const before = MailApp.pgpLookups
+        // Closing the embedded reader invalidates the new window's pending
+        // lookup. Controller coverage uses a held real HTTP response; this
+        // fake exercises the actual AppShell/EmailDetail continuation.
+        MailApp.finishMetadataLookup(1)
+        verify(MailApp.pgpLookups > before)
+        MailApp.finishMetadataLookup(1)
+        const button = findChild(popup.contentItem, "decryptButton")
+        tryVerify(() => button.visible)
+        compare(MailApp.lastDecryptId, "")
+        popup.close()
+        shell.destroy()
     }
     function test_failure_keeps_body_and_retry_uses_same_selection() {
         MailApp.metadataRow = Object.assign({}, MailApp.metadataRow, {pgpLookupPending: false,

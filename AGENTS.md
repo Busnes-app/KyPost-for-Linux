@@ -275,7 +275,11 @@ Added 2026-07-25 (parity work with `kypost-android`):
   status is held in a transient account/mailbox/UID overlay; Decrypt/Verify stays
   explicit and re-fetches the payload. Lock, reader generation, query generation
   and pairing checks discard stale lookups. A 404 is unavailable, not proof of
-  plain mail; readable body fallback and webmail remain available. A draft session
+  plain mail; readable body fallback and webmail remain available. Explicit reads
+  of uncached hits and their held protected content end when the search changes;
+  cached selections and deliberate composer handoffs keep their own lifetimes.
+  Canceled classification notifies matching visible readers so they can request
+  a fresh check (including a pop-out); canceled replies are never accepted. A draft session
   is plaintext (`reopenDraft`) or encrypted (`reopenDecryptedDraft`); only an
   encrypted one forces encrypted save/send. Its source is deleted after the
   first successful save or send (`settleDraftReplacement`), except a plaintext

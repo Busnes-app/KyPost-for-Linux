@@ -199,7 +199,7 @@ Item {
         }
 
         function onSearchChanged() {
-            if (root.email.searchOnly)
+            if (root.email.searchOnly || !root.email.messageId)
                 root.reload()
         }
 
@@ -207,6 +207,8 @@ Item {
             if (folder !== root.folder || messageId !== root.messageId)
                 return
             root.email = MailApp.findByMessageId(root.messageId, root.folder)
+            if (root.email.pgpLookupNeeded)
+                MailApp.loadMessagePgp(root.folder, root.messageId)
             webViewLoader.applyContent()
         }
 

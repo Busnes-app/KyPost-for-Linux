@@ -625,7 +625,10 @@ app/pairing/PairingController.cpp	        !stored.isEmpty() && m_repinCheck == R
 # Metadata-only PGP lookup: dispatch lock, account/lifetime completion and
 # request replacement are separately checked over real executor/relay replies.
 app/mail/MailController.cpp	    if (m_appLocked || folder.isEmpty() || messageId.isEmpty())	    if (folder.isEmpty() || messageId.isEmpty())	MailDecryptionTest:staleMetadataLookupsNeverPublish
-app/mail/MailController.cpp	            if (!m_pairingStore.stillCurrent(identity) || m_appLocked || generation != m_decryptGeneration	            if (m_appLocked || generation != m_decryptGeneration	MailDecryptionTest:staleMetadataLookupsNeverPublish
-app/mail/MailController.cpp	            if (!m_pairingStore.stillCurrent(identity) || m_appLocked || generation != m_decryptGeneration	            if (!m_pairingStore.stillCurrent(identity) || m_appLocked	MailDecryptionTest:staleMetadataLookupsNeverPublish
-app/mail/MailController.cpp	            if (entry == m_messagePgp.end() || entry->request != request)	            if (entry == m_messagePgp.end())	MailDecryptionTest:metadataLookupRestartSurvivesOldReply
+app/mail/MailController.cpp	                if (!m_pairingStore.stillCurrent(identity) || m_appLocked || generation != m_decryptGeneration	                if (m_appLocked || generation != m_decryptGeneration	MailDecryptionTest:staleMetadataLookupsNeverPublish
+app/mail/MailController.cpp	                if (!m_pairingStore.stillCurrent(identity) || m_appLocked || generation != m_decryptGeneration	                if (!m_pairingStore.stillCurrent(identity) || m_appLocked	MailDecryptionTest:staleMetadataLookupsNeverPublish
+app/mail/MailController.cpp	            if (entry != m_messagePgp.end() && entry->request == request) {	            if (entry != m_messagePgp.end()) {	MailDecryptionTest:metadataLookupRestartSurvivesOldReply
 app/mail/MailController.cpp	    if (selected != PgpMessageState::ClientProtected && selected != PgpMessageState::SignedOnly)	    if (false)	MailDecryptionTest:metadataLookupFailuresKeepReadableFallback
+
+# Search-owned protected content must be revoked, not just hidden, on query changes.
+app/mail/MailController.cpp	    if (m_readSearchGeneration)	    if (false)	MailDecryptionTest:protectedSearchContentEndsWithItsSearch
