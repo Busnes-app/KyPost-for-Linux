@@ -46,7 +46,9 @@ TestCase {
         verify(text.indexOf("const draft = MailApp.reopenDraft(root.folder, root.messageId)") !== -1)
         // Drafts do not reopen under the PIN overlay; a held-back body loads on unlock.
         verify(text.split("enabled: !MailApp.isBusy && !AppLock.locked").length === 3)
-        verify(text.indexOf("if (root.email.bodyPending)\n                MailApp.loadSearchBody(root.folder, root.messageId)") !== -1)
+        verify(text.indexOf("if (root.email.bodyPending)\n            MailApp.loadSearchBody(root.folder, root.messageId)") !== -1)
+        // The real reader test checks unlock reloading classification and body.
+        verify(text.indexOf("function onMessagePgpChanged(folder, messageId)") !== -1)
         // A search hit with no readable body may be an encrypted draft.
         verify(text.indexOf('root.folder === MailApp.draftsFolder && root.email.pgpState === 0 && (!root.email.searchOnly || !!root.email.body)') !== -1)
     }

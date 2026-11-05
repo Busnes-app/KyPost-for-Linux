@@ -64,6 +64,14 @@ the session can.
    Secret Service through QtKeychain (`app/platform/SecureStoreKeychain.h`) and, with the
    credential gate on, sealed under the app PIN (`core/security/CredentialCipher.cpp`).
 4. **App → GnuPG.** OpenPGP goes through GPGME to the user's `gpg-agent` (`core/pgp/`).
+   Older/search metadata classification calls only `PgpPayloadClient` on the pinned
+   executor; it neither invokes GnuPG nor imports signer keys. Only a status crosses
+   back, gated by account, lock, reader/query generation and request identity.
+   Explicit Decrypt/Verify re-fetches and checks its kind before transient display;
+   unavailable/404 lookup does not establish that the message is plain. Explicit
+   reads of uncached search hits are also search-generation-bound; changing the
+   query revokes pending and held reader plaintext, subject, attachments and token.
+   Cached selections and deliberate composer handoffs keep separate lifetimes.
 5. **Push distributor → app.** A pairing with push keys accepts only RFC 8291 `aes128gcm`
    payloads that decrypt under them; anything else is dropped. A pairing made without push
    keys takes plaintext notifications, but a sign-in challenge must always arrive encrypted

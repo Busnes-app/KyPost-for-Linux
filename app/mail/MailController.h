@@ -7,6 +7,7 @@
 #include "db/PushDao.h" // PushRecord
 #include "models/Email.h"
 #include "models/StandardFolder.h"
+#include "net/PgpPayloadClient.h"
 #include "net/RelayMailSource.h" // MailAttachmentUpload -- held by value in PendingSend below
 #include "pgp/EncryptedMessageReader.h" // PgpReadResult/PgpReadStatus -- carried across the hop
 #include "pgp/MimeBodyReader.h"
@@ -24,6 +25,7 @@
 #include <functional>
 #include <optional>
 
+enum class PgpMessageState;
 class QFile;
 class QTimer;
 
@@ -305,6 +307,9 @@ public slots:
     // pinentry, which for a hardware token means the user has to physically
     // touch it -- so it happens when they ask for it, not when a list
     // selection changes.
+    // Classifies older/search-only rows without importing keys or invoking GnuPG.
+    // Only the status is retained; explicit reads re-fetch the bounded payload.
+    Q_INVOKABLE void loadMessagePgp(const QString& folder, const QString& messageId, bool retry = false);
     Q_INVOKABLE void decryptMessage(const QString& messageId, const QString& folder = QString());
 
     // Drops the held plaintext. Called when the reader moves on, and wired
@@ -560,6 +565,7 @@ signals:
     void lastErrorChanged();
     void lastSyncAtChanged();
     void decryptedChanged();
+    void messagePgpChanged(const QString& folder, const QString& messageId);
     void foldersChanged();
     // Outcome of archiveEmails/deleteEmails/markSpam/moveEmails. `action` is
     // the wire verb ("archive"/"delete"/"spam"/"move") and `messageIds` is
@@ -684,6 +690,7 @@ private:
     friend class MailControllerTest; // Same, for forwarded attachments.
     // Cache first; then a search hit, if the search still belongs to this account.
     std::optional<Email> lookupEmail(const QString& folder, const QString& messageId) const;
+    PgpMessageState messagePgpState(const Email& email) const;
     QVariantMap emailMap(const Email& email) const;
     void startSearch();
     void applySearchQuery(const QString& query); // setSearchQuery minus the lock check
@@ -955,6 +962,15 @@ private:
     quint64 m_forwardGeneration = 0; // advanced by every lock
     QString m_decryptedFolder;
     quint64 m_decryptGeneration = 0;
+    std::optional<quint64> m_readSearchGeneration; // pending/held uncached search read
+    struct MessagePgpLookup {
+        PairingIdentity identity;
+        quint64 request;
+        quint64 readerGeneration;
+        std::optional<PgpPayloadStatus> status; // absent while pending; never payload/key bytes
+    };
+    QHash<QString, MessagePgpLookup> m_messagePgp;
+    quint64 m_messagePgpRequest = 0;
     bool m_appLocked = false;
     QString m_decryptFailure;
     QString m_decryptedSignature;

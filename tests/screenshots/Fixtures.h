@@ -9,6 +9,7 @@
 #include <QBuffer>
 #include <QFont>
 #include <QGuiApplication>
+#include <QWindow>
 #include <QDir>
 #include <QFontDatabase>
 #include <QImage>
@@ -26,6 +27,15 @@ class ScreenRun : public QObject
 public:
     bool desktop = true;
     QString qrDataUrl;
+
+    Q_INVOKABLE QObject* emailWindow(const QString& id) const
+    {
+        for (QWindow* window : QGuiApplication::topLevelWindows()) {
+            if (window->property("popMessageId").toString() == id)
+                return window;
+        }
+        return nullptr;
+    }
 
     // The real core helper, so a fix there shows up in the shots.
     Q_INVOKABLE QString folderDisplayName(const QString& wireName) const

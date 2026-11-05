@@ -364,8 +364,23 @@ affinity guard now catches.
 
 ## Protected-message reads (2026-09-14)
 
-`MailController::decryptMessage` resolves the mailbox/UID against the account's
-cache, then fetches, decrypts and parses MIME on NetworkExecutor. Only the parsed
+`MailController::loadMessagePgp` classifies metadata-only older/search rows on
+NetworkExecutor through the existing bounded payload client; only its status
+returns, with no GnuPG call or signer-key import. Requests coalesce synchronously.
+Completion checks pairing, reader/query generations, lock and request identity;
+lock/query changes clear the overlay. Every lookup completion notifies matching
+readers; cancellation settles their pending copy and lets a still-visible reader
+request a fresh check rather than accept the old reply. A 404 stays an
+unavailable-payload outcome.
+
+`MailController::decryptMessage` resolves an explicit mailbox/UID against the
+account's cache or its current transient search results; an omitted mailbox keeps
+unique-cache-only resolution. The selected classified kind must authorize the
+read, whose response must match that kind. A read depending on an uncached search
+captures its search generation too: changing the query revokes pending and held
+reader content and its attachment/CID token. Cached selections stay independent
+of search; a deliberate draft handoff keeps its separate account-bound lifetime.
+It then fetches, decrypts and parses MIME on NetworkExecutor. Only the parsed
 body, subject and attachment bytes cross back to the GUI; they remain transient. `forgetDecrypted`
 always advances a generation, even before a result exists. Completion checks that
 generation and the C++ app-lock state before applying anything, and checks pairing

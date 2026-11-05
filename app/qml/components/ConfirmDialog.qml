@@ -38,7 +38,7 @@ Item {
 
     // Closes before emitting, so a handler may open it again.
     function accept() {
-        if (!root.isOpen || AppLock.locked)
+        if (!root.isOpen || AppLock.locked) // Accept only while unlocked.
             return
         root.isOpen = false
         root.accepted()

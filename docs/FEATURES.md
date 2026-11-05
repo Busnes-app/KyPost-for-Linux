@@ -26,7 +26,11 @@ Commands and unlinked file paths below are relative to the repository root.
   encrypts locally, gives each blind recipient their own ciphertext, keeps the real subject
   inside the ciphertext, and refuses to send at all if any recipient has no usable key — there
   is no silent downgrade to plaintext. Mail this device holds no key for is still explained and
-  routed to webmail.
+  routed to webmail. Older/search-only mail is checked on open through the
+  existing relay payload endpoint, without invoking GnuPG or importing keys;
+  Decrypt/Verify remains an explicit action. This downloads the bounded payload
+  once to classify and again for the requested read; only its status is retained.
+  An unavailable endpoint keeps readable fallback text and webmail available.
   New signing/encryption requires RSA primary keys and usable RSA subkeys for
   that operation to contain at least 2048 bits. If an older key blocks a new
   message or encrypted draft, arrange a replacement key through your existing

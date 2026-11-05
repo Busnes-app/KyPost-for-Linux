@@ -269,7 +269,17 @@ Added 2026-07-25 (parity work with `kypost-android`):
   `MailController`'s `searchModel`/`m_searchResults`, never the cache, and are
   scoped to the account that searched (guard in `tests/guards.tsv`); a reply
   for a superseded query, folder or pairing is dropped by generation. Unsynced
-  hits get their body from `GET /api/mail/body` into memory. A draft session
+  hits get their body from `GET /api/mail/body` into memory. Opening an older
+  or uncached search row also calls `loadMessagePgp`: the existing bounded PGP
+  payload endpoint classifies it without GnuPG or signer-key import. Only the
+  status is held in a transient account/mailbox/UID overlay; Decrypt/Verify stays
+  explicit and re-fetches the payload. Lock, reader generation, query generation
+  and pairing checks discard stale lookups. A 404 is unavailable, not proof of
+  plain mail; readable body fallback and webmail remain available. Explicit reads
+  of uncached hits and their held protected content end when the search changes;
+  cached selections and deliberate composer handoffs keep their own lifetimes.
+  Canceled classification notifies matching visible readers so they can request
+  a fresh check (including a pop-out); canceled replies are never accepted. A draft session
   is plaintext (`reopenDraft`) or encrypted (`reopenDecryptedDraft`); only an
   encrypted one forces encrypted save/send. Its source is deleted after the
   first successful save or send (`settleDraftReplacement`), except a plaintext
@@ -288,8 +298,8 @@ Added 2026-07-25 (parity work with `kypost-android`):
   row up, and keeps older rows only while a held row still reaches the window;
   otherwise mail may be missing between them that paging can never reach, so
   they are dropped. Rows from a page are `metadataOnly`: treat them like a
-  search hit (no PGP flags, body on demand, never reopened as a draft with an
-  empty body). A page reply is dropped when the pairing or the folder's oldest
+  search hit (body and transient PGP classification on demand, including when
+  a body was already cached; never reopened as a draft with an empty body). A page reply is dropped when the pairing or the folder's oldest
   row changed; guards in `tests/guards.tsv`.
 
 - **Inbox preview line (2026-10-21, Android #187).** Only the window asks

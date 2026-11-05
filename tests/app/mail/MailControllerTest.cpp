@@ -3645,6 +3645,15 @@ void MailControllerTest::aLockedAppNeitherEditsNorSendsASearchUntilUnlocked()
     QTRY_VERIFY_WITH_TIMEOUT(!f.controller.searchBusy(), 10000);
     QCOMPARE(requestsMatching(fake, "GET /api/mail/search?"), 1);
 
+    // Test the body gate while the hit still exists. Editing the query now
+    // clears its old hits immediately, which would bypass the fetch entirely.
+    QVERIFY(f.controller.findByMessageId(QStringLiteral("s1"), QStringLiteral("INBOX"))
+        .value(QStringLiteral("bodyPending")).toBool());
+    f.controller.setAppLocked(true);
+    f.controller.loadSearchBody(QStringLiteral("INBOX"), QStringLiteral("s1"));
+    QVERIFY(f.controller.m_searchBodyInFlight.isEmpty());
+    f.controller.setAppLocked(false);
+
     // Typed just before the lock: its debounce does not fire under it.
     f.controller.setSearchQuery(QStringLiteral("founder"));
     f.controller.setAppLocked(true);
@@ -3846,6 +3855,7 @@ void MailControllerTest::aSendTimeTheRelayWouldRefuseSendsNothing()
 void MailControllerTest::aRelayThatCannotScheduleSendsNothing()
 {
     FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true,"sentSaved":true,"warning":""})"));
+    serveServerCustody(fake); // reach scheduling admission, beyond the custody check
     fake.setResponseForPath("/api/scheduled", httpResponse(404, "Not Found", "404 page not found", "text/plain"));
     RefreshFixture f(fake.port());
     QSignalSpy sent(&f.controller, &MailController::sendCompleted);
@@ -3858,6 +3868,7 @@ void MailControllerTest::aRelayThatCannotScheduleSendsNothing()
 
     QVERIFY(!sent.at(0).at(1).toBool());
     QVERIFY(!f.controller.lastError().isEmpty());
+    QCOMPARE(requestsMatching(fake, "GET /api/scheduled"), 1);
     QCOMPARE(requestsMatching(fake, "/api/mail/send"), 0);
 }
 

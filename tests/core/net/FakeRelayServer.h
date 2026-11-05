@@ -11,6 +11,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QObject>
+#include <QPointer>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <memory>
@@ -77,6 +78,19 @@ public:
     // connection open, so the client is still waiting when the test acts --
     // e.g. cancels -- and gets its answer only from its own transfer timeout.
     void holdNextForPath(const QByteArray& needle) { m_holdNeedle = needle; }
+    bool hasHeldResponse() const { return !m_heldSocket.isNull(); }
+    bool releaseHeldResponse(const QByteArray& response)
+    {
+        if (!m_heldSocket)
+            return false;
+        QTcpSocket* socket = m_heldSocket.data();
+        m_heldSocket.clear();
+        if (socket->write(response) != response.size())
+            return false;
+        socket->flush();
+        socket->disconnectFromHost();
+        return true;
+    }
 
     // Every request received, in order, so a test can assert what a multi-step
     // flow actually asked for.
@@ -121,6 +135,7 @@ private:
             const int lineEnd = request->indexOf("\r\n");
             if (!m_holdNeedle.isEmpty() && request->left(lineEnd).contains(m_holdNeedle)) {
                 m_holdNeedle.clear();
+                m_heldSocket = socket;
                 return;
             }
             socket->write(responseFor(*request));
@@ -168,4 +183,5 @@ private:
     QByteArray m_response;
     QByteArray m_received;
     QByteArray m_holdNeedle;
+    QPointer<QTcpSocket> m_heldSocket;
 };
