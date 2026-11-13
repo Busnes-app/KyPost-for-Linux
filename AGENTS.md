@@ -32,6 +32,7 @@ core/       — libkypostcore: models/net/db/stores/domain/theme/version, QtCore
 app/        — main.cpp, push/ (KUnifiedPush glue, Qt6-only), platform/ (SecureStore backends), qml/ (AppShell root, pages, components, icons/)
 tests/      — QtTest, stubbed HttpClient; ctest-driven. tests/qml/ is the QML suite (QmlTests); tests/guards.tsv is the security-guard manifest (§5a)
 packaging/  — flatpak/ (manifest, desktop file, metainfo, notifyrc, icons), dbus/ (session D-Bus activation .service), click/ (empty .gitkeep placeholder — the Ubuntu Touch app does not exist yet, there is no Clickable manifest)
+fuzz/       — libFuzzer targets (-DKYPOST_FUZZ=ON, clang only) and their seed corpora; CI's `fuzz` job runs them on every PR
 po/         — gettext catalogs
 scripts/    — build-sqlcipher.sh, verify-guards.sh, verify-version.sh, release-notes.py, verify-pgp-against-relay.sh
 docs/       — local tooling/setup notes (see docs/SETUP.md); docs/PARITY.md is the authoritative Android-parity matrix; docs/THREADING.md records the async-controller constraints; docs/STRONG-CRYPTO.md is the key-strength profile (§6k); docs/ASSURANCE-CASE.md is the security argument (a change that moves a trust boundary or a cited path updates it in the same PR); docs/VERIFYING-RELEASES.md is the user-facing signature check (its commands and outputs are from a dated run against a real release)
@@ -106,6 +107,12 @@ build, its CTest environment points at the BaseApp's `/app` resources and
 disables the nested Chromium sandbox, whose portal requires an installed app.
 This applies only to that test inside the build sandbox, never to the shipped
 application or native tests.
+
+`fuzz/MimeBodyReaderFuzzer` fuzzes `readMimeBody()`, the parser of decrypted,
+sender-controlled MIME. A change to `core/pgp/MimeBodyReader.cpp` runs it
+locally (commands in `fuzz/CMakeLists.txt`). A crash input stays in
+`fuzz/corpus/mime/` as a seed with a matching `MimeBodyReaderTest` case, so it
+keeps being replayed after the fix.
 
 ## 4. Locked decisions (do not relitigate)
 

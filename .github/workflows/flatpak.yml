@@ -410,6 +410,8 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write # push the gh-pages branch; attach tagged-release assets
+      id-token: write # keyless Sigstore signing of the release provenance
+      attestations: write # store that provenance in the attestations API
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -666,6 +668,33 @@ jobs:
           fi
           echo "GNUPGHOME=" >> "$GITHUB_ENV"
 
+      # SLSA provenance for both bundles in one attestation, signed keylessly
+      # through Sigstore with this run's OIDC identity: no key to keep. The
+      # bundle is also attached to the release, because the attestations API
+      # alone is invisible to anyone (or any scanner) reading the release.
+      # Placed after the signing key is destroyed: no secret is on disk here.
+      - name: Attest bundle provenance
+        id: attest
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            kypost-x86_64.flatpak
+            kypost-aarch64.flatpak
+
+      - name: Stage provenance as a release asset
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cp "$BUNDLE_PATH" "kypost-$GITHUB_REF_NAME.intoto.jsonl"
+          for arch in x86_64 aarch64; do
+            gh attestation verify "kypost-$arch.flatpak" --repo "$GITHUB_REPOSITORY" \
+              --bundle "kypost-$GITHUB_REF_NAME.intoto.jsonl"
+          done
+
       - name: Attach bundles to release
         if: startsWith(github.ref, 'refs/tags/v')
         # Pinned to a commit, not the mutable v2 tag: a third-party action
@@ -673,5 +702,7 @@ jobs:
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           body_path: ${{ runner.temp }}/kypost-release-notes.md
-          files: kypost-*.flatpak
+          files: |
+            kypost-*.flatpak
+            kypost-*.intoto.jsonl
           fail_on_unmatched_files: true

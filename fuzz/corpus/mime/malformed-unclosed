@@ -1,0 +1,6 @@
+Content-Type: multipart/mixed; boundary="never"
+
+--never
+Content-Type: text/plain
+
+no closing delimiter

@@ -579,7 +579,11 @@ MimeBody readMimeBody(const QByteArray& entity)
     out.subject = decodeSubject(headerOf(parsed, "subject"));
     out.hasSubject = hasHeader(parsed, "subject");
     if (out.subject.isEmpty() && mimeTypeOf(parsed).startsWith("multipart/")) {
-        const auto parts = splitOnBoundary(parsed.body, parameterOf(headerOf(parsed, "content-type"), "boundary"), out.status);
+        // Its own status: the walk above already decided this message's, and
+        // a root multipart kept whole as an attachment was never split, so a
+        // split failure here is no news about the content being returned.
+        MimeBody::Status lookupStatus = MimeBody::Status::Complete;
+        const auto parts = splitOnBoundary(parsed.body, parameterOf(headerOf(parsed, "content-type"), "boundary"), lookupStatus);
         if (!parts.isEmpty()) {
             const Entity first = parseEntity(parts.first());
             if (mimeTypeOf(first) == "text/rfc822-headers"

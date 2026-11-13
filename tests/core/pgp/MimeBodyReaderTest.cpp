@@ -44,6 +44,7 @@ private slots:
     void legacySubjectAndNestedSubjects();
     void blankProtectedSubjectIsPresent();
     void malformedAndLimitedMessagesAreExplicit();
+    void theProtectedSubjectLookupDoesNotChangeTheStatus();
 };
 
 void MimeBodyReaderTest::inlinePgpIsTheWholeMessage()
@@ -607,6 +608,26 @@ void MimeBodyReaderTest::malformedAttachmentsDoNotPartiallySucceed()
     const auto truncated = readMimeBody("Content-Type: multipart/mixed; boundary=b\r\n\r\n"
         "--b\r\nContent-Type: text/plain\r\n\r\nbody\r\n--b--fake\r\n");
     QCOMPARE(truncated.status, MimeBody::Status::Malformed);
+}
+
+// Found by fuzz/MimeBodyReaderFuzzer (fuzz/corpus/mime/crash-63824c04...).
+// A root multipart marked as an attachment is kept whole, so the walk never
+// looks for its closing delimiter. The protected-subject lookup afterwards
+// split it again and wrote "no closing delimiter" into the result's status
+// after the content had been kept: Malformed, with an attachment attached.
+void MimeBodyReaderTest::theProtectedSubjectLookupDoesNotChangeTheStatus()
+{
+    const MimeBody body = readMimeBody("Content-Type: multipart/mixed; boundary=b\r\n"
+                                       "Content-Disposition: attachment; filename=x.eml\r\n"
+                                       "\r\n"
+                                       "--b\r\n"
+                                       "Content-Type: text/plain\r\n"
+                                       "\r\n"
+                                       "never closed\r\n");
+
+    QCOMPARE(body.status, MimeBody::Status::Complete);
+    QCOMPARE(body.attachments.size(), 1);
+    QCOMPARE(body.attachments.first().mimeType, QStringLiteral("message/rfc822"));
 }
 
 QTEST_GUILESS_MAIN(MimeBodyReaderTest)

@@ -1,0 +1,29 @@
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="outer"
+To: "Doe, Jane" <jane@example.org>
+Cc: bob@example.org
+Subject: =?utf-8?B?SGVsbG8gd29ybGQ=?=
+
+--outer
+Content-Type: multipart/alternative; boundary="inner"
+
+--inner
+Content-Type: text/plain; charset=iso-8859-1
+
+café
+--inner--
+--outer
+Content-Type: image/png
+Content-Disposition: inline;
+ filename*=utf-8''%E2%82%AC.png
+Content-ID: <img1@example.org>
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgo=
+--outer
+Content-Type: message/rfc822
+
+Subject: inner
+
+body
+--outer--
