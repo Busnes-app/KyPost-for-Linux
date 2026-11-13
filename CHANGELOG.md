@@ -28,6 +28,24 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- Fixed a decrypted message whose top-level part is an attached multipart
+  being reported as malformed while its attachment was still returned. The
+  message now reads as complete, with its attachment. Found by the new MIME
+  fuzzer.
+- Tagged releases also carry `kypost-<tag>.intoto.jsonl`, keyless build
+  provenance for both Flatpak bundles. Check a download with
+  `gh attestation verify kypost-x86_64.flatpak --repo Busnes-app/KyPost-for-Linux --bundle kypost-<tag>.intoto.jsonl`.
+
+### Upgrade impact
+
+- No database, keyring or configuration migration. Nothing changes for
+  installed apps; the provenance file is an extra download next to the
+  bundles.
+
+## Source notes at 24065861
+
+### Changes
+
 - Older mail and uncached search hits can now be decrypted or have their
   signatures checked locally. Opening them checks the existing relay payload
   endpoint without prompting for a key or importing signer keys; use Decrypt

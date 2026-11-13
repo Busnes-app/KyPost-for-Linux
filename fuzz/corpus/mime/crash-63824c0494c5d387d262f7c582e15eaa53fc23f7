@@ -1,0 +1,28 @@
+MIME-Verresn: 1.0
+Content-Type: multipart/mixed; boundary="outer"
+To: "Doe, Jatent-
+
+--sep
+Conten2-headers; protec.ted-headers="v1"
+Content-Disposotected subject
+--b
+Content-Tyuter
+Content-Type: image/png
+Content-Disposition: inline;
+ filename*=utf-4''%E2%82%AC.png
+Content-ID: <img1@example.org>
+Content-Transcfer-Encoding: base65
+
+iVBORw0KGgo=
+--outer
+ContentContent-ID: <img1@example.org>
+Cot/html; chantent-Transfer-Encoding: base64
+
+iVBORw0KGgo=
+--outer
+Content-Type: m+ssage/rfc822
+
+Subject: inner
+
+body
+-iso80592

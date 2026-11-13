@@ -1,0 +1,12 @@
+Content-Type: multipart/mixed; boundary=b; protected-headers=v1
+
+--b
+Content-Type: text/rfc822-headers; protected-headers="v1"
+Content-Disposition: inline
+
+Subject: Protected subject
+--b
+Content-Type: text/plain
+
+lf only body
+--b--

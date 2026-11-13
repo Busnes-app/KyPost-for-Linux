@@ -445,3 +445,58 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  # libFuzzer over readMimeBody(), the parser of decrypted, sender-controlled
+  # MIME (fuzz/). Replays the seed corpus -- which keeps every past crash
+  # input -- then fuzzes for a bounded minute. QtCore is the only Qt it links,
+  # but configure still resolves core/'s libraries, hence the list.
+  fuzz:
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # One shell command with backslash continuations: no comments inside.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake \
+            ninja-build \
+            clang \
+            libclang-rt-dev \
+            qt6-base-dev \
+            libssl-dev \
+            libargon2-dev \
+            libgpgme-dev \
+            pkg-config
+
+      - name: Build fuzzer
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          cmake -B build-fuzz -S . -G Ninja -DKYPOST_CORE_ONLY=ON -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_TESTING=OFF -DKYPOST_FUZZ=ON
+          cmake --build build-fuzz --target MimeBodyReaderFuzzer
+
+      - name: Replay seed corpus
+        run: build-fuzz/fuzz/MimeBodyReaderFuzzer fuzz/corpus/mime/*
+
+      - name: Fuzz for 60 seconds
+        run: |
+          mkdir -p "$RUNNER_TEMP/corpus" "$RUNNER_TEMP/crashes"
+          cp fuzz/corpus/mime/* "$RUNNER_TEMP/corpus/"
+          build-fuzz/fuzz/MimeBodyReaderFuzzer -max_total_time=60 -timeout=25 \
+            -artifact_prefix="$RUNNER_TEMP/crashes/" "$RUNNER_TEMP/corpus"
+
+      - name: Keep crash inputs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-crashes-${{ github.sha }}
+          path: ${{ runner.temp }}/crashes/
+          if-no-files-found: ignore

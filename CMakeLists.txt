@@ -124,6 +124,11 @@ endif()
 message(STATUS "kypostcore: Qt ${Qt${QT_VERSION_MAJOR}Core_VERSION}")
 
 add_subdirectory(core)
+# libFuzzer targets for parsers of untrusted input; clang only. See fuzz/CMakeLists.txt.
+option(KYPOST_FUZZ "Build the libFuzzer targets in fuzz/ (needs clang)" OFF)
+if(KYPOST_FUZZ)
+  add_subdirectory(fuzz)
+endif()
 if(NOT KYPOST_CORE_ONLY)
   add_subdirectory(app)
   add_subdirectory(po)
