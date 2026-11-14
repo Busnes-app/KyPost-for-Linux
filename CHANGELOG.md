@@ -35,6 +35,9 @@ explains the signed remote and the standalone-bundle update-origin limitation.
   tooltip names the action. A message that hasn't loaded yet is refused
   with its own explanation. Replies and forwards of other mail always take
   the subject as stored, never a decrypted one.
+- CI fails when a compiled executable or package is tracked in the repository
+  (`scripts/check-no-binaries.sh`), and the OSTree export folders a local
+  Flatpak build leaves behind are ignored by git. No binary was found.
 
 ### Upgrade impact
 
@@ -55,9 +58,6 @@ explains the signed remote and the standalone-bundle update-origin limitation.
   "Join meeting" for an `https:` meeting link, naming its host and opening it
   in your browser. Before/after screenshots are in `docs/screenshots/`
   (`kypost-linux-131-*`).
-- CI fails when a compiled executable or package is tracked in the repository
-  (`scripts/check-no-binaries.sh`), and the OSTree export folders a local
-  Flatpak build leaves behind are ignored by git. No binary was found.
 
 ### Upgrade impact
 
