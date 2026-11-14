@@ -148,7 +148,8 @@ QtObject {
     function reopenDraft() {}
     function reopenDecryptedDraft() {}
     function releaseDraft() {}
-    function forwardWithAttachments() { return false }
+    property int forwardCalls: 0
+    function forwardWithAttachments() { ++forwardCalls; return false }
     function discardPendingSend(token) {}
     function confirmPickupFallbackSend() {}
     function preflightRecipients() { return ({}) }

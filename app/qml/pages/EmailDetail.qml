@@ -285,6 +285,7 @@ Item {
 
     function reload() {
         root.imagesLoaded = false
+        root.replyRefused = false
         root.clearInvite()
         if (root.messageId === "") {
             root.email = {}
@@ -360,12 +361,21 @@ Item {
         return { messageId: root.messageId, mailbox: root.folder }
     }
 
-    // Reply, Reply all and Forward stay enabled when refused, so the tooltip
-    // can say why (Android keeps them tappable too).
-    readonly property string replyRefusal: i18n("Replying to encrypted mail isn't available in the app yet — use webmail.")
+    // Why Reply, Reply all and Forward are refused; "" when they are not.
+    // They stay enabled when refused, so the tooltip can say why (Android
+    // keeps them tappable too). An unloaded message is not called encrypted.
+    readonly property string replyRefusal: Format.mayReplyOrForward(root.email) ? ""
+        : root.email && root.email.pgpState === 1
+            ? i18n("Replying to encrypted mail isn't available in the app yet — use webmail.")
+            : i18n("This message hasn't loaded, so it can't be replied to or forwarded yet.")
+    // Set by a refused click, shown under the action row until the reader moves on.
+    property bool replyRefused: false
     function refuseReplyOrForward() {
-        root.attachmentStatus = root.replyRefusal
-        attachmentStatusTimer.restart()
+        root.replyRefused = true
+    }
+    function replyTooltip(action) {
+        return root.replyRefusal === "" ? action
+            : i18nc("@info:tooltip %1 is a reply action, %2 why it is unavailable", "%1 (unavailable): %2", action, root.replyRefusal)
     }
 
     // Prepends "<prefix> " unless `subject` already starts with `prefix`
@@ -511,8 +521,10 @@ Item {
                 }
 
                 IconButton {
+                    objectName: "replyButton"
                     icon: "reply"
-                    tooltip: Format.mayReplyOrForward(root.email) ? i18n("Reply") : root.replyRefusal
+                    tooltip: root.replyTooltip(i18n("Reply"))
+                    muted: root.replyRefusal !== ""
                     enabled: !MailApp.isBusy
                     onClicked: {
                         if (!Format.mayReplyOrForward(root.email))
@@ -523,8 +535,10 @@ Item {
                     }
                 }
                 IconButton {
+                    objectName: "replyAllButton"
                     icon: "reply-all"
-                    tooltip: Format.mayReplyOrForward(root.email) ? i18n("Reply all") : root.replyRefusal
+                    tooltip: root.replyTooltip(i18n("Reply all"))
+                    muted: root.replyRefusal !== ""
                     enabled: !MailApp.isBusy
                     onClicked: {
                         if (!Format.mayReplyOrForward(root.email))
@@ -535,8 +549,10 @@ Item {
                     }
                 }
                 IconButton {
+                    objectName: "forwardButton"
                     icon: "forward"
-                    tooltip: Format.mayReplyOrForward(root.email) ? i18n("Forward") : root.replyRefusal
+                    tooltip: root.replyTooltip(i18n("Forward"))
+                    muted: root.replyRefusal !== ""
                     enabled: !MailApp.isBusy
                     onClicked: {
                         if (!Format.mayReplyOrForward(root.email))
@@ -638,6 +654,36 @@ Item {
                     onClicked: root.popOutRequested()
                 }
         }
+        }
+
+        // A refused Reply/Forward says why here, next to the buttons, not
+        // below a body that may run past the fold.
+        Rectangle {
+            id: replyRefusalBanner
+            objectName: "replyRefusalBanner"
+            Layout.fillWidth: true
+            visible: root.replyRefused && root.replyRefusal !== ""
+            implicitHeight: visible ? replyRefusalText.implicitHeight + 24 : 0
+            radius: Theme.shapePanel
+            color: Theme.panel
+            border.width: 1
+            border.color: Theme.line
+
+            Text {
+                id: replyRefusalText
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.margins: 12
+                textFormat: Text.PlainText
+                text: root.replyRefusal
+                color: Theme.inkStrong
+                font.family: Theme.fontUi
+                font.pixelSize: Theme.fontSender
+                wrapMode: Text.WordWrap
+                Accessible.role: Accessible.AlertMessage
+                Accessible.name: text
+            }
         }
 
         Text {
@@ -1161,10 +1207,9 @@ Item {
             id: attachmentsColumn
             Layout.fillWidth: true
             spacing: 8
-            // Also holds the reader's status line, which a refused Reply uses.
-            visible: root.visibleAttachments.length > 0 || root.attachmentStatus !== ""
+            visible: root.visibleAttachments.length > 0
 
-            SectionLabel { text: i18n("Attachments"); visible: root.visibleAttachments.length > 0 }
+            SectionLabel { text: i18n("Attachments") }
 
             Flow {
                 Layout.fillWidth: true

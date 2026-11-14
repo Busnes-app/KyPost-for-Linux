@@ -123,41 +123,34 @@ TestCase {
     function handler(detail, icon) {
         const start = detail.indexOf('icon: "' + icon + '"')
         verify(start !== -1, icon)
-        return detail.slice(start, detail.indexOf("\n                IconButton {", start))
+        return detail.slice(start, detail.indexOf("IconButton {", start))
     }
 
-    // The gate comes before any seed is built or sent anywhere.
+    // The gate comes before any seed is built or sent anywhere. Behaviour is
+    // in tests/shell-reader/tst_ReplyRefusal.qml; this pins the order.
     function test_replyAndForwardAreGatedBeforeAnySeed() {
         const detail = source("qrc:/qml/pages/EmailDetail.qml")
-        const refusal = 'i18n("Replying to encrypted mail isn\'t available in the app yet — use webmail.")'
-        verify(detail.indexOf("readonly property string replyRefusal: " + refusal) !== -1)
-        verify(detail.indexOf("    function refuseReplyOrForward() {\n"
-            + "        root.attachmentStatus = root.replyRefusal\n"
-            + "        attachmentStatusTimer.restart()\n    }") !== -1)
-        const gate = "if (!Format.mayReplyOrForward(root.email))\n"
-            + "                            return root.refuseReplyOrForward()\n"
+        verify(detail.indexOf('i18n("Replying to encrypted mail isn\'t available in the app yet — use webmail.")') !== -1)
+        const gate = /if \(!Format\.mayReplyOrForward\(root\.email\)\)\s+return root\.refuseReplyOrForward\(\)/g
         for (const [icon, label] of [["reply", "Reply"], ["reply-all", "Reply all"], ["forward", "Forward"]]) {
             const h = handler(detail, icon)
-            verify(h.indexOf('tooltip: Format.mayReplyOrForward(root.email) ? i18n("' + label + '") : root.replyRefusal') !== -1, h)
-            const at = h.indexOf(gate)
-            verify(at !== -1, h)
-            verify(at < h.indexOf("const subject"), h)
-            const send = h.indexOf("root.composeRequested(")
-            verify(send > at, h)
+            verify(h.indexOf('tooltip: root.replyTooltip(i18n("' + label + '"))') !== -1, h)
+            gate.lastIndex = 0
+            const at = gate.exec(h)
+            verify(at, h)
+            verify(at.index < h.indexOf("const subject"), h)
+            verify(h.indexOf("root.composeRequested(") > at.index, h)
             const forward = h.indexOf("MailApp.forwardWithAttachments(")
-            verify(forward === -1 || forward > at, h)
+            verify(forward === -1 || forward > at.index, h)
         }
         // Forward's seed is built after the async leave-compose prompt: gated again there.
         const fwd = handler(detail, "forward")
-        const inner = fwd.indexOf("root.beforeLeavingCompose(function () {\n"
-            + "                            // The leave-compose prompt is async; the message may have changed.\n"
-            + "                            if (!Format.mayReplyOrForward(root.email))\n"
-            + "                                return root.refuseReplyOrForward()\n"
-            + "                            const subject")
-        verify(inner !== -1, fwd)
+        const callback = fwd.indexOf("root.beforeLeavingCompose(function () {")
+        verify(callback !== -1, fwd)
+        gate.lastIndex = callback
+        const inner = gate.exec(fwd)
+        verify(inner && inner.index < fwd.indexOf("const subject"), fwd)
         compare(detail.split("root.composeRequested(").length - 1, 3)
-        // The status line shows even when there are no attachments to list.
-        verify(detail.indexOf('visible: root.visibleAttachments.length > 0 || root.attachmentStatus !== ""') !== -1)
     }
 
     // A decrypted protected Subject never seeds a compose, whatever the gate says.

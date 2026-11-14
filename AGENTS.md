@@ -339,11 +339,16 @@ Added 2026-07-25 (parity work with `kypost-android`):
   before touching it and reports `forwardFinished(true)`; AppShell only says
   so (`aLiveDraftSessionSurvivesACompletedForward`).
   Reply, Reply all and Forward are refused outright for a ClientProtected
-  message and while `pgpState` is unknown (`Format.mayReplyOrForward`, Android's
-  `mayReplyOrForward`/`initialReplyForwardState`; guard in `tests/guards.tsv`).
-  Reply has no C++ entry point, so that QML gate is the control. Every
-  subject seed (`withPrefix`, the forward's "Subject:" line) reads the cached
-  outer `email.subject`, never `displaySubject`.
+  message and when `email` has no numeric `pgpState` (not loaded)
+  (`Format.mayReplyOrForward`, Android's `mayReplyOrForward`/
+  `initialReplyForwardState`; guard in `tests/guards.tsv`). A metadata row
+  whose lookup is pending reports 0 and is allowed: it holds no plaintext.
+  Reply has no C++ entry point, so that QML gate is the control; Forward
+  checks again after the async leave-compose prompt. The reason shows in
+  `replyRefusalBanner` under the buttons, not in the scrolling status line
+  (`tests/shell-reader/tst_ReplyRefusal.qml`). Every subject seed
+  (`withPrefix`, the forward's "Subject:" line) reads the cached outer
+  `email.subject`, never `displaySubject`.
 
 - **Snooze (plan item L9, 2026-10-17).** `snooze` on `/api/inbox/actions` with
   `wakeAt` (whole-second UTC RFC 3339). Presets and the typed time live in
