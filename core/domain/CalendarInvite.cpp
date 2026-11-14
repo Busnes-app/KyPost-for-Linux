@@ -331,6 +331,29 @@ std::optional<QDateTime> addDuration(const QDateTime& start, const QString& valu
     return end.isValid() ? std::optional<QDateTime>(end) : std::nullopt;
 }
 
+// DTSTAMP is UTC by definition (RFC 5545 §3.8.7.2); a floating one is unreadable.
+QDateTime utcStamp(const ContentLine* line)
+{
+    const QRegularExpressionMatch m = dateTimeRe().match(line ? line->value.trimmed() : QString());
+    if (!m.hasMatch() || m.captured(3).isEmpty())
+        return {};
+    return QDateTime(QDate::fromString(m.captured(1), QStringLiteral("yyyyMMdd")),
+                     QTime::fromString(m.captured(2), QStringLiteral("HHmmss")), QTimeZone::utc());
+}
+
+// RFC 7986 §5.11 CONFERENCE: https only, no credentials, bounded.
+QUrl conferenceUrl(const ContentLine* line)
+{
+    const QString value = line ? line->value.trimmed() : QString();
+    if (value.isEmpty() || value.size() > 2048
+        || std::any_of(value.cbegin(), value.cend(), [](QChar c) { return isIsoControl(c.unicode()); }))
+        return {};
+    const QUrl url(value, QUrl::StrictMode);
+    const bool usable = url.isValid() && url.scheme() == QLatin1String("https") && !url.host().isEmpty()
+        && url.userInfo().isEmpty();
+    return usable ? url : QUrl();
+}
+
 struct Parsed
 {
     CalendarEvent event;
@@ -407,6 +430,8 @@ std::optional<Parsed> toEvent(const QHash<QString, ContentLine>& props, const QS
         : endTime                                    ? endTime->unknownZone
                                                      : QString();
     event.attendees = attendees;
+    event.stamp = utcStamp(prop("DTSTAMP"));
+    event.conference = conferenceUrl(prop("CONFERENCE"));
     event.canReply = !event.uid.isEmpty() && !event.organizer.isEmpty() && sequence.has_value()
         && (!recurrence || !event.recurrenceId.isEmpty());
     return Parsed{ event, recurrence != nullptr };
@@ -607,7 +632,7 @@ QString rsvpAttendee(const CalendarEvent& event, const QStringList& accountAddre
 QString rsvpKey(const CalendarEvent& event)
 {
     return event.uid + QChar(0) + event.recurrenceId + QChar(0) + QString::number(event.sequence) + QChar(0)
-        + event.organizer.toLower();
+        + event.organizer.toLower() + QChar(0) + event.stamp.toString(Qt::ISODate);
 }
 
 std::optional<RsvpMail> rsvpMail(const CalendarEvent& event, const QString& attendee, RsvpAnswer answer,

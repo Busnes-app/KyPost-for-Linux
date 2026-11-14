@@ -216,6 +216,9 @@ private slots:
     void unrestatableRecurrenceIdOrSequenceMeansNoRsvp();
     void uidIsCopiedVerbatimIncludingSurroundingSpaces();
     void aNewRevisionIsANewKey();
+    void dtstampIsReadAsUtcOnly();
+    void onlyAnHttpsConferenceIsKept_data();
+    void onlyAnHttpsConferenceIsKept();
     void aCopyNamingAnotherOrganizerIsAnotherKey();
     void anAliasListedPastFiveHundredAttendeesIsStillFound();
     void aliasAnswerAlsoSendsFromTheAlias();
@@ -692,6 +695,56 @@ void CalendarInviteTest::aNewRevisionIsANewKey()
     QVERIFY(rsvpKey(seq4) != rsvpKey(seq5));
     QVERIFY(rsvpKey(seq4) != rsvpKey(overrideEvent({ QStringLiteral("RECURRENCE-ID:20261019T100000Z") })));
     QCOMPARE(rsvpKey(seq4), rsvpKey(rsvpInvite(request()).primary()));
+    // The same SEQUENCE re-sent later is a revision to answer again.
+    const CalendarEvent stamped = rsvpInvite(request() << QStringLiteral("DTSTAMP:20261011T080000Z")).primary();
+    const CalendarEvent later = rsvpInvite(request() << QStringLiteral("DTSTAMP:20261011T090000Z")).primary();
+    QVERIFY(rsvpKey(stamped) != rsvpKey(later));
+    QCOMPARE(rsvpKey(stamped), rsvpKey(rsvpInvite(request() << QStringLiteral("DTSTAMP:20261011T080000Z")).primary()));
+}
+
+void CalendarInviteTest::dtstampIsReadAsUtcOnly()
+{
+    QCOMPARE(primaryOf(inviteBytes(QStringLiteral("REQUEST"), request() << QStringLiteral("DTSTAMP:20261011T080910Z")))
+                 .stamp,
+             QDateTime(QDate(2026, 10, 11), QTime(8, 9, 10), QTimeZone::utc()));
+    // Floating, impossible, or absent: no stamp, and still an invite.
+    for (const QString& line : { QStringLiteral("DTSTAMP:20261011T080910"), QStringLiteral("DTSTAMP:20261341T080910Z"),
+                                 QStringLiteral("X-NONE:1") }) {
+        const std::optional<CalendarInvite> invite = parse(inviteBytes(QStringLiteral("REQUEST"), request() << line));
+        QVERIFY(invite.has_value());
+        QVERIFY(!invite->primary().stamp.isValid());
+    }
+}
+
+void CalendarInviteTest::onlyAnHttpsConferenceIsKept_data()
+{
+    QTest::addColumn<QString>("line");
+    QTest::addColumn<QString>("url");
+    QTest::newRow("https") << QStringLiteral("CONFERENCE;VALUE=URI;FEATURE=VIDEO:https://meet.example.com/abc?pwd=1")
+                           << QStringLiteral("https://meet.example.com/abc?pwd=1");
+    QTest::newRow("upper scheme") << QStringLiteral("CONFERENCE:HTTPS://meet.example.com/x")
+                                  << QStringLiteral("https://meet.example.com/x");
+    QTest::newRow("http") << QStringLiteral("CONFERENCE:http://meet.example.com/x") << QString();
+    QTest::newRow("tel") << QStringLiteral("CONFERENCE;VALUE=URI;FEATURE=PHONE:tel:+1-555-0100") << QString();
+    QTest::newRow("javascript") << QStringLiteral("CONFERENCE:javascript:alert(1)") << QString();
+    QTest::newRow("file") << QStringLiteral("CONFERENCE:file:///etc/passwd") << QString();
+    QTest::newRow("credentials") << QStringLiteral("CONFERENCE:https://user:pw@meet.example.com/x") << QString();
+    QTest::newRow("no host") << QStringLiteral("CONFERENCE:https:///x") << QString();
+    QTest::newRow("too long") << QStringLiteral("CONFERENCE:https://meet.example.com/") + QString(2048, QLatin1Char('a'))
+                              << QString();
+}
+
+void CalendarInviteTest::onlyAnHttpsConferenceIsKept()
+{
+    QFETCH(QString, line);
+    QFETCH(QString, url);
+    const CalendarEvent event = primaryOf(inviteBytes(QStringLiteral("REQUEST"), request() << line));
+    QVERIFY(!event.uid.isEmpty());
+    QCOMPARE(event.conference.toString(QUrl::FullyEncoded), url);
+    // Only the first counts, as for every other property.
+    const CalendarEvent two = primaryOf(inviteBytes(
+        QStringLiteral("REQUEST"), request() << QStringLiteral("CONFERENCE:tel:+1") << QStringLiteral("CONFERENCE:https://a.example/")));
+    QVERIFY(two.conference.isEmpty());
 }
 
 void CalendarInviteTest::aCopyNamingAnotherOrganizerIsAnotherKey()

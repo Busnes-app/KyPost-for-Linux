@@ -35,7 +35,7 @@ packaging/  — flatpak/ (manifest, desktop file, metainfo, notifyrc, icons), db
 fuzz/       — libFuzzer targets (-DKYPOST_FUZZ=ON, clang only) and their seed corpora; CI's `fuzz` job runs them on every PR
 po/         — gettext catalogs
 scripts/    — build-sqlcipher.sh, verify-guards.sh, verify-version.sh, release-notes.py, verify-pgp-against-relay.sh
-docs/       — local tooling/setup notes (see docs/SETUP.md); docs/PARITY.md is the authoritative Android-parity matrix; docs/THREADING.md records the async-controller constraints; docs/STRONG-CRYPTO.md is the key-strength profile (§6k); docs/ASSURANCE-CASE.md is the security argument (a change that moves a trust boundary or a cited path updates it in the same PR); docs/VERIFYING-RELEASES.md is the user-facing signature check (its commands and outputs are from a dated run against a real release)
+docs/       — local tooling/setup notes (see docs/SETUP.md); docs/PARITY.md is the authoritative Android-parity matrix; docs/THREADING.md records the async-controller constraints; docs/STRONG-CRYPTO.md is the key-strength profile (§6k); docs/ASSURANCE-CASE.md is the security argument (a change that moves a trust boundary or a cited path updates it in the same PR); docs/VERIFYING-RELEASES.md is the user-facing signature check (its commands and outputs are from a dated run against a real release); docs/KYCALENDAR-RSVP.md is the owned copy of the KyCalendar RSVP wire contract
 ```
 
 ## 3. Build instructions
@@ -377,22 +377,28 @@ Added 2026-07-25 (parity work with `kypost-android`):
   past the relay's 500 changes or 1 MiB, because the push is not batched.
   The app-lock offer is `AppLockManager::takeLockOffer`: once per install,
   spent and flushed before it shows.
-- **Calendar invites and RSVP (plan item L17, 2026-10-23).** `InviteController`
-  ("Invites") reads the listed calendar part into memory (`inviteAttachment`,
-  256 KiB) and parses it with `core/domain/CalendarInvite`, a port of Android's
-  `CalendarInvite.kt`; the reply is `RelayMailSource::sendCalendarReply`, always
-  plain, unsigned, unencrypted, to the ORGANIZER. Buttons need a REQUEST that can
-  be answered and the relay's `calendarMethod`. Each answer is confirmed, and is
-  sent only through the pairing that loaded the card (guards in
-  `tests/guards.tsv`); the lock withdraws the confirmation. Only
-  `"calendarReply": true` is an RSVP. Cards are addressed by their own token,
-  never by UID, which any sender can copy; RSVP state is keyed by UID +
-  RECURRENCE-ID + SEQUENCE + organizer. A reader takes only the card its own
+- **Calendar invites and RSVP (plan item L17, 2026-10-23; KyCalendar first
+  2026-11-14).** `InviteController` ("Invites") reads the listed calendar part
+  into memory (`inviteAttachment`, 256 KiB) and parses it with
+  `core/domain/CalendarInvite`, a port of Android's `CalendarInvite.kt`. An
+  answer goes first to KyCalendar through `RelayMailSource::answerInvite`
+  (`POST /api/calendar/rsvp`, the attachment index, never the ics; contract in
+  `docs/KYCALENDAR-RSVP.md`). Only 409 `kycalendar_off` and 404 `no_event`
+  (status and code both) fall back to mail, and only after the confirmation;
+  every other answer is shown and nothing is mailed (guard in
+  `tests/guards.tsv`). The mailed reply is `RelayMailSource::sendCalendarReply`,
+  always plain, unsigned, unencrypted, to the ORGANIZER. Buttons need a REQUEST
+  that can be answered and the relay's `calendarMethod`. Every answer goes only
+  through the pairing that loaded the card (guards in `tests/guards.tsv`); the
+  lock withdraws the confirmation. Only `"calendarReply": true` is an RSVP.
+  Cards are addressed by their own token, never by UID, which any sender can
+  copy; RSVP state is keyed by UID + RECURRENCE-ID + SEQUENCE + organizer +
+  DTSTAMP. Answered revisions are remembered in memory only, as digests, for the
+  card's "changed since you answered". A reader takes only the card its own
   `load()` request asked for, loads once per reload, and `forget()`s the card on
   reload and destruction: one answer is asked about at a time, so a card nobody
   shows must not hold one. `RsvpConfirmDialog` is an overlay Item, shown only by
-  the reader holding that card. KyCalendar's `/api/calendar/rsvp` is not used
-  yet (neither is it on Android or Mac).
+  the reader holding that card.
 
 - **New-device approval (#516, 2026-11-01).** The contract is KyPost-Server
   `docs/device-approval.md`. A 202 from register is

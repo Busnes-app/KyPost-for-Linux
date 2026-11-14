@@ -10,6 +10,7 @@ QtObject {
         ContactsApp.empty = false; ContactsApp.reload()
         Pairing.pairingState = "idle"; Pairing.isPaired = true; Pairing.pairingError = ""
         Invites.confirmation = ({})
+        Invites.states = ({"7": {answerable: true, sending: false, message: ""}})
         root.closeOverlays(); root.selectFolder("INBOX"); root.navigate("inbox")
     }
     function inviteCard() {
@@ -45,9 +46,31 @@ QtObject {
             root.selectEmail(id, "INBOX")
             findReader(root, id).invite = inviteCard()
             Invites.confirmation = {token: 7, title: "Send RSVP unencrypted?", sendLabel: "Send unencrypted",
-                text: "Reply \"Accepted\" to maya.chen@example.com as sam@kypost-demo.local.\n\n"
-                    + "RSVPs are always sent unencrypted and unsigned, because the organizer's calendar can't read "
-                    + "an encrypted reply. The reply carries your answer, your address and the event's ID."}
+                text: "KyCalendar is not in use for this mailbox, so your answer goes to maya.chen@example.com as an "
+                    + "unencrypted, unsigned email.\n\nReply \"Accepted\" as sam@kypost-demo.local. The organizer's "
+                    + "calendar can't read an encrypted reply. The reply carries your answer, your address and the "
+                    + "event's ID."}
+        }},
+        // KyPost-Server #606's card states: answered through KyCalendar, an
+        // update to an answered invite with a meeting link, a cancellation.
+        {name: "invite-answered", wait: 1800, setup: function (root) {
+            const id = "<playshot-1@kypost-demo.local>"
+            root.selectEmail(id, "INBOX")
+            findReader(root, id).invite = inviteCard()
+            Invites.states = {"7": {answerable: false, sending: false, message: "Answered through KyCalendar."}}
+        }},
+        {name: "invite-update", wait: 1800, setup: function (root) {
+            const id = "<playshot-1@kypost-demo.local>"
+            root.selectEmail(id, "INBOX")
+            findReader(root, id).invite = Object.assign(inviteCard(), {
+                notices: ["Changed since you answered: time and place. You had accepted; answer again."],
+                joinUrl: "https://meet.example.com/j/eagle-peak", joinHost: "meet.example.com"})
+        }},
+        {name: "invite-cancelled", wait: 1800, setup: function (root) {
+            const id = "<playshot-1@kypost-demo.local>"
+            root.selectEmail(id, "INBOX")
+            findReader(root, id).invite = Object.assign(inviteCard(), {
+                eyebrow: "Calendar invite · CANCEL", cancelled: true, offersRsvp: false})
         }},
         {name: "compose", setup: function (root) { root.openCompose("Maya Chen <maya.chen@example.com>", "Re: Saturday hike", "Count me in! I will bring the trail mix and an extra headlamp.<br><br>See you at 7:30.<br><br>Sam", ({})) }},
         // The reader's own Reply: the composer opens on the quoted body.

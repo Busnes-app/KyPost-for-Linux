@@ -13,6 +13,8 @@
 #include <QTest>
 #include <QTimeZone>
 
+Q_DECLARE_METATYPE(CalendarRsvpResult::Outcome)
+
 class RelayMailSourceTest : public QObject
 {
     Q_OBJECT
@@ -39,6 +41,9 @@ private slots:
     void sendCalendarReplyIsPlainUnsignedAndCarriesTheIcs();
     void sendCalendarReplyReadsTheRelaysAcknowledgement();
     void sendCalendarReplyKeepsTheStatusOfARefusal();
+    void answerInviteSendsTheIndexNeverTheIcs();
+    void answerInviteMapsEachRespondAnswer_data();
+    void answerInviteMapsEachRespondAnswer();
     void listAttachmentsReadsTheCalendarMethod();
     void sendMailPutsPgpFlagsInTheRequestBody();
     void sendMailParsesKeylessRecipient409();
@@ -647,6 +652,93 @@ void RelayMailSourceTest::sendCalendarReplyKeepsTheStatusOfARefusal()
     QCOMPARE(result.statusCode, 400);
     QCOMPARE(result.detail, QStringLiteral("invalid calendar reply: calendar reply has no VEVENT"));
     QVERIFY(!result.calendarReplySent);
+}
+
+// NATIVE-RSVP.md "Answer through KyCalendar first": device auth, the exact
+// messageId, the attachment index, the series master. The relay reads the ics.
+void RelayMailSourceTest::answerInviteSendsTheIndexNeverTheIcs()
+{
+    FakeRelayServer fake(httpResponse(200, "OK", R"({"outcome":"answered"})"));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    const CalendarRsvpResult result = RelayMailSource(http).answerInvite(
+        QUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port())),
+        RelayAuth{ QStringLiteral("device-1"), QStringLiteral("secret-1") }, QStringLiteral("INBOX"),
+        QStringLiteral("n1:abc"), 1, QStringLiteral("TENTATIVE"));
+    QCOMPARE(result.outcome, CalendarRsvpResult::Outcome::Answered);
+    const QByteArray request = fake.receivedRequest();
+    QVERIFY(request.startsWith("POST /api/calendar/rsvp "));
+    QVERIFY(request.contains("X-Kypost-Device-Id: device-1\r\n"));
+    QVERIFY(request.contains("X-Kypost-Device-Secret: secret-1\r\n"));
+    const QJsonObject body = fake.receivedJsonBody();
+    QCOMPARE(body.keys(), (QStringList{ QStringLiteral("index"), QStringLiteral("mailbox"), QStringLiteral("messageId"),
+                                        QStringLiteral("partstat") }));
+    QCOMPARE(body.value(QStringLiteral("messageId")).toString(), QStringLiteral("n1:abc"));
+    QCOMPARE(body.value(QStringLiteral("mailbox")).toString(), QStringLiteral("INBOX"));
+    QCOMPARE(body.value(QStringLiteral("index")).toInt(-1), 1);
+    QCOMPARE(body.value(QStringLiteral("partstat")).toString(), QStringLiteral("TENTATIVE"));
+}
+
+// KYCALENDAR.md "Respond" and NATIVE-RSVP.md's table. A fallback to mail is
+// the exact status and code, nothing near it.
+void RelayMailSourceTest::answerInviteMapsEachRespondAnswer_data()
+{
+    using O = CalendarRsvpResult::Outcome;
+    QTest::addColumn<QByteArray>("response");
+    QTest::addColumn<O>("outcome");
+    QTest::addColumn<QString>("detail");
+    const auto refusal = [](int status, const char* reason, const char* code, const char* error) {
+        return httpResponse(status, reason, QByteArray(R"({"error":")") + error + R"(","code":")" + code + R"("})");
+    };
+    QTest::newRow("answered") << httpResponse(200, "OK", R"({"outcome":"answered"})") << O::Answered << QString();
+    QTest::newRow("200 duplicate") << httpResponse(200, "OK", R"({"outcome":"duplicate"})") << O::Unconfirmed << QString();
+    QTest::newRow("200 not json") << httpResponse(200, "OK", "ok", "text/plain") << O::Unconfirmed << QString();
+    QTest::newRow("kycalendar_off") << refusal(409, "Conflict", "kycalendar_off", "KyCalendar is not in use") << O::Off
+                                    << QString();
+    QTest::newRow("no_event") << refusal(404, "Not Found", "no_event", "KyCalendar has no event") << O::NoEvent
+                              << QString();
+    QTest::newRow("conflict") << refusal(409, "Conflict", "conflict", "the event changed") << O::Conflict << QString();
+    // Off from the unpaired-server route is a 404, not this route's 409.
+    QTest::newRow("404 kycalendar_off") << refusal(404, "Not Found", "kycalendar_off", "not configured") << O::Failed
+                                        << QStringLiteral("not configured");
+    QTest::newRow("409 no_event") << refusal(409, "Conflict", "no_event", "odd") << O::Failed << QStringLiteral("odd");
+    QTest::newRow("bad_request") << refusal(400, "Bad Request", "bad_request", "invalid request") << O::Failed
+                                 << QStringLiteral("invalid request");
+    QTest::newRow("bad_partstat") << refusal(400, "Bad Request", "bad_partstat", "KyCalendar refused that answer")
+                                  << O::Failed << QStringLiteral("KyCalendar refused that answer");
+    QTest::newRow("not_found") << refusal(404, "Not Found", "not_found", "invitation not found") << O::Failed
+                               << QStringLiteral("invitation not found");
+    QTest::newRow("not_invitation") << refusal(422, "Unprocessable Entity", "not_invitation", "not an invitation")
+                                    << O::Failed << QStringLiteral("not an invitation");
+    QTest::newRow("not_invited") << refusal(422, "Unprocessable Entity", "not_invited", "not invited") << O::Failed
+                                 << QStringLiteral("not invited");
+    QTest::newRow("kycalendar_unavailable")
+        << refusal(502, "Bad Gateway", "kycalendar_unavailable", "KyCalendar could not be reached; try again")
+        << O::Failed << QStringLiteral("KyCalendar could not be reached; try again");
+    QTest::newRow("quota") << refusal(507, "Insufficient Storage", "quota", "the calendar is full") << O::Failed
+                           << QStringLiteral("the calendar is full");
+    QTest::newRow("unauthorized") << httpResponse(401, "Unauthorized", R"({"error":"unauthorized"})") << O::Failed
+                                  << QStringLiteral("unauthorized");
+    // A proxy's page is not shown.
+    QTest::newRow("html 502") << httpResponse(502, "Bad Gateway", "<html>bad</html>", "text/html") << O::Failed
+                              << QString();
+    QTest::newRow("old relay 404") << httpResponse(404, "Not Found", "404 page not found\n", "text/plain") << O::Failed
+                                   << QString();
+}
+
+void RelayMailSourceTest::answerInviteMapsEachRespondAnswer()
+{
+    QFETCH(QByteArray, response);
+    QFETCH(CalendarRsvpResult::Outcome, outcome);
+    QFETCH(QString, detail);
+    FakeRelayServer fake(response);
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    const CalendarRsvpResult result = RelayMailSource(http).answerInvite(
+        QUrl(QStringLiteral("http://127.0.0.1:%1").arg(fake.port())), RelayAuth{}, QString(), QStringLiteral("42"), 1,
+        QStringLiteral("ACCEPTED"));
+    QCOMPARE(result.outcome, outcome);
+    QCOMPARE(result.detail, detail);
 }
 
 // KyPost-Server #353: calendarMethod is omitempty, so an absent one stays "".

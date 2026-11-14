@@ -192,6 +192,25 @@ struct ListAttachmentsResult
     QVector<MailAttachmentInfo> attachments;
 };
 
+// POST /api/calendar/rsvp, mapped per KyPost-Server docs/NATIVE-RSVP.md. Only
+// Off and NoEvent may fall back to a mailed REPLY, and only after the user
+// confirms; everything else is shown and nothing is mailed.
+struct CalendarRsvpResult
+{
+    enum class Outcome
+    {
+        Answered,    // 200 {"outcome":"answered"}
+        Unconfirmed, // any other 200
+        Off,         // 409 kycalendar_off
+        NoEvent,     // 404 no_event
+        Conflict,    // 409 conflict: reload the invite and answer again
+        Failed,      // anything else, network errors included
+    };
+    Outcome outcome = Outcome::Failed;
+    // The server's `error` text on Failed, bounded; empty when there is none.
+    QString detail;
+};
+
 // GET /api/mail/attachment response: raw binary body, not JSON -- filename
 // and mime type travel in the Content-Disposition/Content-Type response
 // headers instead (Content-Disposition per Go's mime.FormatMediaType, i.e.
@@ -338,6 +357,13 @@ public:
     SendMailResult sendCalendarReply(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& to,
                                      const QString& from, const QString& subject, const QString& body,
                                      const QString& ics) const;
+
+    // POST /api/calendar/rsvp: answers the invite at attachment `index` of
+    // the message through KyCalendar. The relay reads the ics from the
+    // message itself, so none is sent; always the series master, so no
+    // recurrenceId. partstat is ACCEPTED, TENTATIVE or DECLINED.
+    CalendarRsvpResult answerInvite(const QUrl& serverBaseUrl, const RelayAuth& auth, const QString& mailbox,
+                                    const QString& messageId, int index, const QString& partstat) const;
 
     // POST /api/mail/draft. When pgpDraft is supplied, only To and the complete
     // self-encrypted PGP/MIME message leave this process. The other arguments

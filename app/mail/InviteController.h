@@ -6,6 +6,7 @@
 #include <QDateTime>
 #include <QHash>
 #include <QObject>
+#include <QSet>
 #include <QStringList>
 #include <QTimeZone>
 #include <QVariantList>
@@ -16,12 +17,16 @@
 
 class NetworkExecutor;
 class PairingStore;
+struct CalendarRsvpResult;
 struct SendMailResult;
 
 // The "Invites" QML singleton (plan item L17): the calendar-invite card on the
-// reader, and Accept/Maybe/Decline as an RFC 5546 REPLY through POST
-// /api/mail/send `calendarReply`. Port of kypost-android's invite card and
-// RsvpTracker; Mac's InviteCardModel is the second reference.
+// reader, and Accept/Maybe/Decline. An answer goes through KyCalendar first
+// (POST /api/calendar/rsvp, KyPost-Server docs/NATIVE-RSVP.md); only when the
+// relay says KyCalendar is off or has no such event, and the user confirms,
+// does it go as an RFC 5546 REPLY through POST /api/mail/send
+// `calendarReply`. Port of kypost-android's invite card and RsvpTracker;
+// Mac's InviteCardModel is the second reference.
 //
 // A card is addressed by the token load() hands out, never by the event's
 // UID: two invites may share a UID, and a sender-chosen copy must not be able
@@ -35,9 +40,10 @@ struct SendMailResult;
 class InviteController : public QObject
 {
     Q_OBJECT
-    // token (as a string) -> {answerable, sending, message} for every card
-    // held. `message` is the last outcome for that revision, from whichever
-    // reader sent it.
+    // token (as a string) -> {answerable, sending, message, reload} for every
+    // card held. `message` is the last outcome for that revision, from
+    // whichever reader sent it; `reload` asks for the invite to be read again
+    // (KyCalendar's 409 conflict).
     Q_PROPERTY(QVariantMap states READ states NOTIFY changed)
     // The RSVP waiting on the user's confirmation: {token, title, text,
     // sendLabel}, or {} when there is none.
@@ -79,7 +85,8 @@ public:
 
 signals:
     void changed();
-    // card: {token, eyebrow, title, details, notices, offersRsvp}.
+    // card: {token, eyebrow, title, details, notices, note, cancelled,
+    // joinUrl, joinHost, offersRsvp}.
     void inviteLoaded(int request, const QVariantMap& card);
 
 private:
@@ -93,6 +100,9 @@ private:
 
     struct Card
     {
+        QString mailbox;
+        QString messageId;
+        int index = 0;
         CalendarEvent event;
         bool offersRsvp = false;
         bool organizerIsSender = false;
@@ -109,8 +119,24 @@ private:
         QString text;
     };
 
+    // The last answer to an event, kept in memory only and as digests, so a
+    // newer revision can say what changed.
+    struct Answered
+    {
+        int sequence = 0;
+        QDateTime stamp;
+        QByteArray when;
+        QByteArray title;
+        QByteArray place;
+        RsvpAnswer answer = RsvpAnswer::Accepted;
+    };
+
+    void answered(const QString& key, const CalendarRsvpResult& result, const CalendarEvent& event, RsvpAnswer answer);
+    // KyCalendar is off or has no event: look the address up, then ask.
+    void askByMail(int token, const QString& key, RsvpAnswer answer, bool noEvent);
+    void remember(const CalendarEvent& event, RsvpAnswer answer);
     // Only a definite refusal frees the key; anything else may have gone out.
-    void finish(const QString& key, const SendMailResult& result);
+    void finish(const QString& key, const SendMailResult& result, const CalendarEvent& event, RsvpAnswer answer);
     void release(const QString& key);
     const Card* liveCard(int token) const;
 
@@ -125,5 +151,7 @@ private:
     QList<int> m_cardOrder; // oldest first, for the cap
     QHash<QString, Phase> m_phases;
     QHash<QString, QString> m_messages;
+    QSet<QString> m_conflicts;
+    QHash<QString, Answered> m_answered;
     std::optional<Pending> m_pending;
 };

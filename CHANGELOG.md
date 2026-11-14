@@ -28,6 +28,28 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- Accept, Maybe and Decline on a calendar invite now answer through
+  KyCalendar first, when your server has it on: your own calendar copy is
+  updated and no email is sent. When KyCalendar is not in use, or has no
+  event for that invite, the app says so and, after you confirm, emails the
+  answer to the organizer as before. Any other refusal is shown and nothing
+  is emailed.
+- The invite card shows "Cancelled" for a cancellation, says what changed
+  when an invite you already answered is updated and asks again, and offers
+  "Join meeting" for an `https:` meeting link, naming its host and opening it
+  in your browser. Before/after screenshots are in `docs/screenshots/`
+  (`kypost-linux-131-*`).
+
+### Upgrade impact
+
+- No database, keyring or configuration migration. Answers given are
+  remembered only while the app runs, so an update arriving after a restart
+  shows the plain "This invite was updated" notice.
+
+## Source notes at d7885a44
+
+### Changes
+
 - Test-only: the sanitizer build's shell tests allow 1600 MB of resident
   memory instead of 800 MB. AddressSanitizer's own overhead put the same
   suite at 785-860 MB, so the check failed at random. Normal builds keep the

@@ -3,19 +3,23 @@ import QtQuick.Layouts
 import com.kysecurity.mail 1.0
 
 // The calendar-invite card on the reader (plan item L17): the event read from
-// the message's own calendar part by Invites.load(), and Accept/Maybe/Decline.
-// Every value here is the sender's, so every Text is PlainText. A tap only
-// asks Invites; the confirmation is RsvpConfirmDialog, which the host owns.
+// the message's own calendar part by Invites.load(), and Accept/Maybe/Decline,
+// answered through KyCalendar first. Every value here is the sender's, so
+// every Text is PlainText. A tap only asks Invites; the mail fallback's
+// confirmation is RsvpConfirmDialog, which the host owns.
 Card {
     id: root
 
     // Invites.inviteLoaded's card: {token, eyebrow, title, details, notices,
-    // offersRsvp}, or {} for none.
+    // note, cancelled, joinUrl, joinHost, offersRsvp}, or {} for none.
     property var invite: ({})
     readonly property bool shown: root.invite.token !== undefined
-    // {answerable, sending, message} for this card, from whichever reader
-    // last answered the same invite.
+    // {answerable, sending, message, reload} for this card, from whichever
+    // reader last answered the same invite.
     readonly property var rsvp: root.shown ? (Invites.states[String(root.invite.token)] || ({})) : ({})
+
+    // KyCalendar said the event changed: the host reads the invite again.
+    signal reloadRequested()
 
     visible: root.shown
     implicitHeight: visible ? column.implicitHeight + 28 : 0
@@ -43,6 +47,16 @@ Card {
             font.pixelSize: Theme.fontSubject
             font.bold: true
             wrapMode: Text.Wrap
+        }
+        Text {
+            objectName: "inviteCancelled"
+            visible: root.invite.cancelled === true
+            textFormat: Text.PlainText
+            text: i18n("Cancelled")
+            color: Theme.danger
+            font.family: Theme.fontUi
+            font.pixelSize: Theme.fontSender
+            font.bold: true
         }
         Text {
             objectName: "inviteDetails"
@@ -80,6 +94,17 @@ Card {
             }
         }
 
+        // https only, checked in C++; the host is named so the user sees
+        // where the sender is sending them.
+        PrimaryButton {
+            objectName: "inviteJoin"
+            Layout.topMargin: 4
+            visible: (root.invite.joinUrl || "") !== ""
+            text: i18n("Join meeting (%1)", root.invite.joinHost || "")
+            enabled: !AppLock.locked
+            onClicked: Qt.openUrlExternally(root.invite.joinUrl)
+        }
+
         Flow {
             Layout.fillWidth: true
             Layout.topMargin: 4
@@ -107,11 +132,19 @@ Card {
             Layout.fillWidth: true
             visible: text !== ""
             textFormat: Text.PlainText
-            text: root.rsvp.sending ? i18n("Sending RSVP…") : (root.rsvp.message || "")
+            text: root.rsvp.sending ? i18n("Sending RSVP…") : (root.rsvp.message || root.invite.note || "")
             color: Theme.ink
             font.family: Theme.fontUi
             font.pixelSize: Theme.fontPreview
             wrapMode: Text.Wrap
+        }
+
+        GhostButton {
+            objectName: "inviteReload"
+            visible: root.rsvp.reload === true
+            text: i18n("Reload invitation")
+            enabled: !AppLock.locked
+            onClicked: root.reloadRequested()
         }
     }
 }

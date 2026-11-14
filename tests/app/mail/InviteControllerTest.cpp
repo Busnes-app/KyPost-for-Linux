@@ -27,6 +27,14 @@ const char* const kBootstrap =
     R"({"hasIdentity":false,"protection":"","suggestedUserIDs":["me@example.com","alias@example.com"]})";
 const char* const kSentAck = R"({"ok":true,"sentSaved":true,"warning":"","calendarReply":true})";
 
+QByteArray refusal(int status, const char* reason, const char* code, const char* error)
+{
+    return httpResponse(status, reason, QByteArray(R"({"error":")") + error + R"(","code":")" + code + R"("})");
+}
+
+const QByteArray kAnswered = httpResponse(200, "OK", R"({"outcome":"answered"})");
+const QByteArray kOff = refusal(409, "Conflict", "kycalendar_off", "KyCalendar is not in use for this account");
+
 QVariantList listing(const QString& calendarMethod = QStringLiteral("REQUEST"))
 {
     return { QVariantMap{ { QStringLiteral("index"), 0 }, { QStringLiteral("name"), QStringLiteral("agenda.pdf") },
@@ -64,6 +72,8 @@ struct Harness
         fake.setResponseForPath("/api/mail/attachment?", httpResponse(200, "OK", inviteIcs(), "text/calendar"));
         fake.setResponseForPath("/api/pgp/bootstrap", httpResponse(200, "OK", kBootstrap));
         fake.setResponseForPath("/api/mail/send", sendResponse);
+        // Off unless a test says otherwise: the mail fallback is the older path.
+        fake.setResponseForPath("/api/calendar/rsvp", kOff);
         saved = pairingStore.save(pairingFor(fake.port(), QStringLiteral("sub-1"), QStringLiteral("dev-1")));
     }
     ~Harness() { executor.shutdown(); }
@@ -88,23 +98,26 @@ struct Harness
         return QTest::qWaitFor([this] { return !controller.confirmation().isEmpty(); }, 10000);
     }
 
-    int sends() const
+    int requestsTo(const QByteArray& line) const
     {
         int n = 0;
         for (const QByteArray& request : fake.receivedRequests())
-            n += request.startsWith("POST /api/mail/send ");
+            n += request.startsWith(line);
         return n;
     }
+    int sends() const { return requestsTo("POST /api/mail/send "); }
+    int lookups() const { return requestsTo("GET /api/pgp/bootstrap"); }
 
-    QJsonObject lastSendBody() const
+    QJsonObject lastBody(const QByteArray& line = "POST /api/mail/send ") const
     {
         for (qsizetype i = fake.receivedRequests().size() - 1; i >= 0; --i) {
             const QByteArray& request = fake.receivedRequests().at(i);
-            if (request.startsWith("POST /api/mail/send "))
+            if (request.startsWith(line))
                 return QJsonDocument::fromJson(request.mid(request.indexOf("\r\n\r\n") + 4)).object();
         }
         return {};
     }
+    QJsonObject lastSendBody() const { return lastBody(); }
 
     FakeRelayServer fake;
     QTemporaryDir dir;
@@ -143,6 +156,17 @@ private slots:
     void forgettingACardDuringTheLookupLeavesNothingAsked();
     void aSecondAnswerWaitsForTheFirstConfirmation();
     void aLoginThatIsNotAnAddressAnswersFromTheAlias();
+    void anAnswerGoesThroughKyCalendarAndMailsNothing();
+    void aTwoHundredThatIsNotAnsweredIsNotConfirmed();
+    void noEventFallsBackToMailAfterTheConfirmation();
+    void aConflictAsksForAReload();
+    void everyOtherRefusalIsShownAndNeverMailed_data();
+    void everyOtherRefusalIsShownAndNeverMailed();
+    void aKyCalendarAnswerForAReplacedAccountRecordsNothing();
+    void lockingDuringTheKyCalendarCallAsksNothing();
+    void aCancelIsShownCancelledWithoutAnswers();
+    void onlyAnHttpsConferenceOffersJoinMeeting();
+    void anUpdateToAnAnsweredInviteSaysWhatChangedAndAsksAgain();
 };
 
 void InviteControllerTest::loadReadsTheListedPartIntoACard()
@@ -199,14 +223,18 @@ void InviteControllerTest::anAcceptIsConfirmedThenSentPlainToTheOrganizer()
     QCOMPARE(h.sends(), 0);
     const QVariantMap confirmation = h.controller.confirmation();
     QCOMPARE(confirmation.value(QStringLiteral("token")).toInt(), token);
+    // NATIVE-RSVP.md: why it is mail, then "your answer goes to <organizer>
+    // as an unencrypted, unsigned email".
     QVERIFY(confirmation.value(QStringLiteral("text")).toString().startsWith(
-        QStringLiteral("Reply \"Accepted\" to boss@example.com as me@example.com.")));
-    QVERIFY(confirmation.value(QStringLiteral("text")).toString().contains(QStringLiteral("unencrypted and unsigned")));
+        QStringLiteral("KyCalendar is not in use for this mailbox, so your answer goes to boss@example.com as an "
+                       "unencrypted, unsigned email.\n\nReply \"Accepted\" as me@example.com.")));
+    QCOMPARE(h.requestsTo("POST /api/calendar/rsvp "), 1);
 
     h.controller.confirmRsvp(token);
     QVERIFY(h.controller.confirmation().isEmpty());
     QVERIFY(h.stateOf(token).value(QStringLiteral("sending")).toBool());
-    QTRY_COMPARE_WITH_TIMEOUT(h.stateOf(token).value(QStringLiteral("message")).toString(), QStringLiteral("RSVP sent"), 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(h.stateOf(token).value(QStringLiteral("message")).toString(),
+                              QStringLiteral("Your answer was sent to boss@example.com."), 10000);
     QVERIFY(!h.stateOf(token).value(QStringLiteral("answerable")).toBool());
 
     QCOMPARE(h.sends(), 1);
@@ -291,9 +319,11 @@ void InviteControllerTest::aConfirmationAnsweredUnderTheLockSendsNothing()
     const int token = h.loadCard().value(QStringLiteral("token")).toInt();
     // Locked while the address lookup is in flight: when it lands, nothing
     // is raised, and unlocking does not bring a prompt up either.
+    h.fake.holdNextForPath("/api/pgp/bootstrap");
     h.controller.requestRsvp(token, QStringLiteral("ACCEPTED"));
+    QTRY_VERIFY_WITH_TIMEOUT(h.fake.hasHeldResponse(), 10000);
     h.controller.setAppLocked(true);
-    QTRY_VERIFY_WITH_TIMEOUT(h.fake.receivedRequests().size() == 2, 10000);
+    QVERIFY(h.fake.releaseHeldResponse(httpResponse(200, "OK", kBootstrap)));
     QTest::qWait(300);
     h.controller.setAppLocked(false);
     QVERIFY(h.controller.confirmation().isEmpty());
@@ -302,7 +332,7 @@ void InviteControllerTest::aConfirmationAnsweredUnderTheLockSendsNothing()
     h.controller.requestRsvp(token, QStringLiteral("DECLINED"));
     QTest::qWait(300);
     QCOMPARE(h.sends(), 0);
-    QCOMPARE(h.fake.receivedRequests().size(), 2);
+    QCOMPARE(h.fake.receivedRequests().size(), 3);
 }
 
 void InviteControllerTest::cancellingReleasesTheRevision()
@@ -327,7 +357,8 @@ void InviteControllerTest::anAnsweredRevisionCannotBeAnsweredAgain()
     h.controller.requestRsvp(second, QStringLiteral("DECLINED"));
     QVERIFY(!h.stateOf(second).value(QStringLiteral("answerable")).toBool());
     h.controller.confirmRsvp(first);
-    QTRY_COMPARE_WITH_TIMEOUT(h.stateOf(second).value(QStringLiteral("message")).toString(), QStringLiteral("RSVP sent"), 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(h.stateOf(second).value(QStringLiteral("message")).toString(),
+                              QStringLiteral("Your answer was sent to boss@example.com."), 10000);
     // Reopened: a confirmed RSVP stays sent.
     const int third = h.loadCard().value(QStringLiteral("token")).toInt();
     QVERIFY(!h.stateOf(third).value(QStringLiteral("answerable")).toBool());
@@ -360,7 +391,7 @@ void InviteControllerTest::aTwoHundredWithoutTheAckIsPlainMailNotAnRsvp()
     QVERIFY(h.ask(token));
     h.controller.confirmRsvp(token);
     QTRY_VERIFY_WITH_TIMEOUT(h.stateOf(token).value(QStringLiteral("message")).toString().startsWith(
-                                 QStringLiteral("Your server didn't send this as a calendar reply.")),
+                                 QStringLiteral("The organizer got your answer as ordinary mail; their calendar may not update.")),
                              10000);
     QVERIFY(!h.stateOf(token).value(QStringLiteral("answerable")).toBool());
 }
@@ -383,14 +414,14 @@ void InviteControllerTest::aBadGatewayMayHaveBeenSentUntilReopened()
     QVERIFY(h.ask(token));
     h.controller.confirmRsvp(token);
     QTRY_VERIFY_WITH_TIMEOUT(h.stateOf(token).value(QStringLiteral("message")).toString().startsWith(
-                                 QStringLiteral("RSVP may not have been sent")),
+                                 QStringLiteral("Your answer may have been sent (")),
                              10000);
     QVERIFY(!h.stateOf(token).value(QStringLiteral("answerable")).toBool());
     // Opening the invite again is the user's deliberate retry.
     const int reopened = h.loadCard().value(QStringLiteral("token")).toInt();
     QVERIFY(h.stateOf(reopened).value(QStringLiteral("answerable")).toBool());
     // The outcome sentence stays beside the retry.
-    QVERIFY(h.stateOf(reopened).value(QStringLiteral("message")).toString().startsWith(QStringLiteral("RSVP may not")));
+    QVERIFY(h.stateOf(reopened).value(QStringLiteral("message")).toString().startsWith(QStringLiteral("Your answer may")));
 }
 
 void InviteControllerTest::aCompletionForAReplacedAccountRecordsNothing()
@@ -450,9 +481,11 @@ void InviteControllerTest::forgettingACardDuringTheLookupLeavesNothingAsked()
 {
     Harness h;
     const int token = h.loadCard().value(QStringLiteral("token")).toInt();
+    h.fake.holdNextForPath("/api/pgp/bootstrap");
     h.controller.requestRsvp(token, QStringLiteral("ACCEPTED"));
+    QTRY_VERIFY_WITH_TIMEOUT(h.fake.hasHeldResponse(), 10000);
     h.controller.forget(token);
-    QTRY_VERIFY_WITH_TIMEOUT(h.fake.receivedRequests().size() == 2, 10000);
+    QVERIFY(h.fake.releaseHeldResponse(httpResponse(200, "OK", kBootstrap)));
     QTest::qWait(300);
     QVERIFY(h.controller.confirmation().isEmpty());
     QVERIFY(!h.controller.states().contains(QString::number(token)));
@@ -495,6 +528,232 @@ void InviteControllerTest::aLoginThatIsNotAnAddressAnswersFromTheAlias()
     h.controller.confirmRsvp(token);
     QTRY_COMPARE_WITH_TIMEOUT(h.sends(), 1, 10000);
     QCOMPARE(h.lastSendBody().value(QStringLiteral("from")).toString(), QStringLiteral("alias@example.com"));
+}
+
+// NATIVE-RSVP.md "Answer through KyCalendar first": the attachment index, the
+// exact messageId, no ics, no recurrenceId, and no mail on success.
+void InviteControllerTest::anAnswerGoesThroughKyCalendarAndMailsNothing()
+{
+    Harness h(httpResponse(200, "OK", kSentAck), { { "/api/calendar/rsvp", kAnswered } });
+    const int token = h.loadCard().value(QStringLiteral("token")).toInt();
+    h.controller.requestRsvp(token, QStringLiteral("DECLINED"));
+    QVERIFY(h.stateOf(token).value(QStringLiteral("sending")).toBool());
+    QTRY_COMPARE_WITH_TIMEOUT(h.stateOf(token).value(QStringLiteral("message")).toString(),
+                              QStringLiteral("Answered through KyCalendar."), 10000);
+    QVERIFY(!h.stateOf(token).value(QStringLiteral("answerable")).toBool());
+    QVERIFY(h.controller.confirmation().isEmpty());
+    const QJsonObject body = h.lastBody("POST /api/calendar/rsvp ");
+    QCOMPARE(body.keys(), (QStringList{ QStringLiteral("index"), QStringLiteral("mailbox"), QStringLiteral("messageId"),
+                                        QStringLiteral("partstat") }));
+    QCOMPARE(body.value(QStringLiteral("messageId")).toString(), QStringLiteral("m1"));
+    QCOMPARE(body.value(QStringLiteral("mailbox")).toString(), QStringLiteral("INBOX"));
+    QCOMPARE(body.value(QStringLiteral("index")).toInt(-1), 1);
+    QCOMPARE(body.value(QStringLiteral("partstat")).toString(), QStringLiteral("DECLINED"));
+    QTest::qWait(200);
+    QCOMPARE(h.lookups(), 0);
+    QCOMPARE(h.sends(), 0);
+}
+
+void InviteControllerTest::aTwoHundredThatIsNotAnsweredIsNotConfirmed()
+{
+    Harness h(httpResponse(200, "OK", kSentAck),
+              { { "/api/calendar/rsvp", httpResponse(200, "OK", R"({"outcome":"duplicate"})") } });
+    const int token = h.loadCard().value(QStringLiteral("token")).toInt();
+    h.controller.requestRsvp(token, QStringLiteral("ACCEPTED"));
+    QTRY_COMPARE_WITH_TIMEOUT(h.stateOf(token).value(QStringLiteral("message")).toString(),
+                              QStringLiteral("KyCalendar did not confirm the answer; try again."), 10000);
+    QVERIFY(h.stateOf(token).value(QStringLiteral("answerable")).toBool());
+    QVERIFY(h.controller.confirmation().isEmpty());
+    QCOMPARE(h.lookups(), 0);
+    QCOMPARE(h.sends(), 0);
+}
+
+// An invitation KyCalendar never received can still be answered by mail,
+// after the same confirmation, which says why.
+void InviteControllerTest::noEventFallsBackToMailAfterTheConfirmation()
+{
+    Harness h(httpResponse(200, "OK", kSentAck),
+              { { "/api/calendar/rsvp", refusal(404, "Not Found", "no_event", "KyCalendar has no event for this invitation") } });
+    const int token = h.loadCard().value(QStringLiteral("token")).toInt();
+    QVERIFY(h.ask(token));
+    QVERIFY(h.controller.confirmation().value(QStringLiteral("text")).toString().startsWith(
+        QStringLiteral("KyCalendar has no event for this invitation, so your answer goes to boss@example.com as an "
+                       "unencrypted, unsigned email.")));
+    QCOMPARE(h.sends(), 0);
+    h.controller.confirmRsvp(token);
+    QTRY_COMPARE_WITH_TIMEOUT(h.sends(), 1, 10000);
+    QVERIFY(h.lastSendBody().contains(QStringLiteral("calendarReply")));
+}
+
+void InviteControllerTest::aConflictAsksForAReload()
+{
+    Harness h(httpResponse(200, "OK", kSentAck),
+              { { "/api/calendar/rsvp", refusal(409, "Conflict", "conflict", "the event changed") } });
+    const int token = h.loadCard().value(QStringLiteral("token")).toInt();
+    h.controller.requestRsvp(token, QStringLiteral("ACCEPTED"));
+    QTRY_VERIFY_WITH_TIMEOUT(h.stateOf(token).value(QStringLiteral("reload")).toBool(), 10000);
+    QCOMPARE(h.stateOf(token).value(QStringLiteral("message")).toString(),
+             QStringLiteral("The event changed since this invitation. Reload it and answer again."));
+    QVERIFY(h.stateOf(token).value(QStringLiteral("answerable")).toBool());
+    QVERIFY(h.controller.confirmation().isEmpty());
+    QCOMPARE(h.sends(), 0);
+    // Read again: the reload is done.
+    const int reloaded = h.loadCard().value(QStringLiteral("token")).toInt();
+    QVERIFY(!h.stateOf(reloaded).value(QStringLiteral("reload")).toBool());
+}
+
+void InviteControllerTest::everyOtherRefusalIsShownAndNeverMailed_data()
+{
+    QTest::addColumn<QByteArray>("response");
+    QTest::addColumn<QString>("message");
+    const QString unreachable = QStringLiteral("KyCalendar could not be reached; try again.");
+    QTest::newRow("bad_request") << refusal(400, "Bad Request", "bad_request", "invalid request")
+                                 << QStringLiteral("invalid request");
+    QTest::newRow("bad_partstat") << refusal(400, "Bad Request", "bad_partstat", "KyCalendar refused that answer")
+                                  << QStringLiteral("KyCalendar refused that answer");
+    QTest::newRow("not_found") << refusal(404, "Not Found", "not_found", "invitation not found")
+                               << QStringLiteral("invitation not found");
+    QTest::newRow("not_invitation") << refusal(422, "Unprocessable Entity", "not_invitation", "not an invitation")
+                                    << QStringLiteral("not an invitation");
+    QTest::newRow("not_invited") << refusal(422, "Unprocessable Entity", "not_invited", "not invited")
+                                 << QStringLiteral("not invited");
+    QTest::newRow("kycalendar_unavailable")
+        << refusal(502, "Bad Gateway", "kycalendar_unavailable", "KyCalendar could not record the answer; try again")
+        << QStringLiteral("KyCalendar could not record the answer; try again");
+    QTest::newRow("quota") << refusal(507, "Insufficient Storage", "quota", "the calendar is full")
+                           << QStringLiteral("the calendar is full");
+    QTest::newRow("unpaired server") << refusal(404, "Not Found", "kycalendar_off", "not configured")
+                                     << QStringLiteral("not configured");
+    QTest::newRow("old relay") << httpResponse(404, "Not Found", "404 page not found\n", "text/plain") << unreachable;
+    QTest::newRow("proxy page") << httpResponse(502, "Bad Gateway", "<html>x</html>", "text/html") << unreachable;
+}
+
+void InviteControllerTest::everyOtherRefusalIsShownAndNeverMailed()
+{
+    QFETCH(QByteArray, response);
+    QFETCH(QString, message);
+    Harness h(httpResponse(200, "OK", kSentAck), { { "/api/calendar/rsvp", response } });
+    const int token = h.loadCard().value(QStringLiteral("token")).toInt();
+    h.controller.requestRsvp(token, QStringLiteral("ACCEPTED"));
+    QTRY_COMPARE_WITH_TIMEOUT(h.stateOf(token).value(QStringLiteral("message")).toString(), message, 10000);
+    QVERIFY(h.stateOf(token).value(QStringLiteral("answerable")).toBool());
+    QTest::qWait(200);
+    QVERIFY(h.controller.confirmation().isEmpty());
+    QCOMPARE(h.lookups(), 0);
+    QCOMPARE(h.sends(), 0);
+}
+
+void InviteControllerTest::aKyCalendarAnswerForAReplacedAccountRecordsNothing()
+{
+    Harness h;
+    const int token = h.loadCard().value(QStringLiteral("token")).toInt();
+    h.fake.holdNextForPath("/api/calendar/rsvp");
+    h.controller.requestRsvp(token, QStringLiteral("ACCEPTED"));
+    QTRY_VERIFY_WITH_TIMEOUT(h.fake.hasHeldResponse(), 10000);
+    QVERIFY(h.pairingStore.save(pairingFor(h.fake.port(), QStringLiteral("sub-2"), QStringLiteral("dev-2"))));
+    h.controller.clear();
+    QVERIFY(h.fake.releaseHeldResponse(kAnswered));
+    QTest::qWait(300);
+    QVERIFY(h.controller.states().isEmpty());
+    const int theirs = h.loadCard().value(QStringLiteral("token")).toInt();
+    QVERIFY(h.stateOf(theirs).value(QStringLiteral("answerable")).toBool());
+    QCOMPARE(h.stateOf(theirs).value(QStringLiteral("message")).toString(), QString());
+}
+
+void InviteControllerTest::lockingDuringTheKyCalendarCallAsksNothing()
+{
+    Harness h;
+    const int token = h.loadCard().value(QStringLiteral("token")).toInt();
+    h.fake.holdNextForPath("/api/calendar/rsvp");
+    h.controller.requestRsvp(token, QStringLiteral("ACCEPTED"));
+    QTRY_VERIFY_WITH_TIMEOUT(h.fake.hasHeldResponse(), 10000);
+    h.controller.setAppLocked(true);
+    QVERIFY(h.fake.releaseHeldResponse(kOff));
+    QTest::qWait(300);
+    h.controller.setAppLocked(false);
+    QVERIFY(h.controller.confirmation().isEmpty());
+    QVERIFY(h.stateOf(token).value(QStringLiteral("answerable")).toBool());
+    QCOMPARE(h.lookups(), 0);
+    QCOMPARE(h.sends(), 0);
+}
+
+void InviteControllerTest::aCancelIsShownCancelledWithoutAnswers()
+{
+    Harness h(httpResponse(200, "OK", kSentAck),
+              { { "messageId=m4", httpResponse(200, "OK",
+                                               inviteIcs("boss@example.com", "CANCEL")
+                                                   .replace("SUMMARY:", "CONFERENCE:https://meet.example.com/x\r\nSUMMARY:"),
+                                               "text/calendar") } });
+    const QVariantMap card = h.loadCard(QStringLiteral("m4"), listing(QStringLiteral("CANCEL")));
+    QVERIFY(card.value(QStringLiteral("cancelled")).toBool());
+    QVERIFY(!card.value(QStringLiteral("offersRsvp")).toBool());
+    // Nobody joins a cancelled meeting.
+    QCOMPARE(card.value(QStringLiteral("joinUrl")).toString(), QString());
+    h.controller.requestRsvp(card.value(QStringLiteral("token")).toInt(), QStringLiteral("ACCEPTED"));
+    QTest::qWait(200);
+    QCOMPARE(h.requestsTo("POST /api/calendar/rsvp "), 0);
+    QVERIFY(!h.loadCard().value(QStringLiteral("cancelled")).toBool());
+}
+
+void InviteControllerTest::onlyAnHttpsConferenceOffersJoinMeeting()
+{
+    const auto withConference = [](const QByteArray& line) {
+        return httpResponse(200, "OK", inviteIcs().replace("SUMMARY:", line + "\r\nSUMMARY:"), "text/calendar");
+    };
+    Harness h(httpResponse(200, "OK", kSentAck),
+              { { "messageId=m4", withConference("CONFERENCE;VALUE=URI;FEATURE=VIDEO:https://meet.example.com/j/1") },
+                { "messageId=m5", withConference("CONFERENCE;VALUE=URI:tel:+15550100") },
+                { "messageId=m6", withConference("CONFERENCE:http://meet.example.com/j/1") } });
+    const QVariantMap card = h.loadCard(QStringLiteral("m4"));
+    QCOMPARE(card.value(QStringLiteral("joinUrl")).toString(), QStringLiteral("https://meet.example.com/j/1"));
+    QCOMPARE(card.value(QStringLiteral("joinHost")).toString(), QStringLiteral("meet.example.com"));
+    for (const QString& id : { QStringLiteral("m5"), QStringLiteral("m6"), QStringLiteral("m1") }) {
+        const QVariantMap other = h.loadCard(id);
+        QVERIFY(!other.isEmpty());
+        QCOMPARE(other.value(QStringLiteral("joinUrl")).toString(), QString());
+        QCOMPARE(other.value(QStringLiteral("joinHost")).toString(), QString());
+    }
+}
+
+// The web card's rule (KyPost-Server #606): a newer revision of an answered
+// event says what changed and asks again; the answered one says so.
+void InviteControllerTest::anUpdateToAnAnsweredInviteSaysWhatChangedAndAsksAgain()
+{
+    Harness h(httpResponse(200, "OK", kSentAck),
+              { { "/api/calendar/rsvp", kAnswered },
+                { "messageId=m4", httpResponse(200, "OK",
+                                               inviteIcs().replace("SEQUENCE:2", "SEQUENCE:3").replace("Room 4", "Room 9"),
+                                               "text/calendar") },
+                { "messageId=m5", httpResponse(200, "OK",
+                                               inviteIcs().replace("UID:", "DTSTAMP:20261101T080000Z\r\nUID:"),
+                                               "text/calendar") } });
+    const int token = h.loadCard().value(QStringLiteral("token")).toInt();
+    h.controller.requestRsvp(token, QStringLiteral("TENTATIVE"));
+    QTRY_VERIFY_WITH_TIMEOUT(!h.stateOf(token).value(QStringLiteral("sending")).toBool(), 10000);
+
+    const QVariantMap moved = h.loadCard(QStringLiteral("m4"));
+    QVERIFY(moved.value(QStringLiteral("notices")).toStringList().contains(
+        QStringLiteral("Changed since you answered: place. You had answered maybe; answer again.")));
+    QVERIFY(!moved.value(QStringLiteral("notices")).toStringList().contains(
+        QStringLiteral("This invite was updated. Check your calendar.")));
+    QVERIFY(h.stateOf(moved.value(QStringLiteral("token")).toInt()).value(QStringLiteral("answerable")).toBool());
+
+    // Same SEQUENCE, later DTSTAMP, nothing visible changed.
+    const QVariantMap resent = h.loadCard(QStringLiteral("m5"));
+    QVERIFY(resent.value(QStringLiteral("notices")).toStringList().contains(
+        QStringLiteral("This invitation was updated since you answered. You had answered maybe; answer again.")));
+    QVERIFY(h.stateOf(resent.value(QStringLiteral("token")).toInt()).value(QStringLiteral("answerable")).toBool());
+
+    // The answered revision itself.
+    const QVariantMap same = h.loadCard();
+    QCOMPARE(same.value(QStringLiteral("note")).toString(), QStringLiteral("You answered maybe."));
+    QVERIFY(same.value(QStringLiteral("notices")).toStringList().isEmpty());
+    QVERIFY(!h.stateOf(same.value(QStringLiteral("token")).toInt()).value(QStringLiteral("answerable")).toBool());
+
+    // Another account: nothing remembered.
+    h.controller.clear();
+    QVERIFY(h.loadCard(QStringLiteral("m4")).value(QStringLiteral("notices")).toStringList().contains(
+        QStringLiteral("This invite was updated. Check your calendar.")));
 }
 
 QTEST_MAIN(InviteControllerTest)
