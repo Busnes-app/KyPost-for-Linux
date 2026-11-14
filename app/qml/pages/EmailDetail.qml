@@ -360,6 +360,14 @@ Item {
         return { messageId: root.messageId, mailbox: root.folder }
     }
 
+    // Reply, Reply all and Forward stay enabled when refused, so the tooltip
+    // can say why (Android keeps them tappable too).
+    readonly property string replyRefusal: i18n("Replying to encrypted mail isn't available in the app yet — use webmail.")
+    function refuseReplyOrForward() {
+        root.attachmentStatus = root.replyRefusal
+        attachmentStatusTimer.restart()
+    }
+
     // Prepends "<prefix> " unless `subject` already starts with `prefix`
     // case-insensitively (no double "Re: Re:"/"Fwd: Fwd:" prefixing).
     function withPrefix(subject, prefix) {
@@ -504,44 +512,55 @@ Item {
 
                 IconButton {
                     icon: "reply"
-                    tooltip: i18n("Reply")
+                    tooltip: Format.mayReplyOrForward(root.email) ? i18n("Reply") : root.replyRefusal
                     enabled: !MailApp.isBusy
                     onClicked: {
+                        if (!Format.mayReplyOrForward(root.email))
+                            return root.refuseReplyOrForward()
                         const to = MailApp.replyRecipients(root.email.sender || "", root.email.sentTo || "")
-                        const subject = root.withPrefix(root.displaySubject, "Re:")
+                        const subject = root.withPrefix(root.email.subject, "Re:")
                         root.composeRequested(to.join(", "), subject, root.replyQuote(), root.replyReference(), root.quoteNotice(false))
                     }
                 }
                 IconButton {
                     icon: "reply-all"
-                    tooltip: i18n("Reply all")
+                    tooltip: Format.mayReplyOrForward(root.email) ? i18n("Reply all") : root.replyRefusal
                     enabled: !MailApp.isBusy
                     onClicked: {
+                        if (!Format.mayReplyOrForward(root.email))
+                            return root.refuseReplyOrForward()
                         const to = MailApp.replyAllRecipients(root.email.sender || "", root.email.sentTo || "", root.email.cc || "")
-                        const subject = root.withPrefix(root.displaySubject, "Re:")
+                        const subject = root.withPrefix(root.email.subject, "Re:")
                         root.composeRequested(to.join(", "), subject, root.replyQuote(), root.replyReference(), root.quoteNotice(false))
                     }
                 }
                 IconButton {
                     icon: "forward"
-                    tooltip: i18n("Forward")
+                    tooltip: Format.mayReplyOrForward(root.email) ? i18n("Forward") : root.replyRefusal
                     enabled: !MailApp.isBusy
-                    onClicked: root.beforeLeavingCompose(function () {
-                        const subject = root.withPrefix(root.displaySubject, "Fwd:")
-                        const body = Format.forwardQuoteHtml(i18n("---------- Forwarded message ----------"),
-                            i18n("From: %1", root.email.sender), i18n("Subject: %1", root.displaySubject),
-                            Format.quotedBodyHtml(root.email, root.hasDecryptedBody))
-                        // Attachments arrive through forwardComposeRequested,
-                        // which AppShell opens. Never a decrypted message's.
-                        if (root.attachments.length > 0 && !root.hasDecryptedBody && root.email.pgpState !== 1
-                                && MailApp.forwardWithAttachments(root.folder, root.messageId, root.attachments, subject, body,
-                                                                  root.quoteNotice(false))) {
-                            root.forwarding = true
-                            root.attachmentStatus = i18n("Downloading attachments to forward…")
-                            return
-                        }
-                        root.composeRequested("", subject, body, ({}), root.quoteNotice(root.attachments.length > 0))
-                    })
+                    onClicked: {
+                        if (!Format.mayReplyOrForward(root.email))
+                            return root.refuseReplyOrForward()
+                        root.beforeLeavingCompose(function () {
+                            // The leave-compose prompt is async; the message may have changed.
+                            if (!Format.mayReplyOrForward(root.email))
+                                return root.refuseReplyOrForward()
+                            const subject = root.withPrefix(root.email.subject, "Fwd:")
+                            const body = Format.forwardQuoteHtml(i18n("---------- Forwarded message ----------"),
+                                i18n("From: %1", root.email.sender), i18n("Subject: %1", root.email.subject),
+                                Format.quotedBodyHtml(root.email, root.hasDecryptedBody))
+                            // Attachments arrive through forwardComposeRequested,
+                            // which AppShell opens. Never a decrypted message's.
+                            if (root.attachments.length > 0 && !root.hasDecryptedBody && root.email.pgpState !== 1
+                                    && MailApp.forwardWithAttachments(root.folder, root.messageId, root.attachments, subject, body,
+                                                                      root.quoteNotice(false))) {
+                                root.forwarding = true
+                                root.attachmentStatus = i18n("Downloading attachments to forward…")
+                                return
+                            }
+                            root.composeRequested("", subject, body, ({}), root.quoteNotice(root.attachments.length > 0))
+                        })
+                    }
                 }
         }
 
@@ -1142,9 +1161,10 @@ Item {
             id: attachmentsColumn
             Layout.fillWidth: true
             spacing: 8
-            visible: root.visibleAttachments.length > 0
+            // Also holds the reader's status line, which a refused Reply uses.
+            visible: root.visibleAttachments.length > 0 || root.attachmentStatus !== ""
 
-            SectionLabel { text: i18n("Attachments") }
+            SectionLabel { text: i18n("Attachments"); visible: root.visibleAttachments.length > 0 }
 
             Flow {
                 Layout.fillWidth: true

@@ -338,6 +338,12 @@ Added 2026-07-25 (parity work with `kypost-android`):
   "release the previous session" was the opposite). `MailController` decides
   before touching it and reports `forwardFinished(true)`; AppShell only says
   so (`aLiveDraftSessionSurvivesACompletedForward`).
+  Reply, Reply all and Forward are refused outright for a ClientProtected
+  message and while `pgpState` is unknown (`Format.mayReplyOrForward`, Android's
+  `mayReplyOrForward`/`initialReplyForwardState`; guard in `tests/guards.tsv`).
+  Reply has no C++ entry point, so that QML gate is the control. Every
+  subject seed (`withPrefix`, the forward's "Subject:" line) reads the cached
+  outer `email.subject`, never `displaySubject`.
 
 - **Snooze (plan item L9, 2026-10-17).** `snooze` on `/api/inbox/actions` with
   `wakeAt` (whole-second UTC RFC 3339). Presets and the typed time live in
@@ -1215,6 +1221,7 @@ worse than no comment: the next reader stops looking.
   Clearing strings alone lets a late pinentry/relay reply restore locked content.
 - **Protected subjects share the body's transient lifetime.** Display them only
   for the matching account, mailbox and UID; keep the outer subject in the cache.
+  A protected subject never seeds a compose (§4, Reply and Forward quoting).
   MIME parsing runs on NetworkExecutor and returns an explicit failure when a
   structural limit is exceeded, rather than successful partial content. See
   `docs/THREADING.md` and `MailDecryptionTest` for the completion checks.

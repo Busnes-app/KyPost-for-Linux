@@ -151,6 +151,13 @@ function quoteWithheld(email, locallyDecrypted) {
     return body.length > maxQuotedBodyLength ? "tooLarge" : ""
 }
 
+// Android's mayReplyOrForward + initialReplyForwardState: a reply or forward
+// of a ClientProtected message (pgpState 1) would carry its plaintext into a
+// send that may go out in the clear. Refused until the state is known.
+function mayReplyOrForward(email) {
+    return !!email && typeof email.pgpState === "number" && email.pgpState !== 1
+}
+
 // Android's quoteForReply / quoteForForward. The text lines arrive already
 // translated and are escaped here; `quoted` is quotedBodyHtml()'s result.
 // Nothing quoted means no empty quote bar in the draft.

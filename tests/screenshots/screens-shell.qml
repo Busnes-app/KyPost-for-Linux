@@ -18,15 +18,18 @@ QtObject {
                 details: ["Sat 31/10/2026 07:30 – 13:00", "Where: Eagle Peak trailhead", "Organizer: maya.chen@example.com"],
                 notices: [], offersRsvp: true}
     }
-    function findReader(item, id) {
-        if (item.replyQuote !== undefined && item.messageId === id)
+    function findItem(item, match) {
+        if (match(item))
             return item
         const kids = item.contentItem ? [item.contentItem] : (item.children || [])
         for (let i = 0; i < kids.length; ++i) {
-            const found = findReader(kids[i], id)
+            const found = findItem(kids[i], match)
             if (found) return found
         }
         return null
+    }
+    function findReader(item, id) {
+        return findItem(item, function (it) { return it.replyQuote !== undefined && it.messageId === id })
     }
     property var screens: [
         {name: "inbox-all", setup: function (root) {}},
@@ -80,6 +83,18 @@ QtObject {
             const detail = findReader(root, id)
             root.openCompose(detail.extractAddress(detail.email.sender), detail.withPrefix(detail.email.subject, "Re:"),
                              detail.replyQuote(), detail.replyReference())
+        }},
+        // Reply on client-protected mail is refused in the reader, not composed.
+        {name: "reply-protected", wait: 1800, setup: function (root) {
+            const id = "<playshot-1@kypost-demo.local>"
+            root.selectEmail(id, "INBOX")
+            const detail = findReader(root, id)
+            detail.email = Object.assign({}, detail.email, { pgpState: 1, body: "",
+                pgpBannerTitle: "Encrypted message", pgpBannerBody: "Decrypt it with your key to read it." })
+            const reply = findItem(detail, function (item) { return item.icon === "reply" })
+            reply.clicked()
+            if (root.detailMode === "compose")
+                throw new Error("a protected Reply opened the composer")
         }},
         // A forward that could not carry everything says so until dismissed.
         {name: "forward-notice", setup: function (root) {
