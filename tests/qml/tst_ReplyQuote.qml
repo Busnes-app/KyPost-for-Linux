@@ -110,6 +110,62 @@ TestCase {
         verify(detail.indexOf("root.attachments.length > 0 && !root.hasDecryptedBody && root.email.pgpState !== 1") !== -1)
     }
 
+    // Android's mayReplyOrForward: a client-protected message is never replied
+    // to or forwarded, and an unknown state counts as protected.
+    function test_protectedOrUnknownMailIsNotRepliedTo() {
+        for (const email of [{}, undefined, null, { pgpState: 1 }, { pgpState: undefined },
+                             { subject: "no state" }, { pgpState: "0" }])
+            verify(!Format.mayReplyOrForward(email), JSON.stringify(email))
+        for (const state of [0, 2, 3, 4])
+            verify(Format.mayReplyOrForward({ pgpState: state }), state)
+    }
+
+    function handler(detail, icon) {
+        const start = detail.indexOf('icon: "' + icon + '"')
+        verify(start !== -1, icon)
+        return detail.slice(start, detail.indexOf("IconButton {", start))
+    }
+
+    // The gate comes before any seed is built or sent anywhere. Behaviour is
+    // in tests/shell-reader/tst_ReplyRefusal.qml; this pins the order.
+    function test_replyAndForwardAreGatedBeforeAnySeed() {
+        const detail = source("qrc:/qml/pages/EmailDetail.qml")
+        verify(detail.indexOf('i18n("Replying to encrypted mail isn\'t available in the app yet — use webmail.")') !== -1)
+        const gate = /if \(!Format\.mayReplyOrForward\(root\.email\)\)\s+return root\.refuseReplyOrForward\(\)/g
+        for (const [icon, label] of [["reply", "Reply"], ["reply-all", "Reply all"], ["forward", "Forward"]]) {
+            const h = handler(detail, icon)
+            verify(h.indexOf('tooltip: root.replyTooltip(i18n("' + label + '"))') !== -1, h)
+            gate.lastIndex = 0
+            const at = gate.exec(h)
+            verify(at, h)
+            verify(at.index < h.indexOf("const subject"), h)
+            verify(h.indexOf("root.composeRequested(") > at.index, h)
+            const forward = h.indexOf("MailApp.forwardWithAttachments(")
+            verify(forward === -1 || forward > at.index, h)
+        }
+        // Forward's seed is built after the async leave-compose prompt: gated again there.
+        const fwd = handler(detail, "forward")
+        const callback = fwd.indexOf("root.beforeLeavingCompose(function () {")
+        verify(callback !== -1, fwd)
+        gate.lastIndex = callback
+        const inner = gate.exec(fwd)
+        verify(inner && inner.index < fwd.indexOf("const subject"), fwd)
+        compare(detail.split("root.composeRequested(").length - 1, 3)
+    }
+
+    // A decrypted protected Subject never seeds a compose, whatever the gate says.
+    function test_seedsUseTheOuterSubject() {
+        const detail = source("qrc:/qml/pages/EmailDetail.qml")
+        const prefixed = detail.split("root.withPrefix(")
+        compare(prefixed.length - 1, 3)
+        compare(detail.split('root.withPrefix(root.email.subject, "Re:")').length - 1, 2)
+        compare(detail.split('root.withPrefix(root.email.subject, "Fwd:")').length - 1, 1)
+        verify(detail.indexOf('i18n("Subject: %1", root.email.subject)') !== -1)
+        for (let i = 1; i < prefixed.length; ++i)
+            verify(prefixed[i].split("\n")[0].indexOf("displaySubject") === -1, prefixed[i].split("\n")[0])
+        verify(detail.indexOf('i18n("Subject: %1", root.displaySubject)') === -1)
+    }
+
     // Every seed is HTML into seedScript, never an escaping plain-text path.
     function test_quotesEnterTheEditorThroughSeedScript() {
         const shell = source("qrc:/qml/AppShell.qml")

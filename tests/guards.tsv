@@ -636,3 +636,9 @@ app/mail/MailController.cpp	    if (selected != PgpMessageState::ClientProtected
 
 # Search-owned protected content must be revoked, not just hidden, on query changes.
 app/mail/MailController.cpp	    if (m_readSearchGeneration)	    if (false)	MailDecryptionTest:protectedSearchContentEndsWithItsSearch
+
+# --- a client-protected message is never replied to or forwarded -------
+#
+# Reply has no C++ entry point: this QML gate (Android's mayReplyOrForward)
+# is the whole control that keeps a protected message out of a compose seed.
+app/qml/utils/format.js	    return !!email && typeof email.pgpState === "number" && email.pgpState !== 1	    return !!email && typeof email.pgpState === "number"	QmlTests:ReplyQuote::test_protectedOrUnknownMailIsNotRepliedTo

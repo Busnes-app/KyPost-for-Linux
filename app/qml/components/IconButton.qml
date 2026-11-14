@@ -12,6 +12,8 @@ Rectangle {
     property string icon: ""
     property string tooltip: ""
     property string variant: "ghost" // "ghost" | "primary" | "danger" | "outline"
+    // Looks unavailable but stays clickable and hoverable, so its tooltip can say why.
+    property bool muted: false
     signal clicked()
 
     readonly property int buttonSize: variant === "outline" ? 40 : 44
@@ -32,7 +34,7 @@ Rectangle {
     // Android's toolbar icons are borderless; danger and outline keep a stroke.
     border.width: variant === "danger" || variant === "outline" ? 1 : 0
     border.color: variant === "danger" ? Theme.dangerBorder : Theme.line
-    opacity: !root.enabled ? 0.5 : (tapHandler.pressed ? 0.85 : (hoverHandler.hovered ? 0.92 : 1.0))
+    opacity: (!root.enabled ? 0.5 : (tapHandler.pressed ? 0.85 : (hoverHandler.hovered ? 0.92 : 1.0))) * (root.muted ? 0.5 : 1.0)
 
     Behavior on color {
         ColorAnimation { duration: 120 }
