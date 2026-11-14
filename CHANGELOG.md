@@ -28,6 +28,20 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- Test-only: the sanitizer build's shell tests allow 1600 MB of resident
+  memory instead of 800 MB. AddressSanitizer's own overhead put the same
+  suite at 785-860 MB, so the check failed at random. Normal builds keep the
+  800 MB limit; the app is unchanged.
+
+### Upgrade impact
+
+- No database, keyring or configuration migration. Nothing changes for
+  installed apps.
+
+## Source notes at 39486b78
+
+### Changes
+
 - Fixed a decrypted message whose top-level part is an attached multipart
   being reported as malformed while its attachment was still returned. The
   message now reads as complete, with its attachment. Found by the new MIME

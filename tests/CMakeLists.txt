@@ -573,22 +573,31 @@ target_include_directories(ShellTests PRIVATE ${CMAKE_SOURCE_DIR}/app ${CMAKE_CU
 target_link_libraries(ShellTests PRIVATE kypostcore Qt6::QuickTest Qt6::Quick Qt6::Qml Qt6::Gui Qt6::Svg
   KF6::I18n KF6::I18nQml)
 target_compile_definitions(ShellTests PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/shell")
+# The watchdog limit for the three shell suites below. The scaled suite peaks
+# near 230 MB; the runaway this guards against reached 3 GB. AddressSanitizer
+# holds freed memory in quarantine and pads every allocation, which puts the
+# same suite at 785-860 MB, so 800 there failed on run-to-run noise.
+if(KYPOST_SANITIZE)
+  set(KYPOST_SHELL_RSS_LIMIT_MB 1600)
+else()
+  set(KYPOST_SHELL_RSS_LIMIT_MB 800)
+endif()
 add_test(NAME ShellTests COMMAND ShellTests)
 set_tests_properties(ShellTests PROPERTIES
-  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu;QT_QUICK_BACKEND=software;KYPOST_RSS_LIMIT_MB=800")
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu;QT_QUICK_BACKEND=software;KYPOST_RSS_LIMIT_MB=${KYPOST_SHELL_RSS_LIMIT_MB}")
 # The same suite on a fractionally scaled screen (KDE's 1.6x laptop default
 # territory). Icons once fed their pixel size back into their layout size,
 # which only grows when devicePixelRatio > 1: 3 GB in two seconds, offscreen
 # at 1x never noticed.
 add_test(NAME ShellTestsScaled COMMAND ShellTests)
 set_tests_properties(ShellTestsScaled PROPERTIES
-  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_SCALE_FACTOR=1.6;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu;QT_QUICK_BACKEND=software;KYPOST_RSS_LIMIT_MB=800")
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_SCALE_FACTOR=1.6;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu;QT_QUICK_BACKEND=software;KYPOST_RSS_LIMIT_MB=${KYPOST_SHELL_RSS_LIMIT_MB}")
 # Shell tests that open a message, in a process of their own. Opening one
 # starts WebEngine, and under the sanitizers that alone took ShellTests past
-# its 800 MB limit in the test after it; the limit stays as it is.
+# its limit in the test after it.
 add_test(NAME ShellReaderTests COMMAND ShellTests -input ${CMAKE_CURRENT_SOURCE_DIR}/shell-reader)
 set_tests_properties(ShellReaderTests PROPERTIES
-  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu;QT_QUICK_BACKEND=software;KYPOST_RSS_LIMIT_MB=800")
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu;QT_QUICK_BACKEND=software;KYPOST_RSS_LIMIT_MB=${KYPOST_SHELL_RSS_LIMIT_MB}")
 if(EXISTS "/.flatpak-info")
   # The shell holds EmailDetail's WebEngineView; same build-sandbox-only
   # setup as ProtectedImageHandlerTest above.

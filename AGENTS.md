@@ -96,11 +96,12 @@ Test, added 2026-07-26 — see `tests/qml/`). The QML tests run against fake
 components from the shipped `app/qml/qml.qrc`, so a component missing from
 the resource bundle fails there rather than at runtime.
 
-`ShellTests` and `ShellTestsScaled` load the whole AppShell under an 800 MB
-resident-memory limit (`KYPOST_RSS_LIMIT_MB`). A shell test that opens a
-message starts WebEngine, which takes the sanitizer build past that limit, so it
-goes in `tests/shell-reader/` (`ShellReaderTests`, its own process), not
-`tests/shell/`. Keep the limit.
+`ShellTests` and `ShellTestsScaled` load the whole AppShell under a
+resident-memory limit (`KYPOST_RSS_LIMIT_MB`): 800 MB, or 1600 MB in the
+sanitizer build, where the same suite measures 785-860 MB against about 230 MB
+normally. A shell test that opens a message starts WebEngine, which takes the
+sanitizer build past that limit, so it goes in `tests/shell-reader/`
+(`ShellReaderTests`, its own process), not `tests/shell/`. Keep both limits.
 
 `ProtectedImageHandlerTest` also runs real WebEngine pages. Inside a Flatpak
 build, its CTest environment points at the BaseApp's `/app` resources and
