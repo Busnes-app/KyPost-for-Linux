@@ -5,6 +5,7 @@
 #include <QString>
 #include <QStringList>
 #include <QTimeZone>
+#include <QUrl>
 #include <QVector>
 
 #include <optional>
@@ -48,6 +49,12 @@ struct CalendarEvent
     // An override's RECURRENCE-ID line restated without TZID, or empty for a
     // whole series.
     QString recurrenceId;
+    // DTSTAMP, which is UTC by definition; invalid when absent or unreadable.
+    // At an equal SEQUENCE, a later one is a newer revision.
+    QDateTime stamp;
+    // The first CONFERENCE (RFC 7986) when it is an https: URL without
+    // credentials; empty for anything else.
+    QUrl conference;
     // An iTIP REPLY needs a UID, an organizer, a SEQUENCE read back exactly,
     // and a RECURRENCE-ID copied whole if there is one.
     bool canReply = false;
@@ -106,9 +113,10 @@ bool isRsvpAddress(const QString& address);
 // the primary. Empty when no usable address is known.
 QString rsvpAttendee(const CalendarEvent& event, const QStringList& accountAddresses);
 
-// One answerable revision: a raised SEQUENCE is a new invite to answer. The
-// organizer is part of it, unlike Android's: a copy of a real invite naming
-// another organizer must not mark the real one answered.
+// One answerable revision: a raised SEQUENCE, or at the same SEQUENCE a later
+// DTSTAMP, is a new invite to answer (the web client's rule). The organizer is
+// part of it, unlike Android's: a copy of a real invite naming another
+// organizer must not mark the real one answered.
 QString rsvpKey(const CalendarEvent& event);
 
 // What POST /api/mail/send carries for one RSVP. Never encrypted or signed:

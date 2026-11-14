@@ -31,6 +31,12 @@ TestCase {
         }
     }
 
+    SignalSpy {
+        id: reloadSpy
+        target: inviteCard
+        signalName: "reloadRequested"
+    }
+
     Components.RsvpConfirmDialog {
         id: dialog
         anchors.fill: parent
@@ -39,6 +45,7 @@ TestCase {
     }
 
     function init() {
+        reloadSpy.clear()
         AppLock.locked = false
         Invites.reset()
         Invites.states = { "7": { answerable: true, sending: false, message: "" } }
@@ -142,5 +149,52 @@ TestCase {
         verify(!dialog.visible)
         dialog.send()
         verify(Invites.calls.every(function (c) { return c.name !== "confirmRsvp" }))
+    }
+
+    function cardWith(extra) {
+        return Object.assign({}, testCase.card, extra)
+    }
+
+    // KyPost-Server #606: a CANCEL says so and offers no answer.
+    function test_a_cancellation_shows_cancelled_and_no_answers() {
+        verify(!find(inviteCard, "inviteCancelled").visible)
+        inviteCard.invite = cardWith({ cancelled: true, offersRsvp: false })
+        verify(find(inviteCard, "inviteCancelled").visible)
+        compare(find(inviteCard, "inviteCancelled").text, "Cancelled")
+        verify(!find(inviteCard, "rsvp_ACCEPTED").visible)
+    }
+
+    function test_join_meeting_names_the_host() {
+        verify(!find(inviteCard, "inviteJoin").visible)
+        inviteCard.invite = cardWith({ joinUrl: "https://meet.example.com/j/1", joinHost: "meet.example.com" })
+        const join = find(inviteCard, "inviteJoin")
+        verify(join.visible)
+        compare(join.text, "Join meeting (meet.example.com)")
+        AppLock.locked = true
+        verify(!join.enabled)
+    }
+
+    // An update to an answered invite: the notice says what changed, the
+    // buttons ask again, and the answered revision shows its note.
+    function test_an_update_asks_again_and_an_answer_is_noted() {
+        inviteCard.invite = cardWith({ notices: ["Changed since you answered: place. You had accepted; answer again."] })
+        verify(find(inviteCard, "inviteNotices").text.indexOf("Changed since you answered") === 0)
+        verify(find(inviteCard, "rsvp_ACCEPTED").enabled)
+        inviteCard.invite = cardWith({ notices: [], note: "You accepted." })
+        compare(find(inviteCard, "rsvpMessage").text, "You accepted.")
+        // The outcome of an answer wins over the note.
+        Invites.states = { "7": { answerable: false, sending: false, message: "Answered through KyCalendar." } }
+        compare(find(inviteCard, "rsvpMessage").text, "Answered through KyCalendar.")
+    }
+
+    function test_a_conflict_offers_a_reload() {
+        verify(!find(inviteCard, "inviteReload").visible)
+        Invites.states = { "7": { answerable: true, sending: false, reload: true,
+                                  message: "The event changed since this invitation. Reload it and answer again." } }
+        const reload = find(inviteCard, "inviteReload")
+        verify(reload.visible)
+        verify(waitForRendering(inviteCard))
+        mouseClick(reload)
+        compare(reloadSpy.count, 1)
     }
 }

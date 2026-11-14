@@ -374,6 +374,38 @@ SendMailResult RelayMailSource::sendCalendarReply(const QUrl& serverBaseUrl, con
     return postSend(serverBaseUrl, auth, requestBody, false, false);
 }
 
+CalendarRsvpResult RelayMailSource::answerInvite(const QUrl& serverBaseUrl, const RelayAuth& auth,
+                                                 const QString& mailbox, const QString& messageId, int index,
+                                                 const QString& partstat) const
+{
+    const QJsonObject request{ { QStringLiteral("messageId"), messageId },
+                               { QStringLiteral("mailbox"), mailbox },
+                               { QStringLiteral("index"), index },
+                               { QStringLiteral("partstat"), partstat } };
+    const HttpClient::HttpResult result = m_httpClient.post(
+        joinUrlPath(serverBaseUrl, QStringLiteral("api/calendar/rsvp")), {}, request, auth.headerItems());
+    using Outcome = CalendarRsvpResult::Outcome;
+    CalendarRsvpResult out;
+    const QJsonObject json = decodeJsonObject(result.body).value_or(QJsonObject());
+    if (!result.error) {
+        const bool answered =
+            result.statusCode == 200 && json.value(QStringLiteral("outcome")).toString() == QLatin1String("answered");
+        out.outcome = answered ? Outcome::Answered : Outcome::Unconfirmed;
+        return out;
+    }
+    // Status and code both: a fallback to mail must be exactly the one asked for.
+    const QString code = json.value(QStringLiteral("code")).toString();
+    if (result.statusCode == 409 && code == QLatin1String("kycalendar_off"))
+        out.outcome = Outcome::Off;
+    else if (result.statusCode == 404 && code == QLatin1String("no_event"))
+        out.outcome = Outcome::NoEvent;
+    else if (result.statusCode == 409 && code == QLatin1String("conflict"))
+        out.outcome = Outcome::Conflict;
+    else
+        out.detail = plainErrorText(json.value(QStringLiteral("error")).toString().toUtf8());
+    return out;
+}
+
 bool isReplyThreadingRefusal(int statusCode, const QByteArray& body)
 {
     // http.Error bodies: plain text plus a newline. KyPost-Server

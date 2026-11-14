@@ -935,6 +935,11 @@ Item {
             id: inviteCard
             Layout.fillWidth: true
             invite: root.invite
+            onReloadRequested: {
+                root.clearInvite()
+                root.inviteRequest = Invites.load(root.folder, root.messageId, root.attachments,
+                                                  root.email.sender || "", phishingBanner.flagged)
+            }
         }
         } // aboveWebView
 

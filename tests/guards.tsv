@@ -556,6 +556,10 @@ app/mail/InviteController.cpp	    if (locked && m_pending) {	    if (false) {	In
 app/mail/InviteController.cpp	            if (m_appLocked) {	            if (false) {	InviteControllerTest:aConfirmationAnsweredUnderTheLockSendsNothing
 app/mail/InviteController.cpp	    if (!m_cards.remove(token))	    if (true)	InviteControllerTest:forgettingACardDuringTheLookupLeavesNothingAsked
 app/mail/InviteController.cpp	    if (m_pending && m_pending->token == token) {	    if (false) {	InviteControllerTest:forgettingACardDuringTheLookupLeavesNothingAsked
+app/mail/InviteController.cpp	            const bool byMail = result.outcome == Outcome::Off || result.outcome == Outcome::NoEvent;	            const bool byMail = result.outcome != Outcome::Answered;	InviteControllerTest:everyOtherRefusalIsShownAndNeverMailed
+app/mail/InviteController.cpp	            if (!ours)	            if (false)	InviteControllerTest:aKyCalendarAnswerForAReplacedAccountRecordsNothing
+app/mail/InviteController.cpp	            if (byMail && (m_appLocked || !liveCard(token))) {	            if (false) {	InviteControllerTest:lockingDuringTheKyCalendarCallAsksNothing
+core/net/RelayMailSource.cpp	    if (result.statusCode == 409 && code == QLatin1String("kycalendar_off"))	    if (code == QLatin1String("kycalendar_off"))	RelayMailSourceTest:answerInviteMapsEachRespondAnswer
 app/qml/components/RsvpConfirmDialog.qml	    readonly property bool isOpen: root.token >= 0 && root.confirmation.token === root.token && !AppLock.locked	    readonly property bool isOpen: root.token >= 0 && root.confirmation.token === root.token	QmlTests:InviteCard::test_the_dialog_is_closed_and_inert_under_the_lock
 
 # HPKE v4/v5: exact framing and alg, a stale ring snapshot.
