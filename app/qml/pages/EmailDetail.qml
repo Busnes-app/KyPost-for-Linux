@@ -285,6 +285,7 @@ Item {
 
     function reload() {
         root.imagesLoaded = false
+        root.replyRefused = false
         root.clearInvite()
         if (root.messageId === "") {
             root.email = {}
@@ -358,6 +359,23 @@ Item {
     // The answered message, so the relay can thread the reply.
     function replyReference() {
         return { messageId: root.messageId, mailbox: root.folder }
+    }
+
+    // Why Reply, Reply all and Forward are refused; "" when they are not.
+    // They stay enabled when refused, so the tooltip can say why (Android
+    // keeps them tappable too). An unloaded message is not called encrypted.
+    readonly property string replyRefusal: Format.mayReplyOrForward(root.email) ? ""
+        : root.email && root.email.pgpState === 1
+            ? i18n("Replying to encrypted mail isn't available in the app yet — use webmail.")
+            : i18n("This message hasn't loaded, so it can't be replied to or forwarded yet.")
+    // Set by a refused click, shown under the action row until the reader moves on.
+    property bool replyRefused: false
+    function refuseReplyOrForward() {
+        root.replyRefused = true
+    }
+    function replyTooltip(action) {
+        return root.replyRefusal === "" ? action
+            : i18nc("@info:tooltip %1 is a reply action, %2 why it is unavailable", "%1 (unavailable): %2", action, root.replyRefusal)
     }
 
     // Prepends "<prefix> " unless `subject` already starts with `prefix`
@@ -503,45 +521,62 @@ Item {
                 }
 
                 IconButton {
+                    objectName: "replyButton"
                     icon: "reply"
-                    tooltip: i18n("Reply")
+                    tooltip: root.replyTooltip(i18n("Reply"))
+                    muted: root.replyRefusal !== ""
                     enabled: !MailApp.isBusy
                     onClicked: {
+                        if (!Format.mayReplyOrForward(root.email))
+                            return root.refuseReplyOrForward()
                         const to = MailApp.replyRecipients(root.email.sender || "", root.email.sentTo || "")
-                        const subject = root.withPrefix(root.displaySubject, "Re:")
+                        const subject = root.withPrefix(root.email.subject, "Re:")
                         root.composeRequested(to.join(", "), subject, root.replyQuote(), root.replyReference(), root.quoteNotice(false))
                     }
                 }
                 IconButton {
+                    objectName: "replyAllButton"
                     icon: "reply-all"
-                    tooltip: i18n("Reply all")
+                    tooltip: root.replyTooltip(i18n("Reply all"))
+                    muted: root.replyRefusal !== ""
                     enabled: !MailApp.isBusy
                     onClicked: {
+                        if (!Format.mayReplyOrForward(root.email))
+                            return root.refuseReplyOrForward()
                         const to = MailApp.replyAllRecipients(root.email.sender || "", root.email.sentTo || "", root.email.cc || "")
-                        const subject = root.withPrefix(root.displaySubject, "Re:")
+                        const subject = root.withPrefix(root.email.subject, "Re:")
                         root.composeRequested(to.join(", "), subject, root.replyQuote(), root.replyReference(), root.quoteNotice(false))
                     }
                 }
                 IconButton {
+                    objectName: "forwardButton"
                     icon: "forward"
-                    tooltip: i18n("Forward")
+                    tooltip: root.replyTooltip(i18n("Forward"))
+                    muted: root.replyRefusal !== ""
                     enabled: !MailApp.isBusy
-                    onClicked: root.beforeLeavingCompose(function () {
-                        const subject = root.withPrefix(root.displaySubject, "Fwd:")
-                        const body = Format.forwardQuoteHtml(i18n("---------- Forwarded message ----------"),
-                            i18n("From: %1", root.email.sender), i18n("Subject: %1", root.displaySubject),
-                            Format.quotedBodyHtml(root.email, root.hasDecryptedBody))
-                        // Attachments arrive through forwardComposeRequested,
-                        // which AppShell opens. Never a decrypted message's.
-                        if (root.attachments.length > 0 && !root.hasDecryptedBody && root.email.pgpState !== 1
-                                && MailApp.forwardWithAttachments(root.folder, root.messageId, root.attachments, subject, body,
-                                                                  root.quoteNotice(false))) {
-                            root.forwarding = true
-                            root.attachmentStatus = i18n("Downloading attachments to forward…")
-                            return
-                        }
-                        root.composeRequested("", subject, body, ({}), root.quoteNotice(root.attachments.length > 0))
-                    })
+                    onClicked: {
+                        if (!Format.mayReplyOrForward(root.email))
+                            return root.refuseReplyOrForward()
+                        root.beforeLeavingCompose(function () {
+                            // The leave-compose prompt is async; the message may have changed.
+                            if (!Format.mayReplyOrForward(root.email))
+                                return root.refuseReplyOrForward()
+                            const subject = root.withPrefix(root.email.subject, "Fwd:")
+                            const body = Format.forwardQuoteHtml(i18n("---------- Forwarded message ----------"),
+                                i18n("From: %1", root.email.sender), i18n("Subject: %1", root.email.subject),
+                                Format.quotedBodyHtml(root.email, root.hasDecryptedBody))
+                            // Attachments arrive through forwardComposeRequested,
+                            // which AppShell opens. Never a decrypted message's.
+                            if (root.attachments.length > 0 && !root.hasDecryptedBody && root.email.pgpState !== 1
+                                    && MailApp.forwardWithAttachments(root.folder, root.messageId, root.attachments, subject, body,
+                                                                      root.quoteNotice(false))) {
+                                root.forwarding = true
+                                root.attachmentStatus = i18n("Downloading attachments to forward…")
+                                return
+                            }
+                            root.composeRequested("", subject, body, ({}), root.quoteNotice(root.attachments.length > 0))
+                        })
+                    }
                 }
         }
 
@@ -619,6 +654,36 @@ Item {
                     onClicked: root.popOutRequested()
                 }
         }
+        }
+
+        // A refused Reply/Forward says why here, next to the buttons, not
+        // below a body that may run past the fold.
+        Rectangle {
+            id: replyRefusalBanner
+            objectName: "replyRefusalBanner"
+            Layout.fillWidth: true
+            visible: root.replyRefused && root.replyRefusal !== ""
+            implicitHeight: visible ? replyRefusalText.implicitHeight + 24 : 0
+            radius: Theme.shapePanel
+            color: Theme.panel
+            border.width: 1
+            border.color: Theme.line
+
+            Text {
+                id: replyRefusalText
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.margins: 12
+                textFormat: Text.PlainText
+                text: root.replyRefusal
+                color: Theme.inkStrong
+                font.family: Theme.fontUi
+                font.pixelSize: Theme.fontSender
+                wrapMode: Text.WordWrap
+                Accessible.role: Accessible.AlertMessage
+                Accessible.name: text
+            }
         }
 
         Text {
