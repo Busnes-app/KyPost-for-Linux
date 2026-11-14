@@ -147,6 +147,14 @@ TestCase {
             const forward = h.indexOf("MailApp.forwardWithAttachments(")
             verify(forward === -1 || forward > at, h)
         }
+        // Forward's seed is built after the async leave-compose prompt: gated again there.
+        const fwd = handler(detail, "forward")
+        const inner = fwd.indexOf("root.beforeLeavingCompose(function () {\n"
+            + "                            // The leave-compose prompt is async; the message may have changed.\n"
+            + "                            if (!Format.mayReplyOrForward(root.email))\n"
+            + "                                return root.refuseReplyOrForward()\n"
+            + "                            const subject")
+        verify(inner !== -1, fwd)
         compare(detail.split("root.composeRequested(").length - 1, 3)
         // The status line shows even when there are no attachments to list.
         verify(detail.indexOf('visible: root.visibleAttachments.length > 0 || root.attachmentStatus !== ""') !== -1)
