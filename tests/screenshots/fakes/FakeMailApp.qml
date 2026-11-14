@@ -153,7 +153,7 @@ QtObject {
     function discardPendingSend(token) {}
     function confirmPickupFallbackSend() {}
     function preflightRecipients() { return ({}) }
-    function replyAllRecipients() { return ({to: [], cc: []}) }
+    function replyAllRecipients() { return [] }
     function replyRecipients() { return [] }
     function loadAccountAddresses() { return [F.me] }
     function listAttachments() {}

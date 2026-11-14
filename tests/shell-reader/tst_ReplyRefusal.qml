@@ -57,8 +57,8 @@ TestCase {
         verify(banner().visible)
         compare(reader.replyRefusal, encrypted)
         // Directly under the button row, where the click happened.
-        const gap = banner().mapToItem(reader, 0, 0).y - b.mapToItem(reader, 0, b.height).y
-        verify(gap >= 0 && gap <= 24, gap)
+        const gap = () => banner().mapToItem(reader, 0, 0).y - b.mapToItem(reader, 0, b.height).y
+        tryVerify(() => gap() >= 0 && gap() <= 24, 2000, "gap " + gap())
     }
 
     function test_an_unloaded_message_is_refused_but_not_called_encrypted() {
