@@ -1,6 +1,11 @@
 /build*/
 /.flatpak-builder/
 /repo/
+# Per-arch OSTree repos and their tarballs from .github/workflows/flatpak.yml.
+/repo-x86_64/
+/repo-aarch64/
+/repo-x86_64.tar
+/repo-aarch64.tar
 *.flatpak
 /.worktrees/
 .claude

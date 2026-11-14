@@ -195,6 +195,10 @@ jobs:
         if: matrix.sanitize == 'OFF'
         run: ./scripts/verify-version.sh
 
+      - name: No committed binaries
+        if: matrix.sanitize == 'OFF'
+        run: scripts/check-no-binaries.sh
+
       - name: Verify release notes
         if: matrix.sanitize == 'OFF'
         run: |
