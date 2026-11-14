@@ -37,7 +37,8 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 - The invite card shows "Cancelled" for a cancellation, says what changed
   when an invite you already answered is updated and asks again, and offers
   "Join meeting" for an `https:` meeting link, naming its host and opening it
-  in your browser.
+  in your browser. Before/after screenshots are in `docs/screenshots/`
+  (`kypost-linux-131-*`).
 
 ### Upgrade impact
 
