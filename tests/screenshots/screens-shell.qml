@@ -9,7 +9,7 @@ QtObject {
         MailApp.lastError = ""; MailApp.clearSearch(); root.searchOpen = false
         ContactsApp.empty = false; ContactsApp.reload()
         Pairing.pairingState = "idle"; Pairing.isPaired = true; Pairing.pairingError = ""
-        Invites.confirmation = ({})
+        Invites.confirmation = ({}); MailApp.metadataRow = null
         Invites.states = ({"7": {answerable: true, sending: false, message: ""}})
         root.closeOverlays(); root.selectFolder("INBOX"); root.navigate("inbox")
     }
@@ -18,15 +18,18 @@ QtObject {
                 details: ["Sat 31/10/2026 07:30 – 13:00", "Where: Eagle Peak trailhead", "Organizer: maya.chen@example.com"],
                 notices: [], offersRsvp: true}
     }
-    function findReader(item, id) {
-        if (item.replyQuote !== undefined && item.messageId === id)
+    function findItem(item, match) {
+        if (match(item))
             return item
         const kids = item.contentItem ? [item.contentItem] : (item.children || [])
         for (let i = 0; i < kids.length; ++i) {
-            const found = findReader(kids[i], id)
+            const found = findItem(kids[i], match)
             if (found) return found
         }
         return null
+    }
+    function findReader(item, id) {
+        return findItem(item, function (it) { return it.replyQuote !== undefined && it.messageId === id })
     }
     property var screens: [
         {name: "inbox-all", setup: function (root) {}},
@@ -80,6 +83,25 @@ QtObject {
             const detail = findReader(root, id)
             root.openCompose(detail.extractAddress(detail.email.sender), detail.withPrefix(detail.email.subject, "Re:"),
                              detail.replyQuote(), detail.replyReference())
+        }},
+        // Reply on client-protected mail is refused in the reader, not composed.
+        // A body longer than the pane: the reason shows by the buttons anyway.
+        {name: "reply-protected", wait: 1800, setup: function (root) {
+            const id = "<protected-long@kypost-demo.local>"
+            const para = "Thanks for pulling this together. Let's move the self-hosted backup work up to October; "
+                + "it unblocks the migration, and the mobile release can slip a week if QA needs it."
+            MailApp.metadataRow = {messageId: id, folder: "INBOX", subject: "Q4 roadmap (encrypted)",
+                sender: "Jordan Ellis <jordan@northwind.example>", sentTo: "Sam Rivera <sam@kypost-demo.local>", cc: "",
+                body: Array(40).fill(para).join("\n\n"), bodyMode: "plain", status: "read", searchOnly: false,
+                bodyPending: false, pgpState: 1, canDecryptHere: true, atUtc: new Date().toISOString(),
+                pgpBannerTitle: "Encrypted message", pgpBannerBody: "Decrypt it with your key to read it."}
+            root.selectEmail(id, "INBOX")
+            const detail = findReader(root, id)
+            findItem(detail, function (item) { return item.objectName === "replyButton" }).clicked()
+            if (root.detailMode === "compose")
+                throw new Error("a protected Reply opened the composer")
+            if (!detail.replyRefused)
+                throw new Error("the refusal was not shown")
         }},
         // A forward that could not carry everything says so until dismissed.
         {name: "forward-notice", setup: function (root) {

@@ -28,6 +28,22 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- Reply, Reply all and Forward are refused on an encrypted message, as on
+  Android, so its decrypted subject can no longer end up in a "Re:" or
+  "Fwd:" that may be sent unencrypted. A notice under the buttons says why
+  and points to webmail. The buttons stay focusable, look faded, and their
+  tooltip names the action. A message that hasn't loaded yet is refused
+  with its own explanation. Replies and forwards of other mail always take
+  the subject as stored, never a decrypted one.
+
+### Upgrade impact
+
+- No database, keyring or configuration migration.
+
+## Source notes at e20bf378
+
+### Changes
+
 - Accept, Maybe and Decline on a calendar invite now answer through
   KyCalendar first, when your server has it on: your own calendar copy is
   updated and no email is sent. When KyCalendar is not in use, or has no
