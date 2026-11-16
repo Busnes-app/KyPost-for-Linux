@@ -89,3 +89,12 @@ MIT, developed by Busnes.app — see [`LICENSE.txt`](LICENSE.txt).
 - [Contributing](CONTRIBUTING.md) — how to propose a change and what it must pass.
 - [Security policy](SECURITY.md) — how to report a vulnerability privately.
 - [Release notes](CHANGELOG.md) — what changed in each release, and its upgrade impact.
+
+## User manual
+
+Read the [online manual](https://busnes.app/manuals/kypost-linux/) or browse its
+[Markdown sources](docs/src/introduction.md).
+
+Build and check it with `mdbook build docs` and `python3 docs/check-links.py`,
+then open `docs/book/index.html`. The documentation workflow also provides a
+downloadable `documentation-book` artifact.
