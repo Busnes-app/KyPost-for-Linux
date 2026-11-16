@@ -28,6 +28,9 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- CI skips draft pull requests until they are marked ready for review, and every
+  job has a time limit.
+
 - Reply, Reply all and Forward are refused on an encrypted message, as on
   Android, so its decrypted subject can no longer end up in a "Re:" or
   "Fwd:" that may be sent unencrypted. A notice under the buttons says why
@@ -40,6 +43,8 @@ explains the signed remote and the standalone-bundle update-origin limitation.
   Flatpak build leaves behind are ignored by git. No binary was found.
 
 ### Upgrade impact
+
+- No application upgrade or data migration is needed for these CI workflow changes.
 
 - No database, keyring or configuration migration.
 

@@ -118,6 +118,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
   workflow_dispatch:
   schedule:
@@ -172,7 +173,9 @@ jobs:
     # The release and sanitizer builds of the same tree run as parallel legs;
     # the release leg keeps the job's original check name.
     name: ${{ matrix.name }}
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-26.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -399,7 +402,9 @@ jobs:
   # build-sqlcipher.sh needs only curl, make, a C compiler and libssl-dev.
   # SQLCipher is built so the encryption tests run instead of skipping.
   core-qt5:
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-26.04
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -455,7 +460,9 @@ jobs:
   # input -- then fuzzes for a bounded minute. QtCore is the only Qt it links,
   # but configure still resolves core/'s libraries, hence the list.
   fuzz:
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-26.04
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
