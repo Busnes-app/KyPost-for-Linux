@@ -1365,7 +1365,8 @@ worse than no comment: the next reader stops looking.
 
 ### Child DOX Index
 
-(none — no subdirectory AGENTS.md files exist yet)
+- `docs/AGENTS.md` — mdBook manual, chapter ownership and documentation checks.
+
 
 ## 8. Known live-system gotchas
 
