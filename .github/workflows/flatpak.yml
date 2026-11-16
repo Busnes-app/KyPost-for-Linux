@@ -58,6 +58,7 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
   workflow_dispatch:
   schedule:
@@ -97,7 +98,9 @@ jobs:
             runs_on: ubuntu-24.04
           - arch: aarch64
             runs_on: ubuntu-24.04-arm
+    if: github.event.pull_request.draft != true
     runs-on: ${{ matrix.runs_on }}
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -408,6 +411,7 @@ jobs:
     # already built and smoke-tested them, so there is nothing left to do.
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: write # push the gh-pages branch; attach tagged-release assets
       id-token: write # keyless Sigstore signing of the release provenance
