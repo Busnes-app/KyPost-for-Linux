@@ -28,6 +28,17 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- Add the mdBook manual for installation, everyday mail/contact tasks, troubleshooting, security references and contribution guidance.
+- Link the online manual from the README and build/check the book in the documentation workflow.
+
+### Upgrade impact
+
+- No application, database, keyring or configuration migration. Read the manual online or build it locally with `mdbook build docs`.
+
+## Source notes at 79428046
+
+### Changes
+
 - CI skips draft pull requests until they are marked ready for review, and every
   job has a time limit.
 
