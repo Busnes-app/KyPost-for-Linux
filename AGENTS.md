@@ -32,7 +32,7 @@ core/       — libkypostcore: models/net/db/stores/domain/theme/version, QtCore
 app/        — main.cpp, push/ (KUnifiedPush glue, Qt6-only), platform/ (SecureStore backends), qml/ (AppShell root, pages, components, icons/)
 tests/      — QtTest, stubbed HttpClient; ctest-driven. tests/qml/ is the QML suite (QmlTests); tests/guards.tsv is the security-guard manifest (§5a)
 packaging/  — flatpak/ (manifest, desktop file, metainfo, notifyrc, icons), dbus/ (session D-Bus activation .service), click/ (empty .gitkeep placeholder — the Ubuntu Touch app does not exist yet, there is no Clickable manifest)
-fuzz/       — libFuzzer targets (-DKYPOST_FUZZ=ON, clang only) and their seed corpora; CI's `fuzz` job runs them on every PR
+fuzz/       — libFuzzer targets (-DKYPOST_FUZZ=ON, clang only) and their seed corpora; CI's `fuzz` job runs them on every non-draft PR
 po/         — gettext catalogs
 scripts/    — build-sqlcipher.sh, verify-guards.sh, verify-version.sh, release-notes.py, verify-pgp-against-relay.sh
 docs/       — local tooling/setup notes (see docs/SETUP.md); docs/PARITY.md is the authoritative Android-parity matrix; docs/THREADING.md records the async-controller constraints; docs/STRONG-CRYPTO.md is the key-strength profile (§6k); docs/ASSURANCE-CASE.md is the security argument (a change that moves a trust boundary or a cited path updates it in the same PR); docs/VERIFYING-RELEASES.md is the user-facing signature check (its commands and outputs are from a dated run against a real release); docs/KYCALENDAR-RSVP.md is the owned copy of the KyCalendar RSVP wire contract
