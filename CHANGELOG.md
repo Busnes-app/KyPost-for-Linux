@@ -28,8 +28,8 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
-- CI skips draft pull requests and bounds job run time; the README documents
-  when checks run for a pull request marked ready for review.
+- CI skips draft pull requests until they are marked ready for review, and every
+  job has a time limit.
 
 - Reply, Reply all and Forward are refused on an encrypted message, as on
   Android, so its decrypted subject can no longer end up in a "Re:" or
