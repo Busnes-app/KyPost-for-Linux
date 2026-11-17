@@ -28,6 +28,18 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- Prepare application version `0.6.1` (from `0.6.0`) for the compatible dependency refresh. Rebuild or install the updated application; this version bump requires no additional data, account, key or configuration migration.
+
+- Update bundled SQLCipher 4.14.0 to 4.20.0, QtKeychain 0.17.0 to 0.18.0 ZXing-C++ 3.1.0 to 3.1.1 and KUnifiedPush 26.04.3 to 26.08.3. Both SQLCipher build paths retain matching flags and verified archive hashes; ZXing retains its immutable source commit.
+
+### Upgrade impact
+
+- Rebuild or install the updated Flatpak. Existing SQLCipher 4 databases, account profiles and OS-keyring credentials remain compatible; no data or configuration migration is required.
+
+## Source 9ef145e9227dd2885181d81b719c41c6559b3e9c
+
+### Changes
+
 - Update bundled SQLCipher 4.14.0 to 4.20.0, QtKeychain 0.17.0 to 0.18.0 ZXing-C++ 3.1.0 to 3.1.1 and KUnifiedPush 26.04.3 to 26.08.3. Both SQLCipher build paths retain matching flags and verified archive hashes; ZXing retains its immutable source commit.
 
 ### Upgrade impact
