@@ -226,8 +226,8 @@ modules:
       - -DCMAKE_INSTALL_LIBDIR=lib
     sources:
       - type: archive
-        url: https://github.com/frankosterfeld/qtkeychain/archive/refs/tags/0.17.0.tar.gz
-        sha256: 3b85c3929034b0a99da777130c34d99f006fcd3a9d56564159399a33fee0e504
+        url: https://github.com/frankosterfeld/qtkeychain/archive/refs/tags/0.18.0.tar.gz
+        sha256: 837af59f2b950760a73eff81ccae817f7d3051183b447438dc610bb984a41691
 
   # SQLCipher, the encryption layer for the local mail/contacts database.
   #
@@ -262,8 +262,8 @@ modules:
       - LDFLAGS=-lcrypto -Wl,-soname,libsqlite3.so.0
     sources:
       - type: archive
-        url: https://github.com/sqlcipher/sqlcipher/archive/refs/tags/v4.14.0.tar.gz
-        sha256: 67fb27e967a4a6968c0905691c89c908e7250dddc581b887c19ef981c737e473
+        url: https://github.com/sqlcipher/sqlcipher/archive/refs/tags/v4.20.0.tar.gz
+        sha256: 38705f51b61ac0636a5fd064f9a77fafabc7227b2aa2513f1b14c8bb1102affc
 
   - name: zxing-cpp
     buildsystem: cmake-ninja
@@ -338,8 +338,8 @@ modules:
       # qtwebengine source.
       - type: git
         url: https://github.com/zxing-cpp/zxing-cpp.git
-        tag: v3.1.0
-        commit: 885baaf0840335153c1a487fa65f9c1388702c81
+        tag: v3.1.1
+        commit: 287c85df6f961c8efbfb5ffd736cd9457b8b890e
       - type: archive
         url: https://github.com/nothings/stb/archive/31c1ad37456438565541f4919958214b6e762fb4.tar.gz
         sha256: e4e3bba9c572a4a4148373a914d88ea0f0d11de8cc2c66739926e7eca0223319
