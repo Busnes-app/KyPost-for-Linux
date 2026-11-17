@@ -226,8 +226,8 @@ modules:
       - -DCMAKE_INSTALL_LIBDIR=lib
     sources:
       - type: archive
-        url: https://github.com/frankosterfeld/qtkeychain/archive/refs/tags/0.17.0.tar.gz
-        sha256: 3b85c3929034b0a99da777130c34d99f006fcd3a9d56564159399a33fee0e504
+        url: https://github.com/frankosterfeld/qtkeychain/archive/refs/tags/0.18.0.tar.gz
+        sha256: 837af59f2b950760a73eff81ccae817f7d3051183b447438dc610bb984a41691
 
   # SQLCipher, the encryption layer for the local mail/contacts database.
   #
@@ -262,8 +262,8 @@ modules:
       - LDFLAGS=-lcrypto -Wl,-soname,libsqlite3.so.0
     sources:
       - type: archive
-        url: https://github.com/sqlcipher/sqlcipher/archive/refs/tags/v4.14.0.tar.gz
-        sha256: 67fb27e967a4a6968c0905691c89c908e7250dddc581b887c19ef981c737e473
+        url: https://github.com/sqlcipher/sqlcipher/archive/refs/tags/v4.20.0.tar.gz
+        sha256: 38705f51b61ac0636a5fd064f9a77fafabc7227b2aa2513f1b14c8bb1102affc
 
   - name: zxing-cpp
     buildsystem: cmake-ninja
@@ -338,40 +338,22 @@ modules:
       # qtwebengine source.
       - type: git
         url: https://github.com/zxing-cpp/zxing-cpp.git
-        tag: v3.1.0
-        commit: 885baaf0840335153c1a487fa65f9c1388702c81
+        tag: v3.1.1
+        commit: 287c85df6f961c8efbfb5ffd736cd9457b8b890e
       - type: archive
         url: https://github.com/nothings/stb/archive/31c1ad37456438565541f4919958214b6e762fb4.tar.gz
         sha256: e4e3bba9c572a4a4148373a914d88ea0f0d11de8cc2c66739926e7eca0223319
         dest: stb-vendor
 
-  # KUnifiedPush (app/push/UnifiedPushConnector.cpp's
-  # <KUnifiedPush/Connector>, app/CMakeLists.txt's
-  # find_package(KUnifiedPush REQUIRED)) was never added as a
-  # module here -- this manifest predates the UnifiedPush
-  # integration work (Task 10+), and nothing since then re-ran a
-  # full sandboxed flatpak-builder build to notice the gap (the
-  # only prior sandboxed-build verification, Task 9, predates
-  # UnifiedPush entirely; all live UnifiedPush E2E proofs since
-  # were on native, non-Flatpak builds -- see the
-  # --talk-name=org.unifiedpush.Distributor.* comment above for
-  # the matching D-Bus-permission half of this same gap).
-  # org.kde.Platform//6.10 doesn't bundle it (confirmed: this dev
-  # machine has it as a separate pacman package,
-  # kunifiedpush-26.04.3). Sourced from KDE's own release-service
-  # tarball, version-matched to this dev machine's installed
-  # kunifiedpush-26.04.3 for consistency with what's already been
-  # live-tested; no extra config-opts needed, mirroring the real,
-  # published flathub/org.kde.neochat manifest's identical
-  # kunifiedpush module (NeoChat is a real KDE app that also
-  # integrates UnifiedPush, same org.kde.Platform/Sdk stack).
+  # Qt does not bundle KUnifiedPush. Ship the connector required by
+  # app/push/UnifiedPushConnector.cpp and pin KDE's release-service source.
   - name: kunifiedpush
     buildsystem: cmake-ninja
     builddir: true
     sources:
       - type: archive
-        url: https://download.kde.org/stable/release-service/26.04.3/src/kunifiedpush-26.04.3.tar.xz
-        sha256: 247ccc7bcc4277e2fc63a753c367d0ca10efe3b4916f60a44d9ca2da403c4fe5
+        url: https://download.kde.org/stable/release-service/26.08.3/src/kunifiedpush-26.08.3.tar.xz
+        sha256: 01508999563915689401c2fe4dd608a61bb1f7a37dd095a91befcdb79823e6d1
 
   - name: kypost
     buildsystem: cmake-ninja

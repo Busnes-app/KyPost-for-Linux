@@ -34,8 +34,8 @@
 #
 set -euo pipefail
 
-VERSION="${SQLCIPHER_VERSION:-4.14.0}"
-SHA256="67fb27e967a4a6968c0905691c89c908e7250dddc581b887c19ef981c737e473"
+VERSION="${SQLCIPHER_VERSION:-4.20.0}"
+SHA256="38705f51b61ac0636a5fd064f9a77fafabc7227b2aa2513f1b14c8bb1102affc"
 PREFIX="${1:?usage: build-sqlcipher.sh <install-prefix>}"
 
 WORKDIR="$(mktemp -d)"
