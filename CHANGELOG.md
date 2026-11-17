@@ -28,7 +28,7 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
-- Update bundled SQLCipher 4.14.0 to 4.20.0, QtKeychain 0.17.0 to 0.18.0 and ZXing-C++ 3.1.0 to 3.1.1. Both SQLCipher build paths retain matching flags and verified archive hashes; ZXing retains its immutable source commit.
+- Update bundled SQLCipher 4.14.0 to 4.20.0, QtKeychain 0.17.0 to 0.18.0 ZXing-C++ 3.1.0 to 3.1.1 and KUnifiedPush 26.04.3 to 26.08.3. Both SQLCipher build paths retain matching flags and verified archive hashes; ZXing retains its immutable source commit.
 
 ### Upgrade impact
 
