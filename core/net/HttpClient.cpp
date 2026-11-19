@@ -236,6 +236,12 @@ void HttpClient::setCertificateMismatchHandler(CertificateMismatchHandler handle
     m_certificateMismatchHandler = std::move(handler);
 }
 
+void HttpClient::setEncryptionSetupRequiredHandler(EncryptionSetupRequiredHandler handler)
+{
+    assertOwningThread("HttpClient::setEncryptionSetupRequiredHandler");
+    m_encryptionSetupRequiredHandler = std::move(handler);
+}
+
 HttpClient::HttpResult HttpClient::get(const QUrl& url, const QList<QPair<QString, QString>>& query,
                                         const QList<QPair<QString, QString>>& headers,
                                         const RedirectValidator& redirectValidator,
@@ -585,6 +591,17 @@ HttpClient::HttpResult HttpClient::waitForReply(QNetworkReply* reply, const Redi
         // Got an HTTP response — map by status code even if QNetworkReply
         // also flagged an error of its own (e.g. 404 sets ContentNotFoundError).
         result.error = networkErrorFromStatusCode(result.statusCode);
+        if (result.statusCode == 403) {
+            const std::optional<QJsonObject> body = decodeJsonObject(result.body);
+            if (body && body->value(QStringLiteral("error")).toString() == QStringLiteral("encryption_setup_required")) {
+                result.error = NetworkError::EncryptionSetupRequired;
+                // Account-wide, like a pin mismatch: one report reaches the UI
+                // whichever route met it. Paired-relay requests only, so a
+                // request-scoped host cannot raise it.
+                if (reportMismatch && m_encryptionSetupRequiredHandler)
+                    m_encryptionSetupRequiredHandler(body->value(QStringLiteral("message")).toString());
+            }
+        }
     } else if (reply->error() != QNetworkReply::NoError) {
         result.error = NetworkError::Transport;
         result.detail = reply->errorString();

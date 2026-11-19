@@ -44,7 +44,11 @@ enum class NetworkError
     // retry a Transport error and must not retry this one -- the same
     // response will be just as large next time.
     ResponseTooLarge,
-    Decoding,           // JSON parse failure; produced by each Task 14-18
+    // 403 {"error":"encryption_setup_required"} on a mailbox route: the
+    // account owes first sign-in encryption setup on the web (KyPost-Server
+    // docs/E2E_PGP.md). Not Unauthorized: the pairing is fine and must be kept.
+    EncryptionSetupRequired,
+    Decoding,          // JSON parse failure; produced by each Task 14-18
                         // client's own decode step, never by HttpClient
 };
 

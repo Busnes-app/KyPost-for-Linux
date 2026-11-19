@@ -14,6 +14,9 @@ QtObject {
     property string searchQuery: ""
     property bool isBusy: false
     property string lastError: ""
+    property bool encryptionSetupRequired: false
+    property string encryptionSetupMessage: ""
+    property url encryptionSetupUrl: ""
     property var lastSyncAt: new Date()
     property string selectedKeyword: ""
     property string currentFolder: "INBOX"
@@ -79,6 +82,8 @@ QtObject {
 
     function refresh() {}
     function refreshFolders() {}
+    property int encryptionSetupChecks: 0
+    function checkEncryptionSetup() { encryptionSetupChecks++ }
     function selectFolder(f) { currentFolder = f; selectedKeyword = ""; reload() }
     function selectKeyword(k) { selectedKeyword = k; reload() }
     function mailFolders() {

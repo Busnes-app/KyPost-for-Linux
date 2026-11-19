@@ -429,6 +429,19 @@ Added 2026-07-25 (parity work with `kypost-android`):
   the registration, and a mismatch ends the wait before the credential is
   sent. There is no client-side bypass, as there is none on the server.
 
+- **Encryption setup required (#137 part 1, 2026-11-19).** KyPost-Server
+  #666 (`docs/E2E_PGP.md`, "First sign-in setup") answers mailbox routes with
+  `403 {"error":"encryption_setup_required"}` until setup is done on the web.
+  `HttpClient::waitForReply` alone recognises it, as
+  `NetworkError::EncryptionSetupRequired`, never `Unauthorized`: it is not a
+  sign-out, so nothing touches the pairing, keys, cache or drafts. Its
+  out-of-band handler (installed on both clients in `main.cpp`, like the pin
+  mismatch handler) puts `MailController` into one state; while in it
+  `refreshInternal` sends nothing unless `checkEncryptionSetup()` asked
+  (the Check again button, or the app coming forward), and a successful
+  refresh clears it. Push polling keeps running: sign-in approvals arrive
+  there.
+
 - **Biometric unlock and window-content protection are non-goals** — no
   portable Linux equivalent (no `FLAG_SECURE` analogue on Wayland).
 

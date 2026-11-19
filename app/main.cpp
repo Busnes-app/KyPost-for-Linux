@@ -1775,10 +1775,24 @@ int main(int argc, char* argv[])
                               mailController.refresh();
                       });
     QObject::connect(&app, &QGuiApplication::applicationStateChanged, &transportStateMachine,
-                      [&transportStateMachine](Qt::ApplicationState state) {
-                          if (state == Qt::ApplicationActive)
+                      [&transportStateMachine, &mailController](Qt::ApplicationState state) {
+                          if (state == Qt::ApplicationActive) {
                               transportStateMachine.checkPushSilence();
+                              mailController.checkEncryptionSetup(); // no-op unless withheld
+                          }
                       });
+
+    // Encryption setup owed on the web: one account-wide state, reported by
+    // whichever client met it. Queued for the same reason as the pin
+    // mismatch handler: it runs on the request's thread.
+    const HttpClient::EncryptionSetupRequiredHandler noteEncryptionSetup = [&mailController](const QString& message) {
+        QMetaObject::invokeMethod(
+            &mailController, [&mailController, message]() { mailController.noteEncryptionSetupRequired(message); },
+            Qt::QueuedConnection);
+    };
+    httpClient.setEncryptionSetupRequiredHandler(noteEncryptionSetup);
+    networkExecutor.configure(
+        [&noteEncryptionSetup](HttpClient& http) { http.setEncryptionSetupRequiredHandler(noteEncryptionSetup); });
 
     // Observability only -- TransportStateMachine.cpp itself has no logging
     // of its own tier transitions, so this is the only place a developer can

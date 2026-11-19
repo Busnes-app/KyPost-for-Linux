@@ -74,6 +74,8 @@ private slots:
     void refreshReturnsWithoutBlockingTheCallingThread();
     void overlappingRefreshesCollapseToOneFollowUpRequest();
     void aFolderSwitchDuringARefreshIsStillFetched();
+    void withheldMailStopsSyncUntilACheckGetsIt();
+    void theRelaysSetupMessageIsOneBoundedLine();
     void archiveEmailsReportsCompletionAndDropsTheRowOptimistically();
     void moveEmailsSendsTheTargetMailboxAndDropsTheRow();
     void aRefusedMoveKeepsTheRowAndReportsWhy();
@@ -2048,6 +2050,84 @@ void MailControllerTest::aFolderSwitchDuringARefreshIsStillFetched()
     const QByteArray requests = fake.receivedRequest();
     QVERIFY2(requests.contains("mailbox=INBOX"), requests.constData());
     QVERIFY2(requests.contains("mailbox=Sent"), requests.constData());
+}
+
+// KyPost-Server #666: a mailbox route answers 403 encryption_setup_required
+// until setup is finished on the web. The controller holds one state for it,
+// sends nothing more until asked to check, and keeps the pairing and cache.
+void MailControllerTest::withheldMailStopsSyncUntilACheckGetsIt()
+{
+    const QByteArray withheld = httpResponse(
+        403, "Forbidden", R"({"error":"encryption_setup_required","message":"Finish setup on the web."})");
+    FakeRelayServer fake(httpResponse(200, "OK", kTwoMessageInbox));
+    RefreshFixture f(fake.port());
+    // As main.cpp wires it.
+    f.executor.configure([&f](HttpClient& http) {
+        http.setEncryptionSetupRequiredHandler([&f](const QString& message) {
+            QMetaObject::invokeMethod(
+                &f.controller, [&f, message]() { f.controller.noteEncryptionSetupRequired(message); },
+                Qt::QueuedConnection);
+        });
+    });
+
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.isBusy(), 10000);
+    auto* model = qobject_cast<EmailListModel*>(f.controller.emailModel());
+    QCOMPARE(model->rowCount(), 2);
+
+    // Enter on the 403: its own state, not a sync error.
+    fake.setResponse(withheld);
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(f.controller.encryptionSetupRequired() && !f.controller.isBusy(), 10000);
+    QCOMPARE(f.controller.encryptionSetupMessage(), QStringLiteral("Finish setup on the web."));
+    QCOMPARE(f.controller.lastError(), QString());
+    QCOMPARE(f.controller.encryptionSetupUrl(), QUrl()); // http pairing: no link to open
+
+    // No retry loop: further refreshes and folder switches send nothing.
+    const int afterEntering = fake.connectionCount();
+    f.controller.refresh();
+    f.controller.refresh(true);
+    f.controller.selectFolder(QStringLiteral("Sent"));
+    f.controller.selectFolder(QStringLiteral("INBOX"));
+    QTest::qWait(300);
+    QCOMPARE(fake.connectionCount(), afterEntering);
+
+    // A check is exactly one request; still withheld, still in the state.
+    f.controller.checkEncryptionSetup();
+    QTRY_VERIFY_WITH_TIMEOUT(fake.connectionCount() == afterEntering + 1 && !f.controller.isBusy(), 10000);
+    QTest::qWait(300);
+    QCOMPARE(fake.connectionCount(), afterEntering + 1);
+    QVERIFY(f.controller.encryptionSetupRequired());
+
+    // Not a sign-out: the pairing and the cached mail are untouched.
+    const std::optional<DevicePairing> pairing = f.pairingStore.load();
+    QVERIFY(pairing.has_value());
+    QCOMPARE(pairing->deviceId, QStringLiteral("dev-1"));
+    QCOMPARE(pairing->deviceSecret, QStringLiteral("secret-1"));
+    QCOMPARE(model->rowCount(), 2);
+    QCOMPARE(f.emailDao.findByFolder(QStringLiteral("INBOX")).size(), 2);
+
+    // Served again: the check clears the state and sync resumes.
+    fake.setResponse(httpResponse(200, "OK", kTwoMessageInbox));
+    QSignalSpy changed(&f.controller, &MailController::encryptionSetupChanged);
+    f.controller.checkEncryptionSetup();
+    QTRY_VERIFY_WITH_TIMEOUT(!f.controller.encryptionSetupRequired(), 10000);
+    QCOMPARE(changed.count(), 1);
+    QCOMPARE(f.controller.encryptionSetupMessage(), QString());
+    QTRY_VERIFY_WITH_TIMEOUT(fake.receivedRequest().contains("/api/inbox/folders"), 10000);
+    const int resumed = fake.connectionCount();
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(fake.connectionCount() > resumed && !f.controller.isBusy(), 10000);
+    f.executor.shutdown();
+}
+
+void MailControllerTest::theRelaysSetupMessageIsOneBoundedLine()
+{
+    RefreshFixture f(1);
+    f.controller.noteEncryptionSetupRequired(QStringLiteral("Finish\n\nsetup ") + QString(1000, QLatin1Char('x')));
+    QVERIFY(f.controller.encryptionSetupRequired());
+    QCOMPARE(f.controller.encryptionSetupMessage().size(), 300);
+    QVERIFY(f.controller.encryptionSetupMessage().startsWith(QStringLiteral("Finish setup x")));
 }
 
 // The four actions dispatch and return, so every QML site that used to read

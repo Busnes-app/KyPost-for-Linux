@@ -82,3 +82,7 @@ QUrl webmailReadUrl(const QUrl& serverBaseUrl, const QString& mailbox, const QSt
 // Same containment rule as webmailReadUrl(): returns an empty QUrl unless
 // `serverBaseUrl` is a valid https URL, or if `mailbox` is empty.
 QUrl webmailMailboxUrl(const QUrl& serverBaseUrl, const QString& mailbox);
+
+// <server>/setup/encryption, where the web finishes first sign-in encryption
+// setup. Same https-only rule; empty otherwise.
+QUrl webmailEncryptionSetupUrl(const QUrl& serverBaseUrl);

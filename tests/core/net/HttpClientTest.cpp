@@ -96,6 +96,9 @@ class HttpClientTest : public QObject
 private slots:
     void getSuccessReturnsBodyUnmodifiedAndPreservesExistingQuery();
     void getMapsUnauthorizedFrom401();
+    void encryptionSetupRequiredIsItsOwnErrorAndReported();
+    void anyOther403StaysUnauthorizedAndUnreported_data();
+    void anyOther403StaysUnauthorizedAndUnreported();
     void postSendsJsonBodyAndContentTypeHeader();
     void putSendsJsonBodyAndContentTypeHeader();
     void delSendsQueryParamsWithNoBody();
@@ -151,6 +154,54 @@ void HttpClientTest::getMapsUnauthorizedFrom401()
     QVERIFY(result.error.has_value());
     QCOMPARE(*result.error, NetworkError::Unauthorized);
     QCOMPARE(result.statusCode, 401);
+}
+
+// KyPost-Server #666: mail withheld until encryption setup is done on the web.
+// Not Unauthorized, which would read as a rejected pairing.
+void HttpClientTest::encryptionSetupRequiredIsItsOwnErrorAndReported()
+{
+    FakeRelayServer fake(httpResponse(
+        403, "Forbidden",
+        R"({"error":"encryption_setup_required","message":"Finish email encryption setup in KyPost on the web before using mail here."})"));
+    QNetworkAccessManager manager;
+    HttpClient client(manager);
+    QStringList reported;
+    client.setEncryptionSetupRequiredHandler([&reported](const QString& message) { reported.append(message); });
+
+    const QUrl url(QStringLiteral("http://127.0.0.1:%1/api/inbox").arg(fake.port()));
+    const HttpClient::HttpResult result = client.get(url, {});
+
+    QVERIFY(result.error.has_value());
+    QCOMPARE(*result.error, NetworkError::EncryptionSetupRequired);
+    QCOMPARE(result.statusCode, 403);
+    QCOMPARE(reported,
+             QStringList{ QStringLiteral("Finish email encryption setup in KyPost on the web before using mail here.") });
+}
+
+void HttpClientTest::anyOther403StaysUnauthorizedAndUnreported_data()
+{
+    QTest::addColumn<QByteArray>("body");
+    QTest::newRow("empty object") << QByteArray("{}");
+    QTest::newRow("another code") << QByteArray(R"({"error":"forbidden"})");
+    QTest::newRow("not json") << QByteArray("encryption_setup_required");
+    QTest::newRow("code as message") << QByteArray(R"({"message":"encryption_setup_required"})");
+}
+
+void HttpClientTest::anyOther403StaysUnauthorizedAndUnreported()
+{
+    QFETCH(QByteArray, body);
+    FakeRelayServer fake(httpResponse(403, "Forbidden", body));
+    QNetworkAccessManager manager;
+    HttpClient client(manager);
+    int reported = 0;
+    client.setEncryptionSetupRequiredHandler([&reported](const QString&) { ++reported; });
+
+    const QUrl url(QStringLiteral("http://127.0.0.1:%1/api/inbox").arg(fake.port()));
+    const HttpClient::HttpResult result = client.get(url, {});
+
+    QVERIFY(result.error.has_value());
+    QCOMPARE(*result.error, NetworkError::Unauthorized);
+    QCOMPARE(reported, 0);
 }
 
 void HttpClientTest::postSendsJsonBodyAndContentTypeHeader()
