@@ -76,6 +76,7 @@ private slots:
     void aFolderSwitchDuringARefreshIsStillFetched();
     void withheldMailStopsSyncUntilACheckGetsIt();
     void theRelaysSetupMessageIsOneBoundedLine();
+    void anotherServersSetupAnswerDoesNotPauseThisAccount();
     void archiveEmailsReportsCompletionAndDropsTheRowOptimistically();
     void moveEmailsSendsTheTargetMailboxAndDropsTheRow();
     void aRefusedMoveKeepsTheRowAndReportsWhy();
@@ -2063,9 +2064,9 @@ void MailControllerTest::withheldMailStopsSyncUntilACheckGetsIt()
     RefreshFixture f(fake.port());
     // As main.cpp wires it.
     f.executor.configure([&f](HttpClient& http) {
-        http.setEncryptionSetupRequiredHandler([&f](const QString& message) {
+        http.setEncryptionSetupRequiredHandler([&f](const QUrl& answeredBy, const QString& message) {
             QMetaObject::invokeMethod(
-                &f.controller, [&f, message]() { f.controller.noteEncryptionSetupRequired(message); },
+                &f.controller, [&f, answeredBy, message]() { f.controller.noteEncryptionSetupRequired(answeredBy, message); },
                 Qt::QueuedConnection);
         });
     });
@@ -2124,10 +2125,42 @@ void MailControllerTest::withheldMailStopsSyncUntilACheckGetsIt()
 void MailControllerTest::theRelaysSetupMessageIsOneBoundedLine()
 {
     RefreshFixture f(1);
-    f.controller.noteEncryptionSetupRequired(QStringLiteral("Finish\n\nsetup ") + QString(1000, QLatin1Char('x')));
+    f.controller.noteEncryptionSetupRequired(QUrl(QStringLiteral("http://127.0.0.1:1/api/inbox")),
+                                             QStringLiteral("Finish\n\nsetup ") + QString(1000, QLatin1Char('x')));
     QVERIFY(f.controller.encryptionSetupRequired());
     QCOMPARE(f.controller.encryptionSetupMessage().size(), 300);
     QVERIFY(f.controller.encryptionSetupMessage().startsWith(QStringLiteral("Finish setup x")));
+}
+
+// A scanned contact-key QR can point the shared HttpClient at any host. That
+// host answering encryption_setup_required must not pause the paired account.
+void MailControllerTest::anotherServersSetupAnswerDoesNotPauseThisAccount()
+{
+    FakeRelayServer relay(httpResponse(200, "OK", kTwoMessageInbox));
+    FakeRelayServer other(httpResponse(403, "Forbidden", R"({"error":"encryption_setup_required"})"));
+    RefreshFixture f(relay.port());
+    f.executor.configure([&f](HttpClient& http) {
+        http.setEncryptionSetupRequiredHandler([&f](const QUrl& answeredBy, const QString& message) {
+            QMetaObject::invokeMethod(
+                &f.controller, [&f, answeredBy, message]() { f.controller.noteEncryptionSetupRequired(answeredBy, message); },
+                Qt::QueuedConnection);
+        });
+    });
+
+    const QUrl qrKeyUrl(QStringLiteral("http://127.0.0.1:%1/api/pgp/qr/key").arg(other.port()));
+    bool fetched = false;
+    f.executor.run(
+        &f.controller, [qrKeyUrl](HttpClient& http) { return http.get(qrKeyUrl, {}).error; },
+        [&fetched](const std::optional<NetworkError>& error) {
+            fetched = error == NetworkError::EncryptionSetupRequired;
+        });
+    QTRY_VERIFY_WITH_TIMEOUT(fetched, 10000);
+    QTest::qWait(100); // the queued report, had it been taken
+    QVERIFY(!f.controller.encryptionSetupRequired());
+
+    f.controller.refresh();
+    QTRY_VERIFY_WITH_TIMEOUT(relay.connectionCount() == 1 && !f.controller.isBusy(), 10000);
+    f.executor.shutdown();
 }
 
 // The four actions dispatch and return, so every QML site that used to read

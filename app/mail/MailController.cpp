@@ -31,6 +31,7 @@
 #include "domain/ReplyAll.h"
 #include "domain/SendLater.h"
 #include "mail/PgpMessagePresentation.h"
+#include "net/HttpClient.h"
 
 #include <KLocalizedString>
 
@@ -347,8 +348,11 @@ QUrl MailController::encryptionSetupUrl() const
     return webmailEncryptionSetupUrl(webmailBaseUrl());
 }
 
-void MailController::noteEncryptionSetupRequired(const QString& relayMessage)
+void MailController::noteEncryptionSetupRequired(const QUrl& answeredBy, const QString& relayMessage)
 {
+    // Another server (a scanned contact-key QR host) cannot pause this account.
+    if (!sameUrlOrigin(answeredBy, webmailBaseUrl()))
+        return;
     // Relay-supplied text: one bounded plain line, never a wall of it.
     const QString message = relayMessage.simplified().left(300);
     if (m_encryptionSetupRequired && m_encryptionSetupMessage == message)

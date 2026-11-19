@@ -342,8 +342,10 @@ public:
 
     // Invoked, like the mismatch handler and on the same thread, each time
     // the paired relay answers NetworkError::EncryptionSetupRequired. Carries
-    // the relay's "message" field, empty when absent.
-    using EncryptionSetupRequiredHandler = std::function<void(const QString& message)>;
+    // the URL that answered, so the receiver can check it is the paired
+    // relay's (a scanned QR host shares this client), and the relay's
+    // "message" field, empty when absent.
+    using EncryptionSetupRequiredHandler = std::function<void(const QUrl& answeredBy, const QString& message)>;
     void setEncryptionSetupRequiredHandler(EncryptionSetupRequiredHandler handler);
 
 private:

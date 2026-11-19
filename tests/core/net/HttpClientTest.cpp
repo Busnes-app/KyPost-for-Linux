@@ -166,7 +166,11 @@ void HttpClientTest::encryptionSetupRequiredIsItsOwnErrorAndReported()
     QNetworkAccessManager manager;
     HttpClient client(manager);
     QStringList reported;
-    client.setEncryptionSetupRequiredHandler([&reported](const QString& message) { reported.append(message); });
+    QUrl answeredBy;
+    client.setEncryptionSetupRequiredHandler([&](const QUrl& url, const QString& message) {
+        answeredBy = url;
+        reported.append(message);
+    });
 
     const QUrl url(QStringLiteral("http://127.0.0.1:%1/api/inbox").arg(fake.port()));
     const HttpClient::HttpResult result = client.get(url, {});
@@ -176,6 +180,7 @@ void HttpClientTest::encryptionSetupRequiredIsItsOwnErrorAndReported()
     QCOMPARE(result.statusCode, 403);
     QCOMPARE(reported,
              QStringList{ QStringLiteral("Finish email encryption setup in KyPost on the web before using mail here.") });
+    QCOMPARE(answeredBy, url);
 }
 
 void HttpClientTest::anyOther403StaysUnauthorizedAndUnreported_data()
@@ -194,7 +199,7 @@ void HttpClientTest::anyOther403StaysUnauthorizedAndUnreported()
     QNetworkAccessManager manager;
     HttpClient client(manager);
     int reported = 0;
-    client.setEncryptionSetupRequiredHandler([&reported](const QString&) { ++reported; });
+    client.setEncryptionSetupRequiredHandler([&reported](const QUrl&, const QString&) { ++reported; });
 
     const QUrl url(QStringLiteral("http://127.0.0.1:%1/api/inbox").arg(fake.port()));
     const HttpClient::HttpResult result = client.get(url, {});

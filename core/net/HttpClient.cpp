@@ -596,10 +596,10 @@ HttpClient::HttpResult HttpClient::waitForReply(QNetworkReply* reply, const Redi
             if (body && body->value(QStringLiteral("error")).toString() == QStringLiteral("encryption_setup_required")) {
                 result.error = NetworkError::EncryptionSetupRequired;
                 // Account-wide, like a pin mismatch: one report reaches the UI
-                // whichever route met it. Paired-relay requests only, so a
-                // request-scoped host cannot raise it.
+                // whichever route met it. Not for a request-scoped pin; the
+                // receiver checks the URL against the paired relay.
                 if (reportMismatch && m_encryptionSetupRequiredHandler)
-                    m_encryptionSetupRequiredHandler(body->value(QStringLiteral("message")).toString());
+                    m_encryptionSetupRequiredHandler(reply->url(), body->value(QStringLiteral("message")).toString());
             }
         }
     } else if (reply->error() != QNetworkReply::NoError) {

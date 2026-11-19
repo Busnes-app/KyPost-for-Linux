@@ -219,9 +219,9 @@ public slots:
     // network call.
     void selectKeyword(const QString& keyword);
     void refresh(bool forceFullResync = false);
-    // Enters the encryption-setup state; main.cpp routes HttpClient's
-    // EncryptionSetupRequiredHandler here.
-    void noteEncryptionSetupRequired(const QString& message);
+    // Enters the encryption-setup state when `answeredBy` is the paired
+    // relay; main.cpp routes HttpClient's EncryptionSetupRequiredHandler here.
+    void noteEncryptionSetupRequired(const QUrl& answeredBy, const QString& message);
     // One mailbox request while in that state; success clears it. For the
     // "Check again" button and the return to the foreground.
     void checkEncryptionSetup();

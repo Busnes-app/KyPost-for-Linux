@@ -436,7 +436,9 @@ Added 2026-07-25 (parity work with `kypost-android`):
   `NetworkError::EncryptionSetupRequired`, never `Unauthorized`: it is not a
   sign-out, so nothing touches the pairing, keys, cache or drafts. Its
   out-of-band handler (installed on both clients in `main.cpp`, like the pin
-  mismatch handler) puts `MailController` into one state; while in it
+  mismatch handler) reports the URL that answered, and `MailController`
+  takes it only from the paired relay's origin: a scanned contact-key QR host
+  shares the client and must not pause the account. In that state
   `refreshInternal` sends nothing unless `checkEncryptionSetup()` asked
   (the Check again button, or the app coming forward), and a successful
   refresh clears it. Push polling keeps running: sign-in approvals arrive

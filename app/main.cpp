@@ -1785,11 +1785,13 @@ int main(int argc, char* argv[])
     // Encryption setup owed on the web: one account-wide state, reported by
     // whichever client met it. Queued for the same reason as the pin
     // mismatch handler: it runs on the request's thread.
-    const HttpClient::EncryptionSetupRequiredHandler noteEncryptionSetup = [&mailController](const QString& message) {
-        QMetaObject::invokeMethod(
-            &mailController, [&mailController, message]() { mailController.noteEncryptionSetupRequired(message); },
-            Qt::QueuedConnection);
-    };
+    const HttpClient::EncryptionSetupRequiredHandler noteEncryptionSetup =
+        [&mailController](const QUrl& answeredBy, const QString& message) {
+            QMetaObject::invokeMethod(
+                &mailController,
+                [&mailController, answeredBy, message]() { mailController.noteEncryptionSetupRequired(answeredBy, message); },
+                Qt::QueuedConnection);
+        };
     httpClient.setEncryptionSetupRequiredHandler(noteEncryptionSetup);
     networkExecutor.configure(
         [&noteEncryptionSetup](HttpClient& http) { http.setEncryptionSetupRequiredHandler(noteEncryptionSetup); });
