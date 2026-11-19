@@ -31,6 +31,7 @@
 #include "domain/ReplyAll.h"
 #include "domain/SendLater.h"
 #include "mail/PgpMessagePresentation.h"
+#include "net/HttpClient.h"
 
 #include <KLocalizedString>
 
@@ -342,6 +343,42 @@ void MailController::refresh(bool forceFullResync)
     refreshInternal(forceFullResync);
 }
 
+QUrl MailController::encryptionSetupUrl() const
+{
+    return webmailEncryptionSetupUrl(webmailBaseUrl());
+}
+
+void MailController::noteEncryptionSetupRequired(const QUrl& answeredBy, const QString& relayMessage)
+{
+    // Another server (a scanned contact-key QR host) cannot pause this account.
+    if (!sameUrlOrigin(answeredBy, webmailBaseUrl()))
+        return;
+    // Relay-supplied text: one bounded plain line, never a wall of it.
+    const QString message = relayMessage.simplified().left(300);
+    if (m_encryptionSetupRequired && m_encryptionSetupMessage == message)
+        return;
+    m_encryptionSetupRequired = true;
+    m_encryptionSetupMessage = message;
+    emit encryptionSetupChanged();
+}
+
+void MailController::clearEncryptionSetup()
+{
+    if (!m_encryptionSetupRequired)
+        return;
+    m_encryptionSetupRequired = false;
+    m_encryptionSetupMessage.clear();
+    emit encryptionSetupChanged();
+}
+
+void MailController::checkEncryptionSetup()
+{
+    if (!m_encryptionSetupRequired || m_appLocked)
+        return;
+    m_encryptionSetupCheck = true;
+    refreshInternal(false);
+}
+
 void MailController::refreshInternal(bool forceFullResync)
 {
     // Coalescing, not re-entrancy. Pull-to-refresh, the toolbar button and a
@@ -367,15 +404,21 @@ void MailController::refreshInternal(bool forceFullResync)
     // credential gate, CursorStore is a QSettings file. Only the request that
     // uses what they produce may leave.
     const std::optional<MailRefreshPlan> plan = m_mailRepository.planRefresh(m_currentFolder, forceFullResync);
-    // Spent only by a refresh that goes out: an unpaired start used to spend
-    // it, and the folder's older rows then never got their replacing resync.
-    if (plan.has_value())
-        m_refreshedThisSession.insert(m_currentFolder);
     if (!plan.has_value()) {
+        clearEncryptionSetup(); // nothing is withheld from no account
         setLastError(i18n("Not paired"));
         reloadCurrentFolder();
         return;
     }
+    // Withheld mail is not retried: only an explicit re-check goes out.
+    if (m_encryptionSetupRequired && !m_encryptionSetupCheck) {
+        reloadCurrentFolder();
+        return;
+    }
+    m_encryptionSetupCheck = false;
+    // Spent only by a refresh that goes out: an unpaired start used to spend
+    // it, and the folder's older rows then never got their replacing resync.
+    m_refreshedThisSession.insert(m_currentFolder);
 
     m_refreshInFlight = true;
     pushBusy();
@@ -410,10 +453,17 @@ void MailController::finishRefresh(const MailRefreshPlan& plan, const InboxFetch
         // failed" would be a lie about a refresh that worked, shown to
         // someone who has just successfully paired.
         setLastError(QString());
+    } else if (result.error == NetworkError::EncryptionSetupRequired) {
+        // Its own screen, not a sync failure (noteEncryptionSetupRequired).
+        setLastError(QString());
     } else if (outcome.outcome != MailRepositoryOutcome::Success) {
         setLastError(outcome.detail.isEmpty() ? i18n("Refresh failed") : outcome.detail);
     } else {
         setLastError(QString());
+        if (m_encryptionSetupRequired) {
+            clearEncryptionSetup();
+            refreshFolders(); // resume what the setup state held back
+        }
         // The relay is answering again: a body that failed to load may be retried.
         m_searchBodyFailed.clear();
         m_lastSyncAt = QDateTime::currentDateTime();

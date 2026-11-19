@@ -1285,6 +1285,19 @@ Kirigami.ApplicationWindow {
                         onMyPgpQrCodeRequested: pgpMyQrCodeSheet.open()
                     }
                 }
+
+                // Over the list and detail panes, not instead of them, so an
+                // open draft survives until the relay serves mail again.
+                EncryptionSetupScreen {
+                    objectName: "encryptionSetupScreen"
+                    anchors.fill: parent
+                    visible: MailApp.encryptionSetupRequired && root.destination === "inbox"
+                    message: MailApp.encryptionSetupMessage
+                    setupUrl: MailApp.encryptionSetupUrl
+                    checking: MailApp.isBusy
+                    onOpenRequested: Qt.openUrlExternally(MailApp.encryptionSetupUrl)
+                    onCheckRequested: MailApp.checkEncryptionSetup()
+                }
             }
 
             NavBar {

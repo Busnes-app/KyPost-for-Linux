@@ -129,6 +129,14 @@ class MailController : public QObject
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
     // Last refresh the relay answered and the cache took. Memory only.
     Q_PROPERTY(QDateTime lastSyncAt READ lastSyncAt NOTIFY lastSyncAtChanged)
+    // The relay withholds mail until encryption setup is finished on the web
+    // (NetworkError::EncryptionSetupRequired). Mail sync stops until
+    // checkEncryptionSetup() gets an answer; pairing, keys and drafts stay.
+    Q_PROPERTY(bool encryptionSetupRequired READ encryptionSetupRequired NOTIFY encryptionSetupChanged)
+    // The relay's own sentence, or empty for the UI's default wording.
+    Q_PROPERTY(QString encryptionSetupMessage READ encryptionSetupMessage NOTIFY encryptionSetupChanged)
+    // <server>/setup/encryption, or empty when the pairing is not https.
+    Q_PROPERTY(QUrl encryptionSetupUrl READ encryptionSetupUrl NOTIFY encryptionSetupChanged)
     Q_PROPERTY(bool pgpCanEncrypt READ pgpCanEncrypt NOTIFY pgpComposeStateChanged)
     Q_PROPERTY(bool pgpCanSign READ pgpCanSign NOTIFY pgpComposeStateChanged)
     Q_PROPERTY(bool pgpHandoffToWebmail READ pgpHandoffToWebmail NOTIFY pgpComposeStateChanged)
@@ -198,6 +206,9 @@ public:
     bool pgpCanSendFromThisDevice() const;
     bool lastSendMissingSentCopy() const { return m_lastSendMissingSentCopy; }
     QStringList pgpKeylessRecipients() const;
+    bool encryptionSetupRequired() const { return m_encryptionSetupRequired; }
+    QString encryptionSetupMessage() const { return m_encryptionSetupMessage; }
+    QUrl encryptionSetupUrl() const;
 
 public slots:
     // Sets currentFolder, resets selectedKeyword to "", loads the on-disk
@@ -208,6 +219,12 @@ public slots:
     // network call.
     void selectKeyword(const QString& keyword);
     void refresh(bool forceFullResync = false);
+    // Enters the encryption-setup state when `answeredBy` is the paired
+    // relay; main.cpp routes HttpClient's EncryptionSetupRequiredHandler here.
+    void noteEncryptionSetupRequired(const QUrl& answeredBy, const QString& message);
+    // One mailbox request while in that state; success clears it. For the
+    // "Check again" button and the return to the foreground.
+    void checkEncryptionSetup();
     // The next page of older mail in currentFolder, for a list that reached
     // its end. One at a time; nothing while locked, while searching, or once
     // the relay has said there is no more below the oldest row held.
@@ -564,6 +581,7 @@ signals:
     void isBusyChanged();
     void lastErrorChanged();
     void lastSyncAtChanged();
+    void encryptionSetupChanged();
     void decryptedChanged();
     void messagePgpChanged(const QString& folder, const QString& messageId);
     void foldersChanged();
@@ -755,6 +773,7 @@ private:
     // open afterwards, which the QML-facing saveDraft() must not expose.
     void selectFolderInternal(const QString& wireFolder);
     void refreshInternal(bool forceFullResync);
+    void clearEncryptionSetup();
     quint64 saveDraftInternal(const QString& to, const QString& cc, const QString& bcc, const QString& subject,
                                const QString& body, const QStringList& attachmentFilePaths,
                                const QUrl& thenOpenWebmail, const QString& draftToken);
@@ -900,6 +919,9 @@ private:
     QString m_pendingNotificationMessageId;
     QString m_lastError;
     QDateTime m_lastSyncAt;
+    bool m_encryptionSetupRequired = false;
+    bool m_encryptionSetupCheck = false; // the next refresh is the re-check
+    QString m_encryptionSetupMessage;
     std::function<QVector<PushRecord>()> m_notificationHistory;
     bool m_pgpCanEncrypt = false;
     bool m_pgpCanSign = false;

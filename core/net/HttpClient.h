@@ -340,6 +340,14 @@ public:
     using CertificateMismatchHandler = std::function<void(const QByteArray& observedSpkiSha256)>;
     void setCertificateMismatchHandler(CertificateMismatchHandler handler);
 
+    // Invoked, like the mismatch handler and on the same thread, each time
+    // the paired relay answers NetworkError::EncryptionSetupRequired. Carries
+    // the URL that answered, so the receiver can check it is the paired
+    // relay's (a scanned QR host shares this client), and the relay's
+    // "message" field, empty when absent.
+    using EncryptionSetupRequiredHandler = std::function<void(const QUrl& answeredBy, const QString& message)>;
+    void setEncryptionSetupRequiredHandler(EncryptionSetupRequiredHandler handler);
+
 private:
     // The thread this client was constructed on, and the only one that may
     // touch it. Checked by Q_ASSERT on every public entry point.
@@ -367,6 +375,7 @@ private:
     QByteArray m_certificatePin;
     QUrl m_pinnedOrigin;
     CertificateMismatchHandler m_certificateMismatchHandler;
+    EncryptionSetupRequiredHandler m_encryptionSetupRequiredHandler;
     // Appends query items to url via QUrlQuery, preserving any query url
     // already has — mirrors the Swift URL.appending(queryOrThrow:) extension.
     QUrl urlWithQuery(const QUrl& url, const QList<QPair<QString, QString>>& query) const;
@@ -376,7 +385,7 @@ private:
     // take effect, and so no verb can silently forget to apply a ceiling.
     // `pin` is the one enforced on this reply: the client's own for the four
     // verbs, the caller's for getPinnedTo(). reportMismatch says whether a
-    // mismatch also reaches the mismatch handler.
+    // mismatch, or an encryption-setup refusal, also reaches its handler.
     HttpResult waitForReply(QNetworkReply* reply, const RedirectValidator& redirectValidator,
                              qint64 maxResponseBytes, const CertificatePinState& pin, bool reportMismatch) const;
 

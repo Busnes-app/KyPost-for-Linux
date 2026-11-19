@@ -21,6 +21,7 @@ private slots:
     void webmailMailboxUrlTargetsTheMailboxWithNoMessageId();
     void webmailMailboxUrlRejectsAnythingButHttps();
     void webmailMailboxUrlDropsAnyBaseQueryOrFragment();
+    void webmailEncryptionSetupUrlIsHttpsOnlyAndClean();
 };
 
 void PgpMessagePresentationTest::unsignedEncryptionIsDisclosed()
@@ -148,6 +149,15 @@ void PgpMessagePresentationTest::webmailMailboxUrlTargetsTheMailboxWithNoMessage
 // Same containment rule as webmailReadUrl: this URL goes to an external
 // browser, so a pairing holding a file://, javascript: or downgraded http
 // base must never produce one.
+void PgpMessagePresentationTest::webmailEncryptionSetupUrlIsHttpsOnlyAndClean()
+{
+    QCOMPARE(webmailEncryptionSetupUrl(QUrl(QStringLiteral("https://mail.example.com/?x=1#frag"))),
+             QUrl(QStringLiteral("https://mail.example.com/setup/encryption")));
+    QVERIFY(webmailEncryptionSetupUrl(QUrl(QStringLiteral("http://mail.example.com"))).isEmpty());
+    QVERIFY(webmailEncryptionSetupUrl(QUrl(QStringLiteral("javascript:alert(1)"))).isEmpty());
+    QVERIFY(webmailEncryptionSetupUrl(QUrl()).isEmpty());
+}
+
 void PgpMessagePresentationTest::webmailMailboxUrlRejectsAnythingButHttps()
 {
     QVERIFY(webmailMailboxUrl(QUrl(QStringLiteral("http://mail.example.com")),
