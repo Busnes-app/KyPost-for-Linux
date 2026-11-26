@@ -1,19 +1,13 @@
+# KyPost for Linux
+
 <p align="center">
   <img src="kypost.png" alt="KyPost" width="160" height="160">
 </p>
 
-<h1 align="center">KyPost</h1>
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15929/badge)](https://www.bestpractices.dev/projects/15929)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Busnes-app/KyPost-for-Linux/badge)](https://scorecard.dev/viewer/?uri=github.com/Busnes-app/KyPost-for-Linux)
 
-<p align="center">
-  <a href="https://www.bestpractices.dev/projects/15929"><img src="https://www.bestpractices.dev/projects/15929/badge" alt="OpenSSF Best Practices"></a>
-  <a href="https://scorecard.dev/viewer/?uri=github.com/Busnes-app/KyPost-for-Linux"><img src="https://api.scorecard.dev/projects/github.com/Busnes-app/KyPost-for-Linux/badge" alt="OpenSSF Scorecard"></a>
-</p>
-
-<p align="center">
-  A relay-only email client for KDE Plasma and Plasma Mobile, built with Qt6/Kirigami.
-</p>
-
----
+A relay-only email client for KDE Plasma and Plasma Mobile, built with Qt6/Kirigami.
 
 ## What is this?
 
@@ -25,7 +19,8 @@ traffic. One codebase targets two UI surfaces:
   detail layout.
 - **KDE Mobile** — Plasma Mobile, the same Flatpak, with a bottom-tab push-navigation layout.
 
-KyPost is a sibling client to an Android app and to a SwiftUI macOS/iOS app. All three clients
+KyPost is a sibling client to [KyPost for Android](https://github.com/Busnes-app/KyPost-for-Android)
+and [KyPost for macOS and iOS](https://github.com/Busnes-app/KyPost-for-Mac). All three clients
 use the same Go relay backend.
 
 ## Standalone client setup
@@ -66,16 +61,11 @@ The normal `flatpak update` command then installs new versions. The Flathub remo
 `org.kde.Platform//6.11` runtime. KyPost uses its own distribution channel rather than a Flathub listing. Each
 [release](https://github.com/Busnes-app/KyPost-for-Linux/releases) also attaches a
 single-file `.flatpak` bundle, but a bundle gives you no automatic updates. For more
-information, see [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md).
-
-## License
-
-MIT, developed by Busnes.app — see [`LICENSE.txt`](LICENSE.txt).
-
-[![OctoCounts](https://api.octocounts.com/badge/Busnes-app/KyPost-for-Linux/branch/main)](https://octocounts.com/github/Busnes-app/KyPost-for-Linux/tree/main)
+information, see [Distribution](docs/DISTRIBUTION.md).
 
 ## Documentation
 
+- [User manual](https://busnes.app/manuals/kypost-linux/) ([Markdown sources](docs/src/introduction.md)) — build and check locally with `mdbook build docs` and `python3 docs/check-links.py`, then open `docs/book/index.html`. The documentation workflow also uploads a `documentation-book` artifact.
 - [Features](docs/FEATURES.md) — mail, folders, contacts, PGP, push, security, themes, pairing and localization. <a id="features"></a>
 - [Building](docs/BUILDING.md) — native build and dependencies, SQLCipher encryption at rest, the Qt 5.15 core-only build and the Flatpak. <a id="building"></a><a id="encryption-at-rest-needs-sqlcipher"></a><a id="core-only-on-qt-515"></a><a id="flatpak"></a>
 - [Architecture](docs/ARCHITECTURE.md) — the source layout, the `core/` boundary and the design records. <a id="architecture"></a>
@@ -83,18 +73,16 @@ MIT, developed by Busnes.app — see [`LICENSE.txt`](LICENSE.txt).
 - [Strong cryptography](docs/STRONG-CRYPTO.md) — the keys KyPost selects or accepts, and their minimums.
 - [Assurance case](docs/ASSURANCE-CASE.md) — the threat model, the trust boundaries and the argument that the security requirements are met.
 - [Verifying releases](docs/VERIFYING-RELEASES.md) — how to check the Flatpak signing key, the remote and a release bundle.
-- [Encrypted send](Client_Encrypted_Send.md) — how the client sends encrypted and signed mail through the relay.
+- [Calendar RSVP](docs/KYCALENDAR-RSVP.md) — wire contract for answering invitations through KyCalendar and the mail fallback.
+- [Threading](docs/THREADING.md) — how message threads are grouped and displayed.
 - [Android parity](docs/PARITY.md) — which Android features the Linux client has.
 - [Manual testing](TESTING.md) — the human verification checklist.
 - [Contributing](CONTRIBUTING.md) — how to propose a change and what it must pass.
 - [Security policy](SECURITY.md) — how to report a vulnerability privately.
 - [Release notes](CHANGELOG.md) — what changed in each release, and its upgrade impact.
 
-## User manual
+## License
 
-Read the [online manual](https://busnes.app/manuals/kypost-linux/) or browse its
-[Markdown sources](docs/src/introduction.md).
+MIT, developed by Busnes.app — see [LICENSE.txt](LICENSE.txt).
 
-Build and check it with `mdbook build docs` and `python3 docs/check-links.py`,
-then open `docs/book/index.html`. The documentation workflow also provides a
-downloadable `documentation-book` artifact.
+[![OctoCounts](https://api.octocounts.com/badge/Busnes-app/KyPost-for-Linux/branch/main)](https://octocounts.com/github/Busnes-app/KyPost-for-Linux/tree/main)

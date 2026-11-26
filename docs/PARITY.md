@@ -1,9 +1,7 @@
 # Android ↔ Linux parity matrix
 
-**Status: authoritative.** This file, not `Linux_QT_Client_Plan.md`, is the
-acceptance checklist for parity work. The plan document predates several
-locked decisions and still describes a dual-Qt/Ubuntu-Touch target; where the
-two disagree, this file and `AGENTS.md` win.
+**Status: authoritative.** This file and `AGENTS.md` are the acceptance
+checklist for parity work.
 
 The Android behaviour contract is `~/git/busnes.app/kypost-android/app/AGENTS.md`.
 The wire contract is the backend Go source

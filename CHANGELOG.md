@@ -28,6 +28,7 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- Documentation cleanup: added top-level heading and refreshed links in `README.md`, updated the manual and architecture guides, and removed stale internal planning and rename notes.
 - When the KyPost server holds an account's mail until email encryption setup is finished on the web (KyPost-Server #666), the mail section shows "Finish encryption setup" with "Open KyPost on the web" and "Check again" instead of a refresh error. Mail sync pauses rather than retrying, and resumes after a successful check or when the app returns to the foreground. The pairing, keys, cached mail and drafts are kept.
 
 ### Upgrade impact
