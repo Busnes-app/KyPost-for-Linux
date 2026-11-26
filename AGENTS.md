@@ -14,18 +14,11 @@ share one look, matching Android. It is the fourth sibling client after
 the Android app (`~/git/busnes.app/kypost-android`) and the SwiftUI macOS/iOS
 app (`~/git/busnes.app/kypost-for-Mac`); the relay is
 `~/git/busnes.app/kypost-server`. **This file and `docs/PARITY.md` describe
-what exists today.** `Linux_QT_Client_Plan.md` at the repo root is the
-original architectural design record and is worth reading for the
-reasoning, but it predates the Qt5 decisions, the parity matrix and the
-client-side OpenPGP reversal; where it disagrees with this file or
-`docs/PARITY.md`, it is the stale one. It says so itself in its own
-header — do not resolve a conflict in its favour.
+what exists today.**
 
 ## 2. Repo layout map
 
-Full detail (including per-subdirectory breakdowns) lives in
-`Linux_QT_Client_Plan.md`'s "Repo layout" section — this is a terse pointer
-map, not a duplicate:
+Terse repository layout map (see `docs/ARCHITECTURE.md` for component boundaries):
 
 ```
 core/       — libkypostcore: models/net/db/stores/domain/theme/version, QtCore+Network+Sql only
@@ -116,9 +109,6 @@ locally (commands in `fuzz/CMakeLists.txt`). A crash input stays in
 keeps being replayed after the fix.
 
 ## 4. Locked decisions (do not relitigate)
-
-Carried forward verbatim (in substance) from `Linux_QT_Client_Plan.md`'s own
-"Locked decisions carried over" section:
 
 - **Relay-only.** No IMAP/SMTP anywhere. The KyPost relay is the sole
   transport. Search used to be local-cache-only; since plan L6 (2026-10-11)

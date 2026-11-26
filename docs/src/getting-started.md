@@ -6,6 +6,6 @@ Use the signed Flatpak remote or the source-build instructions in the product re
 
 ## Pair
 
-On your KyPost server, use an everyday mailbox account to generate a native-device pairing link. Paste it into KyPost or open its `kypost://` link, confirm the server identity and check the Inbox. Test a controlled send and reply.
+On your KyPost server, use an everyday mailbox account to generate a native-device pairing link. Paste it into KyPost or open its `kypost://` link, confirm the server identity and check the inbox. Test a controlled send and reply.
 
-UnifiedPush is optional; polling remains available. Client-held PGP enrollment is a separate operation and requires the account's key/recovery material. Preserve the local profile and GnuPG keys when updating.
+UnifiedPush is optional; polling remains available. Client-held PGP enrollment is a separate operation and requires the account's key and recovery material. Preserve the local profile and GnuPG keys when updating.

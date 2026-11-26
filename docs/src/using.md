@@ -2,7 +2,7 @@
 
 ## Mail and contacts
 
-Browse folders and keyword tabs, compose mail, add attachments and use reply/forward actions. Contacts can be edited offline and their changes queued for sync. Verify the result on the server when reconnecting.
+Browse folders and keyword tabs, compose mail, add attachments, and use reply and forward actions. Contacts can be edited offline and their changes queued for sync. Verify the result on the server when reconnecting.
 
 ## OpenPGP
 
