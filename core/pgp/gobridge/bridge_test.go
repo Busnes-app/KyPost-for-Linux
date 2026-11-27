@@ -255,6 +255,10 @@ func TestKnownRevocationSurvivesOlderKeyRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, versions := range [][]byte{append(bytes.Clone(raw), revoked...), append(bytes.Clone(revoked), raw...)} {
+		plain, _, status := dispatch(2, fixture(t, "openpgp-v6/v6-pqc.msg.asc"), versions, nil, maxPlaintext)
+		if status != 0 || !bytes.Equal(plain, fixture(t, "openpgp-v6/message.txt")) {
+			t.Fatal("known revocation made historical mail unreadable")
+		}
 		_, meta, status := dispatch(3, fixture(t, "openpgp-v6/message.txt"), versions, fixture(t, "openpgp-v6/v6-pqc.sig.asc"), maxPlaintext)
 		var verdict map[string]any
 		_ = json.Unmarshal(meta, &verdict)
