@@ -395,10 +395,18 @@ func dispatch(op int, data, keys, extra []byte, limit int64) ([]byte, []byte, in
 		if limit < 1 || limit > maxPlaintext {
 			return nil, nil, 1
 		}
+		var (
+			ring *crypto.KeyRing
+			err  error
+		)
 		if len(keys) == 0 {
-			return nil, nil, 4
+			if op == 2 {
+				return nil, nil, 4
+			}
+			ring, err = crypto.NewKeyRing(nil)
+		} else {
+			ring, err = crypto.NewKeyRingFromBinary(keys)
 		}
-		ring, err := crypto.NewKeyRingFromBinary(keys)
 		if err != nil {
 			return nil, nil, 1
 		}

@@ -8,6 +8,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QMap>
+#include <QProcess>
 #include <QScopeGuard>
 #include <QTest>
 
@@ -64,6 +65,8 @@ class GoPgpBackendTest : public QObject
     void importsV2OnlyAfterCheckingTheWholeSnapshot();
     void singleKeyCannotSatisfyConvertedSnapshot();
     void mixedV4EnrollmentPreservesSigning();
+    void classicalRevocationInvalidatesRetainedMixedV4Key();
+    void unknownKeyV6DetachedSignaturePreservesCheckedResult();
 };
 static QByteArray fixture(const char* name)
 {
@@ -283,5 +286,123 @@ void GoPgpBackendTest::mixedV4EnrollmentPreservesSigning()
     QCOMPARE(OpenPgpDecryptor().decrypt(fixture("openpgp-v6/v4-pqc.msg.asc"), home).status,
              PgpDecryptStatus::Decrypted);
 }
+
+void GoPgpBackendTest::classicalRevocationInvalidatesRetainedMixedV4Key()
+{
+    BinaryStore store;
+    setGoPgpSecretStore(&store);
+    const auto clear = qScopeGuard([] { setGoPgpSecretStore(nullptr); });
+    QTemporaryDir signerDir, verifierDir;
+    QVERIFY(signerDir.isValid() && verifierDir.isValid());
+    const auto signerHome = GnupgFixture::emptyHome(signerDir);
+    const auto verifierHome = GnupgFixture::emptyHome(verifierDir);
+    const auto stopSigner = qScopeGuard([&] { GnupgFixture::killAgent(signerHome); });
+    const auto stopVerifier = qScopeGuard([&] { GnupgFixture::killAgent(verifierHome); });
+
+    const auto secretKey = fixture("openpgp-v6/v4-pqc.sec.asc");
+    const auto info = goKeyInfo(secretKey);
+    const auto fpr = info.value("fingerprint").toString();
+    const auto publicKey = info.value("publicKey").toString().toUtf8();
+    QVERIFY(info.value("modern").toBool());
+    QCOMPARE(importPrivateKey(SecureBytes(secretKey), fpr, signerHome).status, PgpImportStatus::Imported);
+    QCOMPARE(importPublicKey(publicKey, fpr, verifierHome).status, PgpImportStatus::Imported);
+
+    auto runGpg = [](const QString& home, const QStringList& args, const QByteArray& stdinData = {}) {
+        QProcess gpg;
+        gpg.start(QStringLiteral("gpg"),
+                  QStringList{QStringLiteral("--homedir"), home, QStringLiteral("--batch"),
+                              QStringLiteral("--yes"), QStringLiteral("--no-tty")} + args);
+        if (!gpg.waitForStarted(10000))
+            return QPair<int, QByteArray>{-1, {}};
+        if (!stdinData.isEmpty())
+            gpg.write(stdinData);
+        gpg.closeWriteChannel();
+        if (!gpg.waitForFinished(15000))
+            return QPair<int, QByteArray>{-2, {}};
+        return QPair<int, QByteArray>{gpg.exitCode(), gpg.readAllStandardOutput()};
+    };
+
+    const QByteArray body("revocation regression payload");
+    const auto signedResult = runGpg(
+        signerHome,
+        {QStringLiteral("--armor"), QStringLiteral("--detach-sign"), QStringLiteral("-u"), fpr}, body);
+    QCOMPARE(signedResult.first, 0);
+    const QByteArray signature = signedResult.second;
+    QVERIFY(!signature.isEmpty());
+
+    const auto before = OpenPgpDecryptor().verifyDetached(body, signature, verifierHome);
+    QCOMPARE(before.status, PgpVerifyStatus::Checked);
+    QVERIFY(before.signature.present);
+    QVERIFY(before.signature.mathematicallyValid);
+    QVERIFY(!before.signature.keyUnavailable);
+
+    // Revoke the primary key in GnuPG and export its classical-only certificate
+    // (GnuPG drops the PQC subkey, so goKeyInfo().modern is false).
+    QProcess genRevoke;
+    genRevoke.start(QStringLiteral("gpg"),
+                    {QStringLiteral("--homedir"), signerHome, QStringLiteral("--yes"),
+                     QStringLiteral("--no-tty"), QStringLiteral("--command-fd"), QStringLiteral("0"),
+                     QStringLiteral("--status-fd"), QStringLiteral("2"), QStringLiteral("--pinentry-mode"),
+                     QStringLiteral("loopback"), QStringLiteral("--passphrase"), QString(),
+                     QStringLiteral("--gen-revoke"), fpr});
+    QVERIFY(genRevoke.waitForStarted(10000));
+    genRevoke.write("y\n1\n\ny\n");
+    genRevoke.closeWriteChannel();
+    QVERIFY(genRevoke.waitForFinished(15000));
+    QCOMPARE(genRevoke.exitCode(), 0);
+    const QByteArray revokeCert = genRevoke.readAllStandardOutput();
+    QVERIFY(!revokeCert.isEmpty());
+    QCOMPARE(runGpg(signerHome, {QStringLiteral("--import")}, revokeCert).first, 0);
+    const auto exportedRevoked = runGpg(signerHome, {QStringLiteral("--armor"), QStringLiteral("--export"), fpr});
+    QCOMPARE(exportedRevoked.first, 0);
+    const QByteArray classicalRevoked = exportedRevoked.second;
+    const auto revokedInfo = goKeyInfo(classicalRevoked);
+    QVERIFY(!revokedInfo.value("modern").toBool());
+    QVERIFY(revokedInfo.value("revoked").toBool());
+
+    const auto refresh = importPublicKey(classicalRevoked, fpr, verifierHome);
+    QVERIFY(refresh.status == PgpImportStatus::Imported || refresh.status == PgpImportStatus::Unchanged);
+
+    const auto after = OpenPgpDecryptor().verifyDetached(body, signature, verifierHome);
+    QCOMPARE(after.status, PgpVerifyStatus::Checked);
+    QVERIFY(after.signature.present);
+    QVERIFY(!after.signature.keyUnavailable);
+    QVERIFY(!after.signature.mathematicallyValid);
+}
+
+void GoPgpBackendTest::unknownKeyV6DetachedSignaturePreservesCheckedResult()
+{
+    BinaryStore store;
+    setGoPgpSecretStore(&store);
+    const auto clear = qScopeGuard([] { setGoPgpSecretStore(nullptr); });
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto home = GnupgFixture::emptyHome(directory);
+    const auto stopAgent = qScopeGuard([&] { GnupgFixture::killAgent(home); });
+
+    // Unknown-key v6 detached signature must stay Checked + keyUnavailable even
+    // when GnuPG cannot parse v6 signatures (both with an empty Go store and
+    // with an unrelated retained key).
+    const auto body = fixture("openpgp-v6/message.txt");
+    const auto v6Sig = fixture("openpgp-v6/v6-pqc.sig.asc");
+    QVERIFY(!body.isEmpty() && !v6Sig.isEmpty());
+
+    const auto emptyStoreResult = OpenPgpDecryptor().verifyDetached(body, v6Sig, home);
+    QCOMPARE(emptyStoreResult.status, PgpVerifyStatus::Checked);
+    QVERIFY(emptyStoreResult.signature.present);
+    QVERIFY(emptyStoreResult.signature.keyUnavailable);
+    QVERIFY(!emptyStoreResult.signature.mathematicallyValid);
+
+    const auto unrelated = fixture("openpgp-v6/v4-pqc.sec.asc");
+    const auto unrelatedFpr = goKeyInfo(unrelated).value("fingerprint").toString();
+    QVERIFY(storeGoPgpKey(unrelated, unrelatedFpr, home));
+
+    const auto populatedStoreResult = OpenPgpDecryptor().verifyDetached(body, v6Sig, home);
+    QCOMPARE(populatedStoreResult.status, PgpVerifyStatus::Checked);
+    QVERIFY(populatedStoreResult.signature.present);
+    QVERIFY(populatedStoreResult.signature.keyUnavailable);
+    QVERIFY(!populatedStoreResult.signature.mathematicallyValid);
+}
+
 QTEST_GUILESS_MAIN(GoPgpBackendTest)
 #include "GoPgpBackendTest.moc"

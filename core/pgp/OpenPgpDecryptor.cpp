@@ -315,20 +315,24 @@ PgpVerifyResult OpenPgpDecryptor::verifyDetached(const QByteArray& signedPart, c
     }
     const auto modern = goPgpVerify(signedPart, signature, homeDirectory, m_maxPlaintextBytes);
     if (modern.status == PgpVerifyStatus::Checked && !modern.signature.keyUnavailable) return modern;
+    auto fallbackOr = [&](PgpVerifyResult fallback) {
+        return modern.status == PgpVerifyStatus::Checked ? modern : fallback;
+    };
     ensureGpgmeInitialised();
     ContextHandle context;
     if (gpgme_new(&context.handle) || !context.handle)
-        return result;
+        return fallbackOr(result);
     const QByteArray home = homeDirectory.toUtf8();
     if (!home.isEmpty() && gpgme_ctx_set_engine_info(context.handle, GPGME_PROTOCOL_OpenPGP, nullptr, home.constData()))
-        return result;
+        return fallbackOr(result);
     DataHandle data, detached;
     if (gpgme_data_new_from_mem(&data.handle, signedPart.constData(), size_t(signedPart.size()), 0)
         || gpgme_data_new_from_mem(&detached.handle, signature.constData(), size_t(signature.size()), 0))
-        return result;
+        return fallbackOr(result);
     const auto error = gpgme_op_verify(context.handle, detached.handle, data.handle, nullptr);
     result.signature = signatureFromContext(context.handle);
     if (error || !result.signature.present || result.signature.keyUnavailable) {
+        if (modern.status == PgpVerifyStatus::Checked) return modern;
         result.status = error || !result.signature.present ? PgpVerifyStatus::Malformed : PgpVerifyStatus::Checked;
         return result;
     }

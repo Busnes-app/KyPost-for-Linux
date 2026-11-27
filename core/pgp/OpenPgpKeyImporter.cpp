@@ -674,7 +674,7 @@ PgpImportResult importPublicKey(const QByteArray& armoredPublicKey, const QStrin
         return out;
     }
 
-    if (modern && !storeGoPgpKey(armoredPublicKey, observed, homeDirectory)) {
+    if ((modern || goPgpHasKey(observed, homeDirectory)) && !storeGoPgpKey(armoredPublicKey, observed, homeDirectory)) {
         out.status = PgpImportStatus::Rejected;
         out.detail = QStringLiteral("could not retain the complete OpenPGP certificate");
         return out;
@@ -831,7 +831,7 @@ PgpImportResult importPrivateKey(const SecureBytes& armoredPrivateKey, const QSt
         out.detail = detail;
         return out;
     }
-    if (modern && !storeGoPgpKey(armoredPrivateKey.bytes(), observed, homeDirectory)) {
+    if ((modern || goPgpHasKey(observed, homeDirectory)) && !storeGoPgpKey(armoredPrivateKey.bytes(), observed, homeDirectory)) {
         out.status = PgpImportStatus::Rejected;
         out.detail = QStringLiteral("could not retain the complete OpenPGP certificate");
         return out;

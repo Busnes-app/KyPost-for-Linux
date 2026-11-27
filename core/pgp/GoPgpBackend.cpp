@@ -209,3 +209,24 @@ bool goPgpOwnKey(const QString& fingerprint, const QString& home)
     }
     return false;
 }
+bool goPgpHasKey(const QString& fingerprint, const QString& home)
+{
+    if (!secretStore)
+        return false;
+    const QString target = normalizedFingerprint(fingerprint.toLatin1());
+    if (target.isEmpty())
+        return false;
+    const auto index = keyIndex(home);
+    if (!index)
+        return true; // Fail closed so a corrupted index cannot silently skip revocation updates.
+    for (const auto& id : *index)
+    {
+        auto held = secretStore->readBytes(prefix(home) + id);
+        if (held.status != SecureStore::ReadStatus::Found)
+            return true;
+        const auto info = goKeyInfo(held.value.bytes());
+        if (info.value(QStringLiteral("fingerprint")).toString() == target)
+            return true;
+    }
+    return false;
+}

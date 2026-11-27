@@ -28,3 +28,4 @@ PgpDecryptResult goPgpDecrypt(const QByteArray& ciphertext, const QString& home,
 PgpVerifyResult goPgpVerify(const QByteArray& data, const QByteArray& signature, const QString& home,
                             qint64 limit);
 bool goPgpOwnKey(const QString& fingerprint, const QString& home = {});
+bool goPgpHasKey(const QString& fingerprint, const QString& home = {});
