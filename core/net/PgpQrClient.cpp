@@ -77,10 +77,10 @@ PgpQrKeyResult PgpQrClient::fetchKey(const QUrl& qrUrl, const HttpClient::Redire
 
 namespace {
 
-// The code carries v4 only: 40 hex digits, uppercased. Empty for anything else.
-QString v4Fingerprint(const QString& text)
+// Full v4 or v6 primary fingerprints; reject non-ASCII before converting.
+QString qrFingerprint(const QString& text)
 {
-    return text.size() == 40 ? normalizedFingerprint(text.toLatin1()) : QString();
+    return QString::fromLatin1(text.toLatin1()) == text ? normalizedFingerprint(text.toLatin1()) : QString();
 }
 
 } // namespace
@@ -88,7 +88,7 @@ QString v4Fingerprint(const QString& text)
 QString pgpQrPayload(const QString& pickupUrl, const QString& localFingerprint)
 {
     const QString url = QUrl(pickupUrl).adjusted(QUrl::RemoveFragment).toString(QUrl::FullyEncoded);
-    const QString fingerprint = v4Fingerprint(localFingerprint);
+    const QString fingerprint = qrFingerprint(localFingerprint);
     return fingerprint.isEmpty() ? url : url + QStringLiteral("#fp=") + fingerprint;
 }
 
@@ -100,6 +100,6 @@ PgpQrCode parsePgpQrCode(const QString& text)
     code.keyUrl = url.adjusted(QUrl::RemoveFragment);
     code.hasFingerprint = fragment.startsWith(QStringLiteral("fp="));
     if (code.hasFingerprint)
-        code.fingerprint = v4Fingerprint(fragment.mid(3));
+        code.fingerprint = qrFingerprint(fragment.mid(3));
     return code;
 }
