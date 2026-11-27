@@ -94,6 +94,7 @@ void PgpDeviceEnrollmentClientTest::validatesDualActiveMetadata()
         FakeRelayServer malformed(httpResponse(200, "OK", QJsonDocument(delivery(6, 7, changed)).toJson()));
         const auto rejected = PgpDeviceEnrollmentClient(http).fetchEnvelope(urlOf(malformed), {});
         QVERIFY(!rejected.keyring.has_value());
+        QCOMPARE(rejected.status, DeviceEnrollmentCallStatus::Failed);
     }
 }
 

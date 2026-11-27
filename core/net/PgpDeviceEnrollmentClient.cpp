@@ -55,7 +55,7 @@ std::optional<PgpKeyringSnapshot> keyringOf(const QJsonObject& response)
         }
     }
     out.materialGeneration = generationOf(response.value(QStringLiteral("materialGeneration")));
-    if (ring.isEmpty() || out.activeFingerprint.isEmpty() || out.materialGeneration < 0
+    if (ring.isEmpty() || out.activeFingerprint.isEmpty() || out.materialGeneration < 1
         || generationOf(ring.value(QStringLiteral("materialGeneration"))) != out.materialGeneration)
         return std::nullopt;
     const auto inventory = ring.value(QStringLiteral("keyFingerprints"));
@@ -97,6 +97,12 @@ DeviceEnrollmentCallResult PgpDeviceEnrollmentClient::fetchEnvelope(
     out.envelope = decoded->value(QStringLiteral("envelope")).toString().toUtf8();
     out.version = decoded->value(QStringLiteral("version")).toInt();
     out.keyring = keyringOf(*decoded);
+    if (out.version == 6 && generationOf(decoded->value(QStringLiteral("materialGeneration"))) > 0
+        && !out.keyring.has_value()) {
+        out.status = DeviceEnrollmentCallStatus::Failed;
+        out.detail = QStringLiteral("invalid converted device delivery snapshot");
+        return out;
+    }
     if (out.envelope.isEmpty()) {
         out.status = DeviceEnrollmentCallStatus::Failed;
         out.detail = QStringLiteral("empty device envelope");

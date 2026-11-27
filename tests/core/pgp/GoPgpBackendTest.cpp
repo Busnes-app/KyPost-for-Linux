@@ -126,6 +126,11 @@ void GoPgpBackendTest::importsV2OnlyAfterCheckingTheWholeSnapshot()
         {"active", QJsonObject{{"v6", fpr}}},
         {"keyFingerprints", info.value("fingerprints")},
         {"keys", QJsonArray{QJsonObject{{"fingerprint", fpr}, {"privateKey", QString::fromUtf8(key)}}}}};
+    // Positive generation requires the complete ring, even if one valid
+    // private key is delivered instead. It must not reach durable storage.
+    QCOMPARE(importDeviceDelivery(6, SecureBytes(key), expected, "ring-home"),
+             PgpKeyringImportStatus::Rejected);
+    QVERIFY(store.binary.isEmpty());
     auto wrong = expected;
     wrong.materialGeneration++;
     QCOMPARE(importDeviceDelivery(6, SecureBytes(QJsonDocument(ring).toJson()), wrong, "ring-home"),

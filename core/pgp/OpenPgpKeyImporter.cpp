@@ -924,9 +924,13 @@ PgpKeyringImportStatus importPrivateKeyring(const SecureBytes& keyringJson,
 PgpKeyringImportStatus importDeviceDelivery(int version, const SecureBytes& plaintext,
     const PgpKeyringSnapshot& expected, const QString& homeDirectory, const std::function<bool()>& stillCurrent)
 {
-    if (version == 5 || (version == 6
-        && trimmed(std::string_view(plaintext.bytes().constData(), plaintext.bytes().size())).starts_with('{')))
+    // The authenticated generation selects complete-ring import, never the
+    // plaintext's apparent shape. Converted accounts cannot acknowledge one key.
+    if (version == 5 || (version == 6 && expected.materialGeneration > 0))
         return importPrivateKeyring(plaintext, expected, homeDirectory, stillCurrent);
+    if (version == 6 && (expected.materialGeneration != 0 || !expected.keyFingerprints.isEmpty()
+        || !expected.activeV4.isEmpty() || !expected.activeV6.isEmpty()))
+        return PgpKeyringImportStatus::Rejected;
     if (version != 4 && version != 6)
         return PgpKeyringImportStatus::Rejected;
     switch (importPrivateKey(plaintext, expected.activeFingerprint, homeDirectory).status) {
