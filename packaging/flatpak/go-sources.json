@@ -86,7 +86,7 @@
   {
     "type": "file",
     "url": "https://proxy.golang.org/github.com/bwesterb/go-ristretto/@v/v1.2.3.info",
-    "sha256": "333b96a204f588b7a3e80f0ef1e192a4b689d2010ecf45f007b6672cfc0967c3",
+    "sha256": "539880dcc000bfcd64836b73f3027d49f73f72a8d0bf3e33ece5f5aa4891c886",
     "dest": ".go-mod-cache/cache/download/github.com/bwesterb/go-ristretto/@v",
     "dest-filename": "v1.2.3.info"
   },
