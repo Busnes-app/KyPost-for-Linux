@@ -52,8 +52,11 @@ void PgpQrClientTest::qrPayloadCarriesALocalFingerprintInTheFragment()
 void PgpQrClientTest::qrPayloadOmitsAFingerprintItCannotCarry()
 {
     QCOMPARE(pgpQrPayload(kPickup, QString()), kPickup);
-    // Invalid lengths remain refused.
-    QCOMPARE(pgpQrPayload(kPickup, kFpr + QStringLiteral("0123456789ABCDEF0123456789AB")), kPickup);
+    // Invalid lengths (anything other than 40-hex v4 or 64-hex v6) remain refused.
+    QCOMPARE(pgpQrPayload(kPickup, QString(39, QLatin1Char('A'))), kPickup);
+    QCOMPARE(pgpQrPayload(kPickup, QString(41, QLatin1Char('A'))), kPickup);
+    QCOMPARE(pgpQrPayload(kPickup, QString(63, QLatin1Char('A'))), kPickup);
+    QCOMPARE(pgpQrPayload(kPickup, QString(65, QLatin1Char('A'))), kPickup);
 }
 
 // The pickup URL is the server's. A fragment it chose would ride into the QR
