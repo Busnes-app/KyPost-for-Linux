@@ -120,9 +120,10 @@ Issued issue(const Pkey& key, const char* commonName, const Issued* issuer, bool
     X509_gmtime_adj(X509_getm_notBefore(cert.get()), expired ? -172800 : -3600);
     X509_gmtime_adj(X509_getm_notAfter(cert.get()), expired ? -86400 : 172800);
     X509_set_pubkey(cert.get(), key.get());
-    X509_NAME* subject = X509_get_subject_name(cert.get());
-    X509_NAME_add_entry_by_txt(subject, "CN", MBSTRING_ASC, reinterpret_cast<const unsigned char*>(commonName), -1,
+    const std::unique_ptr<X509_NAME, decltype(&X509_NAME_free)> subject(X509_NAME_new(), X509_NAME_free);
+    X509_NAME_add_entry_by_txt(subject.get(), "CN", MBSTRING_ASC, reinterpret_cast<const unsigned char*>(commonName), -1,
                                -1, 0);
+    X509_set_subject_name(cert.get(), subject.get());
     X509* signerCert = issuer ? issuer->cert.get() : cert.get();
     X509_set_issuer_name(cert.get(), X509_get_subject_name(signerCert));
     X509V3_CTX ctx;
@@ -342,6 +343,13 @@ void TlsKeyPolicyTest::requests()
 
     const Fixture& fixture = m_fixtures.at(name);
     inheritWeakDefaults(fixture.trust);
+    if (!dh.isEmpty()) {
+        // Do not advertise named FFDHE groups: OpenSSL 4 would negotiate one
+        // instead of the server's explicit DH parameters under test.
+        auto defaults = QSslConfiguration::defaultConfiguration();
+        defaults.setBackendConfigurationOption(QByteArrayLiteral("Groups"), QByteArrayLiteral("P-256"));
+        QSslConfiguration::setDefaultConfiguration(defaults);
+    }
 
     TlsServer server;
     server.tls = serverConfig(fixture, QSsl::SslProtocol(protocol), !dh.isEmpty());
@@ -362,6 +370,9 @@ void TlsKeyPolicyTest::requests()
         QSignalSpy finished(reply.get(), &QNetworkReply::finished);
         QVERIFY(finished.wait(7000));
         QVERIFY2(reply->error() == QNetworkReply::NoError, qPrintable(reply->errorString()));
+        if (!dh.isEmpty())
+            QCOMPARE(reply->sslConfiguration().ephemeralServerKey().length(),
+                     dh == QLatin1String("dh1024") ? 1024 : 2048);
         QVERIFY(server.received.contains("fixture-control"));
         server.received.clear();
     }

@@ -607,3 +607,8 @@ if(EXISTS "/.flatpak-info")
     "QTWEBENGINE_LOCALES_PATH=/app/translations/qtwebengine_locales"
     "QTWEBENGINE_DISABLE_SANDBOX=1")
 endif()
+
+kypost_add_test(GoPgpBackendTest core/pgp/GoPgpBackendTest.cpp)
+target_compile_definitions(GoPgpBackendTest PRIVATE KYPOST_GO_TESTDATA="${CMAKE_SOURCE_DIR}/core/pgp/gobridge/testdata")
+add_test(NAME GoCryptoTests COMMAND ${KYPOST_GO} test -count=1 ./...)
+set_tests_properties(GoCryptoTests PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/core/pgp/gobridge")

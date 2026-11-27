@@ -43,11 +43,24 @@ std::optional<PgpKeyringSnapshot> keyringOf(const QJsonObject& response)
     const QJsonObject ring = response.value(QStringLiteral("keyring")).toObject();
     PgpKeyringSnapshot out;
     out.activeFingerprint = normalizedFingerprint(response.value(QStringLiteral("fingerprint")).toString().toUtf8());
+    const auto activeValue = ring.value(QStringLiteral("active"));
+    if (!activeValue.isUndefined()) {
+        if (!activeValue.isObject() || activeValue.toObject().isEmpty()) return std::nullopt;
+        const auto active = activeValue.toObject();
+        for (auto it = active.begin(); it != active.end(); ++it) {
+            const auto fingerprint = normalizedFingerprint(it.value().toString().toUtf8());
+            if (it.key() == QStringLiteral("v4") && fingerprint.size() == 40) out.activeV4 = fingerprint;
+            else if (it.key() == QStringLiteral("v6") && fingerprint.size() == 64) out.activeV6 = fingerprint;
+            else return std::nullopt;
+        }
+    }
     out.materialGeneration = generationOf(response.value(QStringLiteral("materialGeneration")));
-    if (ring.isEmpty() || out.activeFingerprint.isEmpty() || out.materialGeneration < 0
+    if (ring.isEmpty() || out.activeFingerprint.isEmpty() || out.materialGeneration < 1
         || generationOf(ring.value(QStringLiteral("materialGeneration"))) != out.materialGeneration)
         return std::nullopt;
-    for (const QJsonValue& value : ring.value(QStringLiteral("keyFingerprints")).toArray())
+    const auto inventory = ring.value(QStringLiteral("keyFingerprints"));
+    if (!inventory.isArray() || inventory.toArray().isEmpty() || inventory.toArray().size() > 256) return std::nullopt;
+    for (const QJsonValue& value : inventory.toArray())
         out.keyFingerprints.append(value.toString());
     return out;
 }
@@ -61,7 +74,8 @@ DeviceEnrollmentCallResult PgpDeviceEnrollmentClient::publishKey(
     return statusOf(m_httpClient.post(
         joinUrlPath(serverBaseUrl, QStringLiteral("api/pgp/device/enrollment-key")), {},
         QJsonObject{{QStringLiteral("publicKey"), QString::fromLatin1(publicKeyBase64)},
-                    {QStringLiteral("envelopeVersions"), QJsonArray{4, 5}}},
+                    {QStringLiteral("envelopeVersions"), publicKeyBase64.size() == 1624 ? QJsonArray{6} : QJsonArray{4, 5}},
+                    {QStringLiteral("openpgp"), QJsonArray{QStringLiteral("v4"), QStringLiteral("v6"), QStringLiteral("rfc9980")}}},
         auth.headerItems()));
 }
 
@@ -83,6 +97,12 @@ DeviceEnrollmentCallResult PgpDeviceEnrollmentClient::fetchEnvelope(
     out.envelope = decoded->value(QStringLiteral("envelope")).toString().toUtf8();
     out.version = decoded->value(QStringLiteral("version")).toInt();
     out.keyring = keyringOf(*decoded);
+    if (out.version == 6 && generationOf(decoded->value(QStringLiteral("materialGeneration"))) > 0
+        && !out.keyring.has_value()) {
+        out.status = DeviceEnrollmentCallStatus::Failed;
+        out.detail = QStringLiteral("invalid converted device delivery snapshot");
+        return out;
+    }
     if (out.envelope.isEmpty()) {
         out.status = DeviceEnrollmentCallStatus::Failed;
         out.detail = QStringLiteral("empty device envelope");

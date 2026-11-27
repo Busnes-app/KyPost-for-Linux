@@ -1,4 +1,5 @@
 #include "pgp/OpenPgpEncryptor.h"
+#include "pgp/GoPgpBackend.h"
 #include "pgp/PgpKeyStrength.h"
 
 #include "pgp/GpgmeInit.h"
@@ -257,6 +258,7 @@ PgpEncryptResult signAndEncrypt(const QByteArray& plaintext, const QString& sign
 
 QString ownKeyFingerprint(const QString& address, const QString& homeDirectory)
 {
+    if (goPgpOwnKey(address, homeDirectory)) return address;
     ensureGpgmeInitialised();
 
     ContextHandle context;

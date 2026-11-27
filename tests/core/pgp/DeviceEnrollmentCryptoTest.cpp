@@ -1,5 +1,6 @@
 #include "pgp/DeviceEnrollmentCrypto.h"
 #include "pgp/OpenPgpDecryptor.h"
+#include "pgp/GoPgpBackend.h"
 #include "pgp/OpenPgpKeyImporter.h"
 #include "GnupgFixture.h"
 
@@ -24,6 +25,7 @@ class DeviceEnrollmentCryptoTest : public QObject
 
 private slots:
     void initTestCase();
+    void matchesXWingAndSasV2Vectors();
     void refusesRetiredLegacyDeliveries();
     void ringInfoLimitsCountUtf8Bytes();
     void matchesTheBrowserVerificationVector();
@@ -177,7 +179,7 @@ void DeviceEnrollmentCryptoTest::formatsTheCodeForReading()
 void DeviceEnrollmentCryptoTest::generatesAValidEphemeralPublicPoint()
 {
     DeviceEnrollmentCrypto crypto;
-    QVERIFY(crypto.generate());
+    QVERIFY(crypto.generateLegacy());
     const QByteArray point = QByteArray::fromBase64(crypto.publicKeyBase64());
     QCOMPARE(point.size(), 65);
     QCOMPARE(point.front(), '\x04');
@@ -198,7 +200,7 @@ void DeviceEnrollmentCryptoTest::bindsTheEnvelopeToDeviceAndFingerprint()
 void DeviceEnrollmentCryptoTest::rejectsMalformedEnvelopes()
 {
     DeviceEnrollmentCrypto crypto;
-    QVERIFY(crypto.generate());
+    QVERIFY(crypto.generateLegacy());
     QVERIFY(crypto.openDelivery("{}", 4, QStringLiteral("device-123"),
                                 QStringLiteral("AABBCCDD")).isEmpty());
 }
@@ -303,9 +305,9 @@ void DeviceEnrollmentCryptoTest::rejectsHpkeFramingChanges()
     bad = envelope;
     bad.insert("enc", QString::fromLatin1(decoded(envelope, "enc").mid(1).prepend('\x02').toBase64()));
     QVERIFY(!opens(bad)); // compressed point marker
-    // A ring envelope is capped at 128 KiB.
+    // A serialized ring envelope is capped at 512 KiB.
     QByteArray json = QJsonDocument(envelope).toJson(QJsonDocument::Compact);
-    json.append(QByteArray(128 * 1024 - json.size(), ' '));
+    json.append(QByteArray(512 * 1024 - json.size(), ' '));
     QVERIFY(!crypto.openDelivery(json, 5, id, fingerprint).isEmpty());
     json.append(' ');
     QVERIFY(crypto.openDelivery(json, 5, id, fingerprint).isEmpty());
@@ -354,6 +356,37 @@ void DeviceEnrollmentCryptoTest::importsEveryDeliveryVersion()
         stale.activeFingerprint = version % 2 == 1 ? fingerprint : QString(40, QLatin1Char('A'));
         QCOMPARE(importDeviceDelivery(version, plaintext, stale, home), PgpKeyringImportStatus::Rejected);
     }
+}
+
+
+void DeviceEnrollmentCryptoTest::matchesXWingAndSasV2Vectors()
+{
+    QFile file(QFINDTESTDATA("../../../core/pgp/gobridge/testdata/device-envelope-xwing.json"));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const auto vector = QJsonDocument::fromJson(file.readAll()).object();
+    const auto key = decoded(vector, "publicKey");
+    const auto id = vector.value("deviceId").toString();
+    const auto code = vector.value("sas").toString();
+    QCOMPARE(deviceEnrollmentCode(key, id, 14000000), code);
+    for (int i = 0; i < key.size(); ++i) {
+        QByteArray flipped(key.constData(), key.size());
+        flipped[i] = char(flipped.at(i) ^ 1);
+        QVERIFY2(deviceEnrollmentCode(flipped, id, 14000000) != code, qPrintable(QString::number(i)));
+    }
+    DeviceEnrollmentCrypto crypto;
+    QVERIFY(crypto.generate());
+    QCOMPARE(QByteArray::fromBase64(crypto.publicKeyBase64()).size(), 1216);
+    crypto.clear();
+    crypto.m_seed = SecureBytes(decoded(vector, "seed"));
+    crypto.m_publicKey = key;
+    const auto envelope = QJsonDocument(vector.value("envelope").toObject()).toJson(QJsonDocument::Compact);
+    const auto fp = vector.value("fingerprint").toString();
+    QCOMPARE(crypto.openDelivery(envelope, 6, id, fp).bytes(), vector.value("plaintext").toString().toUtf8());
+    QVERIFY(crypto.openDelivery(envelope, 5, id, fp).isEmpty());
+    QVERIFY(crypto.openDelivery(envelope, 6, id + "x", fp).isEmpty());
+    QVERIFY(crypto.openDelivery(envelope, 6, id, QString(40, QLatin1Char('A'))).isEmpty());
+    crypto.clear();
+    QVERIFY(!crypto.isReady());
 }
 
 QTEST_GUILESS_MAIN(DeviceEnrollmentCryptoTest)

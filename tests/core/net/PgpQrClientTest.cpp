@@ -43,14 +43,20 @@ const QString kFpr = QStringLiteral("0123456789ABCDEF0123456789ABCDEF01234567");
 void PgpQrClientTest::qrPayloadCarriesALocalFingerprintInTheFragment()
 {
     QCOMPARE(pgpQrPayload(kPickup, kFpr), kPickup + QStringLiteral("#fp=") + kFpr);
+    const QString v6(64, QLatin1Char('B'));
+    QCOMPARE(pgpQrPayload(kPickup, v6.toLower()), kPickup + QStringLiteral("#fp=") + v6);
+    QCOMPARE(parsePgpQrCode(pgpQrPayload(kPickup, v6)).fingerprint, v6);
     QCOMPARE(pgpQrPayload(kPickup, kFpr.toLower()), kPickup + QStringLiteral("#fp=") + kFpr);
 }
 
 void PgpQrClientTest::qrPayloadOmitsAFingerprintItCannotCarry()
 {
     QCOMPARE(pgpQrPayload(kPickup, QString()), kPickup);
-    // A v5/v6 fingerprint is 64 hex digits; the code carries v4 only.
-    QCOMPARE(pgpQrPayload(kPickup, kFpr + QStringLiteral("0123456789ABCDEF0123456789AB")), kPickup);
+    // Invalid lengths (anything other than 40-hex v4 or 64-hex v6) remain refused.
+    QCOMPARE(pgpQrPayload(kPickup, QString(39, QLatin1Char('A'))), kPickup);
+    QCOMPARE(pgpQrPayload(kPickup, QString(41, QLatin1Char('A'))), kPickup);
+    QCOMPARE(pgpQrPayload(kPickup, QString(63, QLatin1Char('A'))), kPickup);
+    QCOMPARE(pgpQrPayload(kPickup, QString(65, QLatin1Char('A'))), kPickup);
 }
 
 // The pickup URL is the server's. A fragment it chose would ride into the QR

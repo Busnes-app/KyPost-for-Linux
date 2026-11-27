@@ -6,7 +6,7 @@ Browse folders and keyword tabs, compose mail, add attachments, and use reply an
 
 ## OpenPGP
 
-Enrolled keys live in your own GnuPG keyring and use `gpg-agent`; hardware tokens retain their usual behavior. Locally encrypted sends require usable keys for all recipients and do not silently downgrade to plaintext. Preserve retired keys needed for older messages.
+Classical keys use your GnuPG keyring and `gpg-agent`; hardware tokens retain their usual behavior. OpenPGP v6 and post-quantum keys use binary entries in the OS secret store. Keep both keyrings when updating or moving the profile. Enrollment shows a code to compare in webmail and only succeeds after the whole keyring is saved and read back. Locally encrypted sends require usable keys for all recipients and do not silently downgrade to plaintext. Preserve retired keys needed for older messages.
 
 ## Notifications
 

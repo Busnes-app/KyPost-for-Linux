@@ -17,12 +17,12 @@ Commands and unlinked file paths below are relative to the repository root.
   the camera. The code carries the fingerprint of the key this device holds, and a scan saves a
   key as verified only if it matches; a device holding no private key shows a code that cannot be
   verified in person. Webmail can seal the account key to a
-  temporary P-256 device key as an RFC 9180 HPKE envelope (v4/v5); KyPost refuses the
-  retired v2/v3 formats, so enrollment needs a relay that offers v4/v5. KyPost
-  imports it into the user's GnuPG keyring and clears the
-  transient key bytes. Once a key is enrolled, end-to-end encrypted mail is **decrypted and
-  signed on this device** through the user's own `gpg-agent` (GPGME): KyPost never sees the
-  OpenPGP passphrase, so hardware tokens and smartcards work unchanged. Sending signs and
+  temporary X-Wing device key as a v6 HPKE envelope (ML-KEM-768 + X25519); KyPost refuses the
+  retired v2/v3 formats, and retains explicit P-256 v4/v5 compatibility. KyPost
+  validates the complete v1/v2 ring, saves modern keys as binary OS Secret Service entries (classical keys retain GnuPG), and clears the
+  transient key bytes. Classical v4 mail is decrypted and signed through the user's
+  `gpg-agent` (GPGME), retaining pinentry and hardware-token behavior. Modern mail
+  is decrypted and verified through gopenpgp; v6 sending is not enabled by this change. Sending signs and
   encrypts locally, gives each blind recipient their own ciphertext, keeps the real subject
   inside the ciphertext, and refuses to send at all if any recipient has no usable key — there
   is no silent downgrade to plaintext. Mail this device holds no key for is still explained and
@@ -59,3 +59,8 @@ Commands and unlinked file paths below are relative to the repository root.
   follows your system font size.
 - **Device pairing** — paste a link, or use a `kypost://` deep link.
 - **Localized** — the code wraps every user-facing string for translation (`po/`).
+
+OpenPGP v6/RFC 9980 reading uses the source-built gopenpgp backend. The shared
+fixtures cover v6 PKESK/SEIPDv2, v4 ID 35 encryption and ML-DSA-65+Ed25519
+verification. New v6 generation and sending remain a later phase. QR checks
+carry all 40 or 64 fingerprint digits, and SAS v2 covers all 1216 X-Wing key bytes.

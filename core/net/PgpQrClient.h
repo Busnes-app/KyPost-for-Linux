@@ -75,7 +75,7 @@ private:
 };
 
 // The in-person check rides in the QR as "#fp=<FPR>": the showing device's
-// v4 primary fingerprint, 40 uppercase hex. A fragment never goes on the wire.
+// v4/v6 primary fingerprint, 40/64 uppercase hex. A fragment never goes on the wire.
 //
 // Builds the payload. Any fragment the server put in pickupUrl is dropped, and
 // fp is added only for a v4 fingerprint this device computed itself.

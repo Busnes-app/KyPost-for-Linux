@@ -1,0 +1,3 @@
+* -text
+# These MIME fixtures intentionally preserve RFC 5322 CRLF octets.
+*.eml whitespace=cr-at-eol

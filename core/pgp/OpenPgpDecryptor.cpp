@@ -1,5 +1,6 @@
 #include "pgp/OpenPgpDecryptor.h"
 #include "pgp/PgpKeyStrength.h"
+#include "pgp/GoPgpBackend.h"
 
 #include "pgp/GpgmeInit.h"
 
@@ -212,8 +213,7 @@ OpenPgpDecryptor::OpenPgpDecryptor(qint64 maxPlaintextBytes) : m_maxPlaintextByt
 
 bool OpenPgpDecryptor::engineAvailable()
 {
-    ensureGpgmeInitialised();
-    return gpgme_err_code(gpgme_engine_check_version(GPGME_PROTOCOL_OpenPGP)) == GPG_ERR_NO_ERROR;
+    return true; // The Go reader is compiled in; GnuPG remains the v4 agent backend.
 }
 
 PgpDecryptResult OpenPgpDecryptor::decrypt(const QByteArray& ciphertext, const QString& homeDirectory) const
@@ -225,6 +225,10 @@ PgpDecryptResult OpenPgpDecryptor::decrypt(const QByteArray& ciphertext, const Q
         return result;
     }
 
+    const auto modern = goPgpDecrypt(ciphertext, homeDirectory, m_maxPlaintextBytes);
+    if (modern.status == PgpDecryptStatus::Decrypted && !modern.signature.keyUnavailable) return modern;
+    if (modern.status == PgpDecryptStatus::TooLarge || modern.status == PgpDecryptStatus::EngineUnavailable)
+        return modern;
     ensureGpgmeInitialised();
 
     ContextHandle context;
@@ -286,6 +290,7 @@ PgpDecryptResult OpenPgpDecryptor::decrypt(const QByteArray& ciphertext, const Q
     }
 
     if (gpgme_err_code(error) != GPG_ERR_NO_ERROR) {
+        if (modern.status == PgpDecryptStatus::Decrypted) return modern;
         result.status = statusFromError(error);
         return result;
     }
@@ -309,21 +314,29 @@ PgpVerifyResult OpenPgpDecryptor::verifyDetached(const QByteArray& signedPart, c
         result.status = PgpVerifyStatus::Malformed;
         return result;
     }
+    const auto modern = goPgpVerify(signedPart, signature, homeDirectory, m_maxPlaintextBytes);
+    if (modern.status == PgpVerifyStatus::EngineUnavailable ||
+        (modern.status == PgpVerifyStatus::Checked && !modern.signature.keyUnavailable))
+        return modern;
+    auto fallbackOr = [&](PgpVerifyResult fallback) {
+        return modern.status == PgpVerifyStatus::Checked ? modern : fallback;
+    };
     ensureGpgmeInitialised();
     ContextHandle context;
     if (gpgme_new(&context.handle) || !context.handle)
-        return result;
+        return fallbackOr(result);
     const QByteArray home = homeDirectory.toUtf8();
     if (!home.isEmpty() && gpgme_ctx_set_engine_info(context.handle, GPGME_PROTOCOL_OpenPGP, nullptr, home.constData()))
-        return result;
+        return fallbackOr(result);
     DataHandle data, detached;
     if (gpgme_data_new_from_mem(&data.handle, signedPart.constData(), size_t(signedPart.size()), 0)
         || gpgme_data_new_from_mem(&detached.handle, signature.constData(), size_t(signature.size()), 0))
-        return result;
+        return fallbackOr(result);
     const auto error = gpgme_op_verify(context.handle, detached.handle, data.handle, nullptr);
     result.signature = signatureFromContext(context.handle);
-    if (error || !result.signature.present) {
-        result.status = PgpVerifyStatus::Malformed;
+    if (error || !result.signature.present || result.signature.keyUnavailable) {
+        if (modern.status == PgpVerifyStatus::Checked) return modern;
+        result.status = error || !result.signature.present ? PgpVerifyStatus::Malformed : PgpVerifyStatus::Checked;
         return result;
     }
     result.status = PgpVerifyStatus::Checked;

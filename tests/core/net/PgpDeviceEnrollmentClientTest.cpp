@@ -18,6 +18,7 @@ class PgpDeviceEnrollmentClientTest : public QObject
 private slots:
     void advertisesOnlyHpkeEnvelopeVersions();
     void readsTheRecordedVersionAndRingSnapshot();
+    void validatesDualActiveMetadata();
     void aStaleOrLegacyDeliveryHasNoRingSnapshot();
     void acknowledgesExactlyTheDeliveredRing();
 };
@@ -48,6 +49,11 @@ void PgpDeviceEnrollmentClientTest::advertisesOnlyHpkeEnvelopeVersions()
     const QJsonObject body = fake.receivedJsonBody();
     QCOMPARE(body.value("publicKey").toString(), QStringLiteral("BAAA"));
     QCOMPARE(body.value("envelopeVersions").toArray(), (QJsonArray{4, 5}));
+    QCOMPARE(body.value("openpgp").toArray(), (QJsonArray{"v4", "v6", "rfc9980"}));
+    FakeRelayServer pq(httpResponse(200, "OK", R"({"ok":true})"));
+    const auto published = PgpDeviceEnrollmentClient(http).publishKey(urlOf(pq), {}, QByteArray(1624, 'A'));
+    QCOMPARE(published.status, DeviceEnrollmentCallStatus::Ok);
+    QCOMPARE(pq.receivedJsonBody().value("envelopeVersions").toArray(), (QJsonArray{6}));
 }
 
 void PgpDeviceEnrollmentClientTest::readsTheRecordedVersionAndRingSnapshot()
@@ -65,6 +71,31 @@ void PgpDeviceEnrollmentClientTest::readsTheRecordedVersionAndRingSnapshot()
     QCOMPARE(result.keyring->activeFingerprint, kFingerprint);
     QCOMPARE(result.keyring->materialGeneration, qint64(7));
     QCOMPARE(result.keyring->keyFingerprints, (QStringList{kFingerprint, QString(40, QLatin1Char('B'))}));
+}
+
+void PgpDeviceEnrollmentClientTest::validatesDualActiveMetadata()
+{
+    const QString v6(64, QLatin1Char('C'));
+    const QJsonObject active{{"v4", kFingerprint.toLower()}, {"v6", v6.toLower()}};
+    const QJsonObject ring{{"version", 2}, {"materialGeneration", 7},
+        {"active", active}, {"keyFingerprints", QJsonArray{kFingerprint, v6}}};
+    FakeRelayServer fake(httpResponse(200, "OK", QJsonDocument(delivery(6, 7, ring)).toJson()));
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    const auto result = PgpDeviceEnrollmentClient(http).fetchEnvelope(urlOf(fake), {});
+    QVERIFY(result.keyring.has_value());
+    QCOMPARE(result.keyring->activeV4, kFingerprint);
+    QCOMPARE(result.keyring->activeV6, v6);
+    for (const QJsonValue& bad : {QJsonValue(QJsonValue::Null), QJsonValue("invalid"), QJsonValue(QJsonObject{}),
+        QJsonValue(QJsonObject{{"v4", v6}}), QJsonValue(QJsonObject{{"v6", kFingerprint}}),
+        QJsonValue(QJsonObject{{"other", v6}})}) {
+        auto changed = ring;
+        changed["active"] = bad;
+        FakeRelayServer malformed(httpResponse(200, "OK", QJsonDocument(delivery(6, 7, changed)).toJson()));
+        const auto rejected = PgpDeviceEnrollmentClient(http).fetchEnvelope(urlOf(malformed), {});
+        QVERIFY(!rejected.keyring.has_value());
+        QCOMPARE(rejected.status, DeviceEnrollmentCallStatus::Failed);
+    }
 }
 
 void PgpDeviceEnrollmentClientTest::aStaleOrLegacyDeliveryHasNoRingSnapshot()

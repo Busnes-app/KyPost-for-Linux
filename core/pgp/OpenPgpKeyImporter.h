@@ -115,6 +115,8 @@ struct PgpKeyringSnapshot
     QString activeFingerprint;
     qint64 materialGeneration = 0;
     QStringList keyFingerprints;
+    QString activeV4{};
+    QString activeV6{};
 };
 
 enum class PgpKeyringImportStatus
@@ -140,7 +142,8 @@ PgpKeyringImportStatus importPrivateKeyring(
 
 // Imports what DeviceEnrollmentCrypto::openDelivery returned for `version`:
 // one armored key bound to expected.activeFingerprint (4), or the complete
-// ring bound to all of expected (5). Anything else, including retired 2/3, is Rejected.
+// ring bound to all of expected (5); v6 carries either, using the same checks.
+// Anything else, including retired 2/3, is Rejected.
 PgpKeyringImportStatus importDeviceDelivery(int version, const SecureBytes& plaintext,
     const PgpKeyringSnapshot& expected, const QString& homeDirectory = {},
     const std::function<bool()>& stillCurrent = {});
