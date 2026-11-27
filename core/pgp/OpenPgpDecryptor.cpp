@@ -227,7 +227,8 @@ PgpDecryptResult OpenPgpDecryptor::decrypt(const QByteArray& ciphertext, const Q
 
     const auto modern = goPgpDecrypt(ciphertext, homeDirectory, m_maxPlaintextBytes);
     if (modern.status == PgpDecryptStatus::Decrypted && !modern.signature.keyUnavailable) return modern;
-    if (modern.status == PgpDecryptStatus::TooLarge) return modern;
+    if (modern.status == PgpDecryptStatus::TooLarge || modern.status == PgpDecryptStatus::EngineUnavailable)
+        return modern;
     ensureGpgmeInitialised();
 
     ContextHandle context;
@@ -314,7 +315,9 @@ PgpVerifyResult OpenPgpDecryptor::verifyDetached(const QByteArray& signedPart, c
         return result;
     }
     const auto modern = goPgpVerify(signedPart, signature, homeDirectory, m_maxPlaintextBytes);
-    if (modern.status == PgpVerifyStatus::Checked && !modern.signature.keyUnavailable) return modern;
+    if (modern.status == PgpVerifyStatus::EngineUnavailable ||
+        (modern.status == PgpVerifyStatus::Checked && !modern.signature.keyUnavailable))
+        return modern;
     auto fallbackOr = [&](PgpVerifyResult fallback) {
         return modern.status == PgpVerifyStatus::Checked ? modern : fallback;
     };

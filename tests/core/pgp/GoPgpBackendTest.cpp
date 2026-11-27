@@ -67,6 +67,7 @@ class GoPgpBackendTest : public QObject
     void mixedV4EnrollmentPreservesSigning();
     void classicalRevocationInvalidatesRetainedMixedV4Key();
     void unknownKeyV6DetachedSignaturePreservesCheckedResult();
+    void corruptedGoStoreFailsClosedWithoutGpgFallback();
 };
 static QByteArray fixture(const char* name)
 {
@@ -402,6 +403,43 @@ void GoPgpBackendTest::unknownKeyV6DetachedSignaturePreservesCheckedResult()
     QVERIFY(populatedStoreResult.signature.present);
     QVERIFY(populatedStoreResult.signature.keyUnavailable);
     QVERIFY(!populatedStoreResult.signature.mathematicallyValid);
+}
+
+void GoPgpBackendTest::corruptedGoStoreFailsClosedWithoutGpgFallback()
+{
+    BinaryStore store;
+    setGoPgpSecretStore(&store);
+    const auto clear = qScopeGuard([] { setGoPgpSecretStore(nullptr); });
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto home = GnupgFixture::emptyHome(directory);
+    const auto stopAgent = qScopeGuard([&] { GnupgFixture::killAgent(home); });
+
+    const auto body = fixture("openpgp-v6/message.txt");
+    const auto v6Sig = fixture("openpgp-v6/v6-pqc.sig.asc");
+    const auto v6Ciphertext = fixture("openpgp-v6/v6-pqc.msg.asc");
+    const auto v4Pub = fixture("openpgp-v6/v4-pqc.pub.asc");
+    QVERIFY(!body.isEmpty() && !v6Sig.isEmpty() && !v6Ciphertext.isEmpty() && !v4Pub.isEmpty());
+
+    const QString fpr = goKeyInfo(v4Pub).value("fingerprint").toString();
+    QVERIFY(!fpr.isEmpty());
+    QCOMPARE(importPublicKey(v4Pub, fpr, home).status, PgpImportStatus::Imported);
+
+    // Locked / unreadable secret store must fail closed (EngineUnavailable) on
+    // both verifyDetached and decrypt rather than silently falling back to GnuPG.
+    store.refuse = true;
+    const auto lockedVerify = OpenPgpDecryptor().verifyDetached(body, v6Sig, home);
+    QCOMPARE(lockedVerify.status, PgpVerifyStatus::EngineUnavailable);
+    const auto lockedDecrypt = OpenPgpDecryptor().decrypt(v6Ciphertext, home);
+    QCOMPARE(lockedDecrypt.status, PgpDecryptStatus::EngineUnavailable);
+
+    // Missing referenced key blob must likewise fail closed.
+    store.refuse = false;
+    store.binary.clear();
+    const auto missingBlobVerify = OpenPgpDecryptor().verifyDetached(body, v6Sig, home);
+    QCOMPARE(missingBlobVerify.status, PgpVerifyStatus::EngineUnavailable);
+    const auto missingBlobDecrypt = OpenPgpDecryptor().decrypt(v6Ciphertext, home);
+    QCOMPARE(missingBlobDecrypt.status, PgpDecryptStatus::EngineUnavailable);
 }
 
 QTEST_GUILESS_MAIN(GoPgpBackendTest)

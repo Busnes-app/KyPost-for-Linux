@@ -140,30 +140,45 @@ bool storeGoPgpKey(const QByteArray& key, const QString& expectedFingerprint, co
     const auto check = secretStore->read(prefix(home) + QStringLiteral("index"));
     return check.found() && check.value == value;
 }
-SecureBytes loadGoPgpKeys(const QString& home)
+namespace
+{
+std::optional<SecureBytes> tryLoadGoPgpKeys(const QString& home)
 {
     SecureBytes out;
     if (!secretStore)
         return out;
     const auto index = keyIndex(home);
+    if (!index)
+        return std::nullopt;
+    if (index->isEmpty())
+        return out;
     // Reserve the bounded aggregate once, so growth leaves no private copies.
     out.bytes().reserve(16 * 512 * 1024);
-    if (!index)
-        return {};
     for (const auto& fpr : *index)
     {
         auto key = secretStore->readBytes(prefix(home) + fpr);
         if (key.status != SecureStore::ReadStatus::Found || key.value.bytes().size() > 512 * 1024 ||
             out.bytes().size() + key.value.bytes().size() > 16 * 512 * 1024)
-            return {};
+            return std::nullopt;
         out.bytes().append(key.value.bytes());
     }
     return out;
 }
+} // namespace
+
+SecureBytes loadGoPgpKeys(const QString& home)
+{
+    auto loaded = tryLoadGoPgpKeys(home);
+    return loaded ? std::move(*loaded) : SecureBytes{};
+}
 PgpDecryptResult goPgpDecrypt(const QByteArray& ciphertext, const QString& home, qint64 limit)
 {
-    auto keys = loadGoPgpKeys(home);
-    auto result = goPgpCall(2, ciphertext, keys.bytes(), {}, limit);
+    auto keys = tryLoadGoPgpKeys(home);
+    if (!keys)
+        return {PgpDecryptStatus::EngineUnavailable, {}, {}};
+    if (keys->isEmpty())
+        return {PgpDecryptStatus::NoSecretKey, {}, {}};
+    auto result = goPgpCall(2, ciphertext, keys->bytes(), {}, limit);
     PgpDecryptResult out;
     out.status = result.status == 0   ? PgpDecryptStatus::Decrypted
                  : result.status == 2 ? PgpDecryptStatus::NoSecretKey
@@ -180,8 +195,10 @@ PgpDecryptResult goPgpDecrypt(const QByteArray& ciphertext, const QString& home,
 PgpVerifyResult goPgpVerify(const QByteArray& data, const QByteArray& signature, const QString& home,
                             qint64 limit)
 {
-    auto keys = loadGoPgpKeys(home);
-    auto result = goPgpCall(3, data, keys.bytes(), signature, limit);
+    auto keys = tryLoadGoPgpKeys(home);
+    if (!keys)
+        return {PgpVerifyStatus::EngineUnavailable, {}};
+    auto result = goPgpCall(3, data, keys->bytes(), signature, limit);
     PgpVerifyResult out;
     out.status = result.status == 0   ? PgpVerifyStatus::Checked
                  : result.status == 3 ? PgpVerifyStatus::TooLarge
@@ -194,6 +211,9 @@ bool goPgpOwnKey(const QString& fingerprint, const QString& home)
 {
     if (!secretStore)
         return false;
+    const QString target = normalizedFingerprint(fingerprint.toLatin1());
+    if (target.isEmpty())
+        return false;
     const auto index = keyIndex(home);
     if (!index)
         return false;
@@ -203,7 +223,7 @@ bool goPgpOwnKey(const QString& fingerprint, const QString& home)
         if (held.status != SecureStore::ReadStatus::Found)
             return false;
         const auto info = goKeyInfo(held.value.bytes());
-        if (info.value(QStringLiteral("fingerprint")).toString() == fingerprint &&
+        if (info.value(QStringLiteral("fingerprint")).toString() == target &&
             info.value(QStringLiteral("private")).toBool() && info.value(QStringLiteral("unlocked")).toBool())
             return true;
     }
@@ -225,7 +245,8 @@ bool goPgpHasKey(const QString& fingerprint, const QString& home)
         if (held.status != SecureStore::ReadStatus::Found)
             return true;
         const auto info = goKeyInfo(held.value.bytes());
-        if (info.value(QStringLiteral("fingerprint")).toString() == target)
+        const QString heldFpr = info.value(QStringLiteral("fingerprint")).toString();
+        if (heldFpr.isEmpty() || heldFpr == target)
             return true;
     }
     return false;
