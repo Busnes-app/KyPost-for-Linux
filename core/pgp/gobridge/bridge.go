@@ -352,7 +352,7 @@ func dispatch(op int, data, keys, extra []byte, limit int64) ([]byte, []byte, in
 			}
 			return nil, signatureInfo(verified), 0
 		}
-		handle, err := pgp.Decryption().DecryptionKeys(ring).VerificationKeys(ring).MaxDecompressedMessageSize(limit).New()
+		handle, err := pgp.Decryption().DecryptionKeys(ring).VerificationKeys(ring).MaxDecompressedMessageSize(limit).DisableAutomaticTextSanitize().RetrieveSessionKey().New()
 		if err != nil {
 			return nil, nil, 1
 		}
@@ -366,6 +366,13 @@ func dispatch(op int, data, keys, extra []byte, limit int64) ([]byte, []byte, in
 			}
 			return nil, nil, 1
 		}
+		// ReadMessage also accepts unencrypted literal packets. A decryption
+		// result requires an actual session key; never label those as encrypted.
+		session := reader.SessionKey()
+		if session == nil {
+			return nil, nil, 1
+		}
+		defer session.Clear()
 		plaintext, err := io.ReadAll(io.LimitReader(reader, limit+1))
 		if int64(len(plaintext)) > limit {
 			clear(plaintext)

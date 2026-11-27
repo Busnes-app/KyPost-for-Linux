@@ -221,3 +221,17 @@ func TestSignatureStrengthRequiresResolvedSigningKey(t *testing.T) {
 		t.Fatal("key-id signing key should resolve")
 	}
 }
+
+func TestDecryptionRequiresEncryption(t *testing.T) {
+	key, _, status := dispatch(1, fixture(t, "openpgp-v6/v6-pqc.sec.asc"), nil, nil, maxPlaintext)
+	if status != 0 {
+		t.Fatal("fixture key")
+	}
+	defer clear(key)
+	// A valid unencrypted literal-data packet containing "public".
+	literal := []byte{0xcb, 12, 'b', 0, 0, 0, 0, 0, 'p', 'u', 'b', 'l', 'i', 'c'}
+	plain, _, status := dispatch(2, literal, key, nil, maxPlaintext)
+	if status == 0 || len(plain) != 0 {
+		t.Fatal("unencrypted literal data reported as decrypted")
+	}
+}
