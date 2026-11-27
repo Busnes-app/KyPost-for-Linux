@@ -8,10 +8,12 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/ProtonMail/go-crypto/openpgp/armor"
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
 	"github.com/ProtonMail/gopenpgp/v3/crypto"
 )
@@ -45,6 +47,21 @@ func TestRFC9980(t *testing.T) {
 			if status == 0 {
 				t.Fatal("plaintext limit ignored")
 			}
+			// Corrupt the actual authentication trailer, not merely the armor.
+			// A streaming reader may have produced plaintext before detecting it.
+			block, err := armor.Decode(bytes.NewReader(fixture(t, "openpgp-v6/"+name+".msg.asc")))
+			if err != nil {
+				t.Fatal(err)
+			}
+			binaryMessage, err := io.ReadAll(block.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			binaryMessage[len(binaryMessage)-1] ^= 1
+			partial, _, status := dispatch(2, binaryMessage, key, nil, maxPlaintext)
+			if status == 0 || len(partial) != 0 {
+				t.Fatal("corrupt authentication trailer exposed plaintext")
+			}
 			ciphertext := fixture(t, "openpgp-v6/"+name+".msg.asc")
 			ciphertext[len(ciphertext)/2] ^= 1
 			if _, _, status = dispatch(2, ciphertext, key, nil, maxPlaintext); status == 0 {
@@ -62,6 +79,24 @@ func TestRFC9980(t *testing.T) {
 	_ = json.Unmarshal(meta, &verdict)
 	if status != 0 || verdict["valid"] != true || verdict["weak"] != false {
 		t.Fatalf("signature %d %s", status, meta)
+	}
+	block, err := armor.Decode(bytes.NewReader(signature))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawSignature, err := io.ReadAll(block.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, offset := range []int{1, 100} {
+		bad := bytes.Clone(rawSignature)
+		bad[len(bad)-offset] ^= 1
+		_, meta, status := dispatch(3, message, key, bad, maxPlaintext)
+		var invalid map[string]any
+		_ = json.Unmarshal(meta, &invalid)
+		if status == 0 && invalid["valid"] == true {
+			t.Fatal("corrupt composite signature verified")
+		}
 	}
 	message[0] ^= 1
 	_, meta, status = dispatch(3, message, key, signature, maxPlaintext)
