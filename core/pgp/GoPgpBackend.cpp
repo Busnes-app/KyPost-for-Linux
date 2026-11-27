@@ -3,19 +3,46 @@
 #include "pgp/PgpFingerprint.h"
 #include "stores/SecureStore.h"
 #include <QCryptographicHash>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QScopeGuard>
+#include <condition_variable>
+#include <mutex>
 #include <optional>
+#include <thread>
 
 namespace
 {
 SecureStore* secretStore = nullptr;
+struct IndexCommitGate
+{
+    std::mutex mu;
+    std::condition_variable cv;
+    std::thread::id ownerThread{};
+    int recursionDepth = 0;
+    quint64 epoch = 0;
+    QHash<QString, QStringList> activeBlobs;
+};
+IndexCommitGate& indexCommitGate()
+{
+    static IndexCommitGate gate;
+    return gate;
+}
 QString prefix(const QString& home)
 {
     return QStringLiteral("pgp.go.") +
            QString::fromLatin1(QCryptographicHash::hash(home.toUtf8(), QCryptographicHash::Sha256).toHex()) +
            QLatin1Char('.');
+}
+QString blobHash(const QByteArray& bytes)
+{
+    return QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex()).toUpper();
+}
+bool validBlob(const SecureStore::BytesResult& held, const QString& expectedId)
+{
+    return held.status == SecureStore::ReadStatus::Found && !held.value.bytes().isEmpty() &&
+           held.value.bytes().size() <= 512 * 1024 && blobHash(held.value.bytes()) == expectedId;
 }
 std::optional<QStringList> keyIndex(const QString& home)
 {
@@ -90,55 +117,134 @@ bool storeGoPgpKey(const QByteArray& key, const QString& expectedFingerprint, co
     const QString fingerprint = info.value(QStringLiteral("fingerprint")).toString();
     if (inspected.status || fingerprint.isEmpty() ||
         fingerprint != normalizedFingerprint(expectedFingerprint.toLatin1()) ||
-        (info.value(QStringLiteral("private")).toBool() && !info.value(QStringLiteral("unlocked")).toBool()))
+        (info.value(QStringLiteral("private")).toBool() && !info.value(QStringLiteral("unlocked")).toBool()) ||
+        inspected.data.bytes().isEmpty() || inspected.data.bytes().size() > 512 * 1024)
         return false;
-    const QString blobId =
-        QString::fromLatin1(
-            QCryptographicHash::hash(inspected.data.bytes(), QCryptographicHash::Sha256).toHex())
-            .toUpper();
-    auto prior = keyIndex(home);
-    if (!prior)
-        return false;
-    if (prior->contains(blobId))
-    {
-        const auto held = secretStore->readBytes(prefix(home) + blobId);
-        return held.status == SecureStore::ReadStatus::Found && held.value.bytes() == inspected.data.bytes();
-    }
-    QStringList index = *prior;
-    if (!index.contains(blobId))
-        index.prepend(blobId);
-    if (index.size() > 256)
-        return false;
-    qint64 total = 0;
-    for (const auto& id : *prior)
-    {
-        auto held = secretStore->readBytes(prefix(home) + id);
-        if (held.status != SecureStore::ReadStatus::Found || held.value.bytes().size() > 512 * 1024)
-            return false;
-        total += held.value.bytes().size();
-    }
-    if (!prior->contains(blobId))
-        total += inspected.data.bytes().size();
-    if (total > 16 * 512 * 1024)
-        return false;
+    const QString blobId = blobHash(inspected.data.bytes());
     const QString name = prefix(home) + blobId;
+    const QString indexKey = prefix(home) + QStringLiteral("index");
+
+    auto& gate = indexCommitGate();
+    {
+        std::unique_lock<std::mutex> lock(gate.mu);
+        gate.cv.wait(lock, [&] {
+            return gate.recursionDepth == 0 || gate.ownerThread == std::this_thread::get_id();
+        });
+        gate.ownerThread = std::this_thread::get_id();
+        ++gate.recursionDepth;
+    }
+    const auto releaseGate = qScopeGuard([&] {
+        std::lock_guard<std::mutex> lock(gate.mu);
+        if (--gate.recursionDepth == 0)
+        {
+            gate.ownerThread = {};
+            gate.activeBlobs.clear();
+            gate.cv.notify_all();
+        }
+    });
+
+    auto initialPrior = keyIndex(home);
+    if (!initialPrior)
+        return false;
+    if (initialPrior->contains(blobId))
+    {
+        const auto held = secretStore->readBytes(name);
+        return validBlob(held, blobId) && held.value.bytes() == inspected.data.bytes();
+    }
+    if (initialPrior->size() >= 256)
+        return false;
+
     // Immutable, content-addressed entries retain historical subkeys and secrets.
-    // NetworkExecutor is the single index writer; no other process writes this
-    // namespace.
     if (!secretStore->setBytes(name, inspected.data.bytes()))
         return false;
     const auto persisted = secretStore->readBytes(name);
-    if (persisted.status != SecureStore::ReadStatus::Found ||
-        persisted.value.bytes() != inspected.data.bytes())
+    if (!validBlob(persisted, blobId) || persisted.value.bytes() != inspected.data.bytes())
         return false;
-    QJsonArray array;
-    for (const auto& fpr : index)
-        array.append(fpr);
-    const QString value = QString::fromUtf8(QJsonDocument(array).toJson(QJsonDocument::Compact));
-    if (!secretStore->set(prefix(home) + QStringLiteral("index"), value))
-        return false;
-    const auto check = secretStore->read(prefix(home) + QStringLiteral("index"));
-    return check.found() && check.value == value;
+
+    bool addedActive = false;
+    {
+        std::lock_guard<std::mutex> lock(gate.mu);
+        auto& active = gate.activeBlobs[home];
+        if (!active.contains(blobId))
+        {
+            active.append(blobId);
+            addedActive = true;
+        }
+    }
+    bool committed = false;
+    const auto rollbackActive = qScopeGuard([&] {
+        if (!committed && addedActive)
+        {
+            std::lock_guard<std::mutex> lock(gate.mu);
+            gate.activeBlobs[home].removeAll(blobId);
+        }
+    });
+
+    // Serialize index updates across cross-thread calls and nested event loops
+    // pumped inside SecretStore operations: if a reentrant import commits while
+    // we are suspended, re-read and merge all active blobs before returning.
+    for (int attempt = 0; attempt < 64; ++attempt)
+    {
+        quint64 startEpoch = 0;
+        {
+            std::lock_guard<std::mutex> lock(gate.mu);
+            startEpoch = ++gate.epoch;
+        }
+
+        const auto prior = keyIndex(home);
+        if (!prior)
+            return false;
+
+        QStringList index = *prior;
+        {
+            std::lock_guard<std::mutex> lock(gate.mu);
+            for (const auto& id : gate.activeBlobs.value(home))
+            {
+                if (!index.contains(id))
+                    index.prepend(id);
+            }
+        }
+        if (index.size() > 256)
+            return false;
+
+        qint64 total = 0;
+        for (const auto& id : index)
+        {
+            const auto held = secretStore->readBytes(prefix(home) + id);
+            if (!validBlob(held, id))
+                return false;
+            total += held.value.bytes().size();
+            if (total > 16 * 512 * 1024)
+                return false;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(gate.mu);
+            if (gate.epoch != startEpoch)
+                continue;
+            if (index == *prior)
+            {
+                committed = true;
+                return true;
+            }
+        }
+
+        QJsonArray array;
+        for (const auto& fpr : index)
+            array.append(fpr);
+        const QString value = QString::fromUtf8(QJsonDocument(array).toJson(QJsonDocument::Compact));
+        if (!secretStore->set(indexKey, value))
+            return false;
+        const auto check = secretStore->read(indexKey);
+
+        std::lock_guard<std::mutex> lock(gate.mu);
+        if (gate.epoch == startEpoch)
+        {
+            committed = check.found() && check.value == value;
+            return committed;
+        }
+    }
+    return false;
 }
 namespace
 {
@@ -157,8 +263,7 @@ std::optional<SecureBytes> tryLoadGoPgpKeys(const QString& home)
     for (const auto& fpr : *index)
     {
         auto key = secretStore->readBytes(prefix(home) + fpr);
-        if (key.status != SecureStore::ReadStatus::Found || key.value.bytes().size() > 512 * 1024 ||
-            out.bytes().size() + key.value.bytes().size() > 16 * 512 * 1024)
+        if (!validBlob(key, fpr) || out.bytes().size() + key.value.bytes().size() > 16 * 512 * 1024)
             return std::nullopt;
         out.bytes().append(key.value.bytes());
     }
@@ -220,7 +325,7 @@ bool goPgpOwnKey(const QString& fingerprint, const QString& home)
     for (const auto& id : *index)
     {
         auto held = secretStore->readBytes(prefix(home) + id);
-        if (held.status != SecureStore::ReadStatus::Found)
+        if (!validBlob(held, id))
             return false;
         const auto info = goKeyInfo(held.value.bytes());
         if (info.value(QStringLiteral("fingerprint")).toString() == target &&
@@ -242,7 +347,7 @@ bool goPgpHasKey(const QString& fingerprint, const QString& home)
     for (const auto& id : *index)
     {
         auto held = secretStore->readBytes(prefix(home) + id);
-        if (held.status != SecureStore::ReadStatus::Found)
+        if (!validBlob(held, id))
             return true;
         const auto info = goKeyInfo(held.value.bytes());
         const QString heldFpr = info.value(QStringLiteral("fingerprint")).toString();

@@ -11,6 +11,7 @@
 #include <QProcess>
 #include <QScopeGuard>
 #include <QTest>
+#include <functional>
 
 // Only public test secrets; no real Secret Service or user GNUPGHOME touched.
 class BinaryStore : public SecureStore
@@ -20,8 +21,11 @@ class BinaryStore : public SecureStore
     QMap<QString, QByteArray> binary;
     bool refuse = false;
     bool corruptWrites = false;
+    std::function<void(const QString&)> onBeforeSet;
     bool set(const QString& key, const QString& value) override
     {
+        if (onBeforeSet)
+            onBeforeSet(key);
         text[key] = value;
         return true;
     }
@@ -68,6 +72,7 @@ class GoPgpBackendTest : public QObject
     void classicalRevocationInvalidatesRetainedMixedV4Key();
     void unknownKeyV6DetachedSignaturePreservesCheckedResult();
     void corruptedGoStoreFailsClosedWithoutGpgFallback();
+    void reentrantImportsPreserveBothIndexedKeys();
 };
 static QByteArray fixture(const char* name)
 {
@@ -435,11 +440,69 @@ void GoPgpBackendTest::corruptedGoStoreFailsClosedWithoutGpgFallback()
 
     // Missing referenced key blob must likewise fail closed.
     store.refuse = false;
+    QVERIFY(!store.binary.isEmpty());
+    const QString blobKey = store.binary.firstKey();
     store.binary.clear();
     const auto missingBlobVerify = OpenPgpDecryptor().verifyDetached(body, v6Sig, home);
     QCOMPARE(missingBlobVerify.status, PgpVerifyStatus::EngineUnavailable);
     const auto missingBlobDecrypt = OpenPgpDecryptor().decrypt(v6Ciphertext, home);
     QCOMPARE(missingBlobDecrypt.status, PgpDecryptStatus::EngineUnavailable);
+
+    // Empty blob returned as Found must fail closed (EngineUnavailable), not fall back to GnuPG.
+    store.binary[blobKey] = QByteArray{};
+    const auto emptyBlobVerify = OpenPgpDecryptor().verifyDetached(body, v6Sig, home);
+    QCOMPARE(emptyBlobVerify.status, PgpVerifyStatus::EngineUnavailable);
+    const auto emptyBlobDecrypt = OpenPgpDecryptor().decrypt(v6Ciphertext, home);
+    QCOMPARE(emptyBlobDecrypt.status, PgpDecryptStatus::EngineUnavailable);
+
+    // Malformed / tampered blob returned as Found must fail SHA-256 verification and fail closed.
+    store.binary[blobKey] = QByteArray("corrupted-openpgp-blob-payload");
+    const auto malformedBlobVerify = OpenPgpDecryptor().verifyDetached(body, v6Sig, home);
+    QCOMPARE(malformedBlobVerify.status, PgpVerifyStatus::EngineUnavailable);
+    const auto malformedBlobDecrypt = OpenPgpDecryptor().decrypt(v6Ciphertext, home);
+    QCOMPARE(malformedBlobDecrypt.status, PgpDecryptStatus::EngineUnavailable);
+}
+
+void GoPgpBackendTest::reentrantImportsPreserveBothIndexedKeys()
+{
+    BinaryStore store;
+    setGoPgpSecretStore(&store);
+    const auto clear = qScopeGuard([] { setGoPgpSecretStore(nullptr); });
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto home = GnupgFixture::emptyHome(directory);
+    const auto stopAgent = qScopeGuard([&] { GnupgFixture::killAgent(home); });
+
+    const auto v4Sec = fixture("openpgp-v6/v4-pqc.sec.asc");
+    const auto v6Sec = fixture("openpgp-v6/v6-pqc.sec.asc");
+    QVERIFY(!v4Sec.isEmpty() && !v6Sec.isEmpty());
+    const QString v4Fpr = goKeyInfo(v4Sec).value("fingerprint").toString();
+    const QString v6Fpr = goKeyInfo(v6Sec).value("fingerprint").toString();
+    QVERIFY(!v4Fpr.isEmpty() && !v6Fpr.isEmpty());
+
+    // Simulate a nested Qt event loop inside SecretStore::set("...index") where
+    // a second import commits completely before the outer set() overwrites the
+    // index with its earlier snapshot.
+    bool injected = false;
+    bool innerOk = false;
+    store.onBeforeSet = [&](const QString& key) {
+        if (injected || !key.endsWith(QStringLiteral(".index")))
+            return;
+        injected = true;
+        innerOk = storeGoPgpKey(v6Sec, v6Fpr, home);
+    };
+
+    QVERIFY(storeGoPgpKey(v4Sec, v4Fpr, home));
+    QVERIFY(injected);
+    QVERIFY(innerOk);
+
+    // Both keys must remain indexed and usable after the overlapping writes.
+    QVERIFY(goPgpOwnKey(v4Fpr, home));
+    QVERIFY(goPgpOwnKey(v6Fpr, home));
+    const auto v4Msg = OpenPgpDecryptor().decrypt(fixture("openpgp-v6/v4-pqc.msg.asc"), home);
+    const auto v6Msg = OpenPgpDecryptor().decrypt(fixture("openpgp-v6/v6-pqc.msg.asc"), home);
+    QCOMPARE(v4Msg.status, PgpDecryptStatus::Decrypted);
+    QCOMPARE(v6Msg.status, PgpDecryptStatus::Decrypted);
 }
 
 QTEST_GUILESS_MAIN(GoPgpBackendTest)
