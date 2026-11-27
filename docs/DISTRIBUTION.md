@@ -62,7 +62,8 @@ it just skips publishing and logs a warning — so a missing key never breaks CI
 ./packaging/flatpak/gen-signing-key.sh --upload
 ```
 
-This creates a passphraseless, non-expiring RSA-4096 signing key, writes it to
+This creates a passphraseless RSA-4096 signing key with a bounded 2-year expiry
+(`KEY_EXPIRE=2y`, configurable via `KEY_EXPIRE=<N>[d|w|m|y]`), writes it to
 `~/kypost-flatpak-signing-key/`, and sets the `FLATPAK_GPG_PRIVATE_KEY` and
 `FLATPAK_GPG_KEY_ID` repository secrets via `gh`. Omit `--upload` to print the
 commands instead of running them.
@@ -72,9 +73,51 @@ you cannot read the key back out. Losing it means you cannot sign updates for th
 existing remote, and every installed user would have to remove and re-add it by hand.
 
 The key is passphraseless because CI signs unattended; a passphrase stored as a second
-secret protects nothing, since an attacker with one secret has both. It never expires
-because an expired signing key doesn't just block new releases — it makes
-`flatpak update` reject the repo for everyone already installed.
+secret protects nothing, since an attacker with one secret has both. The publish job
+emits a `::warning::` when an active signing key has no expiry or is within 90 days of
+expiration, and refuses to publish with an expired key.
+
+#### Signing-key rollover runbook (OSTree multi-key)
+
+Start rollover at least **90 days before** the active key expires so installed clients
+pick up the new key during normal `flatpak update` runs with zero manual intervention:
+
+1. **Generate the next key** into a separate directory (do not overwrite the old backup):
+   ```sh
+   OUT_DIR=~/kypost-flatpak-signing-key-next ./packaging/flatpak/gen-signing-key.sh
+   ```
+   Back up `~/kypost-flatpak-signing-key-next/private.asc` offline.
+2. **Stage the dual-key overlap** by setting the `_NEXT` secrets (keep the current
+   `FLATPAK_GPG_PRIVATE_KEY` and `FLATPAK_GPG_KEY_ID` intact):
+   ```sh
+   gh secret set FLATPAK_GPG_PRIVATE_KEY_NEXT --repo Busnes-app/KyPost-for-Linux \
+     < ~/kypost-flatpak-signing-key-next/private.asc
+   printf '%s' "$(cat ~/kypost-flatpak-signing-key-next/fingerprint.txt)" \
+     | gh secret set FLATPAK_GPG_KEY_ID_NEXT --repo Busnes-app/KyPost-for-Linux
+   ```
+3. **Publish during the overlap window.** While `_NEXT` is set, `.github/workflows/flatpak.yml`
+   signs every commit, summary, and release bundle with **both** keys (`--gpg-sign` repeated),
+   concatenates both public keys into `_site/kypost.gpg` and `.flatpakrepo`, and passes
+   `--gpg-import=_site/kypost.gpg` to `flatpak build-update-repo` so OSTree publishes
+   `xa.gpg-keys` in the signed summary. Existing installs verify the summary with the old key
+   and automatically import the new key on `flatpak update`.
+4. **Promote the new key** once the overlap window has elapsed (at least one release cycle
+   and before the old key expires):
+   ```sh
+   gh secret set FLATPAK_GPG_PRIVATE_KEY --repo Busnes-app/KyPost-for-Linux \
+     < ~/kypost-flatpak-signing-key-next/private.asc
+   printf '%s' "$(cat ~/kypost-flatpak-signing-key-next/fingerprint.txt)" \
+     | gh secret set FLATPAK_GPG_KEY_ID --repo Busnes-app/KyPost-for-Linux
+   gh secret delete FLATPAK_GPG_PRIVATE_KEY_NEXT --repo Busnes-app/KyPost-for-Linux
+   gh secret delete FLATPAK_GPG_KEY_ID_NEXT --repo Busnes-app/KyPost-for-Linux
+   ```
+5. **Retire the old key** after the next publish succeeds and verify with
+   `ostree --repo=_site/repo summary --view` or `flatpak remote-info`.
+
+> **Existing non-expiring keys:** If a repo was initialized with an earlier `Expire-Date: 0`
+> key, either rotate to a bounded-expiry key using the 5-step dual-key rollover above, or
+> set an expiry on the offline backup with `gpg --quick-set-expire <FPR> 2y` and re-upload
+> `FLATPAK_GPG_PRIVATE_KEY` (and wait one publish so `--gpg-import` refreshes clients).
 
 ### 2. Run the workflow once
 

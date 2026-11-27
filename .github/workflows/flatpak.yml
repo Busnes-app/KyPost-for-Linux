@@ -479,11 +479,41 @@ jobs:
         if: steps.mode.outputs.publish == 'true'
         env:
           GPG_PRIVATE_KEY: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}
+          GPG_KEY_ID: ${{ secrets.FLATPAK_GPG_KEY_ID }}
+          GPG_PRIVATE_KEY_NEXT: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY_NEXT }}
+          GPG_KEY_ID_NEXT: ${{ secrets.FLATPAK_GPG_KEY_ID_NEXT }}
         run: |
+          set -euo pipefail
+          if [ -n "$GPG_PRIVATE_KEY_NEXT" ] && [ -z "$GPG_KEY_ID_NEXT" ]; then
+            echo "::error::FLATPAK_GPG_PRIVATE_KEY_NEXT is set without FLATPAK_GPG_KEY_ID_NEXT." >&2
+            exit 1
+          fi
+          if [ -z "$GPG_PRIVATE_KEY_NEXT" ] && [ -n "$GPG_KEY_ID_NEXT" ]; then
+            echo "::error::FLATPAK_GPG_KEY_ID_NEXT is set without FLATPAK_GPG_PRIVATE_KEY_NEXT." >&2
+            exit 1
+          fi
           GNUPGHOME="$RUNNER_TEMP/gnupg"
           mkdir -p "$GNUPGHOME"
           chmod 700 "$GNUPGHOME"
           printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --homedir "$GNUPGHOME" --batch --import
+          if [ -n "$GPG_PRIVATE_KEY_NEXT" ]; then
+            printf '%s\n' "$GPG_PRIVATE_KEY_NEXT" | gpg --homedir "$GNUPGHOME" --batch --import
+          fi
+          now="$(date -u +%s)"
+          warn_window=$((90 * 86400))
+          for kid in "$GPG_KEY_ID" ${GPG_KEY_ID_NEXT:+"$GPG_KEY_ID_NEXT"}; do
+            gpg --homedir "$GNUPGHOME" --list-secret-keys "$kid" >/dev/null
+            exp="$(gpg --homedir "$GNUPGHOME" --list-keys --with-colons --fixed-list-mode "$kid" | awk -F: '$1=="pub" {print $7; exit}')"
+            if [ -z "$exp" ] || [ "$exp" = "0" ]; then
+              echo "::warning::Flatpak signing key $kid has no expiration date; see docs/DISTRIBUTION.md to set a bounded expiry or rotate."
+            elif [ "$exp" -le "$now" ]; then
+              echo "::error::Flatpak signing key $kid is expired (epoch $exp); see docs/DISTRIBUTION.md." >&2
+              exit 1
+            elif [ $((exp - now)) -lt "$warn_window" ]; then
+              days=$(( (exp - now) / 86400 ))
+              echo "::warning::Flatpak signing key $kid expires in ${days}d; start the dual-key rollover in docs/DISTRIBUTION.md."
+            fi
+          done
           echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
 
       # Clone the currently-published repo so the new commit lands on top of
@@ -554,10 +584,19 @@ jobs:
         if: steps.mode.outputs.publish == 'true'
         env:
           GPG_KEY_ID: ${{ secrets.FLATPAK_GPG_KEY_ID }}
+          GPG_KEY_ID_NEXT: ${{ secrets.FLATPAK_GPG_KEY_ID_NEXT }}
         run: |
           set -euo pipefail
           mkdir -p _site/repo
           ostree --repo=_site/repo init --mode=archive-z2
+
+          GPG_SIGN_ARGS=(--gpg-sign="$GPG_KEY_ID")
+          GPG_EXPORT_IDS=("$GPG_KEY_ID")
+          if [ -n "$GPG_KEY_ID_NEXT" ]; then
+            GPG_SIGN_ARGS+=(--gpg-sign="$GPG_KEY_ID_NEXT")
+            GPG_EXPORT_IDS+=("$GPG_KEY_ID_NEXT")
+          fi
+          gpg --homedir "$GNUPGHOME" --export "${GPG_EXPORT_IDS[@]}" > _site/kypost.gpg
 
           # Retire debuginfo published before this was turned off.
           for ref in $(ostree --repo=_site/repo refs | grep '\.Debug/' || true); do
@@ -578,7 +617,7 @@ jobs:
               esac
               flatpak build-commit-from \
                 --src-repo="repo-$arch" \
-                --gpg-sign="$GPG_KEY_ID" --gpg-homedir="$GNUPGHOME" \
+                "${GPG_SIGN_ARGS[@]}" --gpg-homedir="$GNUPGHOME" \
                 --no-update-summary \
                 _site/repo "$ref"
               echo "committed $ref"
@@ -588,11 +627,14 @@ jobs:
           # --generate-static-deltas is what makes `flatpak update` download a
           # diff instead of the whole app. --prune-depth bounds how many old
           # commits stay resolvable, which is the site-size control knob.
+          # --gpg-import publishes the active keyring in xa.gpg-keys so
+          # existing clients import the next key automatically during rollover.
           flatpak build-update-repo \
             --title="KyPost" \
             --generate-static-deltas \
             --prune --prune-depth=3 \
-            --gpg-sign="$GPG_KEY_ID" --gpg-homedir="$GNUPGHOME" \
+            --gpg-import=_site/kypost.gpg \
+            "${GPG_SIGN_ARGS[@]}" --gpg-homedir="$GNUPGHOME" \
             _site/repo
 
       # Only tags need a bundle to attach, and only a signed one is worth
@@ -602,23 +644,24 @@ jobs:
         if: steps.mode.outputs.publish == 'true' && startsWith(github.ref, 'refs/tags/v')
         env:
           GPG_KEY_ID: ${{ secrets.FLATPAK_GPG_KEY_ID }}
+          GPG_KEY_ID_NEXT: ${{ secrets.FLATPAK_GPG_KEY_ID_NEXT }}
         run: |
           set -euo pipefail
+          GPG_SIGN_ARGS=(--gpg-sign="$GPG_KEY_ID")
+          if [ -n "$GPG_KEY_ID_NEXT" ]; then
+            GPG_SIGN_ARGS+=(--gpg-sign="$GPG_KEY_ID_NEXT")
+          fi
           for arch in x86_64 aarch64; do
             flatpak build-bundle --arch="$arch" \
               _site/repo "kypost-$arch.flatpak" "$APP_ID" \
               --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
-              --gpg-sign="$GPG_KEY_ID" --gpg-homedir="$GNUPGHOME"
+              "${GPG_SIGN_ARGS[@]}" --gpg-homedir="$GNUPGHOME"
           done
 
       - name: Generate .flatpakrepo and landing page
         if: steps.mode.outputs.publish == 'true'
-        env:
-          GPG_KEY_ID: ${{ secrets.FLATPAK_GPG_KEY_ID }}
         run: |
           set -euo pipefail
-          gpg --homedir "$GNUPGHOME" --export "$GPG_KEY_ID" > _site/kypost.gpg
-
           {
             echo "[Flatpak Repo]"
             echo "Title=KyPost"
