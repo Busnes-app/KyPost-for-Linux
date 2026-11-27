@@ -469,7 +469,8 @@ has its own content-addressed entry; a public index retains historical revisions
 NetworkExecutor is its single writer. Import checks the entire ring and authenticated
 snapshot before writes and verifies each durable write by reading it back. Failed
 or cancelled import never acknowledges enrollment. Existing keys stay on failed
-imports, unpair and wipe, as they do in the user's GnuPG keyring.
+imports, unpair and wipe, as they do in the user's GnuPG keyring. Go revisions
+are append-only; a per-key removal UI is not implemented.
 
 Enrollment generates an ephemeral X-Wing seed held in SecureBytes for one ceremony;
 only its public key is published. Cancel/import completion clears it. Durable

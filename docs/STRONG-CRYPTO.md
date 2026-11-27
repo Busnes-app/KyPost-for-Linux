@@ -73,6 +73,9 @@ signature, encryption and signature check. To also stop legacy keys from decrypt
    (`gpg --delete-secret-keys <fingerprint>`) once you no longer need the mail encrypted to it.
    Expiring a key is not enough: GnuPG still decrypts with expired keys. Mail encrypted only to
    a deleted key becomes unreadable, which is why KyPost will not do this for you.
+   This command does not remove copies retained in a Go-managed v2 ring. KyPost has no
+   per-key removal UI for that store yet: deleting from GnuPG alone does not disable
+   historical decryption after such an enrollment.
 3. Pair only with relays whose whole certificate chain uses RSA-2048/EC-224 or stronger.
    KyPost refuses any other relay, so this is a hosting requirement rather than a setting.
 
