@@ -321,6 +321,72 @@ func signatureInfo(result *crypto.VerifyResult) []byte {
 	return metadata(out)
 }
 
+// Immutable revisions merge here, not in the persistent index. Keeping separate
+// entities for one primary would let an older certificate hide a known revocation.
+func mergeKeyVersions(original *crypto.KeyRing) (*crypto.KeyRing, error) {
+	type group struct {
+		key     *crypto.Key
+		subkeys map[string]int
+	}
+	groups := map[string]*group{}
+	var order []*group
+	for _, key := range original.GetKeys() {
+		fingerprint := key.GetFingerprint()
+		current, found := groups[fingerprint]
+		entity := key.GetEntity()
+		if !found {
+			current = &group{key: key, subkeys: map[string]int{}}
+			for i, sub := range entity.Subkeys {
+				current.subkeys[hex.EncodeToString(sub.PublicKey.Fingerprint)] = i
+			}
+			groups[fingerprint] = current
+			order = append(order, current)
+			continue
+		}
+		merged := current.key.GetEntity()
+		if merged.PrivateKey == nil {
+			merged.PrivateKey = entity.PrivateKey
+		}
+		merged.Revocations = append(merged.Revocations, entity.Revocations...)
+		merged.DirectSignatures = append(merged.DirectSignatures, entity.DirectSignatures...)
+		for name, incoming := range entity.Identities {
+			if known, ok := merged.Identities[name]; ok {
+				known.SelfCertifications = append(known.SelfCertifications, incoming.SelfCertifications...)
+				known.OtherCertifications = append(known.OtherCertifications, incoming.OtherCertifications...)
+				known.Revocations = append(known.Revocations, incoming.Revocations...)
+			} else {
+				incoming.Primary = merged
+				merged.Identities[name] = incoming
+			}
+		}
+		for _, incoming := range entity.Subkeys {
+			fingerprint := hex.EncodeToString(incoming.PublicKey.Fingerprint)
+			if index, ok := current.subkeys[fingerprint]; ok {
+				known := &merged.Subkeys[index]
+				if known.PrivateKey == nil {
+					known.PrivateKey = incoming.PrivateKey
+				}
+				known.Bindings = append(known.Bindings, incoming.Bindings...)
+				known.Revocations = append(known.Revocations, incoming.Revocations...)
+			} else {
+				incoming.Primary = merged
+				current.subkeys[fingerprint] = len(merged.Subkeys)
+				merged.Subkeys = append(merged.Subkeys, incoming)
+			}
+		}
+	}
+	merged, err := crypto.NewKeyRing(nil)
+	if err != nil {
+		return nil, err
+	}
+	for _, g := range order {
+		if err = merged.AddKey(g.key); err != nil {
+			return nil, err
+		}
+	}
+	return merged, nil
+}
+
 func dispatch(op int, data, keys, extra []byte, limit int64) ([]byte, []byte, int) {
 	switch op {
 	case 1:
@@ -337,6 +403,11 @@ func dispatch(op int, data, keys, extra []byte, limit int64) ([]byte, []byte, in
 			return nil, nil, 1
 		}
 		defer ring.ClearPrivateParams()
+		merged, err := mergeKeyVersions(ring)
+		if err != nil {
+			return nil, nil, 1
+		}
+		ring = merged
 		pgp := crypto.PGP()
 		if op == 3 {
 			if len(data) > int(limit) || len(extra) > maxKey {

@@ -235,3 +235,31 @@ func TestDecryptionRequiresEncryption(t *testing.T) {
 		t.Fatal("unencrypted literal data reported as decrypted")
 	}
 }
+
+func TestKnownRevocationSurvivesOlderKeyRevision(t *testing.T) {
+	raw, _, status := dispatch(1, fixture(t, "openpgp-v6/v6-pqc.sec.asc"), nil, nil, maxPlaintext)
+	if status != 0 {
+		t.Fatal("fixture")
+	}
+	defer clear(raw)
+	key, err := crypto.NewKey(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer key.ClearPrivateParams()
+	if err = key.GetEntity().Revoke(packet.KeyCompromised, "test revocation", &packet.Config{DefaultHash: stdcrypto.SHA512}); err != nil {
+		t.Fatal(err)
+	}
+	revoked, err := key.GetPublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, versions := range [][]byte{append(bytes.Clone(raw), revoked...), append(bytes.Clone(revoked), raw...)} {
+		_, meta, status := dispatch(3, fixture(t, "openpgp-v6/message.txt"), versions, fixture(t, "openpgp-v6/v6-pqc.sig.asc"), maxPlaintext)
+		var verdict map[string]any
+		_ = json.Unmarshal(meta, &verdict)
+		if status == 0 && verdict["valid"] == true {
+			t.Fatal("older revision hid a known revocation")
+		}
+	}
+}

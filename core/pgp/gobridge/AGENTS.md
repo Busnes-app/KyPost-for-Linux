@@ -22,6 +22,7 @@ Build the Linux RFC 9580/RFC 9980 reader and X-Wing HPKE codec as a Go c-archive
 ## Work Guidance
 
 - Preserve first-signature semantics and primary-fingerprint sender binding.
+- Merge immutable revisions at the read boundary, including primary/identity/subkey revocations and bindings. An older certificate must not hide a known revocation.
 - Keep v4 GPGME compatibility; read capability does not authorize new v6 sending or key generation.
 
 ## Verification
