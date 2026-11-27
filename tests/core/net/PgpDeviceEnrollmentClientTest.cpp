@@ -48,6 +48,11 @@ void PgpDeviceEnrollmentClientTest::advertisesOnlyHpkeEnvelopeVersions()
     const QJsonObject body = fake.receivedJsonBody();
     QCOMPARE(body.value("publicKey").toString(), QStringLiteral("BAAA"));
     QCOMPARE(body.value("envelopeVersions").toArray(), (QJsonArray{4, 5}));
+    QCOMPARE(body.value("openpgp").toArray(), (QJsonArray{"v4", "v6", "rfc9980"}));
+    FakeRelayServer pq(httpResponse(200, "OK", R"({"ok":true})"));
+    const auto published = PgpDeviceEnrollmentClient(http).publishKey(urlOf(pq), {}, QByteArray(1624, 'A'));
+    QCOMPARE(published.status, DeviceEnrollmentCallStatus::Ok);
+    QCOMPARE(pq.receivedJsonBody().value("envelopeVersions").toArray(), (QJsonArray{6}));
 }
 
 void PgpDeviceEnrollmentClientTest::readsTheRecordedVersionAndRingSnapshot()

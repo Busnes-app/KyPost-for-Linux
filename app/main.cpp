@@ -9,6 +9,7 @@
 #include "pairing/MfaController.h"
 #include "pairing/PairingController.h"
 #include "pgp/PgpQrController.h"
+#include "pgp/GoPgpBackend.h"
 #include "pgp/PgpQrScanner.h"
 #include "pgp/PgpEnrollmentController.h"
 #include "platform/SecureStoreKeychain.h"
@@ -582,6 +583,7 @@ int main(int argc, char* argv[])
     SecureStoreKeychain secureStore(QStringLiteral("com.kysecurity.mail"),
                                     SecureStoreKeychain::kDefaultTimeoutMs,
                                     QStringLiteral("com.urlxl.mail"));
+    setGoPgpSecretStore(&secureStore);
 
     // Probe the secret store before anything depends on it.
     //

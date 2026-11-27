@@ -1,4 +1,5 @@
 #include "pgp/DeviceEnrollmentCrypto.h"
+#include "pgp/GoPgpBackend.h"
 
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -13,7 +14,7 @@
 
 namespace {
 constexpr auto kDomainPrefix = "kypost-device-envelope/v";
-constexpr int kMaxRingEnvelopeBytes = 128 * 1024;
+constexpr int kMaxRingEnvelopeBytes = 512 * 1024;
 constexpr auto kHpkeAlgorithm = "HPKE-Base-P256-SHA256-A256GCM";
 constexpr auto kCrockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 constexpr int kMaxEnvelopeBytes = 1024 * 1024;
@@ -42,9 +43,20 @@ void DeviceEnrollmentCrypto::clear()
         EVP_PKEY_free(m_key);
     m_key = nullptr;
     m_publicKey.clear();
+    m_seed.clear();
 }
 
 bool DeviceEnrollmentCrypto::generate()
+{
+    clear();
+    auto key = goPgpCall(4);
+    if (key.status || key.data.bytes().size() != 32 || key.metadata.size() != 1216) return false;
+    m_seed = std::move(key.data);
+    m_publicKey = std::move(key.metadata);
+    return true;
+}
+
+bool DeviceEnrollmentCrypto::generateLegacy()
 {
     clear();
     std::unique_ptr<EVP_PKEY_CTX, decltype(&EVP_PKEY_CTX_free)> context(
@@ -85,12 +97,18 @@ QString DeviceEnrollmentCrypto::verificationCode(const QString& deviceId, qint64
 
 QString deviceEnrollmentCode(const QByteArray& publicKey, const QString& deviceId, qint64 bucket)
 {
-    if (publicKey.size() != 65 || publicKey.front() != '\x04')
+    if (publicKey.size() != 1216 && (publicKey.size() != 65 || publicKey.front() != '\x04'))
         return {};
     const QByteArray id = deviceId.toUtf8();
     if (id.size() > 0xffff)
         return {};
-    QByteArray preimage = publicKey;
+    QByteArray preimage;
+    if (publicKey.size() == 1216) {
+        preimage = "kypost-device-sas/v2";
+        preimage.append(char(1216 >> 8));
+        preimage.append(char(1216 & 255));
+    }
+    preimage.append(publicKey);
     preimage.append(static_cast<char>((id.size() >> 8) & 0xff));
     preimage.append(static_cast<char>(id.size() & 0xff));
     preimage.append(id);
@@ -168,7 +186,7 @@ SecureBytes DeviceEnrollmentCrypto::openDelivery(const QByteArray& envelopeJson,
                                                   const QString& deviceId, const QString& fingerprint) const
 {
     // Only RFC 9180 v4 (one armored key) and v5 (the complete ring); v2/v3 are retired.
-    const bool ring = version == 5;
+    const bool ring = version == 5 || version == 6;
     const int maximum = ring ? kMaxRingEnvelopeBytes : kMaxEnvelopeBytes;
     if ((version != 4 && !ring) || !isReady() || envelopeJson.isEmpty() || envelopeJson.size() > maximum)
         return {};
@@ -177,13 +195,19 @@ SecureBytes DeviceEnrollmentCrypto::openDelivery(const QByteArray& envelopeJson,
         return {};
     const QJsonObject object = document.object();
     if (object.value(QStringLiteral("v")) != QJsonValue(version)
-        || object.value(QStringLiteral("alg")).toString() != QLatin1String(kHpkeAlgorithm))
+        || object.value(QStringLiteral("alg")).toString() != QLatin1String(version == 6 ? "HPKE-Base-XWing-SHA256-A256GCM" : kHpkeAlgorithm))
         return {};
     // info comes from this device's own ID and the checked fingerprint, never the envelope.
     const QByteArray info = ring ? deviceEnvelopeV3Aad(deviceId, fingerprint, version)
                                  : deviceEnvelopeAad(deviceId, fingerprint, version);
     const QByteArray encapsulated = strictBase64(object.value(QStringLiteral("enc")));
     const QByteArray ciphertext = strictBase64(object.value(QStringLiteral("ct")));
+    if (version == 6) {
+        if (m_seed.isEmpty() || info.isEmpty()) return {};
+        // The Go decoder rejects duplicate/case-variant fields before opening.
+        auto opened = goPgpCall(8, envelopeJson, m_seed.bytes(), info);
+        return opened.status ? SecureBytes{} : std::move(opened.data);
+    }
     if (info.isEmpty() || object.size() != 4 || encapsulated.size() != 65 || encapsulated.front() != '\x04')
         return {};
     SecureBytes plaintext = hpkeOpen(m_key, encapsulated, info, {}, ciphertext);

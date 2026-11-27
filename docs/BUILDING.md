@@ -19,13 +19,13 @@ ctest --test-dir build
 Dependencies, with Arch package names: `qt6-base`, `qt6-declarative`, `qt6-svg`, `qt6-webengine`,
 `qt6-multimedia`, `kirigami` (KF6), `knotifications` (KF6), `kstatusnotifieritem` (KF6),
 `kdbusaddons` (KF6), `ki18n` (KF6), `qtkeychain-qt6`, `kunifiedpush`, `zxing-cpp`, `openssl`,
-`argon2`, `gpgme`. For the Ubuntu and KDE neon archive equivalents, see
+`argon2`, `gpgme`, and Go 1.27 or newer with CGO enabled. For the Ubuntu and KDE neon archive equivalents, see
 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
 
 `openssl` supplies AES-256-GCM and `argon2` the memory-hard key derivation behind the
 credential seal — Qt exposes neither. See `core/security/CredentialCipher.h`. `gpgme` is the C
 API, not the `gpgmepp` C++ wrapper, and it is what delegates OpenPGP custody to the user's
-`gpg-agent`.
+`gpg-agent`. The Go c-archive adds v6/RFC 9980 reading and X-Wing enrollment; CMake builds it from source into the build directory. Go uses its normal persistent module/build caches. Flatpak installs the Go SDK extension and downloads SHA-256-pinned module sources before its offline build. Refresh those sources with `python3 scripts/go-flatpak-sources.py` after dependency changes.
 
 ### Encryption at rest needs SQLCipher
 

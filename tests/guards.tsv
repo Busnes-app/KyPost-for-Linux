@@ -367,17 +367,17 @@ core/pgp/DeviceEnrollmentCrypto.cpp	    const int maximum = ring ? kMaxRingEnvel
 core/pgp/DeviceEnrollmentCrypto.cpp	    if ((version != 4 && !ring) || !isReady() || envelopeJson.isEmpty() || envelopeJson.size() > maximum)	    if (!isReady() || envelopeJson.isEmpty() || envelopeJson.size() > maximum)	DeviceEnrollmentCryptoTest:refusesRetiredLegacyDeliveries
 core/pgp/DeviceEnrollmentCrypto.cpp	    if (object.value(QStringLiteral("v")) != QJsonValue(version)	    if (false	DeviceEnrollmentCryptoTest:rejectsHpkeFramingChanges
 core/pgp/DeviceEnrollmentCrypto.cpp	        || QString::fromLatin1(decoded.decoded.toBase64()) != value.toString())	        || false)	DeviceEnrollmentCryptoTest:rejectsHpkeFramingChanges
-core/pgp/OpenPgpKeyImporter.cpp	    if (version != 4)	    if (false)	DeviceEnrollmentCryptoTest:importsEveryDeliveryVersion
+core/pgp/OpenPgpKeyImporter.cpp	    if (version != 4 && version != 6)	    if (false)	DeviceEnrollmentCryptoTest:importsEveryDeliveryVersion
 
 # Complete-ring GnuPG-only custody: scratch admission, snapshot binding and no partial success.
 # boundedKeyPackets additionally refuses compressed key packets before GnuPG 2.4.4
 # can expand them (upstream g10/import.c read_block). GnuPG 2.4.9 also refuses
 # compression, so the API-level compressed-key test cannot distinguish this guard
 # from the engine's redundant refusal on this machine. Do not claim it mutated red.
-core/pgp/OpenPgpKeyImporter.cpp	        if (m_bytes.size() > 128 * 1024)	        if (false)	OpenPgpKeyringTest:malformedRingIsRejectedBeforeDestinationWrites
+core/pgp/OpenPgpKeyImporter.cpp	        if (m_bytes.size() > 512 * 1024)	        if (false)	OpenPgpKeyringTest:malformedRingIsRejectedBeforeDestinationWrites
 core/pgp/OpenPgpKeyImporter.cpp	    if (ring.hasCertificate)	    if (false)	OpenPgpKeyringTest:unpublishedCertificateIsNeverAppliedOrDiscarded
 core/pgp/OpenPgpKeyImporter.cpp	        || ring.snapshot.materialGeneration != expected.materialGeneration || claimed != expectedInventory)	        || false)	OpenPgpKeyringTest:snapshotBindingsAreRequired
-core/pgp/OpenPgpKeyImporter.cpp	    if (ring.snapshot.activeFingerprint != normalizedFingerprint(expected.activeFingerprint.toLatin1())	    if (false	OpenPgpKeyringTest:snapshotBindingsAreRequired
+core/pgp/OpenPgpKeyImporter.cpp	        || (ring.snapshot.activeFingerprint != normalizedFingerprint(expected.activeFingerprint.toLatin1())	        || (false	OpenPgpKeyringTest:snapshotBindingsAreRequired
 core/pgp/OpenPgpKeyImporter.cpp	    if (actual != claimed)	    if (false)	OpenPgpKeyringTest:malformedRingIsRejectedBeforeDestinationWrites
 core/pgp/OpenPgpKeyImporter.cpp	                || info.replies != 1 || !info.clear)	                || info.replies != 1)	OpenPgpKeyringTest:protectedSecretPacketsAreRejected
 core/pgp/OpenPgpKeyImporter.cpp	    if (stillCurrent && !stillCurrent())	    if (false)	OpenPgpKeyringTest:cancellationAfterPartialImportCanBeRetried
@@ -563,9 +563,9 @@ core/net/RelayMailSource.cpp	    if (result.statusCode == 409 && code == QLatin1
 app/qml/components/RsvpConfirmDialog.qml	    readonly property bool isOpen: root.token >= 0 && root.confirmation.token === root.token && !AppLock.locked	    readonly property bool isOpen: root.token >= 0 && root.confirmation.token === root.token	QmlTests:InviteCard::test_the_dialog_is_closed_and_inert_under_the_lock
 
 # HPKE v4/v5: exact framing and alg, a stale ring snapshot.
-core/net/PgpDeviceEnrollmentClient.cpp	                    {QStringLiteral("envelopeVersions"), QJsonArray{4, 5}}},	                    {QStringLiteral("envelopeVersions"), QJsonArray{2, 3, 4, 5}}},	PgpDeviceEnrollmentClientTest:advertisesOnlyHpkeEnvelopeVersions
+core/net/PgpDeviceEnrollmentClient.cpp	                    {QStringLiteral("envelopeVersions"), publicKeyBase64.size() == 1624 ? QJsonArray{6} : QJsonArray{4, 5}},	                    {QStringLiteral("envelopeVersions"), QJsonArray{2, 3, 4, 5}},	PgpDeviceEnrollmentClientTest:advertisesOnlyHpkeEnvelopeVersions
 core/pgp/DeviceEnrollmentCrypto.cpp	    if (info.isEmpty() || object.size() != 4 || encapsulated.size() != 65 || encapsulated.front() != '\x04')	    if (info.isEmpty() || encapsulated.size() != 65 || encapsulated.front() != '\x04')	DeviceEnrollmentCryptoTest:rejectsHpkeFramingChanges
-core/pgp/DeviceEnrollmentCrypto.cpp	        || object.value(QStringLiteral("alg")).toString() != QLatin1String(kHpkeAlgorithm))	        || false)	DeviceEnrollmentCryptoTest:rejectsHpkeNegatives
+core/pgp/DeviceEnrollmentCrypto.cpp	        || object.value(QStringLiteral("alg")).toString() != QLatin1String(version == 6 ? "HPKE-Base-XWing-SHA256-A256GCM" : kHpkeAlgorithm))	        || false)	DeviceEnrollmentCryptoTest:rejectsHpkeNegatives
 core/net/PgpDeviceEnrollmentClient.cpp	        || generationOf(ring.value(QStringLiteral("materialGeneration"))) != out.materialGeneration)	        || false)	PgpDeviceEnrollmentClientTest:aStaleOrLegacyDeliveryHasNoRingSnapshot
 
 
@@ -642,3 +642,5 @@ app/mail/MailController.cpp	    if (m_readSearchGeneration)	    if (false)	MailD
 # Reply has no C++ entry point: this QML gate (Android's mayReplyOrForward)
 # is the whole control that keeps a protected message out of a compose seed.
 app/qml/utils/format.js	    return !!email && typeof email.pgpState === "number" && email.pgpState !== 1	    return !!email && typeof email.pgpState === "number"	QmlTests:ReplyQuote::test_protectedOrUnknownMailIsNotRepliedTo
+# Spec A: durable binary key bytes must match before the index/enrollment can advance.
+core/pgp/GoPgpBackend.cpp	        persisted.value.bytes() != inspected.data.bytes())	        false)	GoPgpBackendTest:importsV2OnlyAfterCheckingTheWholeSnapshot

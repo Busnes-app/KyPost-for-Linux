@@ -15,12 +15,13 @@ public:
     DeviceEnrollmentCrypto(const DeviceEnrollmentCrypto&) = delete;
     DeviceEnrollmentCrypto& operator=(const DeviceEnrollmentCrypto&) = delete;
 
-    bool generate();
-    bool isReady() const { return m_key != nullptr && m_publicKey.size() == 65; }
+    bool generate(); // default: X-Wing v6
+    bool generateLegacy(); // explicit P-256 v4/v5 compatibility
+    bool isReady() const { return (m_key != nullptr && m_publicKey.size() == 65) || (!m_seed.isEmpty() && m_publicKey.size() == 1216); }
     QByteArray publicKeyBase64() const { return m_publicKey.toBase64(); }
     QString verificationCode(const QString& deviceId, qint64 bucket) const;
     // Opens exactly the server-recorded delivery version, never a fallback:
-    // RFC 9180 v4 yields one armored key, v5 the raw keyring JSON. Anything else,
+    // RFC 9180 v4 yields one armored key, v5 a ring; X-Wing v6 carries either. Anything else,
     // including retired v2/v3, is refused.
     SecureBytes openDelivery(const QByteArray& envelopeJson, int version, const QString& deviceId,
                              const QString& fingerprint) const;
@@ -33,6 +34,7 @@ private:
                                 const QByteArray& aad, const QByteArray& ciphertext);
     EVP_PKEY* m_key = nullptr;
     QByteArray m_publicKey;
+    SecureBytes m_seed;
 };
 
 // HPKE info for v4 (deviceEnvelopeAad) and v5 (deviceEnvelopeV3Aad); the names

@@ -568,6 +568,7 @@ void PairingController::beginAwaitingApproval(const PairingParams& params,
         pending.response.pollIntervalSeconds,
         0,
         fromLink,
+        std::nullopt,
     });
     setPairingState(State::AwaitingApproval, QString(), /*forceNotify=*/true);
     scheduleApprovalPoll(DeviceApproval::nextPollDelayMs(m_approval->pollIntervalSeconds, 0, 0));

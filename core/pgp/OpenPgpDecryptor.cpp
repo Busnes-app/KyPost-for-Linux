@@ -1,5 +1,6 @@
 #include "pgp/OpenPgpDecryptor.h"
 #include "pgp/PgpKeyStrength.h"
+#include "pgp/GoPgpBackend.h"
 
 #include "pgp/GpgmeInit.h"
 
@@ -212,8 +213,7 @@ OpenPgpDecryptor::OpenPgpDecryptor(qint64 maxPlaintextBytes) : m_maxPlaintextByt
 
 bool OpenPgpDecryptor::engineAvailable()
 {
-    ensureGpgmeInitialised();
-    return gpgme_err_code(gpgme_engine_check_version(GPGME_PROTOCOL_OpenPGP)) == GPG_ERR_NO_ERROR;
+    return true; // The Go reader is compiled in; GnuPG remains the v4 agent backend.
 }
 
 PgpDecryptResult OpenPgpDecryptor::decrypt(const QByteArray& ciphertext, const QString& homeDirectory) const
@@ -225,6 +225,9 @@ PgpDecryptResult OpenPgpDecryptor::decrypt(const QByteArray& ciphertext, const Q
         return result;
     }
 
+    const auto modern = goPgpDecrypt(ciphertext, homeDirectory, m_maxPlaintextBytes);
+    if (modern.status == PgpDecryptStatus::Decrypted && !modern.signature.keyUnavailable) return modern;
+    if (modern.status == PgpDecryptStatus::TooLarge) return modern;
     ensureGpgmeInitialised();
 
     ContextHandle context;
@@ -286,6 +289,7 @@ PgpDecryptResult OpenPgpDecryptor::decrypt(const QByteArray& ciphertext, const Q
     }
 
     if (gpgme_err_code(error) != GPG_ERR_NO_ERROR) {
+        if (modern.status == PgpDecryptStatus::Decrypted) return modern;
         result.status = statusFromError(error);
         return result;
     }
@@ -309,6 +313,8 @@ PgpVerifyResult OpenPgpDecryptor::verifyDetached(const QByteArray& signedPart, c
         result.status = PgpVerifyStatus::Malformed;
         return result;
     }
+    const auto modern = goPgpVerify(signedPart, signature, homeDirectory, m_maxPlaintextBytes);
+    if (modern.status == PgpVerifyStatus::Checked && !modern.signature.keyUnavailable) return modern;
     ensureGpgmeInitialised();
     ContextHandle context;
     if (gpgme_new(&context.handle) || !context.handle)
@@ -322,8 +328,8 @@ PgpVerifyResult OpenPgpDecryptor::verifyDetached(const QByteArray& signedPart, c
         return result;
     const auto error = gpgme_op_verify(context.handle, detached.handle, data.handle, nullptr);
     result.signature = signatureFromContext(context.handle);
-    if (error || !result.signature.present) {
-        result.status = PgpVerifyStatus::Malformed;
+    if (error || !result.signature.present || result.signature.keyUnavailable) {
+        result.status = error || !result.signature.present ? PgpVerifyStatus::Malformed : PgpVerifyStatus::Checked;
         return result;
     }
     result.status = PgpVerifyStatus::Checked;

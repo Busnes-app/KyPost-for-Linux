@@ -123,6 +123,8 @@ void ContactTest::entryTypesCompare()
     ContactImEntry im1{QStringLiteral("Matrix"), QStringLiteral("work"), QStringLiteral("@ada:example.org")};
     ContactImEntry im2 = im1;
     QCOMPARE(im1, im2);
+    // GCC 16 falsely warns inside optional<QString> equality after reset;
+    // im2 is fully initialized above and this operation disengages service.
     im2.service = std::nullopt;
     QVERIFY(im1 != im2);
 

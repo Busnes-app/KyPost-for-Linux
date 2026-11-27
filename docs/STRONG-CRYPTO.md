@@ -18,8 +18,8 @@ build option weakens it. Smaller keys are refused without any configuration.
 | HTTPS key fetch from a scanned PGP QR code | Same as above (same `HttpClient`) | Yes | same |
 | Missing or non-OpenSSL TLS backend | HTTPS is refused with an install message | n/a | `HttpClient::refuseBeforeSending` |
 | New OpenPGP signing and encryption | The keys you hold in GnuPG | Yes. The primary key and every usable subkey for the role need RSA, DSA or ElGamal of 2048 bits, or ECC of 224. One weak recipient refuses the whole message. A signature that gpg makes with a digest weaker than SHA-224 (for example `digest-algo SHA1` in `gpg.conf`) is discarded, not sent. | `core/pgp/PgpKeyStrength.h`, `core/pgp/OpenPgpEncryptor.cpp` |
-| Incoming OpenPGP signatures | Verified by GnuPG | Yes. A valid signature from a weak key or with SHA-1/RIPEMD-160/MD5 shows "too weak to trust" and is never credited to the sender. | `core/pgp/OpenPgpDecryptor.cpp`, `core/pgp/EncryptedMessageReader.cpp` |
-| Device enrollment envelope | RFC 9180 HPKE: DHKEM(P-256, HKDF-SHA256), AES-256-GCM | Only this suite is accepted | `core/pgp/DeviceEnrollmentCrypto.cpp` |
+| Incoming OpenPGP signatures | Verified by GnuPG (v4) or gopenpgp (v6/RFC 9980 composites) | Yes. A valid signature from a weak key or with SHA-1/RIPEMD-160/MD5 shows "too weak to trust" and is never credited to the sender. | `core/pgp/OpenPgpDecryptor.cpp`, `core/pgp/EncryptedMessageReader.cpp` |
+| Device enrollment envelope | X-Wing HPKE (ML-KEM-768 + X25519), HKDF-SHA256, AES-256-GCM; legacy P-256 v4/v5 remains readable | Version and device/fingerprint context are authenticated | `core/pgp/DeviceEnrollmentCrypto.cpp` |
 | Web Push payloads | RFC 8291: P-256 ECDH, HKDF-SHA256, AES-128-GCM | Fixed by the standard | `core/security/WebPushCrypto.cpp` |
 | Local mail database | SQLCipher 4 defaults (AES-256, HMAC-SHA512 page authentication) with a random 256-bit key held in the OS secret store | Fixed | `core/security/DatabaseKeyStore.cpp`, `scripts/build-sqlcipher.sh` |
 | Device credential behind the PIN gate | Argon2id (64 MiB, 3 passes) to a 256-bit AES-GCM key | Fixed | `core/security/CredentialCipher.cpp` |
@@ -39,6 +39,28 @@ RSA-2047 certificate. KyPost therefore checks each certificate's actual key size
   the code with one GnuPG computes from the key itself. The v4 format defines that hash, so it
   is not configurable. Forging a match needs a second preimage, not a collision. v6
   fingerprints (SHA-256) are also accepted.
+
+## OpenPGP v6 read support
+
+KyPost reads v6 PKESK/SEIPDv2 messages, v4 ID 35 encryption and ML-DSA-65+Ed25519
+composite signatures through gopenpgp. Existing v4 agent and hardware-token workflows
+remain available. This adds reading and enrollment, not v6 generation or sending.
+The relay's authenticated sender-key binding still determines whose signature counts.
+
+Modern private keys live as binary OS Secret Service entries. A public-key refresh
+cannot erase the private copy or retired subkeys. Enrollment requires a complete
+validated v1/v2 ring, a durable read-back and a current server snapshot before success
+is reported. Keep the OS keyring when moving or updating the profile. An unavailable
+keyring prevents import and reading; it never triggers plaintext key storage.
+
+Go byte buffers and C ABI output are cleared after use; Go's managed key objects
+and upstream library allocations cannot be guaranteed erased. An unlocked process
+and OS Secret Service remain trusted. SAS protects comparison with the published
+key, not a server actively replacing the webmail JavaScript.
+
+No recovery-file importer exists in this client. The suite's 2 MiB recovery-file
+limit therefore belongs to the clients that read those files; Linux admits only
+512 KiB ring plaintext and serialized ring envelopes.
 
 ## Configuring KyPost so smaller keys are completely disabled
 

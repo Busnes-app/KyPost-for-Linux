@@ -3,14 +3,15 @@
 #include <QByteArray>
 #include <QString>
 
-// Decrypts an OpenPGP message using the user's own GnuPG installation.
+// Reads OpenPGP with gopenpgp for modern keys and the user's GnuPG agent for v4.
 //
-// CUSTODY MODEL, decided 2026-08-22 (AGENTS.md §4a): this class never holds
+// Classical custody (AGENTS.md §4a): this class never holds
 // key material and never sees a passphrase. Both stay inside gpg-agent,
 // where the user already keeps them -- which is also how hardware tokens
 // and smartcards work here without a line of code, and why most of §4a's
 // rules about storing keys do not apply to this implementation. What we
-// hold is the decrypted message, which is cached mail like any other.
+// hold is the decrypted message. Modern keys use binary OS Secret Service entries
+// through GoPgpBackend; plaintext stays within the existing transient reader lifetime.
 //
 // The `homeDirectory` argument exists for tests: pointing a context at a
 // throwaway GNUPGHOME is what makes this testable without touching (or
@@ -102,7 +103,7 @@ public:
     PgpVerifyResult verifyDetached(const QByteArray& signedPart, const QByteArray& signature,
                                     const QString& homeDirectory = {}) const;
 
-    // False when there is no usable gpg on this system. Callers use it to
+    // True with the compiled Go reader. Legacy GPGME operations can still fail. Callers use it to
     // explain the situation once rather than reporting every message as
     // undecryptable.
     static bool engineAvailable();

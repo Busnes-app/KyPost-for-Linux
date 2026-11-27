@@ -33,7 +33,7 @@ docs/       — local tooling/setup notes (see docs/SETUP.md); docs/PARITY.md is
 
 ## 3. Build instructions
 
-The app build, Qt6/KF6:
+The app build requires Go 1.27+ with CGO and Qt6/KF6:
 
 ```sh
 cmake -B build -S . -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -461,39 +461,21 @@ Added 2026-07-26:
 
 Client-side decryption and signing are now in scope.
 
-**Custody model, revised 2026-08-23: use the server's authenticated ECDH
-device-enrolment ceremony, then delegate durable custody to the user's
-`gpg-agent` via GPGME.** KyPost generates a non-persistent P-256 key, publishes
-its public point, and shows the same time-bucketed verification code as
-webmail. Webmail unlocks the account key locally and seals it to that device
-key. KyPost briefly handles the decrypted key bytes only to import them into
-GnuPG, then zeroises both the envelope plaintext and the ECDH private key. It
-never receives the account password or OpenPGP passphrase. After import, keys
-stay where the user keeps them, pinentry handles passphrases, and hardware
-tokens and smartcards continue to work without a second custody system.
+**Custody model.** Classical v4 keys retain GPGME/gpg-agent custody, including
+hardware tokens and pinentry. Spec A P3 adds gopenpgp for v6 and RFC 9980 reads.
+Go-managed keys use binary entries in the existing OS Secret Service, never
+QString, settings, SQLite or plaintext files. Each immutable serialized revision
+has its own content-addressed entry; a public index retains historical revisions.
+NetworkExecutor is its single writer. Import checks the entire ring and authenticated
+snapshot before writes and verifies each durable write by reading it back. Failed
+or cancelled import never acknowledges enrollment. Existing keys stay on failed
+imports, unpair and wipe, as they do in the user's GnuPG keyring.
 
-Two consequences worth being explicit about, because they read as weaknesses
-and are the accepted cost of the model:
-
-  * The feature needs a working GnuPG. Without one, `engineAvailable()` is
-    false and the app says so once rather than reporting every message as
-    undecryptable.
-  * In a Flatpak it needs `--socket=gpg-agent`. Without that grant, gpgme
-    talks to a gpg inside the sandbox with an empty keyring — so the
-    permission goes in with the change that wires decryption into the mail
-    path, not before it, and not without saying why.
-
-Most of what follows therefore does not apply to this implementation: there
-is no key at rest here to protect, and no passphrase to keep out of a
-`QString`. They stay because they are the rules for anything that DOES hold
-key material, and reversing the custody decision later must not also quietly
-delete the constraints that come with it.
-
-**Reaffirmed 2026-09-15: GnuPG-only for complete-ring enrollment too.** No
-original-JSON archive or second private store. Refuse a bundle containing an
-unpublished revocation certificate before any durable import: importing it would
-apply a revocation, and discarding it must not count as complete enrollment.
-Never delete existing user keys on failed enrollment, unpair or wipe.
+Enrollment generates an ephemeral X-Wing seed held in SecureBytes for one ceremony;
+only its public key is published. Cancel/import completion clears it. Durable
+OpenPGP custody uses Secret Service; it requires an available binary backend and
+never falls back to SecureStoreFile. Unpublished revocation certificates remain
+explicitly unsupported rather than applied or discarded.
 
 The rules below apply to any implementation, under either model. They are
 written now, before the code, because every one of them is easier to design
@@ -549,7 +531,8 @@ The consequences are binding on anything that touches `core/pgp/OpenPgpKeyImport
 - **Sending mail modifies the user's keyring.** That is a side effect on state
   this app does not own, so importing must stay idempotent -- gpg merges, so a
   resend is a no-op -- and must never delete.
-- **The fingerprint the relay claims is checked in a scratch GNUPGHOME first.**
+- **The fingerprint the relay claims is checked before durable writes.** Modern
+  keys use the bounded Go inspector; classical keys use a scratch GNUPGHOME.
   A key whose computed fingerprint does not match the claim never enters the
   real keyring, not even briefly. Importing and then deleting would mean this
   code deletes from a keyring it did not create, and an interrupted run would
@@ -564,7 +547,7 @@ The consequences are binding on anything that touches `core/pgp/OpenPgpKeyImport
 
 ### 4c. The in-person QR check (2026-10-13, same protocol as Android and Mac)
 
-The QR is the pickup URL plus `#fp=<FPR>`, 40 uppercase hex digits for the v4
+The QR is the pickup URL plus `#fp=<FPR>`, 40 or 64 uppercase hex digits for a v4 or v6
 primary key. A fragment never reaches the server.
 
 - **The showing side vouches only for a key it holds.** The relay's bootstrap
@@ -606,7 +589,7 @@ divergence to guard against: KF is never used in `core/`.
     live in `core/`, because `i18n()` needs KF6::I18n. The *decision* stays
     in core (`core/domain/PgpMessageState.h`); its *wording* lives in
     `app/mail/PgpMessagePresentation.h`.
-  - **`core/` links exactly three non-Qt libraries, all PRIVATE, and no type
+  - **`core/` links OpenSSL, Argon2, GPGME and the Go crypto c-archive PRIVATE; no type
     from any of them appears in a public header**: OpenSSL's libcrypto
     (>= 3.2 for `OSSL_HPKE_*`, so neither CI job runs on noble's 3.0;
     `core/security/CredentialCipher.cpp` — Qt exposes no AEAD anywhere in
@@ -614,10 +597,9 @@ divergence to guard against: KF is never used in `core/`.
     linking what Qt already links for TLS), libargon2 (the memory-hard KDF
     behind the same seal), and gpgme — **the C API, never the `gpgmepp` C++
     wrapper**, which broke CI: KDE neon's `libgpgmepp-dev` wants gpgme >= 2.0
-    while Ubuntu noble carried 1.x, and CI then layered both archives. A fourth,
-    SQLCipher, is linked PUBLIC and only when `KYPOST_SQLCIPHER_ROOT` is set;
-    §6h is why it cannot be an ordinary distro package. Adding a fifth is a
-    decision, not a build tweak. `org.kde.Platform` ships libssl, so the
+    while Ubuntu noble carried 1.x, and CI then layered both archives. SQLCipher is linked PUBLIC and only when `KYPOST_SQLCIPHER_ROOT` is set;
+    §6h is why it cannot be an ordinary distro package. Spec A Q6 authorizes
+    the Go archive; see `core/pgp/gobridge/AGENTS.md` before changing it. `org.kde.Platform` ships libssl, so the
     Flatpak needs no module for it; libargon2, sqlcipher, qtkeychain,
     zxing-cpp and kunifiedpush are all built from source in the manifest.
 
@@ -1286,46 +1268,25 @@ worse than no comment: the next reader stops looking.
   drafts"). Restored HTML enters an inert template and passes the editor
   allowlist before insertion into the live editable page.
 
-- **V3 crypto and ring import are preparation, not enrollment readiness.**
-  `DeviceEnrollmentCrypto::openKeyringEnvelope` authenticates v3 into
-  `SecureBytes`. `importPrivateKeyring` validates the ASCII JSON schema without
-  secret QString values (128 KiB, 16 primary keys, 256 fingerprints), binds it
-  to the expected active fingerprint, material generation and complete inventory,
-  then validates every key in a disposable GnuPG home before durable import.
-  Only unprotected, present secret packets qualify; GPGME KEYINFO queries the
-  scratch agent's explicit socket. The JSON path rejects compressed/streaming
-  key packets before GnuPG can expand them (older supported engines allow this).
-  Legacy single-key admission is unchanged. Unpublished revocation certificates
-  produce an explicit unsupported result; no archive, discard or revocation.
-  Every import result and persisted secret inventory is checked. Failure or
-  cancellation may leave a subset in GnuPG; retain it, retry idempotently, and
-  never advance active selection or acknowledge partial success. Existing keys
-  are never deleted. The expected snapshot must come from the authenticated
-  server, not the payload itself. Run the importer on a worker with a thread-safe
-  identity/cancellation predicate.
-  **Wired 2026-10-24 (owner decision); HPKE-only since 2026-10-27.** `PgpEnrollmentController`
-  publishes `envelopeVersions: [4,5]` and opens by the server-recorded delivery
-  `version` via `openDelivery`, never by trial: 4 imports one armored key with the
-  legacy boolean ack, 5 imports the ring against the GET-envelope snapshot and acks
-  `{envelopeVersion, materialGeneration, fingerprint}`. V4/v5 are RFC 9180 mode_base,
-  KEM 0x0010 DHKEM(P-256, HKDF-SHA256), KDF 0x0001, AEAD 0x0002 AES-256-GCM, through
-  OpenSSL `OSSL_HPKE_*` (never hand-rolled). `info` = `kypost-device-envelope/vN` ||
-  u16-length device ID || u16-length fingerprint (v4 uppercased, whitespace removed;
-  v5 exact uppercase 40/64 hex); HPKE `aad` empty; exactly `{v, alg, enc, ct}`,
-  canonical padded base64; v5 is capped at 128 KiB serialized.
-  **V2/v3 (custom ECDH + HKDF + GCM, not RFC 9180) are retired.** A delivered 2/3 is
-  refused with an update-the-server message and `openDelivery`/`importDeviceDelivery`
-  reject it; no legacy opener exists. Nothing needs one: the enrollment key lives
-  only in memory for one ceremony, no envelope is stored, and Linux seals none.
-  Do not re-add v2/v3 for compatibility; KyPost-Server must deliver v4/v5.
-  `device-envelope-v3.json` (now the authentic v2/v3 refusal input and the fixed
-  device key) and `pgp-keyring-v1.json` are public test material from server PR199;
-  `device-envelope-hpke.json` (SHA-256 `fa551913…a6499c`) and
-  `hpke-cfrg-p256-aes256.json` (`a9d0c155…5b865a`, CFRG draft-irtf-cfrg-hpke
-  `b1f7cb0c`) are byte-identical copies from kypost-server commit `5c52b69d`
-  `testdata/`. Re-copy, never edit. `OpenPgpKeyringTest`
-  covers real disk imports, agent restart, historical/hidden-recipient decrypt,
-  current signing, malformed payloads, partial failure/cancellation and retry.
+- **Complete-ring enrollment.** The byte-oriented RingReader accepts v1 and v2
+  (`active.v4`/`active.v6`), with a 512 KiB cap, 16 primaries and 256 fingerprints.
+  Validate every member, secret packet, generation, active selection and complete
+  inventory before durable import. Keep v1 readable and never acknowledge a partial
+  import. Classical-only v1 rings retain scratch-GnuPG admission; v2/modern rings
+  use gopenpgp plus binary Secret Service storage. Classical v4 members also reach
+  GnuPG for existing sends. P3 implements read support; v6 sending remains P4.
+- **Enrollment codecs.** Default publication uses a 1216-byte X-Wing public key,
+  `envelopeVersions:[6]` and `openpgp:["v4","v6","rfc9980"]`. Explicit P-256
+  publication remains `[4,5]`. A publication has one key/suite; never claim P-256
+  can receive X-Wing. Open only the authenticated delivery's version. V6 uses
+  ky-primitives/xwing (KEM 0x647A), 1120-byte enc, HKDF-SHA256/AES-256-GCM,
+  empty HPKE AAD and length-prefixed device/fingerprint info. Strict v6 JSON
+  rejects duplicate/unknown fields and noncanonical base64. SAS v2 hashes all
+  1216 public-key bytes. Legacy P-256 SAS and v4/v5 HPKE remain tested; retired
+  v2/v3 envelopes remain refused. Ring envelopes are capped at 512 KiB serialized.
+- **Fixture provenance.** Existing HPKE/P-256 fixtures stay in `tests/fixtures/`.
+  Go bridge RFC 9980 and X-Wing fixtures are pinned in `gobridge/PROVENANCE.md`;
+  copies stay byte-identical to KyPost-Server. CTest includes Go tests.
 
 ## 6k. Strong crypto profile (2026-10-27)
 
@@ -1371,6 +1332,7 @@ worse than no comment: the next reader stops looking.
 ### Child DOX Index
 
 - `docs/AGENTS.md` — mdBook manual, chapter ownership and documentation checks.
+- `core/pgp/gobridge/AGENTS.md` — Go C ABI, crypto limits, source builds and shared fixtures.
 
 
 ## 8. Known live-system gotchas

@@ -85,6 +85,7 @@ add_library(kypostcore STATIC
   security/CredentialCipher.h
   db/DatabaseEncryptionMigration.cpp
   db/ProfileDatabase.cpp
+  pgp/GoPgpBackend.cpp
   pgp/GpgmeInit.cpp
   pgp/GpgmeInit.h
   pgp/PgpKeyStrength.h
@@ -303,3 +304,21 @@ endif()
 # Surfaces the root project(VERSION) to C++. PUBLIC so test binaries that
 # link kypostcore see the same value the library was built with.
 target_compile_definitions(kypostcore PUBLIC KYPOST_VERSION="${PROJECT_VERSION}")
+
+# Q6: compile source into a c-archive; no prebuilt crypto binaries in Git.
+find_program(KYPOST_GO go REQUIRED)
+find_package(Threads REQUIRED)
+set(KYPOST_GO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/pgp/gobridge")
+file(GLOB KYPOST_GO_SOURCES CONFIGURE_DEPENDS "${KYPOST_GO_DIR}/*.go")
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/kypostpgp.a" "${CMAKE_CURRENT_BINARY_DIR}/kypostpgp.h"
+  COMMAND ${CMAKE_COMMAND} -E env CGO_ENABLED=1 ${KYPOST_GO} build -mod=readonly -trimpath
+    -buildmode=c-archive -o "${CMAKE_CURRENT_BINARY_DIR}/kypostpgp.a" .
+  WORKING_DIRECTORY "${KYPOST_GO_DIR}"
+  DEPENDS ${KYPOST_GO_SOURCES} "${KYPOST_GO_DIR}/go.mod" "${KYPOST_GO_DIR}/go.sum"
+  VERBATIM)
+add_custom_target(kypostpgp_archive DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/kypostpgp.a")
+add_dependencies(kypostcore kypostpgp_archive)
+target_include_directories(kypostcore PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_link_libraries(kypostcore PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/kypostpgp.a" Threads::Threads ${CMAKE_DL_LIBS})
+# Notices for statically linked Go code travel with source-built packages.
+install(DIRECTORY "${KYPOST_GO_DIR}/LICENSES/" DESTINATION share/licenses/kypost/Go)

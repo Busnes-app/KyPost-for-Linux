@@ -1,5 +1,6 @@
 #include "pgp/OpenPgpKeyImporter.h"
 #include "pgp/PgpFingerprint.h"
+#include "pgp/GoPgpBackend.h"
 
 #include "pgp/GpgmeInit.h"
 
@@ -158,6 +159,7 @@ struct RingPayload {
     PgpKeyringSnapshot snapshot;
     std::vector<RingMember> members;
     bool hasCertificate = false;
+    int version = 1;
 };
 
 
@@ -167,7 +169,7 @@ public:
 
     bool read(RingPayload& out)
     {
-        if (m_bytes.size() > 128 * 1024)
+        if (m_bytes.size() > 512 * 1024)
             return false;
         QSet<QByteArray> fields;
         if (!take('{'))
@@ -178,11 +180,24 @@ public:
                 return false;
             if (name == "format") {
                 SecureBytes value;
-                if (!string(value, 32) || value.bytes() != "kypost-pgp-keyring-v1")
-                    return false;
+                if (!string(value, 32)) return false;
+                if (value.bytes() == "kypost-pgp-keyring-v2") out.version = 2;
+                else if (value.bytes() != "kypost-pgp-keyring-v1") return false;
             } else if (name == "activeFingerprint") {
                 if (!fingerprint(out.snapshot.activeFingerprint))
                     return false;
+            } else if (name == "active") {
+                QSet<QByteArray> activeFields;
+                if (!take('{')) return false;
+                do {
+                    QByteArray kind;
+                    QString fpr;
+                    if (!field(kind, activeFields) || !fingerprint(fpr)) return false;
+                    if (kind == "v4" && fpr.size() == 40) out.snapshot.activeV4 = fpr;
+                    else if (kind == "v6" && fpr.size() == 64) out.snapshot.activeV6 = fpr;
+                    else return false;
+                } while (take(','));
+                if (!take('}')) return false;
             } else if (name == "materialGeneration") {
                 if (!generation(out.snapshot.materialGeneration))
                     return false;
@@ -224,6 +239,13 @@ public:
         space();
         if (m_pos != m_bytes.size())
             return false;
+        if (out.version == 2) {
+            if (!fields.contains("active") || fields.contains("activeFingerprint")) return false;
+            out.snapshot.activeFingerprint = out.snapshot.activeV6.isEmpty() ? out.snapshot.activeV4 : out.snapshot.activeV6;
+            for (const auto& active : {out.snapshot.activeV4, out.snapshot.activeV6}) {
+                if (!active.isEmpty() && std::none_of(out.members.begin(), out.members.end(), [&](const auto& member) { return member.fingerprint == active; })) return false;
+            }
+        } else if (!fields.contains("activeFingerprint") || fields.contains("active")) return false;
         return std::count_if(out.members.begin(), out.members.end(), [&](const auto& member) {
             return member.fingerprint == out.snapshot.activeFingerprint;
         }) == 1;
@@ -244,7 +266,7 @@ private:
         ++m_pos;
         return true;
     }
-    bool string(SecureBytes& out, qsizetype limit = 128 * 1024)
+    bool string(SecureBytes& out, qsizetype limit = 512 * 1024)
     {
         if (!take('"'))
             return false;
@@ -580,6 +602,15 @@ bool secretInventory(const QString& home, const QString& fingerprint,
 PgpImportResult importPublicKey(const QByteArray& armoredPublicKey, const QString& expectedFingerprint,
                                  const QString& homeDirectory)
 {
+    const auto info = goKeyInfo(armoredPublicKey);
+    if (info.value(QStringLiteral("modern")).toBool()) {
+        const auto fpr = info.value(QStringLiteral("fingerprint")).toString();
+        if (info.value(QStringLiteral("private")).toBool()
+            || (!expectedFingerprint.isEmpty() && fpr != normalizedFingerprint(expectedFingerprint.toLatin1())))
+            return {PgpImportStatus::Rejected, {}, {}};
+        return {storeGoPgpKey(armoredPublicKey, fpr, homeDirectory) ? PgpImportStatus::Imported : PgpImportStatus::Rejected, fpr, {}};
+    }
+
     PgpImportResult out;
 
     if (armoredPublicKey.trimmed().isEmpty()) {
@@ -647,6 +678,9 @@ PgpImportResult importPublicKey(const QByteArray& armoredPublicKey, const QStrin
 
 QString publicKeyFingerprint(const QByteArray& armoredPublicKey)
 {
+    const auto info = goKeyInfo(armoredPublicKey);
+    if (info.value(QStringLiteral("modern")).toBool())
+        return info.value(QStringLiteral("private")).toBool() ? QString() : info.value(QStringLiteral("fingerprint")).toString();
     QTemporaryDir home;
     if (!home.isValid())
         return {};
@@ -656,6 +690,16 @@ QString publicKeyFingerprint(const QByteArray& armoredPublicKey)
 
 ContactKeyProblem contactKeyProblem(const QByteArray& armored, const QStringList& emails)
 {
+    const auto info = goKeyInfo(armored);
+    if (info.value(QStringLiteral("modern")).toBool()) {
+        if (info.value(QStringLiteral("private")).toBool()) return ContactKeyProblem::Private;
+        if (info.value(QStringLiteral("expired")).toBool() || info.value(QStringLiteral("revoked")).toBool()) return ContactKeyProblem::RevokedOrExpired;
+        if (emails.isEmpty()) return ContactKeyProblem::NoAddress;
+        for (const auto& value : info.value(QStringLiteral("emails")).toArray())
+            for (const auto& email : emails)
+                if (!email.trimmed().isEmpty() && email.trimmed().compare(value.toString(), Qt::CaseInsensitive) == 0) return ContactKeyProblem::None;
+        return ContactKeyProblem::AddressNotOnKey;
+    }
     const QByteArray text = armored.trimmed();
     if (text.startsWith("-----BEGIN PGP PRIVATE KEY BLOCK-----"))
         return ContactKeyProblem::Private;
@@ -721,6 +765,14 @@ ContactKeyProblem contactKeyProblem(const QByteArray& armored, const QStringList
 PgpImportResult importPrivateKey(const SecureBytes& armoredPrivateKey, const QString& expectedFingerprint,
                                   const QString& homeDirectory)
 {
+    const auto info = goKeyInfo(armoredPrivateKey.bytes());
+    if (info.value(QStringLiteral("modern")).toBool()) {
+        const auto fpr = info.value(QStringLiteral("fingerprint")).toString();
+        const bool valid = info.value(QStringLiteral("private")).toBool() && info.value(QStringLiteral("unlocked")).toBool()
+            && fpr == normalizedFingerprint(expectedFingerprint.toLatin1());
+        return {valid && storeGoPgpKey(armoredPrivateKey.bytes(), fpr, homeDirectory) ? PgpImportStatus::Imported : PgpImportStatus::Rejected, fpr, {}};
+    }
+
     PgpImportResult out;
     if (armoredPrivateKey.isEmpty()) {
         out.status = PgpImportStatus::Rejected;
@@ -790,9 +842,39 @@ PgpKeyringImportStatus importPrivateKeyring(const SecureBytes& keyringJson,
         expectedInventory.insert(normalized);
     }
     const QSet<QString> claimed(ring.snapshot.keyFingerprints.begin(), ring.snapshot.keyFingerprints.end());
-    if (ring.snapshot.activeFingerprint != normalizedFingerprint(expected.activeFingerprint.toLatin1())
+    if (normalizedFingerprint(expected.activeFingerprint.toLatin1()).isEmpty()
+        || (ring.snapshot.activeFingerprint != normalizedFingerprint(expected.activeFingerprint.toLatin1())
+         && ring.snapshot.activeV4 != normalizedFingerprint(expected.activeFingerprint.toLatin1()))
+        || (!expected.activeV4.isEmpty() && ring.snapshot.activeV4 != expected.activeV4)
+        || (!expected.activeV6.isEmpty() && ring.snapshot.activeV6 != expected.activeV6)
         || ring.snapshot.materialGeneration != expected.materialGeneration || claimed != expectedInventory)
         return PgpKeyringImportStatus::Rejected;
+    bool modern = ring.version == 2;
+    for (const auto& member : ring.members)
+        modern |= goKeyInfo(member.privateKey.bytes()).value(QStringLiteral("modern")).toBool();
+    if (modern) {
+        QSet<QString> goInventory;
+        for (const auto& member : ring.members) {
+            const auto info = goKeyInfo(member.privateKey.bytes());
+            if (info.value(QStringLiteral("fingerprint")).toString() != member.fingerprint
+                || !info.value(QStringLiteral("private")).toBool() || !info.value(QStringLiteral("unlocked")).toBool()) return PgpKeyringImportStatus::Rejected;
+            for (const auto& fpr : info.value(QStringLiteral("fingerprints")).toArray()) {
+                if (goInventory.contains(fpr.toString())) return PgpKeyringImportStatus::Rejected;
+                goInventory.insert(fpr.toString());
+            }
+        }
+        if (goInventory != claimed) return PgpKeyringImportStatus::Rejected;
+        for (const auto& member : ring.members) {
+            if (stillCurrent && !stillCurrent()) return PgpKeyringImportStatus::Cancelled;
+            if (!storeGoPgpKey(member.privateKey.bytes(), member.fingerprint, homeDirectory)) return PgpKeyringImportStatus::ImportFailed;
+            // Preserve classical v4 sending through the existing agent.
+            if (!goKeyInfo(member.privateKey.bytes()).value(QStringLiteral("modern")).toBool()) {
+                const auto legacy = importPrivateKey(member.privateKey, member.fingerprint, homeDirectory).status;
+                if (legacy != PgpImportStatus::Imported && legacy != PgpImportStatus::Unchanged) return PgpKeyringImportStatus::ImportFailed;
+            }
+        }
+        return stillCurrent && !stillCurrent() ? PgpKeyringImportStatus::Cancelled : PgpKeyringImportStatus::Imported;
+    }
     ensureGpgmeInitialised();
     if (gpgme_engine_check_version(GPGME_PROTOCOL_OpenPGP) != GPG_ERR_NO_ERROR)
         return PgpKeyringImportStatus::EngineUnavailable;
@@ -842,9 +924,10 @@ PgpKeyringImportStatus importPrivateKeyring(const SecureBytes& keyringJson,
 PgpKeyringImportStatus importDeviceDelivery(int version, const SecureBytes& plaintext,
     const PgpKeyringSnapshot& expected, const QString& homeDirectory, const std::function<bool()>& stillCurrent)
 {
-    if (version == 5)
+    if (version == 5 || (version == 6
+        && trimmed(std::string_view(plaintext.bytes().constData(), plaintext.bytes().size())).starts_with('{')))
         return importPrivateKeyring(plaintext, expected, homeDirectory, stillCurrent);
-    if (version != 4)
+    if (version != 4 && version != 6)
         return PgpKeyringImportStatus::Rejected;
     switch (importPrivateKey(plaintext, expected.activeFingerprint, homeDirectory).status) {
     case PgpImportStatus::Imported: return PgpKeyringImportStatus::Imported;

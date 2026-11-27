@@ -56,7 +56,7 @@ SecureStoreKeychain::SecureStoreKeychain(const QString& service, int timeoutMs,
 {
 }
 
-SecureStoreKeychain::JobOutcome SecureStoreKeychain::runBlocking(const JobFactory& makeJob) const
+SecureStoreKeychain::JobOutcome SecureStoreKeychain::runBlocking(const JobFactory& makeJob, bool binaryRead) const
 {
     // Shared with the worker thread and outliving this frame on purpose. On
     // the timeout path we return while the job is still running, so anything
@@ -69,6 +69,7 @@ SecureStoreKeychain::JobOutcome SecureStoreKeychain::runBlocking(const JobFactor
         bool completed = false;
         int error = 0;
         QString textData;
+        SecureBytes binaryData;
     };
     const auto payload = std::make_shared<Payload>();
 
@@ -109,7 +110,7 @@ SecureStoreKeychain::JobOutcome SecureStoreKeychain::runBlocking(const JobFactor
 
     QMetaObject::invokeMethod(
         &keychainWorkerContext(),
-        [makeJob, payload]() {
+        [makeJob, payload, binaryRead]() {
             QKeychain::Job* job = makeJob();
 
             // DIRECT, because the receiver is the job itself and it lives on
@@ -124,11 +125,15 @@ SecureStoreKeychain::JobOutcome SecureStoreKeychain::runBlocking(const JobFactor
             // ("the job is guaranteed alive") had been true only while both
             // ends shared a thread.
             QObject::connect(job, &QKeychain::Job::finished, job,
-                              [payload](QKeychain::Job* finished) {
+                              [payload, binaryRead](QKeychain::Job* finished) {
                                   const QMutexLocker locker(&payload->mutex);
                                   payload->error = static_cast<int>(finished->error());
-                                  if (auto* read = qobject_cast<QKeychain::ReadPasswordJob*>(finished))
-                                      payload->textData = read->textData();
+                                  if (auto* read = qobject_cast<QKeychain::ReadPasswordJob*>(finished)) {
+                                      if (binaryRead)
+                                          payload->binaryData = SecureBytes(read->binaryData());
+                                      else
+                                          payload->textData = read->textData();
+                                  }
                                   // Written last: it is what the poll above
                                   // reads to decide the rest is populated.
                                   payload->completed = true;
@@ -141,7 +146,7 @@ SecureStoreKeychain::JobOutcome SecureStoreKeychain::runBlocking(const JobFactor
     loop.exec();
 
     const QMutexLocker locker(&payload->mutex);
-    return JobOutcome{ payload->completed, payload->error, payload->textData };
+    return JobOutcome{ payload->completed, payload->error, payload->textData, std::move(payload->binaryData) };
 }
 
 bool SecureStoreKeychain::set(const QString& key, const QString& value)
@@ -267,4 +272,31 @@ bool SecureStoreKeychain::removeFrom(const QString& service, const QString& key)
 bool SecureStoreKeychain::contains(const QString& key) const
 {
     return get(key).has_value();
+}
+
+bool SecureStoreKeychain::setBytes(const QString& key, const QByteArray& value)
+{
+    auto bytes = std::make_shared<SecureBytes>(QByteArray(value.constData(), value.size()));
+    const auto outcome = runBlocking([service = m_service, key, bytes]() -> QKeychain::Job* {
+        auto* job = new QKeychain::WritePasswordJob(service);
+        job->setKey(key);
+        job->setInsecureFallback(false); // Private packets never enter a QSettings fallback.
+        job->setBinaryData(bytes->bytes());
+        return job;
+    });
+    return outcome.completed && outcome.error == QKeychain::NoError;
+}
+SecureStore::BytesResult SecureStoreKeychain::readBytes(const QString& key) const
+{
+    auto outcome = runBlocking([service = m_service, key]() -> QKeychain::Job* {
+        auto* job = new QKeychain::ReadPasswordJob(service);
+        job->setKey(key);
+        job->setInsecureFallback(false); // Private packets never enter a QSettings fallback.
+        return job;
+    }, true);
+    SecureBytes bytes(std::move(outcome.binaryData));
+    if (!outcome.completed) return {};
+    if (outcome.error == QKeychain::EntryNotFound) return {ReadStatus::Absent, {}};
+    if (outcome.error != QKeychain::NoError) return {};
+    return {ReadStatus::Found, std::move(bytes)};
 }

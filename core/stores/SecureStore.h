@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include "security/SecureBytes.h"
 #include <optional>
 
 // Backend-agnostic interface for storing secrets. Implementations persist
@@ -63,6 +64,10 @@ public:
         return ReadResult{ ReadStatus::Found, *value };
     }
 
+    struct BytesResult { ReadStatus status = ReadStatus::Failed; SecureBytes value; };
+    // Opt-in binary storage only. Text/file backends fail closed for PGP keys.
+    virtual bool setBytes(const QString&, const QByteArray&) { return false; }
+    virtual BytesResult readBytes(const QString&) const { return {}; }
     virtual bool set(const QString& key, const QString& value) = 0;
     virtual std::optional<QString> get(const QString& key) const = 0;
     virtual bool remove(const QString& key) = 0;

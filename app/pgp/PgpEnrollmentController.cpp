@@ -161,7 +161,7 @@ void PgpEnrollmentController::poll()
                 finishWithFailure(i18n("The server sent a retired legacy enrollment format, which KyPost no longer accepts. Update the KyPost server, then enroll this device again."));
                 return;
             }
-            const bool ring = version == 5;
+            const bool ring = version == 5 || (version == 6 && result.keyring.has_value());
             PgpKeyringSnapshot expected;
             expected.activeFingerprint = m_fingerprint;
             if (ring)
@@ -177,7 +177,7 @@ void PgpEnrollmentController::poll()
                 finishWithFailure(i18n("The envelope was not sealed for this device or this OpenPGP identity."));
                 return;
             }
-            setState(Importing, i18n("Importing the private key into GnuPG…"));
+            setState(Importing, i18n("Saving the OpenPGP keys securely…"));
             m_executor.run(
                 this,
                 [key = std::move(privateKey), version, ring, expected, cancelled = m_importCancelled,
@@ -208,7 +208,7 @@ void PgpEnrollmentController::poll()
                         if (ring && !m_settingsStore.setPgpMaterialGeneration(m_subscriberId, m_serverBaseText, generation))
                             qWarning("PgpEnrollmentController: could not record the enrolled key generation");
                         setState(Enrolled, importResult.enrollmentStateReported
-                            ? i18n("This device can now decrypt and sign with your OpenPGP key.")
+                            ? i18n("This device can now read encrypted mail with your OpenPGP keys.")
                             : i18n("The key was imported, but KyPost could not update the device status on the server."));
                         emit enrolled();
                     } else {
@@ -221,10 +221,10 @@ void PgpEnrollmentController::poll()
                             break;
                         case PgpKeyringImportStatus::ImportFailed:
                         case PgpKeyringImportStatus::Cancelled:
-                            finishWithFailure(i18n("Only some of your keys were imported. Enroll again to finish."));
+                            finishWithFailure(i18n("The complete keyring could not be saved securely. Unlock the system keyring and enroll again."));
                             break;
                         default:
-                            finishWithFailure(i18n("GnuPG rejected the private key or its fingerprint did not match."));
+                            finishWithFailure(i18n("The OpenPGP keyring was rejected or could not be saved securely."));
                         }
                     }
                 });

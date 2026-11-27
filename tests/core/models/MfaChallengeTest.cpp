@@ -102,7 +102,7 @@ void MfaChallengeTest::contextIsCappedAndStrippedOfControls()
 {
     QJsonObject data = validData();
     // U+202E reverses what follows; a newline would fake a second field.
-    data[QStringLiteral("ipAddress")] = QString::fromUtf8("1.2.3.4‮\n5");
+    data[QStringLiteral("ipAddress")] = QString::fromUtf8("1.2.3.4\xE2\x80\xAE\n5");
     data[QStringLiteral("userAgent")] = QString(300, QLatin1Char('x'));
     const std::optional<MfaChallenge> c = MfaChallenge::fromPushData(data);
     QVERIFY(c.has_value());

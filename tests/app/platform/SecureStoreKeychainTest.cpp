@@ -26,6 +26,7 @@ private slots:
     void init();
     void cleanup();
     void roundTripsSetGetContainsRemove();
+    void roundTripsBinaryPacketsWithoutTextConversion();
     void aTimedOutReadIsFailedNeverAbsent();
     void everyCallReturnsEvenWhenTheStoreCannotBeConsulted();
     void readsFallBackToTheLegacyServiceAndCopyForward();
@@ -105,6 +106,22 @@ void SecureStoreKeychainTest::roundTripsSetGetContainsRemove()
     QVERIFY(store.remove(QStringLiteral("sub")));
     QVERIFY(!store.contains(QStringLiteral("sub")));
     QVERIFY(!store.get(QStringLiteral("sub")).has_value());
+}
+
+
+void SecureStoreKeychainTest::roundTripsBinaryPacketsWithoutTextConversion()
+{
+    SecureStoreKeychain store(m_service, kTestTimeoutMs);
+    QByteArray packets;
+    for (int i = 0; i < 256; ++i) packets.append(char(i));
+    if (!store.setBytes(QStringLiteral("sub"), packets)) QSKIP("No usable binary Secret Service backend");
+    const auto held = store.readBytes(QStringLiteral("sub"));
+    QCOMPARE(held.status, SecureStore::ReadStatus::Found);
+    QCOMPARE(held.value.bytes(), packets);
+    QVERIFY(store.remove(QStringLiteral("sub")));
+    QCOMPARE(store.readBytes(QStringLiteral("sub")).status, SecureStore::ReadStatus::Absent);
+    SecureStoreKeychain unavailable(m_service, 0);
+    QCOMPARE(unavailable.readBytes(QStringLiteral("sub")).status, SecureStore::ReadStatus::Failed);
 }
 
 // The security-critical mapping. AppLockStore::lockEnabled() fails CLOSED on

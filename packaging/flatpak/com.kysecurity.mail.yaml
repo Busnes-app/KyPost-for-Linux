@@ -2,6 +2,8 @@ app-id: com.kysecurity.mail
 runtime: org.kde.Platform
 runtime-version: "6.11"
 sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
 
 # Qt6::WebEngineQuick (app/CMakeLists.txt's find_package(Qt6 REQUIRED
 # COMPONENTS WebEngineQuick), used only by app/qml/pages/EmailDetail.qml's
@@ -357,6 +359,13 @@ modules:
 
   - name: kypost
     buildsystem: cmake-ninja
+    build-options:
+      append-path: /usr/lib/sdk/golang/bin
+      env:
+        GOMODCACHE: /run/build/kypost/.go-mod-cache
+        GOPROXY: "off"
+        GOTOOLCHAIN: local
+        GOSUMDB: "off" # go.sum and pinned source SHA-256 verify offline inputs
     run-tests: true
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
@@ -368,3 +377,4 @@ modules:
     sources:
       - type: dir
         path: ../..
+      - go-sources.json

@@ -135,6 +135,9 @@ public:
     bool remove(const QString& key) override;
     bool contains(const QString& key) const override;
 
+    bool setBytes(const QString& key, const QByteArray& value) override;
+    BytesResult readBytes(const QString& key) const override;
+
     int timeoutMs() const { return m_timeoutMs; }
 
 private:
@@ -144,6 +147,7 @@ private:
         bool completed = false; // false == timed out; the fields below are then meaningless
         int error = 0;          // QKeychain::Error, as int to keep it out of this header
         QString textData;
+        SecureBytes binaryData;
     };
 
     // Builds one QKeychain job. Called ON THE WORKER THREAD, which is why the
@@ -162,7 +166,7 @@ private:
     // uses. Abandoning it costs one leaked job in a session that is already
     // broken, and QtKeychain's autoDelete reaps it if the backend ever
     // answers.
-    JobOutcome runBlocking(const JobFactory& makeJob) const;
+    JobOutcome runBlocking(const JobFactory& makeJob, bool binaryRead = false) const;
 
 
     // The service-parameterised primitives read()/remove() drive for both the

@@ -100,7 +100,7 @@ void OpenPgpKeyringTest::malformedRingIsRejectedBeforeDestinationWrites_data()
         QTest::newRow(name) << encoded(ring) << bind;
     };
     QTest::newRow("empty") << QByteArray() << false;
-    QTest::newRow("oversized") << original.leftJustified(128 * 1024 + 1, ' ') << false;
+    QTest::newRow("oversized") << original.leftJustified(512 * 1024 + 1, ' ') << false;
     QTest::newRow("truncated") << original.left(original.size() - 1) << false;
     QTest::newRow("trailing-json") << original + "{}" << false;
     QTest::newRow("duplicate-field") << original.left(original.size() - 1) + ",\"format\":\"kypost-pgp-keyring-v1\"}" << false;
