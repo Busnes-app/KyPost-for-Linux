@@ -28,6 +28,7 @@ explains the signed remote and the standalone-bundle update-origin limitation.
 
 ### Changes
 
+- Flatpak release signing keys now default to a bounded 2-year expiry (`KEY_EXPIRE=2y` in `packaging/flatpak/gen-signing-key.sh`), the publish workflow checks signing-key expiration and supports zero-downtime OSTree dual-key rollover (`FLATPAK_GPG_*_NEXT` + `--gpg-import`), and `docs/DISTRIBUTION.md` documents the rollover runbook.
 - Read OpenPGP v6 and RFC 9980 post-quantum mail and composite signatures through a source-built gopenpgp bridge. Enrollment uses X-Wing HPKE and SAS v2, reads v1/v2 rings, and stores modern keys in the OS Secret Service. QR checks accept complete v4 and v6 fingerprints.
 - Keep classical v4 signing and recipient encryption available after enrolling a certificate with PQC subkeys; retain the full certificate for PQC reads. Converted enrollment requires the complete authenticated ring before acknowledgement. Flatpak builds keep the Go module cache writable for cleanup.
 - Documentation cleanup: added top-level heading and refreshed links in `README.md`, updated the manual and architecture guides, and removed stale internal planning and rename notes.
