@@ -343,6 +343,13 @@ void TlsKeyPolicyTest::requests()
 
     const Fixture& fixture = m_fixtures.at(name);
     inheritWeakDefaults(fixture.trust);
+    if (!dh.isEmpty()) {
+        // Do not advertise named FFDHE groups: OpenSSL 4 would negotiate one
+        // instead of the server's explicit DH parameters under test.
+        auto defaults = QSslConfiguration::defaultConfiguration();
+        defaults.setBackendConfigurationOption(QByteArrayLiteral("Groups"), QByteArrayLiteral("P-256"));
+        QSslConfiguration::setDefaultConfiguration(defaults);
+    }
 
     TlsServer server;
     server.tls = serverConfig(fixture, QSsl::SslProtocol(protocol), !dh.isEmpty());
@@ -364,7 +371,8 @@ void TlsKeyPolicyTest::requests()
         QVERIFY(finished.wait(7000));
         QVERIFY2(reply->error() == QNetworkReply::NoError, qPrintable(reply->errorString()));
         if (!dh.isEmpty())
-            qInfo("DH fixture %s negotiated %d bits", qPrintable(dh), reply->sslConfiguration().ephemeralServerKey().length());
+            QCOMPARE(reply->sslConfiguration().ephemeralServerKey().length(),
+                     dh == QLatin1String("dh1024") ? 1024 : 2048);
         QVERIFY(server.received.contains("fixture-control"));
         server.received.clear();
     }

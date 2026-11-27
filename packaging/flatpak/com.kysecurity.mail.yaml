@@ -363,6 +363,8 @@ modules:
       append-path: /usr/lib/sdk/golang/bin
       env:
         GOMODCACHE: /run/build/kypost/.go-mod-cache
+        # Keep extracted module directories removable by flatpak-builder.
+        GOFLAGS: -modcacherw
         GOPROXY: "off"
         GOTOOLCHAIN: local
         GOSUMDB: "off" # go.sum and pinned source SHA-256 verify offline inputs

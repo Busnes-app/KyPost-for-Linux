@@ -44,7 +44,9 @@ RSA-2047 certificate. KyPost therefore checks each certificate's actual key size
 
 KyPost reads v6 PKESK/SEIPDv2 messages, v4 ID 35 encryption and ML-DSA-65+Ed25519
 composite signatures through gopenpgp. Existing v4 agent and hardware-token workflows
-remain available. This adds reading and enrollment, not v6 generation or sending.
+remain available. Mixed v4/PQC certificates retain their supported classical material
+in GnuPG as well as the complete certificate in Secret Service. This adds reading
+and enrollment, not v6 generation or sending.
 The relay's authenticated sender-key binding still determines whose signature counts.
 
 Modern private keys live as binary OS Secret Service entries. A public-key refresh

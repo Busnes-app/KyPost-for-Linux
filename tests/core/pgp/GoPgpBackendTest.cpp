@@ -1,5 +1,7 @@
 #include "pgp/GoPgpBackend.h"
 #include "pgp/OpenPgpDecryptor.h"
+#include "pgp/OpenPgpEncryptor.h"
+#include "GnupgFixture.h"
 #include "pgp/OpenPgpKeyImporter.h"
 #include "stores/SecureStore.h"
 #include <QFile>
@@ -60,6 +62,8 @@ class GoPgpBackendTest : public QObject
   private slots:
     void readsAndVerifiesSharedFixtures();
     void importsV2OnlyAfterCheckingTheWholeSnapshot();
+    void singleKeyCannotSatisfyConvertedSnapshot();
+    void mixedV4EnrollmentPreservesSigning();
 };
 static QByteArray fixture(const char* name)
 {
@@ -71,6 +75,10 @@ static QByteArray fixture(const char* name)
 }
 void GoPgpBackendTest::readsAndVerifiesSharedFixtures()
 {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto home = GnupgFixture::emptyHome(directory);
+    const auto stopAgent = qScopeGuard([&] { GnupgFixture::killAgent(home); });
     BinaryStore store;
     setGoPgpSecretStore(&store);
     const auto clear = qScopeGuard([] { setGoPgpSecretStore(nullptr); });
@@ -80,34 +88,38 @@ void GoPgpBackendTest::readsAndVerifiesSharedFixtures()
         QVERIFY(!key.isEmpty());
         const auto info = goKeyInfo(key);
         const auto fpr = info.value("fingerprint").toString();
-        QCOMPARE(importPrivateKey(SecureBytes(key), fpr, "fixture-home").status, PgpImportStatus::Imported);
+        QCOMPARE(importPrivateKey(SecureBytes(key), fpr, home).status, PgpImportStatus::Imported);
         const auto cipher =
             fixture(qPrintable(QStringLiteral("openpgp-v6/%1.msg.asc").arg(QLatin1String(name))));
-        const auto opened = OpenPgpDecryptor().decrypt(cipher, "fixture-home");
+        const auto opened = OpenPgpDecryptor().decrypt(cipher, home);
         QCOMPARE(opened.status, PgpDecryptStatus::Decrypted);
         QCOMPARE(opened.plaintext, fixture("openpgp-v6/message.txt"));
-        QVERIFY(goPgpOwnKey(fpr, "fixture-home"));
+        QVERIFY(goPgpOwnKey(fpr, home));
         QCOMPARE(publicKeyFingerprint(info.value("publicKey").toString().toUtf8()), fpr);
         // A public-key refresh must not overwrite the private key.
-        QVERIFY(storeGoPgpKey(info.value("publicKey").toString().toUtf8(), fpr, "fixture-home"));
-        QVERIFY(goPgpOwnKey(fpr, "fixture-home"));
+        QVERIFY(storeGoPgpKey(info.value("publicKey").toString().toUtf8(), fpr, home));
+        QVERIFY(goPgpOwnKey(fpr, home));
     }
     auto signedBytes = fixture("openpgp-v6/message.txt");
     const auto signature = fixture("openpgp-v6/v6-pqc.sig.asc");
-    const auto verified = OpenPgpDecryptor().verifyDetached(signedBytes, signature, "fixture-home");
+    const auto verified = OpenPgpDecryptor().verifyDetached(signedBytes, signature, home);
     QCOMPARE(verified.status, PgpVerifyStatus::Checked);
     QVERIFY(verified.signature.mathematicallyValid);
     QVERIFY(!verified.signature.belowStrengthFloor);
     QVERIFY(!verified.signature.primaryFingerprint.isEmpty());
     signedBytes[0] = char(signedBytes.at(0) ^ 1);
     QVERIFY(!OpenPgpDecryptor()
-                 .verifyDetached(signedBytes, signature, "fixture-home")
+                 .verifyDetached(signedBytes, signature, home)
                  .signature.mathematicallyValid);
     store.refuse = true;
-    QVERIFY(loadGoPgpKeys("fixture-home").isEmpty());
+    QVERIFY(loadGoPgpKeys(home).isEmpty());
 }
 void GoPgpBackendTest::importsV2OnlyAfterCheckingTheWholeSnapshot()
 {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto home = GnupgFixture::emptyHome(directory);
+    const auto stopAgent = qScopeGuard([&] { GnupgFixture::killAgent(home); });
     BinaryStore store;
     setGoPgpSecretStore(&store);
     const auto clear = qScopeGuard([] { setGoPgpSecretStore(nullptr); });
@@ -128,15 +140,15 @@ void GoPgpBackendTest::importsV2OnlyAfterCheckingTheWholeSnapshot()
         {"keys", QJsonArray{QJsonObject{{"fingerprint", fpr}, {"privateKey", QString::fromUtf8(key)}}}}};
     // Positive generation requires the complete ring, even if one valid
     // private key is delivered instead. It must not reach durable storage.
-    QCOMPARE(importDeviceDelivery(6, SecureBytes(key), expected, "ring-home"),
+    QCOMPARE(importDeviceDelivery(6, SecureBytes(key), expected, home),
              PgpKeyringImportStatus::Rejected);
     QVERIFY(store.binary.isEmpty());
     auto wrong = expected;
     wrong.materialGeneration++;
-    QCOMPARE(importDeviceDelivery(6, SecureBytes(QJsonDocument(ring).toJson()), wrong, "ring-home"),
+    QCOMPARE(importDeviceDelivery(6, SecureBytes(QJsonDocument(ring).toJson()), wrong, home),
              PgpKeyringImportStatus::Rejected);
     QVERIFY(store.binary.isEmpty());
-    QCOMPARE(importDeviceDelivery(6, SecureBytes(QJsonDocument(ring).toJson()), expected, "ring-home"),
+    QCOMPARE(importDeviceDelivery(6, SecureBytes(QJsonDocument(ring).toJson()), expected, home),
              PgpKeyringImportStatus::Imported);
     // No process-local key cache: a fresh store object can reopen the persisted
     // entries.
@@ -144,14 +156,14 @@ void GoPgpBackendTest::importsV2OnlyAfterCheckingTheWholeSnapshot()
     restarted.binary = store.binary;
     restarted.text = store.text;
     setGoPgpSecretStore(&restarted);
-    QCOMPARE(OpenPgpDecryptor().decrypt(fixture("openpgp-v6/v6-pqc.msg.asc"), "ring-home").status,
+    QCOMPARE(OpenPgpDecryptor().decrypt(fixture("openpgp-v6/v6-pqc.msg.asc"), home).status,
              PgpDecryptStatus::Decrypted);
     setGoPgpSecretStore(&store);
     auto largeRing = QJsonDocument(ring).toJson();
     largeRing.append(QByteArray(200 * 1024, ' '));
-    QCOMPARE(importDeviceDelivery(6, SecureBytes(largeRing), expected, "ring-home"),
+    QCOMPARE(importDeviceDelivery(6, SecureBytes(largeRing), expected, home),
              PgpKeyringImportStatus::Imported);
-    QCOMPARE(importDeviceDelivery(6, SecureBytes(QByteArray(512 * 1024 + 1, ' ')), expected, "ring-home"),
+    QCOMPARE(importDeviceDelivery(6, SecureBytes(QByteArray(512 * 1024 + 1, ' ')), expected, home),
              PgpKeyringImportStatus::Rejected);
     // Dual active certificates bind to a v4 bootstrap without dropping v6.
     auto dual = ring;
@@ -172,14 +184,14 @@ void GoPgpBackendTest::importsV2OnlyAfterCheckingTheWholeSnapshot()
     auto members = dual["keys"].toArray();
     members.append(QJsonObject{{"fingerprint", v4}, {"privateKey", QString::fromUtf8(historical)}});
     dual["keys"] = members;
-    QCOMPARE(importDeviceDelivery(6, SecureBytes(QJsonDocument(dual).toJson()), dualExpected, "ring-home"),
+    QCOMPARE(importDeviceDelivery(6, SecureBytes(QJsonDocument(dual).toJson()), dualExpected, home),
              PgpKeyringImportStatus::Imported);
-    QCOMPARE(OpenPgpDecryptor().decrypt(fixture("openpgp-v6/v4-pqc.msg.asc"), "ring-home").status,
+    QCOMPARE(OpenPgpDecryptor().decrypt(fixture("openpgp-v6/v4-pqc.msg.asc"), home).status,
              PgpDecryptStatus::Decrypted);
     auto missingSelection = dualExpected;
     missingSelection.activeFingerprint.clear();
     QCOMPARE(
-        importDeviceDelivery(6, SecureBytes(QJsonDocument(dual).toJson()), missingSelection, "ring-home"),
+        importDeviceDelivery(6, SecureBytes(QJsonDocument(dual).toJson()), missingSelection, home),
         PgpKeyringImportStatus::Rejected);
     BinaryStore broken;
     broken.corruptWrites = true;
@@ -189,17 +201,87 @@ void GoPgpBackendTest::importsV2OnlyAfterCheckingTheWholeSnapshot()
     QVERIFY(broken.text.isEmpty()); // Unverified writes never reach the durable index.
     setGoPgpSecretStore(&store);
     const auto bytes = store.binary;
-    QCOMPARE(importDeviceDelivery(6, SecureBytes(QJsonDocument(ring).toJson()), expected, "ring-home",
+    QCOMPARE(importDeviceDelivery(6, SecureBytes(QJsonDocument(ring).toJson()), expected, home,
                                   [] { return false; }),
              PgpKeyringImportStatus::Cancelled);
     QCOMPARE(store.binary, bytes);
     store.refuse = true;
-    QCOMPARE(importDeviceDelivery(6, SecureBytes(QJsonDocument(ring).toJson()), expected, "ring-home"),
+    QCOMPARE(importDeviceDelivery(6, SecureBytes(QJsonDocument(ring).toJson()), expected, home),
              PgpKeyringImportStatus::ImportFailed);
     store.refuse = false;
     ring["active"] = QJsonObject{{"v4", fpr}};
-    QCOMPARE(importDeviceDelivery(6, SecureBytes(QJsonDocument(ring).toJson()), expected, "ring-home"),
+    QCOMPARE(importDeviceDelivery(6, SecureBytes(QJsonDocument(ring).toJson()), expected, home),
              PgpKeyringImportStatus::Rejected);
+}
+void GoPgpBackendTest::singleKeyCannotSatisfyConvertedSnapshot()
+{
+    BinaryStore store;
+    setGoPgpSecretStore(&store);
+    const auto clear = qScopeGuard([] { setGoPgpSecretStore(nullptr); });
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto home = GnupgFixture::emptyHome(directory);
+    const auto stopAgent = qScopeGuard([&] { GnupgFixture::killAgent(home); });
+    const auto active = fixture("openpgp-v6/v4-pqc.sec.asc");
+    const auto historical = fixture("openpgp-v6/v6-pqc.sec.asc");
+    const auto activeInfo = goKeyInfo(active);
+    const auto historicalInfo = goKeyInfo(historical);
+    PgpKeyringSnapshot expected;
+    expected.activeFingerprint = activeInfo.value("fingerprint").toString();
+    expected.activeV4 = expected.activeFingerprint;
+    expected.activeV6 = historicalInfo.value("fingerprint").toString();
+    expected.materialGeneration = 7;
+    for (const auto& info : {activeInfo, historicalInfo})
+        for (const auto& fp : info.value("fingerprints").toArray())
+            expected.keyFingerprints << fp.toString();
+    QCOMPARE(importDeviceDelivery(6, SecureBytes(active), expected, home),
+             PgpKeyringImportStatus::Rejected);
+    QVERIFY(store.binary.isEmpty());
+    QVERIFY(store.text.isEmpty());
+    QVERIFY(GnupgFixture::fingerprintsIn(home).isEmpty());
+}
+
+void GoPgpBackendTest::mixedV4EnrollmentPreservesSigning()
+{
+    BinaryStore store;
+    setGoPgpSecretStore(&store);
+    const auto clear = qScopeGuard([] { setGoPgpSecretStore(nullptr); });
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const auto home = GnupgFixture::emptyHome(directory);
+    const auto stopAgent = qScopeGuard([&] { GnupgFixture::killAgent(home); });
+    const auto key = fixture("openpgp-v6/v4-pqc.sec.asc");
+    const auto info = goKeyInfo(key);
+    const auto fpr = info.value("fingerprint").toString();
+    PgpKeyringSnapshot expected;
+    expected.activeFingerprint = fpr;
+    expected.activeV4 = fpr;
+    expected.materialGeneration = 2;
+    for (const auto& fp : info.value("fingerprints").toArray())
+        expected.keyFingerprints << fp.toString();
+    const QJsonObject ring{
+        {"format", "kypost-pgp-keyring-v2"}, {"materialGeneration", 2},
+        {"active", QJsonObject{{"v4", fpr}}},
+        {"keyFingerprints", info.value("fingerprints")},
+        {"keys", QJsonArray{QJsonObject{{"fingerprint", fpr}, {"privateKey", QString::fromUtf8(key)}}}}};
+    QCOMPARE(importDeviceDelivery(6, SecureBytes(QJsonDocument(ring).toJson()), expected, home),
+             PgpKeyringImportStatus::Imported);
+    QCOMPARE(ownKeyFingerprint("v4-pqc@example.org", home), fpr);
+    QTemporaryDir recipientDirectory;
+    QVERIFY(recipientDirectory.isValid());
+    const auto recipientHome = GnupgFixture::emptyHome(recipientDirectory);
+    const auto stopRecipient = qScopeGuard([&] { GnupgFixture::killAgent(recipientHome); });
+    QCOMPARE(importPublicKey(info.value("publicKey").toString().toUtf8(), fpr, recipientHome).status,
+             PgpImportStatus::Imported);
+    QVERIFY(GnupgFixture::fingerprintsIn(recipientHome).contains(fpr));
+    const auto sealed = signAndEncrypt("enrollment signing regression", fpr, {fpr}, home);
+    QCOMPARE(sealed.status, PgpEncryptStatus::Encrypted);
+    const auto opened = OpenPgpDecryptor().decrypt(sealed.armoredCiphertext.toUtf8(), home);
+    QCOMPARE(opened.status, PgpDecryptStatus::Decrypted);
+    QCOMPARE(opened.plaintext, QByteArray("enrollment signing regression"));
+    QVERIFY(opened.signature.mathematicallyValid);
+    QCOMPARE(OpenPgpDecryptor().decrypt(fixture("openpgp-v6/v4-pqc.msg.asc"), home).status,
+             PgpDecryptStatus::Decrypted);
 }
 QTEST_GUILESS_MAIN(GoPgpBackendTest)
 #include "GoPgpBackendTest.moc"

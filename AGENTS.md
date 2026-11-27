@@ -33,6 +33,9 @@ docs/       — local tooling/setup notes (see docs/SETUP.md); docs/PARITY.md is
 
 ## 3. Build instructions
 
+The Flatpak Go module cache lives inside the build tree; keep `GOFLAGS=-modcacherw`
+so flatpak-builder can remove extracted module directories during cleanup.
+
 The app build requires Go 1.27+ with CGO and Qt6/KF6:
 
 ```sh
@@ -463,7 +466,8 @@ Client-side decryption and signing are now in scope.
 
 **Custody model.** Classical v4 keys retain GPGME/gpg-agent custody, including
 hardware tokens and pinentry. Spec A P3 adds gopenpgp for v6 and RFC 9980 reads.
-Go-managed keys use binary entries in the existing OS Secret Service, never
+Mixed v4/PQC certificates also import their supported classical material into GnuPG
+so existing signing and sending remain available. Go-managed keys use binary entries in the existing OS Secret Service, never
 QString, settings, SQLite or plaintext files. Each immutable serialized revision
 has its own content-addressed entry; a public index retains historical revisions.
 NetworkExecutor is its single writer. Import checks the entire ring and authenticated

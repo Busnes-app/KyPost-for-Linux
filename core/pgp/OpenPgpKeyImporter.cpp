@@ -603,12 +603,15 @@ PgpImportResult importPublicKey(const QByteArray& armoredPublicKey, const QStrin
                                  const QString& homeDirectory)
 {
     const auto info = goKeyInfo(armoredPublicKey);
-    if (info.value(QStringLiteral("modern")).toBool()) {
+    const bool modern = info.value(QStringLiteral("modern")).toBool();
+    if (modern) {
         const auto fpr = info.value(QStringLiteral("fingerprint")).toString();
         if (info.value(QStringLiteral("private")).toBool()
             || (!expectedFingerprint.isEmpty() && fpr != normalizedFingerprint(expectedFingerprint.toLatin1())))
             return {PgpImportStatus::Rejected, {}, {}};
-        return {storeGoPgpKey(armoredPublicKey, fpr, homeDirectory) ? PgpImportStatus::Imported : PgpImportStatus::Rejected, fpr, {}};
+        if (info.value(QStringLiteral("version")).toInt() != 4)
+            return {storeGoPgpKey(armoredPublicKey, fpr, homeDirectory) ? PgpImportStatus::Imported : PgpImportStatus::Rejected, fpr, {}};
+        // Keep the classical recipient material usable by GnuPG too.
     }
 
     PgpImportResult out;
@@ -671,6 +674,11 @@ PgpImportResult importPublicKey(const QByteArray& armoredPublicKey, const QStrin
         return out;
     }
 
+    if (modern && !storeGoPgpKey(armoredPublicKey, observed, homeDirectory)) {
+        out.status = PgpImportStatus::Rejected;
+        out.detail = QStringLiteral("could not retain the complete OpenPGP certificate");
+        return out;
+    }
     out.fingerprint = importedFingerprint;
     out.status = changed ? PgpImportStatus::Imported : PgpImportStatus::Unchanged;
     return out;
@@ -766,11 +774,16 @@ PgpImportResult importPrivateKey(const SecureBytes& armoredPrivateKey, const QSt
                                   const QString& homeDirectory)
 {
     const auto info = goKeyInfo(armoredPrivateKey.bytes());
-    if (info.value(QStringLiteral("modern")).toBool()) {
+    const bool modern = info.value(QStringLiteral("modern")).toBool();
+    if (modern) {
         const auto fpr = info.value(QStringLiteral("fingerprint")).toString();
         const bool valid = info.value(QStringLiteral("private")).toBool() && info.value(QStringLiteral("unlocked")).toBool()
             && fpr == normalizedFingerprint(expectedFingerprint.toLatin1());
-        return {valid && storeGoPgpKey(armoredPrivateKey.bytes(), fpr, homeDirectory) ? PgpImportStatus::Imported : PgpImportStatus::Rejected, fpr, {}};
+        if (!valid)
+            return {PgpImportStatus::Rejected, fpr, {}};
+        if (info.value(QStringLiteral("version")).toInt() != 4)
+            return {storeGoPgpKey(armoredPrivateKey.bytes(), fpr, homeDirectory) ? PgpImportStatus::Imported : PgpImportStatus::Rejected, fpr, {}};
+        // GnuPG can retain the classical signing material of a mixed v4 key.
     }
 
     PgpImportResult out;
@@ -816,6 +829,11 @@ PgpImportResult importPrivateKey(const SecureBytes& armoredPrivateKey, const QSt
     if (!importInto(homeDirectory, armoredPrivateKey.bytes(), true, &imported, &changed, &detail)) {
         out.status = PgpImportStatus::Rejected;
         out.detail = detail;
+        return out;
+    }
+    if (modern && !storeGoPgpKey(armoredPrivateKey.bytes(), observed, homeDirectory)) {
+        out.status = PgpImportStatus::Rejected;
+        out.detail = QStringLiteral("could not retain the complete OpenPGP certificate");
         return out;
     }
     out.fingerprint = imported;
@@ -868,7 +886,7 @@ PgpKeyringImportStatus importPrivateKeyring(const SecureBytes& keyringJson,
             if (stillCurrent && !stillCurrent()) return PgpKeyringImportStatus::Cancelled;
             if (!storeGoPgpKey(member.privateKey.bytes(), member.fingerprint, homeDirectory)) return PgpKeyringImportStatus::ImportFailed;
             // Preserve classical v4 sending through the existing agent.
-            if (!goKeyInfo(member.privateKey.bytes()).value(QStringLiteral("modern")).toBool()) {
+            if (goKeyInfo(member.privateKey.bytes()).value(QStringLiteral("version")).toInt() == 4) {
                 const auto legacy = importPrivateKey(member.privateKey, member.fingerprint, homeDirectory).status;
                 if (legacy != PgpImportStatus::Imported && legacy != PgpImportStatus::Unchanged) return PgpKeyringImportStatus::ImportFailed;
             }
