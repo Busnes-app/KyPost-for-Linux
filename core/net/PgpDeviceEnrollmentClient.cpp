@@ -43,14 +43,24 @@ std::optional<PgpKeyringSnapshot> keyringOf(const QJsonObject& response)
     const QJsonObject ring = response.value(QStringLiteral("keyring")).toObject();
     PgpKeyringSnapshot out;
     out.activeFingerprint = normalizedFingerprint(response.value(QStringLiteral("fingerprint")).toString().toUtf8());
-    const auto active = ring.value(QStringLiteral("active")).toObject();
-    out.activeV4 = active.value(QStringLiteral("v4")).toString();
-    out.activeV6 = active.value(QStringLiteral("v6")).toString();
+    const auto activeValue = ring.value(QStringLiteral("active"));
+    if (!activeValue.isUndefined()) {
+        if (!activeValue.isObject() || activeValue.toObject().isEmpty()) return std::nullopt;
+        const auto active = activeValue.toObject();
+        for (auto it = active.begin(); it != active.end(); ++it) {
+            const auto fingerprint = normalizedFingerprint(it.value().toString().toUtf8());
+            if (it.key() == QStringLiteral("v4") && fingerprint.size() == 40) out.activeV4 = fingerprint;
+            else if (it.key() == QStringLiteral("v6") && fingerprint.size() == 64) out.activeV6 = fingerprint;
+            else return std::nullopt;
+        }
+    }
     out.materialGeneration = generationOf(response.value(QStringLiteral("materialGeneration")));
     if (ring.isEmpty() || out.activeFingerprint.isEmpty() || out.materialGeneration < 0
         || generationOf(ring.value(QStringLiteral("materialGeneration"))) != out.materialGeneration)
         return std::nullopt;
-    for (const QJsonValue& value : ring.value(QStringLiteral("keyFingerprints")).toArray())
+    const auto inventory = ring.value(QStringLiteral("keyFingerprints"));
+    if (!inventory.isArray() || inventory.toArray().isEmpty() || inventory.toArray().size() > 256) return std::nullopt;
+    for (const QJsonValue& value : inventory.toArray())
         out.keyFingerprints.append(value.toString());
     return out;
 }
