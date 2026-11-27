@@ -17,12 +17,12 @@
 # GitHub's secret store, so treat it accordingly: it lives in exactly two
 # places, GitHub Actions secrets and your offline backup.
 #
-# --- Why it never expires ---
+# --- Why the key has a bounded expiry ---
 #
-# An expired signing key doesn't just stop new releases; it makes `flatpak
-# update` refuse the repo for everyone already installed. Rotating a key is a
-# deliberate, announced act (every user must re-add the remote), not
-# something that should happen on a timer.
+# Non-expiring signing keys leave no backstop if a secret backup leaks.
+# Keys default to 2 years (`KEY_EXPIRE=2y`) and can be rolled over with zero
+# user disruption using OSTree dual-key signing (`FLATPAK_GPG_PRIVATE_KEY_NEXT`
+# and `FLATPAK_GPG_KEY_ID_NEXT`) or extended in place; see docs/DISTRIBUTION.md.
 
 set -euo pipefail
 
@@ -32,6 +32,18 @@ UPLOAD=0
 REPO_SLUG="${REPO_SLUG:-Busnes-app/KyPost-for-Linux}"
 KEY_NAME="KyPost Flatpak Signing Key"
 KEY_EMAIL="${KEY_EMAIL:-kypost-flatpak@kysecurity.com}"
+KEY_EXPIRE="${KEY_EXPIRE-2y}"
+
+case "$KEY_EXPIRE" in
+  0|never|NEVER|"")
+    echo "ERROR: KEY_EXPIRE must be a bounded lifetime (e.g. 2y, 18m, 365d), not '$KEY_EXPIRE'." >&2
+    exit 1
+    ;;
+esac
+if ! [[ "$KEY_EXPIRE" =~ ^[1-9][0-9]*[dwmy]$ ]]; then
+  echo "ERROR: invalid KEY_EXPIRE '$KEY_EXPIRE' (expected <N>[d|w|m|y], e.g. 2y)." >&2
+  exit 1
+fi
 
 OUT_DIR="${OUT_DIR:-$HOME/kypost-flatpak-signing-key}"
 GNUPGHOME_TMP="$(mktemp -d)"
@@ -46,7 +58,7 @@ if [ -e "$OUT_DIR" ]; then
   exit 1
 fi
 
-echo "Generating a 4096-bit RSA signing key (no passphrase, no expiry)..."
+echo "Generating a 4096-bit RSA signing key (no passphrase, expires in $KEY_EXPIRE)..."
 gpg --batch --generate-key <<EOF
 %no-protection
 Key-Type: RSA
@@ -54,7 +66,7 @@ Key-Length: 4096
 Key-Usage: sign
 Name-Real: $KEY_NAME
 Name-Email: $KEY_EMAIL
-Expire-Date: 0
+Expire-Date: $KEY_EXPIRE
 %commit
 EOF
 
@@ -63,16 +75,20 @@ if [ -z "$KEY_ID" ]; then
   echo "ERROR: could not determine the generated key's fingerprint." >&2
   exit 1
 fi
+KEY_EXP_EPOCH="$(gpg --list-keys --with-colons --fixed-list-mode "$KEY_ID" | awk -F: '$1=="pub" {print $7; exit}')"
+KEY_EXP_DATE="$(date -u -d "@$KEY_EXP_EPOCH" +%Y-%m-%d 2>/dev/null || echo "$KEY_EXP_EPOCH")"
 
 mkdir -p "$OUT_DIR"
 chmod 700 "$OUT_DIR"
 gpg --armor --export-secret-keys "$KEY_ID" > "$OUT_DIR/private.asc"
 gpg --armor --export "$KEY_ID" > "$OUT_DIR/public.asc"
 printf '%s\n' "$KEY_ID" > "$OUT_DIR/fingerprint.txt"
+printf '%s\n' "$KEY_EXP_DATE" > "$OUT_DIR/expires.txt"
 chmod 600 "$OUT_DIR"/*
 
 echo
 echo "Key fingerprint: $KEY_ID"
+echo "Expires (UTC):   $KEY_EXP_DATE"
 echo "Written to:      $OUT_DIR"
 echo
 
@@ -83,10 +99,15 @@ if [ "$UPLOAD" -eq 1 ]; then
   printf '%s' "$KEY_ID" | gh secret set FLATPAK_GPG_KEY_ID --repo "$REPO_SLUG"
   echo "Done. Secrets FLATPAK_GPG_PRIVATE_KEY and FLATPAK_GPG_KEY_ID are set."
 else
-  echo "To install the secrets:"
+  echo "To install the secrets (initial setup):"
   echo
   echo "  gh secret set FLATPAK_GPG_PRIVATE_KEY --repo $REPO_SLUG < $OUT_DIR/private.asc"
   echo "  printf '%s' '$KEY_ID' | gh secret set FLATPAK_GPG_KEY_ID --repo $REPO_SLUG"
+  echo
+  echo "Or to stage a dual-key rollover (see docs/DISTRIBUTION.md):"
+  echo
+  echo "  gh secret set FLATPAK_GPG_PRIVATE_KEY_NEXT --repo $REPO_SLUG < $OUT_DIR/private.asc"
+  echo "  printf '%s' '$KEY_ID' | gh secret set FLATPAK_GPG_KEY_ID_NEXT --repo $REPO_SLUG"
 fi
 
 cat <<EOF
@@ -96,4 +117,5 @@ cat <<EOF
 If this key is lost, you cannot sign updates for the existing remote. Every
 user would have to remove and re-add it by hand to keep receiving updates.
 GitHub Actions secrets are write-only -- you cannot read the key back out.
+Start the rollover runbook in docs/DISTRIBUTION.md at least 90 days before $KEY_EXP_DATE.
 EOF
