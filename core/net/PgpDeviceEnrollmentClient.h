@@ -34,6 +34,7 @@ public:
     DeviceEnrollmentCallResult publishKey(const QUrl& serverBaseUrl, const RelayAuth& auth,
                                            const QByteArray& publicKeyBase64) const;
     DeviceEnrollmentCallResult fetchEnvelope(const QUrl& serverBaseUrl, const RelayAuth& auth) const;
+    // State writes repeat the OpenPGP read capabilities; omitting them downgrades the device to v4.
     DeviceEnrollmentCallResult reportState(const QUrl& serverBaseUrl, const RelayAuth& auth,
                                             bool enrolled) const;
     // A converted account's acknowledgement: exactly what was delivered and imported.

@@ -21,6 +21,7 @@ private slots:
     void validatesDualActiveMetadata();
     void aStaleOrLegacyDeliveryHasNoRingSnapshot();
     void acknowledgesExactlyTheDeliveredRing();
+    void aStateReportKeepsTheReaderCapabilities();
 };
 
 namespace {
@@ -126,7 +127,23 @@ void PgpDeviceEnrollmentClientTest::acknowledgesExactlyTheDeliveredRing()
     QVERIFY(fake.receivedRequest().startsWith("POST /api/pgp/device/enrollment-state "));
     QCOMPARE(fake.receivedJsonBody(),
              (QJsonObject{{"encryptionEnrolled", true}, {"envelopeVersion", 5},
-                          {"materialGeneration", 7}, {"fingerprint", kFingerprint}}));
+                          {"materialGeneration", 7}, {"fingerprint", kFingerprint},
+                          {"openpgp", QJsonArray{"v4", "v6", "rfc9980"}}}));
+}
+
+// The server stores ["v4"] when a state write omits openpgp, undoing the key publication's claim.
+void PgpDeviceEnrollmentClientTest::aStateReportKeepsTheReaderCapabilities()
+{
+    QNetworkAccessManager manager;
+    HttpClient http(manager);
+    for (const bool enrolled : {true, false}) {
+        FakeRelayServer fake(httpResponse(200, "OK", R"({"ok":true})"));
+        QCOMPARE(PgpDeviceEnrollmentClient(http).reportState(urlOf(fake), {}, enrolled).status,
+                 DeviceEnrollmentCallStatus::Ok);
+        QVERIFY(fake.receivedRequest().startsWith("POST /api/pgp/device/enrollment-state "));
+        QCOMPARE(fake.receivedJsonBody(),
+                 (QJsonObject{{"encryptionEnrolled", enrolled}, {"openpgp", QJsonArray{"v4", "v6", "rfc9980"}}}));
+    }
 }
 
 QTEST_GUILESS_MAIN(PgpDeviceEnrollmentClientTest)

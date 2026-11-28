@@ -48,6 +48,16 @@ remain available. Mixed v4/PQC certificates retain their supported classical mat
 in GnuPG as well as the complete certificate in Secret Service. This adds reading
 and enrollment, not v6 generation or sending.
 The relay's authenticated sender-key binding still determines whose signature counts.
+Only Spec A category 3 earns signature-strength credit: ML-DSA-87+Ed448 (ID 31)
+signatures report as weak, like any other algorithm outside the allowlist.
+
+Every enrollment-key and enrollment-state write reports `openpgp: ["v4","v6","rfc9980"]`.
+The server reads an omitted list as `["v4"]`, so a state write without it would undo the
+claim. A device enrolled before this report must enroll again before it counts as v6-ready.
+
+The X-Wing seed exists only in process memory for one ceremony and is cleared on
+success, failure or cancel. It is never written to disk or the Secret Service, and
+the Linux client has no TPM path, so there is no hardware store to refuse a fallback from.
 
 Modern private keys live as binary OS Secret Service entries. A public-key refresh
 cannot erase the private copy or retired subkeys. Enrollment requires a complete
