@@ -645,3 +645,6 @@ app/qml/utils/format.js	    return !!email && typeof email.pgpState === "number"
 # Spec A: durable binary key bytes must match before the index/enrollment can advance.
 core/pgp/GoPgpBackend.cpp	        persisted.value.bytes() != inspected.data.bytes())	        false)	GoPgpBackendTest:importsV2OnlyAfterCheckingTheWholeSnapshot
 core/pgp/DeviceEnrollmentCrypto.cpp	    preimage.append(publicKey);	    preimage.append(publicKey.right(32));	DeviceEnrollmentCryptoTest:matchesXWingAndSasV2Vectors
+# Spec A P3: a state write that omits openpgp makes the server store ["v4"].
+core/net/PgpDeviceEnrollmentClient.cpp	        QJsonObject{{QStringLiteral("encryptionEnrolled"), enrolled}, {QStringLiteral("openpgp"), openPgpCapabilities()}},	        QJsonObject{{QStringLiteral("encryptionEnrolled"), enrolled}},	PgpDeviceEnrollmentClientTest:aStateReportKeepsTheReaderCapabilities
+core/net/PgpDeviceEnrollmentClient.cpp	                    {QStringLiteral("fingerprint"), held.activeFingerprint}, {QStringLiteral("openpgp"), openPgpCapabilities()}},	                    {QStringLiteral("fingerprint"), held.activeFingerprint}},	PgpDeviceEnrollmentClientTest:acknowledgesExactlyTheDeliveredRing

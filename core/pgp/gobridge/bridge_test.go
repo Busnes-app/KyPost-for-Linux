@@ -15,6 +15,7 @@ import (
 
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
+	openpgp "github.com/ProtonMail/go-crypto/openpgp/v2"
 	"github.com/ProtonMail/gopenpgp/v3/crypto"
 )
 
@@ -219,6 +220,26 @@ func TestSignatureStrengthRequiresResolvedSigningKey(t *testing.T) {
 	_ = json.Unmarshal(signatureInfo(result), &info)
 	if info["weak"] != false {
 		t.Fatal("key-id signing key should resolve")
+	}
+}
+
+// Spec A Q7 allows category 3 (ML-DSA-65) only; category 5 gets no strength credit.
+func TestSignatureStrengthFollowsCategoryThreeAllowlist(t *testing.T) {
+	for algo, weak := range map[packet.PublicKeyAlgorithm]bool{packet.PubKeyAlgoMldsa65Ed25519: false, packet.PubKeyAlgoMldsa87Ed448: true} {
+		entity, err := openpgp.NewEntity("a", "", "a@example.test", &packet.Config{V6Keys: true, Algorithm: algo})
+		if err != nil {
+			t.Fatal(err)
+		}
+		key, err := crypto.NewKeyFromEntity(entity)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sig := &packet.Signature{Hash: stdcrypto.SHA512, IssuerFingerprint: entity.PrimaryKey.Fingerprint}
+		var info map[string]any
+		_ = json.Unmarshal(signatureInfo(&crypto.VerifyResult{Signatures: []*crypto.VerifiedSignature{{SignedBy: key, Signature: sig}}}), &info)
+		if info["weak"] != weak {
+			t.Fatalf("algorithm %d: weak = %v, want %v", algo, info["weak"], weak)
+		}
 	}
 }
 

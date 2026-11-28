@@ -64,6 +64,11 @@ std::optional<PgpKeyringSnapshot> keyringOf(const QJsonObject& response)
         out.keyFingerprints.append(value.toString());
     return out;
 }
+// Sent on every key and state write: the server reads an omitted list as ["v4"].
+QJsonArray openPgpCapabilities()
+{
+    return QJsonArray{QStringLiteral("v4"), QStringLiteral("v6"), QStringLiteral("rfc9980")};
+}
 }
 
 PgpDeviceEnrollmentClient::PgpDeviceEnrollmentClient(HttpClient& httpClient) : m_httpClient(httpClient) {}
@@ -75,7 +80,7 @@ DeviceEnrollmentCallResult PgpDeviceEnrollmentClient::publishKey(
         joinUrlPath(serverBaseUrl, QStringLiteral("api/pgp/device/enrollment-key")), {},
         QJsonObject{{QStringLiteral("publicKey"), QString::fromLatin1(publicKeyBase64)},
                     {QStringLiteral("envelopeVersions"), publicKeyBase64.size() == 1624 ? QJsonArray{6} : QJsonArray{4, 5}},
-                    {QStringLiteral("openpgp"), QJsonArray{QStringLiteral("v4"), QStringLiteral("v6"), QStringLiteral("rfc9980")}}},
+                    {QStringLiteral("openpgp"), openPgpCapabilities()}},
         auth.headerItems()));
 }
 
@@ -115,7 +120,8 @@ DeviceEnrollmentCallResult PgpDeviceEnrollmentClient::reportState(
 {
     return statusOf(m_httpClient.post(
         joinUrlPath(serverBaseUrl, QStringLiteral("api/pgp/device/enrollment-state")), {},
-        QJsonObject{{QStringLiteral("encryptionEnrolled"), enrolled}}, auth.headerItems()));
+        QJsonObject{{QStringLiteral("encryptionEnrolled"), enrolled}, {QStringLiteral("openpgp"), openPgpCapabilities()}},
+        auth.headerItems()));
 }
 
 DeviceEnrollmentCallResult PgpDeviceEnrollmentClient::acknowledgeKeyring(
@@ -126,6 +132,6 @@ DeviceEnrollmentCallResult PgpDeviceEnrollmentClient::acknowledgeKeyring(
         QJsonObject{{QStringLiteral("encryptionEnrolled"), true},
                     {QStringLiteral("envelopeVersion"), version},
                     {QStringLiteral("materialGeneration"), held.materialGeneration},
-                    {QStringLiteral("fingerprint"), held.activeFingerprint}},
+                    {QStringLiteral("fingerprint"), held.activeFingerprint}, {QStringLiteral("openpgp"), openPgpCapabilities()}},
         auth.headerItems()));
 }

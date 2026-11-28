@@ -288,7 +288,7 @@ func signatureInfo(result *crypto.VerifyResult) []byte {
 						return bits >= 2048
 					case packet.PubKeyAlgoECDSA, packet.PubKeyAlgoEdDSA, packet.PubKeyAlgoEd25519, packet.PubKeyAlgoEd448:
 						return bits >= 224
-					case packet.PubKeyAlgoMldsa65Ed25519, packet.PubKeyAlgoMldsa87Ed448:
+					case packet.PubKeyAlgoMldsa65Ed25519: // Spec A category 3 only (Q7)
 						return true
 					default:
 						return false
